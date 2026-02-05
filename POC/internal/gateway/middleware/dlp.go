@@ -51,6 +51,8 @@ func NewBuiltInScanner() *BuiltInScanner {
 			regexp.MustCompile(`(?i)\btoken\s*[:=]\s*[^\s]{16,}`),
 			regexp.MustCompile(`(?i)["']?api[_-]?key["']?\s*[":=]\s*["']?[a-zA-Z0-9]{8,}`),
 			regexp.MustCompile(`(?i)\baccess[_-]?key\s*[:=]\s*[^\s]{16,}`),
+			// Generic API key pattern (from SafeZone)
+			regexp.MustCompile(`\b(api_key|apikey|access_token|auth_token)\s*[:=]\s*[A-Za-z0-9\-_]{16,64}\b`),
 		},
 		piiPatterns: []*regexp.Regexp{
 			// SSN patterns (XXX-XX-XXXX)
@@ -60,8 +62,14 @@ func NewBuiltInScanner() *BuiltInScanner {
 			// Phone numbers (various formats)
 			regexp.MustCompile(`\b\d{3}[-.]?\d{3}[-.]?\d{4}\b`),
 			regexp.MustCompile(`\b\(\d{3}\)\s*\d{3}[-.]?\d{4}\b`),
+			// International phone numbers (from SafeZone)
+			regexp.MustCompile(`\+(?:[0-9] ?){6,14}[0-9]`),
 			// Credit card numbers (simple pattern)
 			regexp.MustCompile(`\b\d{4}[\s-]?\d{4}[\s-]?\d{4}[\s-]?\d{4}\b`),
+			// UK National Insurance Number (from SafeZone)
+			regexp.MustCompile(`\b[A-CEGHJ-PR-TW-Z]{1}[A-CEGHJ-NPR-TW-Z]{1}[0-9]{6}[A-D]{1}\b`),
+			// MAC Address (from SafeZone)
+			regexp.MustCompile(`\b([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\b`),
 		},
 		suspiciousPatterns: []*regexp.Regexp{
 			// SQL injection patterns
@@ -75,6 +83,8 @@ func NewBuiltInScanner() *BuiltInScanner {
 			regexp.MustCompile(`(?i)forget\s+(everything|all|your\s+instructions)`),
 			regexp.MustCompile(`(?i)disregard\s+(previous|all|your)\s+(instructions|rules)`),
 			regexp.MustCompile(`(?i)new\s+instructions?\s*:`),
+			// DAN jailbreak pattern (from SafeZone)
+			regexp.MustCompile(`(?i)(DAN mode|do anything now)`),
 		},
 	}
 }
