@@ -1,0 +1,94 @@
+# SPIFFE ID Schema for POC Workloads
+# Based on Reference Architecture Section 4.5
+#
+# Schema: spiffe://<trust-domain>/<agent-class>/<agent-purpose>/<environment>
+#
+# Components:
+#   - trust-domain: Organization identifier (poc.local for this POC)
+#   - agent-class: mcp-client, autonomous, orchestrator, gateways, tools, infrastructure
+#   - agent-purpose: Functional identifier describing the workload
+#   - environment: Deployment environment (dev, staging, prod)
+
+trust_domain: poc.local
+environment: dev
+
+# SPIFFE IDs for POC workloads
+workloads:
+  # Gateway component - the MCP security gateway that enforces all security controls
+  - spiffe_id: spiffe://poc.local/gateways/mcp-security-gateway/dev
+    description: MCP Security Gateway
+    purpose: >
+      Enforces identity verification, authorization, content inspection,
+      tool verification, secret substitution, and audit logging for all
+      agent-to-tool communication.
+    agent_class: gateways
+    agent_purpose: mcp-security-gateway
+    selectors:
+      - "docker:label:spiffe-id:mcp-security-gateway"
+      - "docker:label:component:gateway"
+
+  # DSPy research agent - MCP client using DSPy framework
+  - spiffe_id: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
+    description: DSPy Research Agent
+    purpose: >
+      Autonomous research agent built with DSPy framework. Performs
+      document analysis and knowledge synthesis using MCP tools.
+    agent_class: agents/mcp-client
+    agent_purpose: dspy-researcher
+    selectors:
+      - "docker:label:spiffe-id:dspy-researcher"
+      - "docker:label:agent-type:mcp-client"
+      - "docker:label:framework:dspy"
+
+  # PydanticAI research agent - MCP client using PydanticAI framework
+  - spiffe_id: spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev
+    description: PydanticAI Research Agent
+    purpose: >
+      Autonomous research agent built with PydanticAI framework. Performs
+      structured data extraction and analysis using MCP tools.
+    agent_class: agents/mcp-client
+    agent_purpose: pydantic-researcher
+    selectors:
+      - "docker:label:spiffe-id:pydantic-researcher"
+      - "docker:label:agent-type:mcp-client"
+      - "docker:label:framework:pydantic-ai"
+
+  # Docker MCP tool server - provides containerized tools
+  - spiffe_id: spiffe://poc.local/tools/docker-mcp-server/dev
+    description: Docker MCP Tool Server
+    purpose: >
+      MCP server providing containerized tool capabilities including
+      file operations, database queries, and HTTP requests.
+    agent_class: tools
+    agent_purpose: docker-mcp-server
+    selectors:
+      - "docker:label:spiffe-id:docker-mcp-server"
+      - "docker:label:component:mcp-server"
+      - "docker:label:tool-type:docker"
+
+  # SPIKE Nexus - SPIFFE-native secrets management
+  - spiffe_id: spiffe://poc.local/infrastructure/spike-nexus/dev
+    description: SPIKE Nexus Secrets Server
+    purpose: >
+      SPIFFE-native secrets management service providing late-binding
+      tokens and credential substitution for agents.
+    agent_class: infrastructure
+    agent_purpose: spike-nexus
+    selectors:
+      - "docker:label:spiffe-id:spike-nexus"
+      - "docker:label:component:secrets"
+      - "docker:label:service:spike"
+
+# Pattern matching for OPA policies
+# These patterns allow wildcard matching in SPIFFE IDs for authorization
+policy_patterns:
+  all_gateways: "spiffe://poc.local/gateways/*/dev"
+  all_mcp_clients: "spiffe://poc.local/agents/mcp-client/*/dev"
+  all_autonomous_agents: "spiffe://poc.local/agents/autonomous/*/dev"
+  all_tools: "spiffe://poc.local/tools/*/dev"
+  all_infrastructure: "spiffe://poc.local/infrastructure/*/dev"
+
+  # Specific agent type patterns
+  research_agents: "spiffe://poc.local/agents/mcp-client/*-researcher/dev"
+  financial_agents: "spiffe://poc.local/agents/mcp-client/financial-*/dev"
+  document_agents: "spiffe://poc.local/agents/mcp-client/document-*/dev"
