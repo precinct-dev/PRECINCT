@@ -1,0 +1,195 @@
+# Docker MCP Server Integration:
+# The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit.
+# It is NOT defined in this compose file. Configuration lives in ~/.docker/mcp/
+# and is accessed by the gateway via JSON-RPC at http://localhost:8080/mcp
+# when the Docker MCP Gateway is running in streaming mode.
+#
+# To start Docker MCP Gateway:
+#   docker mcp gateway run --port 8080 --transport streaming
+#
+# For details, see: POC/docs/docker-mcp-integration.md
+
+services:
+  # SPIRE Server - Identity control plane for workload attestation
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:latest
+    container_name: spire-server
+    hostname: spire-server
+    volumes:
+      - ./config/spire/server.conf:/opt/spire/conf/server/server.conf:ro
+      - spire-server-data:/opt/spire/data/server
+      - spire-server-socket:/tmp/spire-server
+    ports:
+      - "8081:8081"  # gRPC API for agent registration
+      - "8080:8080"  # Health check endpoint
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - agentic-net
+
+  # SPIRE Agent - Workload attestation agent with Docker attestor
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent:latest
+    container_name: spire-agent
+    hostname: spire-agent
+    depends_on:
+      spire-server:
+        condition: service_healthy
+    volumes:
+      - ./config/spire/agent.conf:/opt/spire/conf/agent/agent.conf:ro
+      - spire-agent-data:/opt/spire/data/agent
+      - spire-agent-socket:/tmp/spire-agent/public
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Required for Docker workload attestor
+    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - agentic-net
+    # Privileged mode required for Docker socket access
+    privileged: true
+
+  # SPIKE Nexus - Token-based authorization gateway
+  spike-nexus:
+    image: spike/nexus:latest
+    container_name: spike-nexus
+    hostname: spike-nexus
+    environment:
+      - SPIKE_MODE=token
+      - SPIKE_TOKEN_ISSUER=https://spike.ist
+      - LOG_LEVEL=debug
+    ports:
+      - "8443:8443"  # HTTPS API
+    networks:
+      - agentic-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "-k", "https://localhost:8443/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # OPA - Policy engine for authorization decisions
+  opa:
+    image: openpolicyagent/opa:latest
+    container_name: opa
+    hostname: opa
+    volumes:
+      - ./config/opa:/policies:ro
+    command:
+      - "run"
+      - "--server"
+      - "--addr=0.0.0.0:8181"
+      - "--log-level=debug"
+      - "/policies"
+    ports:
+      - "8181:8181"  # OPA HTTP API
+    networks:
+      - agentic-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8181/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # OpenTelemetry Collector - Observability data pipeline
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    hostname: otel-collector
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otel-collector-config.yaml:ro
+    command: ["--config=/etc/otel-collector-config.yaml"]
+    ports:
+      - "4317:4317"  # OTLP gRPC receiver
+      - "4318:4318"  # OTLP HTTP receiver
+    depends_on:
+      - phoenix
+    networks:
+      - agentic-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Phoenix - Trace visualization and analysis
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: phoenix
+    hostname: phoenix
+    ports:
+      - "6006:6006"  # Phoenix UI
+    environment:
+      - PHOENIX_PORT=6006
+      - PHOENIX_HOST=0.0.0.0
+    networks:
+      - agentic-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6006/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MCP Security Gateway - Placeholder for future implementation (story qq0.3)
+  # Using golang base image as temporary container to maintain service definition
+  mcp-security-gateway:
+    image: golang:1.23
+    container_name: mcp-security-gateway
+    hostname: mcp-security-gateway
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
+    command: ["sleep", "infinity"]  # Placeholder - will be replaced with actual gateway binary
+    environment:
+      - SPIRE_AGENT_SOCKET=/tmp/spire-agent/public/api.sock
+      - LOG_LEVEL=debug
+    networks:
+      - agentic-net
+    # Gateway will eventually expose ports for:
+    # - MCP JSON-RPC API
+    # - Health checks
+    # - Metrics
+
+  # Tool Registry - Placeholder for tool capability registration service
+  # Will be implemented in a future story
+  tool-registry:
+    image: golang:1.23
+    container_name: tool-registry
+    hostname: tool-registry
+    command: ["sleep", "infinity"]  # Placeholder - will be replaced with actual registry service
+    environment:
+      - LOG_LEVEL=debug
+    networks:
+      - agentic-net
+
+networks:
+  agentic-net:
+    driver: bridge
+    name: agentic-security-network
+
+volumes:
+  # SPIRE Server persistent data
+  spire-server-data:
+    name: spire-server-data
+
+  # SPIRE Server socket (for registration API)
+  spire-server-socket:
+    name: spire-server-socket
+
+  # SPIRE Agent persistent data
+  spire-agent-data:
+    name: spire-agent-data
+
+  # SPIRE Agent socket - SHARED with gateway for workload attestation
+  spire-agent-socket:
+    name: spire-agent-socket
