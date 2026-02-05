@@ -1,22 +1,25 @@
 package gateway
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"time"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
 )
 
 // Gateway represents the MCP security gateway
 type Gateway struct {
-	config     *Config
-	proxy      *httputil.ReverseProxy
-	auditor    *middleware.Auditor
-	opa        *middleware.OPAClient
-	registry   *middleware.ToolRegistry
-	dlpScanner middleware.DLPScanner
+	config      *Config
+	proxy       *httputil.ReverseProxy
+	auditor     *middleware.Auditor
+	opa         *middleware.OPAClient
+	registry    *middleware.ToolRegistry
+	dlpScanner  middleware.DLPScanner
+	deepScanner *middleware.DeepScanner
 }
 
 // New creates a new gateway instance
@@ -41,14 +44,19 @@ func New(cfg *Config) (*Gateway, error) {
 		return nil, fmt.Errorf("failed to create tool registry: %w", err)
 	}
 	dlpScanner := middleware.NewBuiltInScanner()
+	deepScanner := middleware.NewDeepScanner(cfg.GroqAPIKey, time.Duration(cfg.DeepScanTimeout)*time.Second)
+
+	// Start deep scan result processor in background
+	go deepScanner.ResultProcessor(context.Background())
 
 	return &Gateway{
-		config:     cfg,
-		proxy:      proxy,
-		auditor:    auditor,
-		opa:        opa,
-		registry:   registry,
-		dlpScanner: dlpScanner,
+		config:      cfg,
+		proxy:       proxy,
+		auditor:     auditor,
+		opa:         opa,
+		registry:    registry,
+		dlpScanner:  dlpScanner,
+		deepScanner: deepScanner,
 	}, nil
 }
 
@@ -64,11 +72,13 @@ func (g *Gateway) Handler() http.Handler {
 	// 7. DLP scanning (after OPA, before session context)
 	// 8. Step-up gating hook (no-op for skeleton)
 	// 9. Token substitution hook (no-op for skeleton)
-	// 10. Proxy to upstream
+	// 10. Deep scan dispatch (async, after step-up gating)
+	// 11. Proxy to upstream
 
 	handler := g.proxyHandler()
 
 	// Apply middleware in reverse order (innermost first)
+	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)              // 10
 	handler = middleware.TokenSubstitution(handler)                              // 9
 	handler = middleware.StepUpGating(handler)                                   // 8
 	handler = middleware.DLPMiddleware(handler, g.dlpScanner)                    // 7
