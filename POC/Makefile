@@ -27,38 +27,48 @@ down: ## Stop and remove all services
 	@echo "Stopping services..."
 	docker compose down
 
-build: ## Build all Go and Python services (placeholder - services not yet implemented)
+build: ## Build all Go and Python services
 	@echo "==> Building Go services..."
-	@echo "    [PLACEHOLDER] Gateway service not yet built - see story RFA-qq0.3"
+	@echo "    Building MCP Security Gateway..."
+	docker compose build mcp-security-gateway
 	@echo "    [PLACEHOLDER] Tool registry not yet built - see future stories"
 	@echo ""
 	@echo "==> Building Python services..."
 	@echo "    [PLACEHOLDER] Agent services not yet built - see future stories"
 	@echo ""
-	@echo "Build complete (placeholder targets)"
+	@echo "Build complete"
 
-test: ## Run unit tests for all services (placeholder)
+test: ## Run unit tests for all services
 	@echo "==> Running unit tests..."
-	@echo "    [PLACEHOLDER] Go tests not yet implemented - see story RFA-qq0.3"
+	@echo "    Testing MCP Security Gateway..."
+	go test ./internal/gateway/... -v -cover
+	@echo ""
 	@echo "    [PLACEHOLDER] Python tests not yet implemented - see future stories"
 	@echo ""
-	@echo "Unit tests complete (placeholder targets)"
+	@echo "Unit tests complete"
 
-test-integration: ## Run integration tests against the compose stack (placeholder)
+test-integration: ## Run integration tests against the compose stack
 	@echo "==> Running integration tests..."
-	@echo "    [PLACEHOLDER] Integration tests not yet implemented"
-	@echo "    Standard CI flow: make up && make test-integration"
+	@echo "    Testing MCP Security Gateway integration..."
+	@echo "    Note: Requires docker compose stack to be running (make up)"
+	go test -tags=integration ./tests/integration/... -v -timeout 60s
 	@echo ""
-	@echo "Integration tests complete (placeholder targets)"
+	@echo "Integration tests complete"
 
-lint: ## Run linting for Go and Python code (placeholder)
+lint: ## Run linting for Go and Python code
 	@echo "==> Linting Go code..."
-	@echo "    [PLACEHOLDER] Go linting not yet configured - see story RFA-qq0.3"
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./...; \
+	else \
+		echo "    golangci-lint not installed, using go fmt and go vet"; \
+		go fmt ./...; \
+		go vet ./...; \
+	fi
 	@echo ""
 	@echo "==> Linting Python code..."
 	@echo "    [PLACEHOLDER] Python linting not yet configured - see future stories"
 	@echo ""
-	@echo "Linting complete (placeholder targets)"
+	@echo "Linting complete"
 
 demo-walking-skeleton: ## Run the walking skeleton demo (placeholder)
 	@echo "==> Running walking skeleton demo..."

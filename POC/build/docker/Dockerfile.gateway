@@ -1,0 +1,59 @@
+# Multi-Stage Dockerfile for MCP Security Gateway
+# Reference: POC/docs/supply-chain-images.md
+
+# ============================================================================
+# Stage 1: Builder
+# ============================================================================
+FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    git
+
+# Set working directory
+WORKDIR /build
+
+# Copy go.mod and go.sum first for layer caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY . .
+
+# Build the gateway
+# CGO_ENABLED=0: Creates statically linked binary (required for distroless)
+# -ldflags="-s -w": Strip debug info and symbol table (smaller binary)
+# -trimpath: Remove file system paths from binary (reproducible builds)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/gateway \
+    ./cmd/gateway
+
+# ============================================================================
+# Stage 2: Runtime (Distroless)
+# ============================================================================
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:cba10d7abd3e203428e86f5b2d7fd5eb7d8987c387864ae4996cf97191b33764
+
+# Set working directory
+WORKDIR /app
+
+# Copy CA certificates from builder (required for HTTPS to OPA/registry)
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy the compiled binary from builder
+COPY --from=builder /build/gateway /app/gateway
+
+# Expose gateway port
+EXPOSE 9090
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["/app/gateway", "health"]
+
+# Run the gateway
+ENTRYPOINT ["/app/gateway"]
+CMD []
