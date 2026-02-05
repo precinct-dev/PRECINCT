@@ -12,19 +12,19 @@
 services:
   # SPIRE Server - Identity control plane for workload attestation
   spire-server:
-    image: ghcr.io/spiffe/spire-server:latest
+    image: ghcr.io/spiffe/spire-server:1.10.0
     container_name: spire-server
     hostname: spire-server
     volumes:
       - ./config/spire/server.conf:/opt/spire/conf/server/server.conf:ro
-      - spire-server-data:/opt/spire/data/server
+      - ./data/spire-server:/opt/spire/data
       - spire-server-socket:/tmp/spire-server
     ports:
       - "8081:8081"  # gRPC API for agent registration
       - "8080:8080"  # Health check endpoint
     command: ["-config", "/opt/spire/conf/server/server.conf"]
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/ready"]
+      test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,7 +34,7 @@ services:
 
   # SPIRE Agent - Workload attestation agent with Docker attestor
   spire-agent:
-    image: ghcr.io/spiffe/spire-agent:latest
+    image: ghcr.io/spiffe/spire-agent:1.10.0
     container_name: spire-agent
     hostname: spire-agent
     depends_on:
@@ -42,12 +42,14 @@ services:
         condition: service_healthy
     volumes:
       - ./config/spire/agent.conf:/opt/spire/conf/agent/agent.conf:ro
-      - spire-agent-data:/opt/spire/data/agent
+      - ./data/spire-agent:/opt/spire/data/agent
       - spire-agent-socket:/tmp/spire-agent/public
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Required for Docker workload attestor
-    command: ["-config", "/opt/spire/conf/agent/agent.conf"]
+    environment:
+      - SPIRE_TOKEN=0fa40bcb-bbe3-4b58-b018-9a88c4d8c025
+    command: ["-config", "/opt/spire/conf/agent/agent.conf", "-joinToken", "0fa40bcb-bbe3-4b58-b018-9a88c4d8c025"]
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/ready"]
+      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 5
