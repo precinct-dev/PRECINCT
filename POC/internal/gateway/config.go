@@ -17,6 +17,8 @@ type Config struct {
 	MaxRequestSizeBytes    int64
 	SPIFFEMode             string // "dev" or "prod"
 	LogLevel               string
+	GroqAPIKey             string
+	DeepScanTimeout        int // in seconds
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -35,6 +37,13 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	deepScanTimeout := 5 // 5 seconds default
+	if t := os.Getenv("DEEP_SCAN_TIMEOUT"); t != "" {
+		if parsed, err := strconv.Atoi(t); err == nil {
+			deepScanTimeout = parsed
+		}
+	}
+
 	return &Config{
 		Port:                   port,
 		UpstreamURL:            getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8080/mcp"),
@@ -46,6 +55,8 @@ func ConfigFromEnv() *Config {
 		MaxRequestSizeBytes:    maxRequestSize,
 		SPIFFEMode:             getEnvOrDefault("SPIFFE_MODE", "dev"),
 		LogLevel:               getEnvOrDefault("LOG_LEVEL", "info"),
+		GroqAPIKey:             getEnvOrDefault("GROQ_API_KEY", ""),
+		DeepScanTimeout:        deepScanTimeout,
 	}
 }
 
