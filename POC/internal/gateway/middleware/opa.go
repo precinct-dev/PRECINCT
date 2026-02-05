@@ -24,11 +24,13 @@ func NewOPAClient(endpoint string) *OPAClient {
 
 // OPAInput represents input to OPA policy evaluation
 type OPAInput struct {
-	SPIFFEID string `json:"spiffe_id"`
-	Tool     string `json:"tool"`
-	Action   string `json:"action"`
-	Method   string `json:"method"`
-	Path     string `json:"path"`
+	SPIFFEID     string                 `json:"spiffe_id"`
+	Tool         string                 `json:"tool"`
+	Action       string                 `json:"action"`
+	Method       string                 `json:"method"`
+	Path         string                 `json:"path"`
+	Params       map[string]interface{} `json:"params"`
+	StepUpToken  string                 `json:"step_up_token"`
 }
 
 // OPARequest represents OPA API request
@@ -99,9 +101,10 @@ func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
-		// Extract tool name from request body
+		// Extract tool name and params from request body
 		body := GetRequestBody(ctx)
 		toolName := ""
+		params := make(map[string]interface{})
 		if len(body) > 0 {
 			var mcpReq MCPRequest
 			if err := json.Unmarshal(body, &mcpReq); err == nil {
@@ -113,16 +116,22 @@ func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
 						}
 					}
 				}
+				params = mcpReq.Params
 			}
 		}
 
+		// Extract step-up token from headers
+		stepUpToken := r.Header.Get("X-Step-Up-Token")
+
 		// Build OPA input
 		input := OPAInput{
-			SPIFFEID: GetSPIFFEID(ctx),
-			Tool:     toolName,
-			Action:   "execute",
-			Method:   r.Method,
-			Path:     r.URL.Path,
+			SPIFFEID:    GetSPIFFEID(ctx),
+			Tool:        toolName,
+			Action:      "execute",
+			Method:      r.Method,
+			Path:        r.URL.Path,
+			Params:      params,
+			StepUpToken: stepUpToken,
 		}
 
 		// Evaluate policy

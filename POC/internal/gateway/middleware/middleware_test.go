@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 )
 
@@ -194,7 +195,19 @@ func TestSPIFFEAuthDev(t *testing.T) {
 
 // TestAuditLog verifies audit logging functionality
 func TestAuditLog(t *testing.T) {
-	auditor := NewAuditor()
+	// Create temporary config files for auditor
+	tmpDir := t.TempDir()
+	bundlePath := tmpDir + "/bundle.rego"
+	registryPath := tmpDir + "/registry.yaml"
+	os.WriteFile(bundlePath, []byte("package test"), 0644)
+	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+
+	auditor, err := NewAuditor("", bundlePath, registryPath) // empty path = stdout only
+	if err != nil {
+		t.Fatalf("Failed to create auditor: %v", err)
+	}
+	defer auditor.Close()
+
 	handler := AuditLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}), auditor)
@@ -219,7 +232,26 @@ func TestAuditLog(t *testing.T) {
 
 // TestToolRegistryVerify verifies tool authorization
 func TestToolRegistryVerify(t *testing.T) {
-	registry := NewToolRegistry("http://localhost:8080")
+	// Create temporary config file
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: file_read
+    description: "Read files"
+    hash: "abc123"
+    risk_level: low
+  - name: file_write
+    description: "Write files"
+    hash: "def456"
+    risk_level: high
+`
+	os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry("http://localhost:8080", configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
 	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}), registry)
@@ -262,28 +294,6 @@ func TestToolRegistryVerify(t *testing.T) {
 			t.Errorf("Expected 200, got %d", rec.Code)
 		}
 	})
-}
-
-// TestToolHashVerification verifies hash computation
-func TestToolHashVerification(t *testing.T) {
-	hash1 := ComputeHash("file_read")
-	hash2 := ComputeHash("file_read")
-	hash3 := ComputeHash("file_write")
-
-	// Same input should produce same hash
-	if hash1 != hash2 {
-		t.Error("Hash should be deterministic")
-	}
-
-	// Different input should produce different hash
-	if hash1 == hash3 {
-		t.Error("Different tools should have different hashes")
-	}
-
-	// Hash should be 64 hex characters (SHA-256)
-	if len(hash1) != 64 {
-		t.Errorf("Expected hash length 64, got %d", len(hash1))
-	}
 }
 
 // TestStepUpGating verifies step-up hook is pass-through

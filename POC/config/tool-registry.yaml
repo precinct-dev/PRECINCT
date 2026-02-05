@@ -1,0 +1,105 @@
+# Tool Registry Configuration
+# Each tool is identified by name and verified via SHA-256 hash
+# Hash is computed over: tool description + input schema (canonical JSON)
+
+tools:
+  # Tavily - Web search API
+  - name: "tavily_search"
+    description: "Search the web using Tavily API"
+    hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"  # SHA-256 of description + schema
+    input_schema:
+      type: "object"
+      required: ["query"]
+      properties:
+        query:
+          type: "string"
+          description: "Search query"
+        max_results:
+          type: "integer"
+          description: "Maximum results to return"
+          default: 5
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "medium"
+    requires_step_up: false
+
+  # Read - File system read operations
+  - name: "read"
+    description: "Read file contents from filesystem"
+    hash: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"  # SHA-256 of description + schema
+    input_schema:
+      type: "object"
+      required: ["file_path"]
+      properties:
+        file_path:
+          type: "string"
+          description: "Absolute path to file"
+        offset:
+          type: "integer"
+          description: "Line number to start reading"
+        limit:
+          type: "integer"
+          description: "Number of lines to read"
+    allowed_paths:
+      - "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/**"
+    risk_level: "low"
+    requires_step_up: false
+
+  # Grep - Content search
+  - name: "grep"
+    description: "Search for patterns in files"
+    hash: "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"  # SHA-256 of description + schema
+    input_schema:
+      type: "object"
+      required: ["pattern", "path"]
+      properties:
+        pattern:
+          type: "string"
+          description: "Regular expression pattern"
+        path:
+          type: "string"
+          description: "Directory or file path to search"
+        glob:
+          type: "string"
+          description: "Glob pattern to filter files"
+        output_mode:
+          type: "string"
+          enum: ["content", "files_with_matches", "count"]
+    allowed_paths:
+      - "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/**"
+    risk_level: "low"
+    requires_step_up: false
+
+  # Bash - Shell command execution (HIGH RISK)
+  - name: "bash"
+    description: "Execute shell commands"
+    hash: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"  # SHA-256 of description + schema
+    input_schema:
+      type: "object"
+      required: ["command"]
+      properties:
+        command:
+          type: "string"
+          description: "Shell command to execute"
+        timeout:
+          type: "integer"
+          description: "Timeout in milliseconds"
+        run_in_background:
+          type: "boolean"
+          description: "Run command in background"
+    risk_level: "critical"
+    requires_step_up: true  # MUST have step-up authentication
+    allowed_paths:
+      - "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/**"
+
+# Hash computation reference:
+# For each tool, the hash is computed as:
+# SHA-256(description + canonical_json(input_schema))
+#
+# Example (pseudo-code):
+# content = tool.description + json.dumps(tool.input_schema, sort_keys=True, separators=(',', ':'))
+# hash = sha256(content.encode('utf-8')).hexdigest()
+#
+# These are placeholder hashes for POC demonstration.
+# In production, compute real hashes from actual tool descriptions + schemas.

@@ -156,6 +156,7 @@ services:
         condition: service_healthy
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
+      - ./config:/config:ro  # Mount config directory for tool registry
     ports:
       - "9090:9090"  # MCP JSON-RPC API
     environment:
@@ -163,6 +164,7 @@ services:
       - UPSTREAM_URL=http://host.docker.internal:8080/mcp
       - OPA_ENDPOINT=http://opa:8181
       - TOOL_REGISTRY_URL=http://tool-registry:8080
+      - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760
       - SPIFFE_MODE=dev
       - LOG_LEVEL=info

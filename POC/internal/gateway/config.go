@@ -7,13 +7,16 @@ import (
 
 // Config holds gateway configuration
 type Config struct {
-	Port                int
-	UpstreamURL         string
-	OPAEndpoint         string
-	ToolRegistryURL     string
-	MaxRequestSizeBytes int64
-	SPIFFEMode          string // "dev" or "prod"
-	LogLevel            string
+	Port                   int
+	UpstreamURL            string
+	OPAEndpoint            string
+	ToolRegistryURL        string
+	ToolRegistryConfigPath string
+	AuditLogPath           string
+	OPAPolicyPath          string
+	MaxRequestSizeBytes    int64
+	SPIFFEMode             string // "dev" or "prod"
+	LogLevel               string
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -33,13 +36,16 @@ func ConfigFromEnv() *Config {
 	}
 
 	return &Config{
-		Port:                port,
-		UpstreamURL:         getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8080/mcp"),
-		OPAEndpoint:         getEnvOrDefault("OPA_ENDPOINT", "http://opa:8181"),
-		ToolRegistryURL:     getEnvOrDefault("TOOL_REGISTRY_URL", "http://tool-registry:8080"),
-		MaxRequestSizeBytes: maxRequestSize,
-		SPIFFEMode:          getEnvOrDefault("SPIFFE_MODE", "dev"),
-		LogLevel:            getEnvOrDefault("LOG_LEVEL", "info"),
+		Port:                   port,
+		UpstreamURL:            getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8080/mcp"),
+		OPAEndpoint:            getEnvOrDefault("OPA_ENDPOINT", "http://opa:8181"),
+		ToolRegistryURL:        getEnvOrDefault("TOOL_REGISTRY_URL", "http://tool-registry:8080"),
+		ToolRegistryConfigPath: getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
+		AuditLogPath:           getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
+		OPAPolicyPath:          getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
+		MaxRequestSizeBytes:    maxRequestSize,
+		SPIFFEMode:             getEnvOrDefault("SPIFFE_MODE", "dev"),
+		LogLevel:               getEnvOrDefault("LOG_LEVEL", "info"),
 	}
 }
 
