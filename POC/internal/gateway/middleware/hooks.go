@@ -113,7 +113,6 @@ func TokenSubstitution(next http.Handler) http.Handler {
 	})
 }
 
-
 // POCSecretRedeemer is a POC implementation of SecretRedeemer
 // In production, this would make mTLS calls to SPIKE Nexus
 type POCSecretRedeemer struct{}
