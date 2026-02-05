@@ -325,6 +325,10 @@ func TestTokenSubstitution(t *testing.T) {
 	}))
 
 	req := httptest.NewRequest("POST", "/", nil)
+	// Add SPIFFE ID to context (required by TokenSubstitution middleware)
+	ctx := WithSPIFFEID(req.Context(), "spiffe://poc.local/test")
+	req = req.WithContext(ctx)
+
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
