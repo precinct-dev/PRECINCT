@@ -135,11 +135,14 @@ func TestOPAIntegration(t *testing.T) {
 
 			// Verify status code matches expectation
 			if tt.wantResult == "allow" {
-				// For allow cases, we expect the request to reach upstream
-				// Since upstream may not exist in test, we accept 200-499
-				if resp.StatusCode >= 500 {
-					t.Errorf("Expected non-500 status for allowed request, got %d", resp.StatusCode)
+				// For allow cases, we expect the request to reach proxy stage
+				// Since upstream may not exist in test, we accept:
+				// - 200-499: successful upstream or expected error from upstream
+				// - 502: gateway successfully proxied but upstream unavailable (valid in test)
+				if resp.StatusCode >= 500 && resp.StatusCode != http.StatusBadGateway {
+					t.Errorf("Expected success or 502 for allowed request, got %d", resp.StatusCode)
 				}
+				// 502 is OK - means middleware chain allowed the request and tried to proxy
 			} else {
 				// For deny cases, gateway should block with 403
 				if resp.StatusCode != http.StatusForbidden {
