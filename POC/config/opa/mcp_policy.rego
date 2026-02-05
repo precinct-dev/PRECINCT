@@ -1,5 +1,6 @@
-# MCP Authorization Policy
+# MCP Authorization Policy - RFA-qq0.5
 # Based on Reference Architecture Section 6.4
+# Implements path-based restrictions, step-up gating, and destination controls
 
 package mcp
 
