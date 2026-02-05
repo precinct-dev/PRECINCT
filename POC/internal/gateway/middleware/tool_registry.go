@@ -4,7 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+
+	"gopkg.in/yaml.v3"
 )
 
 // MCPRequest represents a simplified MCP JSON-RPC request
@@ -15,50 +19,104 @@ type MCPRequest struct {
 	ID      interface{}            `json:"id"`
 }
 
+// ToolDefinition represents a tool from the registry config
+type ToolDefinition struct {
+	Name                string                 `yaml:"name"`
+	Description         string                 `yaml:"description"`
+	Hash                string                 `yaml:"hash"`
+	InputSchema         map[string]interface{} `yaml:"input_schema"`
+	AllowedDestinations []string               `yaml:"allowed_destinations"`
+	AllowedPaths        []string               `yaml:"allowed_paths"`
+	RiskLevel           string                 `yaml:"risk_level"`
+	RequiresStepUp      bool                   `yaml:"requires_step_up"`
+}
+
+// ToolRegistryConfig represents the tool registry configuration file
+type ToolRegistryConfig struct {
+	Tools []ToolDefinition `yaml:"tools"`
+}
+
 // ToolRegistry manages tool verification with hash checking
 type ToolRegistry struct {
 	endpoint string
-	// In-memory allowed tools for skeleton (would be fetched from registry)
-	allowedTools map[string]string // tool_name -> hash
+	tools    map[string]ToolDefinition // tool_name -> definition
 }
 
 // NewToolRegistry creates a new tool registry client
-func NewToolRegistry(endpoint string) *ToolRegistry {
-	// Hardcoded allowed tools for skeleton
-	// In production, these would be fetched from the tool registry service
-	return &ToolRegistry{
+func NewToolRegistry(endpoint string, configPath string) (*ToolRegistry, error) {
+	registry := &ToolRegistry{
 		endpoint: endpoint,
-		allowedTools: map[string]string{
-			"file_read":       "abc123def456",
-			"file_list":       "def456ghi789",
-			"search":          "ghi789jkl012",
-			"http_request":    "jkl012mno345",
-			"database_query":  "mno345pqr678",
-			"docker_exec":     "pqr678stu901",
-			"llm_query":       "stu901vwx234",
-		},
+		tools:    make(map[string]ToolDefinition),
 	}
+
+	// Load configuration from file
+	if configPath != "" {
+		if err := registry.loadConfig(configPath); err != nil {
+			return nil, fmt.Errorf("failed to load tool registry config: %w", err)
+		}
+	}
+
+	return registry, nil
+}
+
+// loadConfig loads tool definitions from YAML config file
+func (tr *ToolRegistry) loadConfig(configPath string) error {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	var config ToolRegistryConfig
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return fmt.Errorf("failed to parse config file: %w", err)
+	}
+
+	// Load tools into map
+	for _, tool := range config.Tools {
+		tr.tools[tool.Name] = tool
+	}
+
+	return nil
 }
 
 // VerifyTool checks if a tool is allowed and matches expected hash
-func (tr *ToolRegistry) VerifyTool(toolName string) (bool, string) {
-	expectedHash, exists := tr.allowedTools[toolName]
+func (tr *ToolRegistry) VerifyTool(toolName string, providedHash string) (bool, string) {
+	toolDef, exists := tr.tools[toolName]
 	if !exists {
 		return false, "tool_not_found"
 	}
 
-	// In skeleton, we just check presence
-	// In production, would verify actual hash of tool implementation
-	return true, expectedHash
+	// Verify hash if provided
+	if providedHash != "" && providedHash != toolDef.Hash {
+		return false, "hash_mismatch"
+	}
+
+	return true, toolDef.Hash
 }
 
-// ComputeHash computes SHA-256 hash of tool name (placeholder for actual tool hash)
-func ComputeHash(toolName string) string {
-	hash := sha256.Sum256([]byte(toolName))
+// GetToolDefinition returns the tool definition for a given tool name
+func (tr *ToolRegistry) GetToolDefinition(toolName string) (ToolDefinition, bool) {
+	toolDef, exists := tr.tools[toolName]
+	return toolDef, exists
+}
+
+// ComputeHash computes SHA-256 hash of tool description + input schema
+// This is the canonical hash computation for tool verification
+func ComputeHash(description string, inputSchema map[string]interface{}) string {
+	// Serialize input schema to canonical JSON (sorted keys, no whitespace)
+	schemaJSON, err := json.Marshal(inputSchema)
+	if err != nil {
+		// If schema can't be marshaled, use empty string
+		schemaJSON = []byte("{}")
+	}
+
+	// Compute hash over description + schema
+	content := description + string(schemaJSON)
+	hash := sha256.Sum256([]byte(content))
 	return hex.EncodeToString(hash[:])
 }
 
-// ToolRegistryVerify middleware verifies tool authorization
+// ToolRegistryVerify middleware verifies tool authorization with hash checking
 func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Get request body from context
@@ -90,13 +148,19 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 
 		// Verify tool if we extracted a name
 		if toolName != "" {
-			allowed, hash := registry.VerifyTool(toolName)
+			// Extract provided hash from params if present
+			providedHash := ""
+			if hash, ok := mcpReq.Params["tool_hash"]; ok {
+				if hashStr, ok := hash.(string); ok {
+					providedHash = hashStr
+				}
+			}
+
+			allowed, reason := registry.VerifyTool(toolName, providedHash)
 			if !allowed {
-				http.Error(w, "Tool not authorized", http.StatusForbidden)
+				http.Error(w, fmt.Sprintf("Tool not authorized: %s", reason), http.StatusForbidden)
 				return
 			}
-			// Log verification (hash would be checked in production)
-			_ = hash // Suppress unused warning
 		}
 
 		next.ServeHTTP(w, r)

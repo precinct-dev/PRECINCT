@@ -1,0 +1,41 @@
+# Tool Registry Data for OPA Policy
+# This is loaded by OPA at startup and made available as data.tool_registry
+
+tool_registry:
+  tools:
+    # Tavily - Web search API
+    - name: "tavily_search"
+      description: "Search the web using Tavily API"
+      hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      risk_level: "medium"
+      requires_step_up: false
+      allowed_destinations:
+        - "api.tavily.com"
+        - "*.tavily.com"
+
+    # Read - File system read operations
+    - name: "read"
+      description: "Read file contents from filesystem"
+      hash: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+      risk_level: "low"
+      requires_step_up: false
+      allowed_paths:
+        - "/Users/ramirosalas/workspace/agentic_reference_architecture/POC"
+
+    # Grep - Content search
+    - name: "grep"
+      description: "Search for patterns in files"
+      hash: "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"
+      risk_level: "low"
+      requires_step_up: false
+      allowed_paths:
+        - "/Users/ramirosalas/workspace/agentic_reference_architecture/POC"
+
+    # Bash - Shell command execution (HIGH RISK)
+    - name: "bash"
+      description: "Execute shell commands"
+      hash: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+      risk_level: "critical"
+      requires_step_up: true  # MUST have step-up authentication
+      allowed_paths:
+        - "/Users/ramirosalas/workspace/agentic_reference_architecture/POC"

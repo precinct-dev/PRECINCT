@@ -20,6 +20,9 @@ tool_grants:
   - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/*-researcher/dev"
     description: "Research agents (DSPy and PydanticAI) - document analysis and knowledge synthesis"
     allowed_tools:
+      - read           # File read operations
+      - grep           # Content search
+      - tavily_search  # Web search
       - file_read
       - file_list
       - search
@@ -27,6 +30,7 @@ tool_grants:
       - database_query
     max_data_classification: internal
     requires_approval_for:
+      - bash
       - file_write
       - database_write
       - email_send
@@ -35,6 +39,9 @@ tool_grants:
   - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
     description: "DSPy Research Agent - specialized for structured research workflows"
     allowed_tools:
+      - read           # File read operations
+      - grep           # Content search
+      - tavily_search  # Web search
       - file_read
       - file_list
       - search
@@ -43,6 +50,7 @@ tool_grants:
       - llm_query  # DSPy may need direct LLM access for its modules
     max_data_classification: internal
     requires_approval_for:
+      - bash
       - file_write
       - database_write
 

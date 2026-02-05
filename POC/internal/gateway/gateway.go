@@ -11,11 +11,12 @@ import (
 
 // Gateway represents the MCP security gateway
 type Gateway struct {
-	config   *Config
-	proxy    *httputil.ReverseProxy
-	auditor  *middleware.Auditor
-	opa      *middleware.OPAClient
-	registry *middleware.ToolRegistry
+	config     *Config
+	proxy      *httputil.ReverseProxy
+	auditor    *middleware.Auditor
+	opa        *middleware.OPAClient
+	registry   *middleware.ToolRegistry
+	dlpScanner middleware.DLPScanner
 }
 
 // New creates a new gateway instance
@@ -30,16 +31,24 @@ func New(cfg *Config) (*Gateway, error) {
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
 
 	// Create components
-	auditor := middleware.NewAuditor()
+	auditor, err := middleware.NewAuditor(cfg.AuditLogPath, cfg.OPAPolicyPath, cfg.ToolRegistryConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create auditor: %w", err)
+	}
 	opa := middleware.NewOPAClient(cfg.OPAEndpoint)
-	registry := middleware.NewToolRegistry(cfg.ToolRegistryURL)
+	registry, err := middleware.NewToolRegistry(cfg.ToolRegistryURL, cfg.ToolRegistryConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create tool registry: %w", err)
+	}
+	dlpScanner := middleware.NewBuiltInScanner()
 
 	return &Gateway{
-		config:   cfg,
-		proxy:    proxy,
-		auditor:  auditor,
-		opa:      opa,
-		registry: registry,
+		config:     cfg,
+		proxy:      proxy,
+		auditor:    auditor,
+		opa:        opa,
+		registry:   registry,
+		dlpScanner: dlpScanner,
 	}, nil
 }
 
@@ -52,15 +61,17 @@ func (g *Gateway) Handler() http.Handler {
 	// 4. Audit log
 	// 5. Tool registry verify
 	// 6. OPA policy
-	// 7. Step-up gating hook (no-op for skeleton)
-	// 8. Token substitution hook (no-op for skeleton)
-	// 9. Proxy to upstream
+	// 7. DLP scanning (after OPA, before session context)
+	// 8. Step-up gating hook (no-op for skeleton)
+	// 9. Token substitution hook (no-op for skeleton)
+	// 10. Proxy to upstream
 
 	handler := g.proxyHandler()
 
 	// Apply middleware in reverse order (innermost first)
-	handler = middleware.TokenSubstitution(handler)                              // 8
-	handler = middleware.StepUpGating(handler)                                   // 7
+	handler = middleware.TokenSubstitution(handler)                              // 9
+	handler = middleware.StepUpGating(handler)                                   // 8
+	handler = middleware.DLPMiddleware(handler, g.dlpScanner)                    // 7
 	handler = middleware.OPAPolicy(handler, g.opa)                               // 6
 	handler = middleware.ToolRegistryVerify(handler, g.registry)                 // 5
 	handler = middleware.AuditLog(handler, g.auditor)                            // 4
