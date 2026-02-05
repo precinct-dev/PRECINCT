@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	gatewayURL   = "http://localhost:9090"
 	auditLogPath = "/tmp/gateway-audit-dlp-test.jsonl"
 )
 
