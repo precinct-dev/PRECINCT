@@ -1,3 +1,6 @@
+// Tool Registry Implementation - RFA-qq0.5
+// Implements hash-based verification of MCP tools to detect poisoning attacks.
+// Loads tool definitions from config/tool-registry.yaml and verifies SHA-256 hashes.
 package middleware
 
 import (

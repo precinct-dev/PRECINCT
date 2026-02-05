@@ -1,4 +1,5 @@
-# Tool Registry Configuration
+# Tool Registry Configuration - RFA-qq0.5
+# Defines MCP tools with SHA-256 hashes for poisoning detection
 # Each tool is identified by name and verified via SHA-256 hash
 # Hash is computed over: tool description + input schema (canonical JSON)
 
