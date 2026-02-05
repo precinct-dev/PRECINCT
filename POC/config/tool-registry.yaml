@@ -1,4 +1,4 @@
-# Tool Registry Configuration - RFA-qq0.5
+# Tool Registry Configuration - RFA-qq0.5, RFA-qq0.6
 # Defines MCP tools with SHA-256 hashes for poisoning detection
 # Each tool is identified by name and verified via SHA-256 hash
 # Hash is computed over: tool description + input schema (canonical JSON)
@@ -7,7 +7,7 @@ tools:
   # Tavily - Web search API
   - name: "tavily_search"
     description: "Search the web using Tavily API"
-    hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"  # SHA-256 of description + schema
+    hash: "76c6b3d8a7ddbc387ca87aa784e99354feeda1ff438768cd99232a6772cceac0"  # SHA-256 (RFA-qq0.6)
     input_schema:
       type: "object"
       required: ["query"]
@@ -28,7 +28,7 @@ tools:
   # Read - File system read operations
   - name: "read"
     description: "Read file contents from filesystem"
-    hash: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"  # SHA-256 of description + schema
+    hash: "c4fbe869591f047985cd812915ed87d2c9c77de445089dcbc507416a86491453"  # SHA-256 (RFA-qq0.6)
     input_schema:
       type: "object"
       required: ["file_path"]
@@ -50,7 +50,7 @@ tools:
   # Grep - Content search
   - name: "grep"
     description: "Search for patterns in files"
-    hash: "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"  # SHA-256 of description + schema
+    hash: "8bf71be3abae46b7ac610d92913c20e5f8d46bdbde9144c1c7e9798d92518cec"  # SHA-256 (RFA-qq0.6)
     input_schema:
       type: "object"
       required: ["pattern", "path"]
@@ -75,7 +75,7 @@ tools:
   # Bash - Shell command execution (HIGH RISK)
   - name: "bash"
     description: "Execute shell commands"
-    hash: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"  # SHA-256 of description + schema
+    hash: "ada241bb834f0737fd259606208f5d8ba2aeb2adbefa5ddc9df8f59b7c152c9f"  # SHA-256 (RFA-qq0.6)
     input_schema:
       type: "object"
       required: ["command"]
@@ -102,5 +102,4 @@ tools:
 # content = tool.description + json.dumps(tool.input_schema, sort_keys=True, separators=(',', ':'))
 # hash = sha256(content.encode('utf-8')).hexdigest()
 #
-# These are placeholder hashes for POC demonstration.
-# In production, compute real hashes from actual tool descriptions + schemas.
+# Hashes computed in RFA-qq0.6 using scripts/compute_tool_hashes.go
