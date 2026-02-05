@@ -70,6 +70,12 @@ func NewBuiltInScanner() *BuiltInScanner {
 			regexp.MustCompile(`\b[A-CEGHJ-PR-TW-Z]{1}[A-CEGHJ-NPR-TW-Z]{1}[0-9]{6}[A-D]{1}\b`),
 			// MAC Address (from SafeZone)
 			regexp.MustCompile(`\b([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})\b`),
+			// UUID/GUID pattern (from SafeZone)
+			regexp.MustCompile(`\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b`),
+			// Generic IBAN pattern (EU format, from SafeZone)
+			regexp.MustCompile(`\b[A-Z]{2}\d{2}\s?[\dA-Z]{4}\s?(?:[\dA-Z]{4}\s?){2,7}[\dA-Z]{1,4}\b`),
+			// Date-of-birth pattern (DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, from SafeZone)
+			regexp.MustCompile(`\b\d{2}[./-]\d{2}[./-]\d{4}\b`),
 		},
 		suspiciousPatterns: []*regexp.Regexp{
 			// SQL injection patterns
