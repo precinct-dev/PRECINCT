@@ -1,0 +1,2 @@
+# Minimal requirements for testing Docker build
+# In production, add actual dependencies like dspy-ai, pydantic-ai, etc.
