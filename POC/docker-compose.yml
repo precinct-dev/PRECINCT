@@ -60,23 +60,24 @@ services:
     privileged: true
 
   # SPIKE Nexus - Token-based authorization gateway
-  spike-nexus:
-    image: spike/nexus:latest
-    container_name: spike-nexus
-    hostname: spike-nexus
-    environment:
-      - SPIKE_MODE=token
-      - SPIKE_TOKEN_ISSUER=https://spike.ist
-      - LOG_LEVEL=debug
-    ports:
-      - "8443:8443"  # HTTPS API
-    networks:
-      - agentic-net
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "-k", "https://localhost:8443/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # Temporarily disabled - placeholder for future implementation
+  # spike-nexus:
+  #   image: spike/nexus:latest
+  #   container_name: spike-nexus
+  #   hostname: spike-nexus
+  #   environment:
+  #     - SPIKE_MODE=token
+  #     - SPIKE_TOKEN_ISSUER=https://spike.ist
+  #     - LOG_LEVEL=debug
+  #   ports:
+  #     - "8443:8443"  # HTTPS API
+  #   networks:
+  #     - agentic-net
+  #   healthcheck:
+  #     test: ["CMD", "wget", "--spider", "-q", "-k", "https://localhost:8443/health"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 5
 
   # OPA - Policy engine for authorization decisions
   opa:
@@ -140,27 +141,43 @@ services:
       timeout: 5s
       retries: 5
 
-  # MCP Security Gateway - Placeholder for future implementation (story qq0.3)
-  # Using golang base image as temporary container to maintain service definition
+  # MCP Security Gateway - Security enforcement point for all MCP requests
   mcp-security-gateway:
-    image: golang:1.23
+    build:
+      context: .
+      dockerfile: build/docker/Dockerfile.gateway
+    image: mcp-security-gateway:latest
     container_name: mcp-security-gateway
     hostname: mcp-security-gateway
     depends_on:
       spire-agent:
         condition: service_healthy
+      opa:
+        condition: service_healthy
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
-    command: ["sleep", "infinity"]  # Placeholder - will be replaced with actual gateway binary
+    ports:
+      - "9090:9090"  # MCP JSON-RPC API
     environment:
+      - PORT=9090
+      - UPSTREAM_URL=http://host.docker.internal:8080/mcp
+      - OPA_ENDPOINT=http://opa:8181
+      - TOOL_REGISTRY_URL=http://tool-registry:8080
+      - MAX_REQUEST_SIZE_BYTES=10485760
+      - SPIFFE_MODE=dev
+      - LOG_LEVEL=info
       - SPIRE_AGENT_SOCKET=/tmp/spire-agent/public/api.sock
-      - LOG_LEVEL=debug
     networks:
       - agentic-net
-    # Gateway will eventually expose ports for:
-    # - MCP JSON-RPC API
-    # - Health checks
-    # - Metrics
+    labels:
+      - "spiffe-id=mcp-security-gateway"
+      - "component=gateway"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
 
   # Tool Registry - Placeholder for tool capability registration service
   # Will be implemented in a future story

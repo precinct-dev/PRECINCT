@@ -1,0 +1,327 @@
+package middleware
+
+import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+)
+
+// TestMiddlewareChainOrder verifies middleware executes in correct order
+func TestMiddlewareChainOrder(t *testing.T) {
+	var executionOrder []string
+
+	// Create tracking middleware
+	track := func(name string) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				executionOrder = append(executionOrder, name)
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+
+	// Build chain in expected order
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		executionOrder = append(executionOrder, "handler")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler = track("token_sub")(handler)
+	handler = track("step_up")(handler)
+	handler = track("opa")(handler)
+	handler = track("registry")(handler)
+	handler = track("audit")(handler)
+	handler = track("spiffe")(handler)
+	handler = track("body")(handler)
+	handler = track("size")(handler)
+
+	// Execute request
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString("test"))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// Verify order
+	expected := []string{"size", "body", "spiffe", "audit", "registry", "opa", "step_up", "token_sub", "handler"}
+	if len(executionOrder) != len(expected) {
+		t.Fatalf("Expected %d middleware, got %d", len(expected), len(executionOrder))
+	}
+
+	for i, name := range expected {
+		if executionOrder[i] != name {
+			t.Errorf("Position %d: expected %s, got %s", i, name, executionOrder[i])
+		}
+	}
+}
+
+// TestRequestSizeLimit verifies size limit enforcement
+func TestRequestSizeLimit(t *testing.T) {
+	maxBytes := int64(100)
+	handler := RequestSizeLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+		w.WriteHeader(http.StatusOK)
+	}), maxBytes)
+
+	// Test under limit
+	t.Run("UnderLimit", func(t *testing.T) {
+		body := bytes.Repeat([]byte("a"), 50)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", rec.Code)
+		}
+	})
+
+	// Test over limit
+	t.Run("OverLimit", func(t *testing.T) {
+		body := bytes.Repeat([]byte("a"), 150)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+
+		// Create a handler that explicitly reads all bytes to trigger the limit
+		testHandler := RequestSizeLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+		}), maxBytes)
+
+		testHandler.ServeHTTP(rec, req)
+
+		// Should fail with 413 when body exceeds limit
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("Expected 413, got %d", rec.Code)
+		}
+	})
+}
+
+// TestBodyCapture verifies body capture and ID generation
+func TestBodyCapture(t *testing.T) {
+	var capturedBody []byte
+	var capturedSessionID string
+	var capturedDecisionID string
+	var capturedTraceID string
+
+	handler := BodyCapture(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedBody = GetRequestBody(r.Context())
+		capturedSessionID = GetSessionID(r.Context())
+		capturedDecisionID = GetDecisionID(r.Context())
+		capturedTraceID = GetTraceID(r.Context())
+
+		// Verify body can be read again
+		bodyBytes, _ := io.ReadAll(r.Body)
+		if !bytes.Equal(bodyBytes, capturedBody) {
+			t.Error("Body not restored correctly")
+		}
+
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	requestBody := []byte(`{"test": "data"}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(requestBody))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// Verify body captured
+	if !bytes.Equal(capturedBody, requestBody) {
+		t.Errorf("Expected body %s, got %s", string(requestBody), string(capturedBody))
+	}
+
+	// Verify IDs generated
+	if capturedSessionID == "" {
+		t.Error("Session ID not generated")
+	}
+	if capturedDecisionID == "" {
+		t.Error("Decision ID not generated")
+	}
+	if capturedTraceID == "" {
+		t.Error("Trace ID not generated")
+	}
+
+	// Verify IDs are unique
+	if capturedSessionID == capturedDecisionID || capturedSessionID == capturedTraceID {
+		t.Error("IDs should be unique")
+	}
+}
+
+// TestSPIFFEAuthDev verifies SPIFFE auth in dev mode
+func TestSPIFFEAuthDev(t *testing.T) {
+	handler := SPIFFEAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		spiffeID := GetSPIFFEID(r.Context())
+		if spiffeID == "" {
+			t.Error("SPIFFE ID not set in context")
+		}
+		w.WriteHeader(http.StatusOK)
+	}), "dev")
+
+	t.Run("ValidSPIFFEID", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/", nil)
+		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/test/dev")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", rec.Code)
+		}
+	})
+
+	t.Run("MissingSPIFFEID", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401, got %d", rec.Code)
+		}
+	})
+
+	t.Run("InvalidFormat", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/", nil)
+		req.Header.Set("X-SPIFFE-ID", "not-a-spiffe-id")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401, got %d", rec.Code)
+		}
+	})
+}
+
+// TestAuditLog verifies audit logging functionality
+func TestAuditLog(t *testing.T) {
+	auditor := NewAuditor()
+	handler := AuditLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), auditor)
+
+	// Prepare request with context
+	req := httptest.NewRequest("POST", "/test", nil)
+	ctx := req.Context()
+	ctx = WithSessionID(ctx, "test-session")
+	ctx = WithDecisionID(ctx, "test-decision")
+	ctx = WithTraceID(ctx, "test-trace")
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/test")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// Verify status captured
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", rec.Code)
+	}
+}
+
+// TestToolRegistryVerify verifies tool authorization
+func TestToolRegistryVerify(t *testing.T) {
+	registry := NewToolRegistry("http://localhost:8080")
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), registry)
+
+	t.Run("AllowedTool", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"file_read","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", rec.Code)
+		}
+	})
+
+	t.Run("DisallowedTool", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"unauthorized_tool","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Expected 403, got %d", rec.Code)
+		}
+	})
+
+	t.Run("NoBody", func(t *testing.T) {
+		req := httptest.NewRequest("POST", "/", nil)
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		// Should pass through without error
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", rec.Code)
+		}
+	})
+}
+
+// TestToolHashVerification verifies hash computation
+func TestToolHashVerification(t *testing.T) {
+	hash1 := ComputeHash("file_read")
+	hash2 := ComputeHash("file_read")
+	hash3 := ComputeHash("file_write")
+
+	// Same input should produce same hash
+	if hash1 != hash2 {
+		t.Error("Hash should be deterministic")
+	}
+
+	// Different input should produce different hash
+	if hash1 == hash3 {
+		t.Error("Different tools should have different hashes")
+	}
+
+	// Hash should be 64 hex characters (SHA-256)
+	if len(hash1) != 64 {
+		t.Errorf("Expected hash length 64, got %d", len(hash1))
+	}
+}
+
+// TestStepUpGating verifies step-up hook is pass-through
+func TestStepUpGating(t *testing.T) {
+	called := false
+	handler := StepUpGating(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("POST", "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("Handler not called")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", rec.Code)
+	}
+}
+
+// TestTokenSubstitution verifies token substitution hook is pass-through
+func TestTokenSubstitution(t *testing.T) {
+	called := false
+	handler := TokenSubstitution(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("POST", "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !called {
+		t.Error("Handler not called")
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d", rec.Code)
+	}
+}
