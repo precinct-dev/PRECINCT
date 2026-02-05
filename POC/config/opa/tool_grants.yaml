@@ -1,0 +1,218 @@
+# OPA Policy Data: Tool Authorization Grants
+# Based on Reference Architecture Section 6.4
+#
+# This file defines which SPIFFE IDs are authorized to use which MCP tools.
+# The MCP Security Gateway queries OPA with these policy data to make
+# authorization decisions.
+
+# Tool grants map SPIFFE ID patterns to allowed tools and data classification limits
+tool_grants:
+  # Gateway - should have full access for its enforcement role
+  - spiffe_pattern: "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+    description: "MCP Security Gateway - enforcement point with full access"
+    allowed_tools:
+      - "*"  # Gateway needs access to all tools for inspection/forwarding
+    max_data_classification: confidential
+    requires_approval_for: []
+
+  # Research agents - DSPy and PydanticAI researchers
+  # These agents analyze documents and synthesize knowledge
+  - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/*-researcher/dev"
+    description: "Research agents (DSPy and PydanticAI) - document analysis and knowledge synthesis"
+    allowed_tools:
+      - file_read
+      - file_list
+      - search
+      - http_request
+      - database_query
+    max_data_classification: internal
+    requires_approval_for:
+      - file_write
+      - database_write
+      - email_send
+
+  # DSPy-specific agent (more granular control if needed)
+  - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+    description: "DSPy Research Agent - specialized for structured research workflows"
+    allowed_tools:
+      - file_read
+      - file_list
+      - search
+      - http_request
+      - database_query
+      - llm_query  # DSPy may need direct LLM access for its modules
+    max_data_classification: internal
+    requires_approval_for:
+      - file_write
+      - database_write
+
+  # PydanticAI-specific agent (more granular control if needed)
+  - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev"
+    description: "PydanticAI Research Agent - specialized for structured data extraction"
+    allowed_tools:
+      - file_read
+      - file_list
+      - search
+      - http_request
+      - database_query
+      - json_schema_validate  # PydanticAI focused on structured data
+    max_data_classification: internal
+    requires_approval_for:
+      - file_write
+      - database_write
+
+  # Financial analyzer pattern (example for future expansion)
+  # Not in current POC but included to show pattern flexibility
+  - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/financial-*/dev"
+    description: "Financial analysis agents - transaction and data analysis"
+    allowed_tools:
+      - database_query
+      - file_read
+      - http_request
+      - calculation
+    max_data_classification: sensitive
+    requires_approval_for:
+      - database_write
+      - transaction_execute
+      - email_send
+
+  # Document processor pattern (example for future expansion)
+  - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/document-*/dev"
+    description: "Document processing agents - OCR, parsing, classification"
+    allowed_tools:
+      - file_read
+      - file_list
+      - search
+      - ocr
+      - text_extract
+    max_data_classification: internal
+    requires_approval_for:
+      - file_write
+      - file_delete
+
+  # Tool servers - MCP servers need specific tool access
+  - spiffe_pattern: "spiffe://poc.local/tools/docker-mcp-server/dev"
+    description: "Docker MCP Tool Server - provides containerized tool execution"
+    allowed_tools:
+      - docker_exec
+      - docker_build
+      - file_read
+      - file_write
+      - http_request
+    max_data_classification: internal
+    requires_approval_for:
+      - docker_privileged
+      - system_command
+
+  # Infrastructure - SPIKE Nexus for secrets management
+  - spiffe_pattern: "spiffe://poc.local/infrastructure/spike-nexus/dev"
+    description: "SPIKE Nexus - secrets management and token substitution"
+    allowed_tools:
+      - secret_read
+      - secret_write
+      - token_create
+      - token_redeem
+    max_data_classification: confidential
+    requires_approval_for:
+      - secret_delete
+      - secret_rotate
+
+  # Catch-all for any other infrastructure components
+  - spiffe_pattern: "spiffe://poc.local/infrastructure/*/dev"
+    description: "Generic infrastructure components"
+    allowed_tools:
+      - health_check
+      - metrics
+      - logs
+    max_data_classification: internal
+    requires_approval_for:
+      - config_write
+      - restart
+
+# Data classification levels (from least to most sensitive)
+data_classifications:
+  - public        # Can be freely shared
+  - internal      # Internal use only
+  - sensitive     # Contains PII, financial data
+  - confidential  # Trade secrets, highly regulated data
+
+# Tool definitions with risk levels
+tool_definitions:
+  # Read operations (low risk)
+  - tool_name: file_read
+    risk_level: low
+    description: "Read files from filesystem"
+
+  - tool_name: file_list
+    risk_level: low
+    description: "List files in directory"
+
+  - tool_name: search
+    risk_level: low
+    description: "Search text content"
+
+  - tool_name: database_query
+    risk_level: medium
+    description: "Execute read-only database queries"
+
+  - tool_name: http_request
+    risk_level: medium
+    description: "Make HTTP requests to external services"
+
+  # Write operations (high risk)
+  - tool_name: file_write
+    risk_level: high
+    description: "Write files to filesystem"
+    requires_step_up: true
+
+  - tool_name: database_write
+    risk_level: high
+    description: "Execute write operations on database"
+    requires_step_up: true
+
+  - tool_name: email_send
+    risk_level: high
+    description: "Send email messages"
+    requires_step_up: true
+
+  # Critical operations (critical risk)
+  - tool_name: secret_delete
+    risk_level: critical
+    description: "Delete secrets from vault"
+    requires_step_up: true
+    requires_mfa: true
+
+  - tool_name: transaction_execute
+    risk_level: critical
+    description: "Execute financial transactions"
+    requires_step_up: true
+    requires_mfa: true
+
+# Session context rules for cross-tool pattern detection
+session_rules:
+  # Detect potential exfiltration patterns
+  - pattern_name: "read_then_send"
+    description: "Reading data followed by external transmission"
+    tool_sequence:
+      - file_read
+      - http_request
+    alert_threshold: 3  # Alert if pattern seen 3+ times in session
+    block_threshold: 10  # Block if pattern seen 10+ times
+
+  - pattern_name: "database_exfil"
+    description: "Database query followed by file write or HTTP"
+    tool_sequence:
+      - database_query
+      - [file_write, http_request]  # Either of these
+    alert_threshold: 5
+    block_threshold: 15
+
+  # Detect potential privilege escalation
+  - pattern_name: "config_modification"
+    description: "Reading config followed by writing modified version"
+    tool_sequence:
+      - file_read
+      - file_write
+    file_pattern: "*.conf|*.config|*.yaml|*.json"
+    alert_threshold: 1
+    block_threshold: 3
