@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -59,6 +60,24 @@ var poisoningPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)ignore\s+(previous|all|prior)\s+instructions`),
 	regexp.MustCompile(`(?i)you\s+must\s+(always|first|never)`),
 	regexp.MustCompile(`(?i)send.*?(email|http|webhook|upload).*?to`),
+}
+
+// mcpProtocolMethods lists MCP protocol-level methods that pass through the tool
+// registry without verification. These are part of the MCP protocol itself (JSON-RPC
+// method envelopes, discovery, lifecycle), not user-defined tools. Blocking them
+// would break normal MCP operation. The "notifications/" prefix is handled separately
+// via strings.HasPrefix since notification method names are open-ended.
+// Fix for RFA-rqj: ToolRegistryVerify was treating these as tool names.
+var mcpProtocolMethods = map[string]bool{
+	"tools/list":             true,
+	"tools/call":             true,
+	"resources/read":         true,
+	"resources/list":         true,
+	"prompts/list":           true,
+	"prompts/get":            true,
+	"sampling/createMessage": true,
+	"initialize":             true,
+	"ping":                   true,
 }
 
 // ToolDefinition represents a tool from the registry config
@@ -392,6 +411,13 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 					toolName = toolNameStr
 				}
 			}
+		}
+
+		// RFA-rqj: MCP protocol methods pass through without tool registry verification.
+		// These are part of the MCP protocol itself, not user-defined tools.
+		if mcpProtocolMethods[toolName] || strings.HasPrefix(toolName, "notifications/") {
+			next.ServeHTTP(w, r)
+			return
 		}
 
 		// Verify tool if we extracted a name
