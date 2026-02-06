@@ -27,6 +27,7 @@ type Config struct {
 	HandleTTL               int    // TTL in seconds for response firewall data handles (default 300)
 	DestinationsConfigPath  string // Path to destinations allowlist YAML
 	RiskThresholdsPath      string // Path to risk thresholds YAML
+	AllowedBasePath         string // Base directory for OPA path-based access control (RFA-2jl)
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -94,11 +95,21 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	// RFA-2jl: Discover allowed base path from environment or working directory.
+	// ALLOWED_BASE_PATH is the single source of truth for OPA path-based access control.
+	// Defaults to the current working directory if not set.
+	allowedBasePath := os.Getenv("ALLOWED_BASE_PATH")
+	if allowedBasePath == "" {
+		if wd, err := os.Getwd(); err == nil {
+			allowedBasePath = wd
+		}
+	}
+
 	return &Config{
 		Port:                    port,
 		UpstreamURL:             getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
 		OPAPolicyDir:            getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
-		ToolRegistryURL:         getEnvOrDefault("TOOL_REGISTRY_URL", "http://tool-registry:8080"),
+		ToolRegistryURL:         getEnvOrDefault("TOOL_REGISTRY_URL", ""),
 		ToolRegistryConfigPath:  getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
 		AuditLogPath:            getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
 		OPAPolicyPath:           getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
@@ -115,6 +126,7 @@ func ConfigFromEnv() *Config {
 		HandleTTL:               handleTTL,
 		DestinationsConfigPath:  getEnvOrDefault("DESTINATIONS_CONFIG_PATH", "/config/destinations.yaml"),
 		RiskThresholdsPath:      getEnvOrDefault("RISK_THRESHOLDS_PATH", "/config/risk_thresholds.yaml"),
+		AllowedBasePath:         allowedBasePath,
 	}
 }
 

@@ -15,9 +15,8 @@ import (
 
 // Common service URLs used by integration tests
 var (
-	gatewayURL      = getEnvOrDefault("GATEWAY_URL", "http://localhost:9090")
-	opaURL          = getEnvOrDefault("OPA_URL", "http://localhost:8181")
-	toolRegistryURL = getEnvOrDefault("TOOL_REGISTRY_URL", "http://localhost:8082")
+	gatewayURL = getEnvOrDefault("GATEWAY_URL", "http://localhost:9090")
+	opaURL     = getEnvOrDefault("OPA_URL", "http://localhost:8181")
 )
 
 // waitForService waits for a service to be ready by polling its health endpoint.
