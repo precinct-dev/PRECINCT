@@ -7,16 +7,31 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
-// DeepScanner handles async deep scanning using Groq Prompt Guard 2
+// DeepScanFallbackMode defines behavior when the Groq API is unavailable
+type DeepScanFallbackMode string
+
+const (
+	// FailClosed blocks the request when Groq API is unavailable
+	FailClosed DeepScanFallbackMode = "fail_closed"
+	// FailOpen allows the request when Groq API is unavailable
+	FailOpen DeepScanFallbackMode = "fail_open"
+)
+
+// DeepScanner handles deep scanning using Groq Prompt Guard 2.
+// When DLP flags a request as potential_injection, the deep scanner calls the
+// Groq API synchronously to classify the payload and block confirmed injections.
 type DeepScanner struct {
-	groqAPIKey  string
-	groqBaseURL string
-	timeout     time.Duration
-	resultChan  chan DeepScanResult
-	httpClient  *http.Client
+	groqAPIKey   string
+	groqBaseURL  string
+	timeout      time.Duration
+	fallbackMode DeepScanFallbackMode
+	resultChan   chan DeepScanResult
+	httpClient   *http.Client
+	auditor      *Auditor
 }
 
 // DeepScanResult contains the results of a deep scan
@@ -58,17 +73,51 @@ type PromptGuardResponse struct {
 	JailbreakProbability float64
 }
 
+// DeepScannerConfig holds configuration for creating a DeepScanner
+type DeepScannerConfig struct {
+	APIKey       string
+	Timeout      time.Duration
+	FallbackMode string // "fail_closed" or "fail_open"
+	Auditor      *Auditor
+}
+
 // NewDeepScanner creates a new deep scanner with Groq API
 func NewDeepScanner(apiKey string, timeout time.Duration) *DeepScanner {
-	return &DeepScanner{
-		groqAPIKey:  apiKey,
-		groqBaseURL: "https://api.groq.com/openai/v1",
-		timeout:     timeout,
-		resultChan:  make(chan DeepScanResult, 100), // Buffered channel
-		httpClient: &http.Client{
-			Timeout: timeout,
-		},
+	return NewDeepScannerWithConfig(DeepScannerConfig{
+		APIKey:       apiKey,
+		Timeout:      timeout,
+		FallbackMode: "fail_closed",
+	})
+}
+
+// NewDeepScannerWithConfig creates a new deep scanner with full configuration
+func NewDeepScannerWithConfig(cfg DeepScannerConfig) *DeepScanner {
+	fallback := FailClosed
+	if cfg.FallbackMode == "fail_open" {
+		fallback = FailOpen
 	}
+
+	return &DeepScanner{
+		groqAPIKey:   cfg.APIKey,
+		groqBaseURL:  "https://api.groq.com/openai/v1",
+		timeout:      cfg.Timeout,
+		fallbackMode: fallback,
+		resultChan:   make(chan DeepScanResult, 100),
+		httpClient: &http.Client{
+			Timeout: cfg.Timeout,
+		},
+		auditor: cfg.Auditor,
+	}
+}
+
+// HasAPIKey returns true if the scanner has a configured API key
+func (d *DeepScanner) HasAPIKey() bool {
+	return d.groqAPIKey != ""
+}
+
+// FallbackMode returns the configured fallback mode
+func (d *DeepScanner) FallbackMode() DeepScanFallbackMode {
+	return d.fallbackMode
 }
 
 // DispatchAsync dispatches a deep scan asynchronously
@@ -98,7 +147,7 @@ func (d *DeepScanner) scan(ctx context.Context, content string, traceID string) 
 		ModelUsed: "meta-llama/llama-prompt-guard-2-86m",
 	}
 
-	// If no API key, fail open
+	// If no API key, report error (caller determines fail behavior)
 	if d.groqAPIKey == "" {
 		result.Error = fmt.Errorf("no Groq API key configured")
 		return result
@@ -119,7 +168,13 @@ func (d *DeepScanner) scan(ctx context.Context, content string, traceID string) 
 	return result
 }
 
-// classifyWithPromptGuard calls Groq API with Prompt Guard 2 model
+// classifyWithPromptGuard calls Groq API with Prompt Guard 2 model.
+// Prompt Guard 2 86M is a text classification model served via the chat
+// completions API on Groq. It returns a text response that is either:
+//   - A label string like "BENIGN", "INJECTION", or "JAILBREAK"
+//   - A numeric score between 0.0 and 1.0
+//
+// We handle both formats for robustness.
 func (d *DeepScanner) classifyWithPromptGuard(ctx context.Context, content string) (PromptGuardResponse, error) {
 	// Construct request to Groq API
 	reqBody := map[string]interface{}{
@@ -157,7 +212,7 @@ func (d *DeepScanner) classifyWithPromptGuard(ctx context.Context, content strin
 		_ = resp.Body.Close()
 	}()
 
-	// Check status code
+	// Check status code -- surface HTTP status for fallback logic
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return PromptGuardResponse{}, fmt.Errorf("groq API returned status %d: %s", resp.StatusCode, string(body))
@@ -174,15 +229,53 @@ func (d *DeepScanner) classifyWithPromptGuard(ctx context.Context, content strin
 		return PromptGuardResponse{}, fmt.Errorf("no choices in response")
 	}
 
-	// Prompt Guard 2 86M returns a single unified threat score as a string
-	// The score ranges from 0.0 (benign) to 1.0 (malicious)
-	// It detects both prompt injection and jailbreak attempts
-	scoreStr := groqResp.Choices[0].Message.Content
+	return parsePromptGuardContent(groqResp.Choices[0].Message.Content)
+}
 
-	// Parse the score string to float64
+// parsePromptGuardContent parses the model's response content into probabilities.
+// Prompt Guard 2 86M may return:
+//   - A class label: "BENIGN", "INJECTION", "JAILBREAK", or "MALICIOUS"
+//   - A numeric score string: "0.9995" or similar
+//
+// For label outputs, we map to probability scores:
+//   - "BENIGN" -> injection=0.0, jailbreak=0.0
+//   - "INJECTION" -> injection=1.0, jailbreak=0.0
+//   - "JAILBREAK" -> injection=0.0, jailbreak=1.0
+//   - "MALICIOUS" -> injection=1.0, jailbreak=1.0 (unified binary classifier)
+//
+// For numeric outputs, we use the score for both fields (unified threat score).
+func parsePromptGuardContent(content string) (PromptGuardResponse, error) {
+	trimmed := strings.TrimSpace(content)
+	upper := strings.ToUpper(trimmed)
+
+	// Check for known class labels first
+	switch upper {
+	case "BENIGN":
+		return PromptGuardResponse{
+			InjectionProbability: 0.0,
+			JailbreakProbability: 0.0,
+		}, nil
+	case "INJECTION":
+		return PromptGuardResponse{
+			InjectionProbability: 1.0,
+			JailbreakProbability: 0.0,
+		}, nil
+	case "JAILBREAK":
+		return PromptGuardResponse{
+			InjectionProbability: 0.0,
+			JailbreakProbability: 1.0,
+		}, nil
+	case "MALICIOUS":
+		return PromptGuardResponse{
+			InjectionProbability: 1.0,
+			JailbreakProbability: 1.0,
+		}, nil
+	}
+
+	// Try parsing as numeric score
 	var score float64
-	if _, err := fmt.Sscanf(scoreStr, "%f", &score); err != nil {
-		return PromptGuardResponse{}, fmt.Errorf("failed to parse score from content %q: %w", scoreStr, err)
+	if _, err := fmt.Sscanf(trimmed, "%f", &score); err != nil {
+		return PromptGuardResponse{}, fmt.Errorf("failed to parse score from content %q: %w", trimmed, err)
 	}
 
 	// Clamp score to valid range [0.0, 1.0]
@@ -192,18 +285,24 @@ func (d *DeepScanner) classifyWithPromptGuard(ctx context.Context, content strin
 		score = 1.0
 	}
 
-	// Return the real model score
-	// Note: Prompt Guard 2 provides a unified threat score, not separate injection/jailbreak scores
-	// We use the same score for both fields since the model detects both attack types
-	pgResp := PromptGuardResponse{
+	// Unified threat score used for both fields
+	return PromptGuardResponse{
 		InjectionProbability: score,
 		JailbreakProbability: score,
-	}
-
-	return pgResp, nil
+	}, nil
 }
 
-// DeepScanMiddleware creates middleware for async deep scanning
+// DeepScanMiddleware creates middleware for deep scanning of requests flagged
+// by DLP as potential_injection.
+//
+// Behavior:
+//   - If GROQ_API_KEY is empty, pass-through (no API call).
+//   - If DLP flags potential_injection, perform synchronous Groq API call.
+//   - If Groq returns an error and fallback=fail_closed, block the request.
+//   - If Groq returns an error and fallback=fail_open, allow with audit event.
+//   - If Groq classifies as injection (score > threshold), store result in context
+//     for step-up gating to consume.
+//
 // Position: Step 10, after step-up gating
 func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -213,19 +312,71 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 		flags := GetSecurityFlags(ctx)
 
 		// Determine if deep scan should be dispatched
-		if shouldDispatchDeepScan(flags) {
-			// Get request body and trace ID
-			body := GetRequestBody(ctx)
-			traceID := GetTraceID(ctx)
-
-			if body != nil {
-				// Dispatch async - does NOT block the fast path
-				scanner.DispatchAsync(ctx, string(body), traceID)
-			}
+		if !shouldDispatchDeepScan(flags) {
+			// No injection concern, fast path
+			next.ServeHTTP(w, r)
+			return
 		}
 
-		// Continue fast path immediately (async dispatch above)
+		// If no API key, pass-through (AC4)
+		if !scanner.HasAPIKey() {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Get request body and trace ID
+		body := GetRequestBody(ctx)
+		traceID := GetTraceID(ctx)
+
+		if body == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Perform synchronous deep scan
+		result := scanner.Scan(ctx, string(body), traceID)
+
+		// Handle scan errors with fallback logic (AC5, AC6)
+		if result.Error != nil {
+			scanner.emitAuditEvent(ctx, result, "guard_model_unavailable")
+
+			if scanner.fallbackMode == FailClosed {
+				// AC5: Block the request
+				http.Error(w, "deepscan_unavailable_fail_closed", http.StatusServiceUnavailable)
+				return
+			}
+			// AC6: fail_open -- allow the request, audit event already emitted
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Emit audit event with guard model decision (AC7)
+		scanner.emitAuditEvent(ctx, result, "guard_model_classified")
+
+		// Store result in context for step-up gating to consume (AC3)
+		ctx = WithDeepScanResult(ctx, result)
+		r = r.WithContext(ctx)
+
 		next.ServeHTTP(w, r)
+	})
+}
+
+// emitAuditEvent records a guard model decision in the audit log (AC7)
+func (d *DeepScanner) emitAuditEvent(ctx context.Context, result DeepScanResult, reason string) {
+	if d.auditor == nil {
+		return
+	}
+
+	d.auditor.Log(AuditEvent{
+		SessionID:  GetSessionID(ctx),
+		DecisionID: GetDecisionID(ctx),
+		TraceID:    result.TraceID,
+		SPIFFEID:   GetSPIFFEID(ctx),
+		Action:     "deep_scan",
+		Result: fmt.Sprintf(
+			"reason=%s injection_probability=%.4f jailbreak_probability=%.4f model=%s latency_ms=%d",
+			reason, result.InjectionScore, result.JailbreakScore, result.ModelUsed, result.LatencyMs,
+		),
 	})
 }
 

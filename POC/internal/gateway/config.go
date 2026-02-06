@@ -18,6 +18,7 @@ type Config struct {
 	LogLevel                string
 	GroqAPIKey              string
 	DeepScanTimeout         int       // in seconds
+	DeepScanFallback        string    // "fail_closed" or "fail_open" (default: fail_closed)
 	RateLimitRPM            int       // requests per minute per agent
 	RateLimitBurst          int       // burst allowance
 	CircuitFailureThreshold int       // consecutive failures before opening circuit
@@ -30,6 +31,7 @@ type Config struct {
 	UIConfigPath            string    // Path to MCP-UI config YAML (RFA-j2d.9)
 	UI                      *UIConfig // MCP-UI configuration (RFA-j2d.9)
 	UICapabilityGrantsPath  string    // Path to UI capability grants YAML (RFA-j2d.1)
+	SPIKENexusURL           string    // SPIKE Nexus URL for secret redemption via mTLS (RFA-a2y.1)
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -53,6 +55,11 @@ func ConfigFromEnv() *Config {
 		if parsed, err := strconv.Atoi(t); err == nil {
 			deepScanTimeout = parsed
 		}
+	}
+
+	deepScanFallback := "fail_closed" // default: fail_closed per AC5
+	if fb := os.Getenv("DEEP_SCAN_FALLBACK"); fb == "fail_open" || fb == "fail_closed" {
+		deepScanFallback = fb
 	}
 
 	rateLimitRPM := 100 // 100 requests/min default
@@ -130,6 +137,7 @@ func ConfigFromEnv() *Config {
 		LogLevel:                getEnvOrDefault("LOG_LEVEL", "info"),
 		GroqAPIKey:              getEnvOrDefault("GROQ_API_KEY", ""),
 		DeepScanTimeout:         deepScanTimeout,
+		DeepScanFallback:        deepScanFallback,
 		RateLimitRPM:            rateLimitRPM,
 		RateLimitBurst:          rateLimitBurst,
 		CircuitFailureThreshold: circuitFailureThreshold,
@@ -142,6 +150,7 @@ func ConfigFromEnv() *Config {
 		UIConfigPath:            uiConfigPath,
 		UI:                      uiConfig,
 		UICapabilityGrantsPath:  getEnvOrDefault("UI_CAPABILITY_GRANTS_PATH", "/config/opa/ui_capability_grants.yaml"),
+		SPIKENexusURL:           getEnvOrDefault("SPIKE_NEXUS_URL", ""),
 	}
 }
 
