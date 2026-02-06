@@ -13,7 +13,12 @@ tool_grants := data.tool_grants
 tool_registry := data.tool_registry
 
 # POC directory - allowed path for read/grep operations
-poc_directory := "/Users/ramirosalas/workspace/agentic_reference_architecture/POC"
+# Reads from data.config.allowed_base_path injected at runtime by OPAEngine.
+# Fail-closed: if not configured, no path will match (startswith check against
+# the impossible sentinel value ensures read/grep are denied until properly configured).
+default poc_directory := "__UNCONFIGURED_ALLOWED_BASE_PATH__"
+
+poc_directory := data.config.allowed_base_path
 
 # Main authorization decision
 default allow := {

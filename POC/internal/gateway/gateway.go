@@ -24,10 +24,10 @@ type Gateway struct {
 	sessionContext       *middleware.SessionContext
 	rateLimiter          *middleware.RateLimiter
 	circuitBreaker       *middleware.CircuitBreaker
-	handleStore          *HandleStore                  // RFA-qq0.16: response firewall data handle cache
-	groqGuardClient      middleware.GroqGuardClient    // RFA-qq0.17: guard model client for step-up gating
+	handleStore          *HandleStore                     // RFA-qq0.16: response firewall data handle cache
+	groqGuardClient      middleware.GroqGuardClient       // RFA-qq0.17: guard model client for step-up gating
 	destinationAllowlist *middleware.DestinationAllowlist // RFA-qq0.17: destination allowlist
-	riskConfig           *middleware.RiskConfig         // RFA-qq0.17: risk scoring thresholds
+	riskConfig           *middleware.RiskConfig           // RFA-qq0.17: risk scoring thresholds
 }
 
 // New creates a new gateway instance
@@ -46,7 +46,9 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auditor: %w", err)
 	}
-	opa, err := middleware.NewOPAEngine(cfg.OPAPolicyDir)
+	opa, err := middleware.NewOPAEngine(cfg.OPAPolicyDir, middleware.OPAEngineConfig{
+		AllowedBasePath: cfg.AllowedBasePath,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OPA engine: %w", err)
 	}
@@ -109,15 +111,15 @@ func New(cfg *Config) (*Gateway, error) {
 	go deepScanner.ResultProcessor(context.Background())
 
 	return &Gateway{
-		config:         cfg,
-		proxy:          proxy,
-		auditor:        auditor,
-		opa:            opa,
-		registry:       registry,
-		dlpScanner:     dlpScanner,
-		deepScanner:    deepScanner,
-		sessionContext: sessionContext,
-		rateLimiter:    rateLimiter,
+		config:               cfg,
+		proxy:                proxy,
+		auditor:              auditor,
+		opa:                  opa,
+		registry:             registry,
+		dlpScanner:           dlpScanner,
+		deepScanner:          deepScanner,
+		sessionContext:       sessionContext,
+		rateLimiter:          rateLimiter,
 		circuitBreaker:       circuitBreaker,
 		handleStore:          handleStore,
 		groqGuardClient:      groqGuardClient,
@@ -158,19 +160,19 @@ func (g *Gateway) Handler() http.Handler {
 	handler := http.Handler(proxyWithResponseFirewall)
 
 	// Apply middleware in reverse order (innermost first)
-	handler = middleware.TokenSubstitution(handler)                              // 13 - LAST before proxy
-	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)     // 12
-	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)             // 11
-	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)              // 10
+	handler = middleware.TokenSubstitution(handler)                                                                            // 13 - LAST before proxy
+	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                   // 12
+	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                           // 11
+	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)                                                            // 10
 	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor) // 9
-	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)     // 8
-	handler = middleware.DLPMiddleware(handler, g.dlpScanner)                    // 7
-	handler = middleware.OPAPolicy(handler, g.opa)                               // 6
-	handler = middleware.ToolRegistryVerify(handler, g.registry)                 // 5
-	handler = middleware.AuditLog(handler, g.auditor)                            // 4
-	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                // 3
-	handler = middleware.BodyCapture(handler)                                    // 2
-	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
+	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                   // 8
+	handler = middleware.DLPMiddleware(handler, g.dlpScanner)                                                                  // 7
+	handler = middleware.OPAPolicy(handler, g.opa)                                                                             // 6
+	handler = middleware.ToolRegistryVerify(handler, g.registry)                                                               // 5
+	handler = middleware.AuditLog(handler, g.auditor)                                                                          // 4
+	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                                              // 3
+	handler = middleware.BodyCapture(handler)                                                                                  // 2
+	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes)                                               // 1
 
 	// Add endpoints
 	mux := http.NewServeMux()
