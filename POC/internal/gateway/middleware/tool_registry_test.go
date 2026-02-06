@@ -29,7 +29,7 @@ func TestToolRegistryLoadConfig(t *testing.T) {
 	}
 
 	// Create registry
-	registry, err := NewToolRegistry("", configPath)
+	registry, err := NewToolRegistry(configPath)
 	if err != nil {
 		t.Fatalf("Failed to create registry: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestToolRegistryHashVerification(t *testing.T) {
 		t.Fatalf("Failed to write config: %v", err)
 	}
 
-	registry, err := NewToolRegistry("", configPath)
+	registry, err := NewToolRegistry(configPath)
 	if err != nil {
 		t.Fatalf("Failed to create registry: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestVerifyToolWithPoisoningCheck(t *testing.T) {
 		t.Fatalf("Failed to write config: %v", err)
 	}
 
-	registry, err := NewToolRegistry("", configPath)
+	registry, err := NewToolRegistry(configPath)
 	if err != nil {
 		t.Fatalf("Failed to create registry: %v", err)
 	}
