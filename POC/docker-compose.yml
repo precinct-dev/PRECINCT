@@ -159,7 +159,6 @@ services:
       - PORT=9090
       - UPSTREAM_URL=http://host.docker.internal:8081/mcp
       - OPA_POLICY_DIR=/config/opa
-      - TOOL_REGISTRY_URL=http://tool-registry:8080
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760
       - SPIFFE_MODE=dev
@@ -177,18 +176,6 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
-
-  # Tool Registry - Placeholder for tool capability registration service
-  # Will be implemented in a future story
-  tool-registry:
-    image: golang:1.23
-    container_name: tool-registry
-    hostname: tool-registry
-    command: ["sleep", "infinity"]  # Placeholder - will be replaced with actual registry service
-    environment:
-      - LOG_LEVEL=debug
-    networks:
-      - agentic-net
 
 networks:
   agentic-net:

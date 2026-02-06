@@ -17,7 +17,7 @@ provide by default).
 
 ## Stack Health
 
-All 6 services running and healthy:
+All 5 services running and healthy:
 
 | Service | Image | Status | Port |
 |---------|-------|--------|------|
@@ -26,7 +26,6 @@ All 6 services running and healthy:
 | mcp-security-gateway | mcp-security-gateway:latest | Up (healthy) | 9090 |
 | otel-collector | otel/opentelemetry-collector-contrib:latest | Up | 4317-4318 |
 | phoenix | arizephoenix/phoenix:latest | Up (healthy) | 6006 |
-| tool-registry | golang:1.23 (placeholder) | Up | - |
 
 ## Scenario Results
 

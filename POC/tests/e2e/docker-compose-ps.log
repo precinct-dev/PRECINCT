@@ -4,4 +4,3 @@ otel-collector         otel/opentelemetry-collector-contrib:latest   "/otelcol-c
 phoenix                arizephoenix/phoenix:latest                   "/usr/bin/python3.11…"   phoenix                7 hours ago      Up 7 hours (healthy)      0.0.0.0:6006->6006/tcp, [::]:6006->6006/tcp
 spire-agent            spire-agent-wrapper:latest                    "/entrypoint-wrapper…"   spire-agent            7 hours ago      Up 7 hours (healthy)      
 spire-server           ghcr.io/spiffe/spire-server:1.10.0            "/opt/spire/bin/spir…"   spire-server           7 hours ago      Up 7 hours (healthy)      0.0.0.0:8080-8081->8080-8081/tcp, [::]:8080-8081->8080-8081/tcp
-tool-registry          golang:1.23                                   "sleep infinity"         tool-registry          7 hours ago      Up 7 hours                
