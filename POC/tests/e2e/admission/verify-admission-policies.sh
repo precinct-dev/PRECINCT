@@ -5,7 +5,9 @@
 #
 # Tests OPA Gatekeeper admission policies against a live cluster to verify
 # that unsigned and improperly tagged container images are rejected in
-# enforcement-critical namespaces.
+# enforcement-critical namespaces. The signature policy enforces a
+# prerequisite (digest-pinned + allowed registry); production requires
+# sigstore/policy-controller for actual cryptographic verification.
 #
 # Prerequisites:
 #   - kubectl configured with cluster access
@@ -38,9 +40,11 @@ readonly ENFORCEMENT_NS="mcp-gateway"
 readonly CONTROL_NS="default"
 
 # Test image references
-# Digest-pinned, signed image (from GHCR, matches allowedRegistries)
-# Uses the official Gatekeeper image as a known-signed reference
-readonly SIGNED_DIGEST_IMAGE="ghcr.io/open-policy-agent/gatekeeper@sha256:a]69c7ba183090a533db91549e2bb3e5f0e3acc18b2712ef67e62f5e2c37ff3f2"
+# Digest-pinned image from allowed registry (GHCR, matches allowedRegistries)
+# Uses the official Gatekeeper image as a known digest-pinned reference
+# NOTE: Rego policy checks digest-pinning + allowed registry (prerequisite).
+# Actual cryptographic signature verification requires sigstore/policy-controller.
+readonly SIGNED_DIGEST_IMAGE="ghcr.io/open-policy-agent/gatekeeper@sha256:a69c7ba183090a533db91549e2bb3e5f0e3acc18b2712ef67e62f5e2c37ff3f2"
 # Unsigned image with floating tag (will be rejected)
 readonly UNSIGNED_TAG_IMAGE="nginx:latest"
 # Image with mutable tag (will be rejected for missing digest)
@@ -259,13 +263,14 @@ test_no_tag_rejected() {
     kubectl delete pod "admission-test-notag" -n "${ENFORCEMENT_NS}" --ignore-not-found --wait=false 2>/dev/null || true
 }
 
-# Test 4: Properly signed digest-pinned image is ADMITTED in enforcement namespace
-# Verifies: AC2 (signed images admitted)
+# Test 4: Digest-pinned image from allowed registry is ADMITTED in enforcement namespace
+# Verifies: AC2 (digest-pinned images from allowed registries admitted -- signature
+# prerequisite; production requires sigstore/policy-controller for crypto verification)
 test_signed_digest_admitted() {
-    log_test "Test 4: Signed digest-pinned image -> enforcement NS (should ADMIT)"
+    log_test "Test 4: Digest-pinned image from allowed registry -> enforcement NS (should ADMIT)"
     log_info "  Image: ${SIGNED_DIGEST_IMAGE}"
     log_info "  Namespace: ${ENFORCEMENT_NS}"
-    log_info "  Expected: ADMITTED (digest-pinned, from allowed registry)"
+    log_info "  Expected: ADMITTED (digest-pinned, from allowed registry -- signature prerequisite)"
 
     local exit_code=0
     local output
