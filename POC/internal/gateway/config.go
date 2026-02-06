@@ -32,6 +32,8 @@ type Config struct {
 	UI                      *UIConfig // MCP-UI configuration (RFA-j2d.9)
 	UICapabilityGrantsPath  string    // Path to UI capability grants YAML (RFA-j2d.1)
 	SPIKENexusURL           string    // SPIKE Nexus URL for secret redemption via mTLS (RFA-a2y.1)
+	SPIFFETrustDomain       string    // SPIFFE trust domain (default: poc.local) (RFA-8z8.1)
+	SPIFFEListenPort        int       // Port for HTTPS when SPIFFE_MODE=prod (default: 9443) (RFA-8z8.1)
 	OTelEndpoint            string    // OTLP gRPC endpoint for trace export (RFA-m6j.1)
 	OTelServiceName         string    // OTel service name (RFA-m6j.1)
 	KeyDBURL                string    // KeyDB/Redis URL for session persistence (RFA-hh5.1)
@@ -132,6 +134,14 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	// RFA-8z8.1: SPIFFE listen port for HTTPS in prod mode
+	spiffeListenPort := 9443
+	if sp := os.Getenv("SPIFFE_LISTEN_PORT"); sp != "" {
+		if parsed, err := strconv.Atoi(sp); err == nil {
+			spiffeListenPort = parsed
+		}
+	}
+
 	// RFA-2jl: Discover allowed base path from environment or working directory.
 	// ALLOWED_BASE_PATH is the single source of truth for OPA path-based access control.
 	// Defaults to the current working directory if not set.
@@ -179,6 +189,8 @@ func ConfigFromEnv() *Config {
 		UI:                      uiConfig,
 		UICapabilityGrantsPath:  getEnvOrDefault("UI_CAPABILITY_GRANTS_PATH", "/config/opa/ui_capability_grants.yaml"),
 		SPIKENexusURL:           getEnvOrDefault("SPIKE_NEXUS_URL", ""),
+		SPIFFETrustDomain:       getEnvOrDefault("SPIFFE_TRUST_DOMAIN", "poc.local"),
+		SPIFFEListenPort:        spiffeListenPort,
 		OTelEndpoint:            os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), // empty = no-op (AC6)
 		OTelServiceName:         getEnvOrDefault("OTEL_SERVICE_NAME", "mcp-security-gateway"),
 		KeyDBURL:                getEnvOrDefault("KEYDB_URL", ""),
