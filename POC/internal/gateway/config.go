@@ -10,6 +10,7 @@ type Config struct {
 	Port                   int
 	UpstreamURL            string
 	OPAEndpoint            string
+	OPAPolicyDir           string
 	ToolRegistryURL        string
 	ToolRegistryConfigPath string
 	AuditLogPath           string
@@ -19,6 +20,8 @@ type Config struct {
 	LogLevel               string
 	GroqAPIKey             string
 	DeepScanTimeout        int // in seconds
+	RateLimitRPM           int // requests per minute per agent
+	RateLimitBurst         int // burst allowance
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -44,10 +47,25 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	rateLimitRPM := 100 // 100 requests/min default
+	if rpm := os.Getenv("RATE_LIMIT_RPM"); rpm != "" {
+		if parsed, err := strconv.Atoi(rpm); err == nil {
+			rateLimitRPM = parsed
+		}
+	}
+
+	rateLimitBurst := 20 // 20 burst default
+	if burst := os.Getenv("RATE_LIMIT_BURST"); burst != "" {
+		if parsed, err := strconv.Atoi(burst); err == nil {
+			rateLimitBurst = parsed
+		}
+	}
+
 	return &Config{
 		Port:                   port,
 		UpstreamURL:            getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8080/mcp"),
 		OPAEndpoint:            getEnvOrDefault("OPA_ENDPOINT", "http://opa:8181"),
+		OPAPolicyDir:           getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
 		ToolRegistryURL:        getEnvOrDefault("TOOL_REGISTRY_URL", "http://tool-registry:8080"),
 		ToolRegistryConfigPath: getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
 		AuditLogPath:           getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
@@ -57,6 +75,8 @@ func ConfigFromEnv() *Config {
 		LogLevel:               getEnvOrDefault("LOG_LEVEL", "info"),
 		GroqAPIKey:             getEnvOrDefault("GROQ_API_KEY", ""),
 		DeepScanTimeout:        deepScanTimeout,
+		RateLimitRPM:           rateLimitRPM,
+		RateLimitBurst:         rateLimitBurst,
 	}
 }
 

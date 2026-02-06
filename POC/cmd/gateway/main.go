@@ -14,6 +14,24 @@ import (
 )
 
 func main() {
+	// Health check subcommand for Docker HEALTHCHECK in distroless images
+	if len(os.Args) > 1 && os.Args[1] == "health" {
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "9090"
+		}
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Get(fmt.Sprintf("http://localhost:%s/health", port))
+		if err != nil {
+			os.Exit(1)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	// Load configuration from environment
 	cfg := gateway.ConfigFromEnv()
 
@@ -36,7 +54,7 @@ func main() {
 	go func() {
 		log.Printf("Starting MCP Security Gateway on port %d", cfg.Port)
 		log.Printf("Upstream MCP server: %s", cfg.UpstreamURL)
-		log.Printf("OPA endpoint: %s", cfg.OPAEndpoint)
+		log.Printf("OPA policy directory: %s", cfg.OPAPolicyDir)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed: %v", err)
 		}
