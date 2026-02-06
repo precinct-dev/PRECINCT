@@ -95,7 +95,7 @@ func (d *DeepScanner) scan(ctx context.Context, content string, traceID string) 
 	result := DeepScanResult{
 		TraceID:   traceID,
 		Timestamp: start,
-		ModelUsed: "meta-llama/Prompt-Guard-86M",
+		ModelUsed: "meta-llama/llama-prompt-guard-2-86m",
 	}
 
 	// If no API key, fail open
@@ -123,14 +123,14 @@ func (d *DeepScanner) scan(ctx context.Context, content string, traceID string) 
 func (d *DeepScanner) classifyWithPromptGuard(ctx context.Context, content string) (PromptGuardResponse, error) {
 	// Construct request to Groq API
 	reqBody := map[string]interface{}{
-		"model": "meta-llama/Prompt-Guard-86M",
+		"model": "meta-llama/llama-prompt-guard-2-86m",
 		"messages": []map[string]string{
 			{
 				"role":    "user",
 				"content": content,
 			},
 		},
-		"max_tokens": 10,
+		"max_tokens":  10,
 		"temperature": 0.0,
 	}
 
@@ -170,47 +170,37 @@ func (d *DeepScanner) classifyWithPromptGuard(ctx context.Context, content strin
 	}
 
 	// Extract classification from response
-	// Prompt Guard 2 returns probabilities in the response content
 	if len(groqResp.Choices) == 0 {
 		return PromptGuardResponse{}, fmt.Errorf("no choices in response")
 	}
 
-	// Parse the classification response
-	// Prompt Guard 2 format: "INJECTION: 0.85, JAILBREAK: 0.12"
-	// For simplicity in POC, we'll use a heuristic based on model response
-	content = groqResp.Choices[0].Message.Content
+	// Prompt Guard 2 86M returns a single unified threat score as a string
+	// The score ranges from 0.0 (benign) to 1.0 (malicious)
+	// It detects both prompt injection and jailbreak attempts
+	scoreStr := groqResp.Choices[0].Message.Content
 
-	// Simple heuristic: If model flags injection patterns, assign higher score
-	// In production, Prompt Guard 2 provides structured output
+	// Parse the score string to float64
+	var score float64
+	if _, err := fmt.Sscanf(scoreStr, "%f", &score); err != nil {
+		return PromptGuardResponse{}, fmt.Errorf("failed to parse score from content %q: %w", scoreStr, err)
+	}
+
+	// Clamp score to valid range [0.0, 1.0]
+	if score < 0.0 {
+		score = 0.0
+	} else if score > 1.0 {
+		score = 1.0
+	}
+
+	// Return the real model score
+	// Note: Prompt Guard 2 provides a unified threat score, not separate injection/jailbreak scores
+	// We use the same score for both fields since the model detects both attack types
 	pgResp := PromptGuardResponse{
-		InjectionProbability: 0.0,
-		JailbreakProbability: 0.0,
-	}
-
-	// Parse structured output if available, otherwise use heuristic
-	// For POC, we use a simple keyword-based heuristic
-	if containsKeyword(content, []string{"injection", "malicious", "attack", "exploit"}) {
-		pgResp.InjectionProbability = 0.7
-	}
-	if containsKeyword(content, []string{"jailbreak", "bypass", "override", "ignore"}) {
-		pgResp.JailbreakProbability = 0.7
+		InjectionProbability: score,
+		JailbreakProbability: score,
 	}
 
 	return pgResp, nil
-}
-
-// containsKeyword checks if content contains any of the keywords
-func containsKeyword(content string, keywords []string) bool {
-	for _, keyword := range keywords {
-		if len(content) >= len(keyword) {
-			for i := 0; i <= len(content)-len(keyword); i++ {
-				if content[i:i+len(keyword)] == keyword {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
 
 // DeepScanMiddleware creates middleware for async deep scanning
