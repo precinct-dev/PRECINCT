@@ -76,7 +76,8 @@ func NewContextFetcherWithPolicy(scanner middleware.DLPScanner, storageDir strin
 // SessionFlags carries session-level flags for policy evaluation
 // RFA-xwc: Used to pass session context into the policy gate
 type SessionFlags struct {
-	Flags map[string]bool
+	Flags       map[string]bool
+	StepUpToken string // Non-empty when step-up approval was obtained for sensitive content
 }
 
 // ContextPolicyDeniedError represents a denial from the OPA context injection policy
@@ -157,8 +158,12 @@ func (cf *ContextFetcher) fetchAndValidateInternal(ctx context.Context, sourceUR
 
 		// Build session flags for policy input
 		flags := make(map[string]bool)
-		if sessionFlags != nil && sessionFlags.Flags != nil {
-			flags = sessionFlags.Flags
+		stepUpToken := ""
+		if sessionFlags != nil {
+			if sessionFlags.Flags != nil {
+				flags = sessionFlags.Flags
+			}
+			stepUpToken = sessionFlags.StepUpToken
 		}
 
 		policyInput := middleware.ContextPolicyInput{
@@ -171,6 +176,7 @@ func (cf *ContextFetcher) fetchAndValidateInternal(ctx context.Context, sourceUR
 			Session: middleware.ContextSessionInput{
 				Flags: flags,
 			},
+			StepUpToken: stepUpToken,
 		}
 
 		allowed, reason, err := cf.policyEval.EvaluateContextPolicy(policyInput)

@@ -627,6 +627,65 @@ func TestFetchAndValidateWithPolicy(t *testing.T) {
 		}
 	})
 
+	t.Run("step_up_token_passed_to_policy", func(t *testing.T) {
+		scanner := &mockDLPScanner{
+			result: middleware.ScanResult{
+				HasCredentials: false,
+				HasPII:         true,
+				Flags:          []string{"potential_pii"},
+			},
+		}
+		policyEval := &mockContextPolicyEvaluator{allow: true}
+		fetcher := NewContextFetcherWithPolicy(scanner, tmpDir, policyEval)
+
+		ctx := context.Background()
+		ref, err := fetcher.FetchAndValidateWithPolicy(ctx, server.URL, &SessionFlags{
+			Flags:       map[string]bool{},
+			StepUpToken: "valid-step-up-token-123",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ref == nil {
+			t.Fatal("expected non-nil content ref")
+		}
+
+		// Verify step-up token was passed to policy
+		if policyEval.lastInput.StepUpToken != "valid-step-up-token-123" {
+			t.Errorf("expected step_up_token 'valid-step-up-token-123', got %q", policyEval.lastInput.StepUpToken)
+		}
+		// Verify classification is sensitive (PII content)
+		if policyEval.lastInput.Context.Classification != "sensitive" {
+			t.Errorf("expected classification 'sensitive', got %q", policyEval.lastInput.Context.Classification)
+		}
+	})
+
+	t.Run("no_step_up_token_when_not_provided", func(t *testing.T) {
+		scanner := &mockDLPScanner{
+			result: middleware.ScanResult{
+				HasCredentials: false,
+				HasPII:         false,
+				Flags:          []string{},
+			},
+		}
+		policyEval := &mockContextPolicyEvaluator{allow: true}
+		fetcher := NewContextFetcherWithPolicy(scanner, tmpDir, policyEval)
+
+		ctx := context.Background()
+		_, err := fetcher.FetchAndValidateWithPolicy(ctx, server.URL, &SessionFlags{
+			Flags: map[string]bool{},
+			// StepUpToken intentionally omitted
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		// Verify step-up token is empty when not provided
+		if policyEval.lastInput.StepUpToken != "" {
+			t.Errorf("expected empty step_up_token, got %q", policyEval.lastInput.StepUpToken)
+		}
+	})
+
 	t.Run("nil_session_flags_handled_gracefully", func(t *testing.T) {
 		scanner := &mockDLPScanner{
 			result: middleware.ScanResult{

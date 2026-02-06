@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package integration
@@ -6,7 +7,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -232,6 +232,7 @@ func TestContextPolicyGateIntegration(t *testing.T) {
 	policyDir := t.TempDir()
 
 	// Write the actual context policy (same as config/opa/context_policy.rego)
+	// Includes step-up approval path for sensitive content (AC #3)
 	contextPolicy := `package mcp.context
 
 import rego.v1
@@ -244,6 +245,15 @@ allow_context if {
     input.context.classification != "sensitive"
     input.context.handle != ""
     not session_is_high_risk
+}
+
+allow_context if {
+    input.context.source == "external"
+    input.context.validated == true
+    input.context.classification == "sensitive"
+    input.context.handle != ""
+    not session_is_high_risk
+    input.step_up_token != ""
 }
 
 session_is_high_risk if {
@@ -333,6 +343,42 @@ default allow = {"allow": true, "reason": "allowed"}
 			t.Fatalf("Expected *ContextPolicyDeniedError, got %T: %v", err, err)
 		}
 		t.Logf("PASS: High-risk session denied with reason: %s", policyErr.Reason)
+	})
+
+	t.Run("sensitive_content_allowed_with_step_up", func(t *testing.T) {
+		ctx := context.Background()
+		ref, err := fetcher.FetchAndValidateWithPolicy(ctx, testServer.URL+"/with-pii", &tools.SessionFlags{
+			Flags:       map[string]bool{},
+			StepUpToken: "valid-step-up-token-abc",
+		})
+		if err != nil {
+			t.Fatalf("Expected step-up to allow sensitive content, got error: %v", err)
+		}
+		if ref == nil {
+			t.Fatal("Expected non-nil content ref for step-up approved content")
+		}
+		if ref.ContentID == "" {
+			t.Error("Expected non-empty content ID")
+		}
+		t.Logf("PASS: Sensitive content allowed with step-up token, content_ref=%s", ref.ContentID)
+	})
+
+	t.Run("sensitive_content_denied_with_step_up_high_risk", func(t *testing.T) {
+		ctx := context.Background()
+		_, err := fetcher.FetchAndValidateWithPolicy(ctx, testServer.URL+"/with-pii", &tools.SessionFlags{
+			Flags:       map[string]bool{"high_risk": true},
+			StepUpToken: "valid-step-up-token-abc",
+		})
+		if err == nil {
+			t.Fatal("Expected policy to deny sensitive content even with step-up in high-risk session")
+		}
+
+		// Verify it's a ContextPolicyDeniedError
+		policyErr, ok := err.(*tools.ContextPolicyDeniedError)
+		if !ok {
+			t.Fatalf("Expected *ContextPolicyDeniedError, got %T: %v", err, err)
+		}
+		t.Logf("PASS: Sensitive content with step-up denied in high-risk session with reason: %s", policyErr.Reason)
 	})
 
 	t.Run("backward_compat_without_policy_still_works", func(t *testing.T) {
@@ -443,29 +489,4 @@ func TestPolicyBlocksRawInjection(t *testing.T) {
 	})
 }
 
-// waitForService waits for a service to be ready
-func waitForService(url string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		resp, err := http.Get(url)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode < 500 {
-				return nil
-			}
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return fmt.Errorf("service %s not ready after %v", url, timeout)
-}
-
-func getEnvOrDefault(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultValue
-}
-
-var (
-	gatewayURL = getEnvOrDefault("GATEWAY_URL", "http://localhost:9090")
-)
+// gatewayURL, waitForService, and getEnvOrDefault are defined in test_helpers_test.go

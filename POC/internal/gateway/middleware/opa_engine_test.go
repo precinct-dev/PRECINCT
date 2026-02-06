@@ -223,6 +223,7 @@ func TestOPAEngineContextPolicyEvaluate(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Write the actual context policy from config/opa/context_policy.rego
+	// Includes step-up approval path for sensitive content (AC #3)
 	contextPolicy := `package mcp.context
 
 import rego.v1
@@ -235,6 +236,15 @@ allow_context if {
     input.context.classification != "sensitive"
     input.context.handle != ""
     not session_is_high_risk
+}
+
+allow_context if {
+    input.context.source == "external"
+    input.context.validated == true
+    input.context.classification == "sensitive"
+    input.context.handle != ""
+    not session_is_high_risk
+    input.step_up_token != ""
 }
 
 session_is_high_risk if {
@@ -280,7 +290,7 @@ default allow = {"allow": true, "reason": "allowed"}
 			wantAllow: true,
 		},
 		{
-			name: "deny_sensitive_content",
+			name: "deny_sensitive_content_without_step_up",
 			input: ContextPolicyInput{
 				Context: ContextInput{
 					Source:         "external",
@@ -291,6 +301,39 @@ default allow = {"allow": true, "reason": "allowed"}
 				Session: ContextSessionInput{
 					Flags: map[string]bool{},
 				},
+				StepUpToken: "", // No step-up token -> denied
+			},
+			wantAllow: false,
+		},
+		{
+			name: "allow_sensitive_content_with_step_up",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "external",
+					Validated:      true,
+					Classification: "sensitive",
+					Handle:         "abc123-uuid",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{},
+				},
+				StepUpToken: "valid-step-up-token",
+			},
+			wantAllow: true,
+		},
+		{
+			name: "deny_sensitive_content_with_step_up_high_risk",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "external",
+					Validated:      true,
+					Classification: "sensitive",
+					Handle:         "abc123-uuid",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{"high_risk": true},
+				},
+				StepUpToken: "valid-step-up-token", // Step-up present but session is high-risk -> denied
 			},
 			wantAllow: false,
 		},
