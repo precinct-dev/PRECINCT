@@ -1,0 +1,11 @@
+# Kustomize resource group for SPIKE Nexus manifests
+# Added by RFA-7bh.1 to support Kustomize overlay references
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - nexus-rbac.yaml
+  - nexus-configmap.yaml
+  - nexus-deployment.yaml
+  - nexus-service.yaml

@@ -231,3 +231,65 @@ gdpr-delete: ## Delete all session/rate-limit data for a SPIFFE ID. Usage: make 
 		exit 1; \
 	fi
 	go run ./cmd/gdpr-delete/ "$(SPIFFE_ID)"
+
+# ==============================================================================
+# Local Kubernetes (Docker Desktop kubeadm) -- RFA-7bh.1
+# ==============================================================================
+# Minimum hardware: 4 CPU cores, 8GB RAM allocated to Docker Desktop
+# Requires: kubectl, kustomize, Docker Desktop with Kubernetes enabled
+
+k8s-local-up: ## Deploy full stack to Docker Desktop K8s via Kustomize overlay
+	@echo "==> Deploying to local K8s (Docker Desktop kubeadm)..."
+	@echo "    Minimum hardware: 4 CPU cores, 8GB RAM"
+	@echo ""
+	@if ! kubectl cluster-info 2>/dev/null | grep -q 'Kubernetes control plane'; then \
+		echo "ERROR: No Kubernetes cluster available."; \
+		echo "Enable Kubernetes in Docker Desktop: Settings -> Kubernetes -> Enable Kubernetes"; \
+		exit 1; \
+	fi
+	@echo "    Cluster detected. Applying Kustomize overlay..."
+	kubectl apply -k infra/eks/overlays/local/
+	@echo ""
+	@echo "    Waiting for pods to be ready (timeout: 5 minutes)..."
+	@echo "    Checking SPIRE Server..."
+	-kubectl -n spire-system rollout status statefulset/spire-server --timeout=120s 2>/dev/null || \
+		echo "    WARNING: SPIRE Server rollout not yet complete"
+	@echo "    Checking SPIRE Agent..."
+	-kubectl -n spire-system rollout status daemonset/spire-agent --timeout=120s 2>/dev/null || \
+		echo "    WARNING: SPIRE Agent rollout not yet complete"
+	@echo "    Checking SPIKE Nexus..."
+	-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=120s 2>/dev/null || \
+		echo "    WARNING: SPIKE Nexus rollout not yet complete"
+	@echo "    Checking KeyDB..."
+	-kubectl -n data rollout status deployment/keydb --timeout=60s 2>/dev/null || \
+		echo "    WARNING: KeyDB rollout not yet complete"
+	@echo "    Checking MCP Server..."
+	-kubectl -n tools rollout status deployment/mcp-server --timeout=60s 2>/dev/null || \
+		echo "    WARNING: MCP Server rollout not yet complete"
+	@echo "    Checking Gateway..."
+	-kubectl -n gateway rollout status deployment/mcp-security-gateway --timeout=120s 2>/dev/null || \
+		echo "    WARNING: Gateway rollout not yet complete"
+	@echo ""
+	@echo "==> Deployment complete."
+	@echo "    Gateway: http://localhost:30090"
+	@echo "    Health check: curl -s http://localhost:30090/health"
+
+k8s-local-down: ## Tear down all services from Docker Desktop K8s
+	@echo "==> Tearing down local K8s deployment..."
+	kubectl delete -k infra/eks/overlays/local/ --ignore-not-found
+	@echo ""
+	@echo "    Cleaning up PVCs..."
+	-kubectl -n spire-system delete pvc -l app.kubernetes.io/name=spire-server --ignore-not-found 2>/dev/null
+	@echo ""
+	@echo "==> Tear down complete."
+
+k8s-local-validate: ## Validate local K8s Kustomize overlay (offline, no cluster needed)
+	@echo "==> Validating local K8s Kustomize overlay..."
+	@echo "    Building Kustomize manifests..."
+	kustomize build infra/eks/overlays/local/ > /dev/null
+	@echo "    Kustomize build: PASS"
+	@echo ""
+	@echo "    Running kubeconform validation..."
+	kustomize build infra/eks/overlays/local/ | kubeconform -summary -strict -ignore-missing-schemas
+	@echo ""
+	@echo "==> Validation complete."

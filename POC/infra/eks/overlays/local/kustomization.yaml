@@ -1,0 +1,254 @@
+# ------------------------------------------------------------------------------
+# Kustomize Local Overlay -- Docker Desktop kubeadm K8s
+# Story: RFA-7bh.1
+#
+# Adapts EKS manifests for Docker Desktop's single-node kubeadm cluster.
+# Patches applied:
+#   - ALB Ingress -> NodePort Service (port 30090)
+#   - IRSA -> Hardcoded credentials in K8s Secrets (dev only)
+#   - EBS CSI StorageClass -> Default hostpath StorageClass
+#   - Route53 DNS -> localhost / *.local
+#   - 3-AZ topology -> Single node (1 replica)
+#   - SPIRE k8s_psat node attestor -> join_token attestor
+#   - Reduced resource limits to fit 4 CPU / 8GB RAM
+#
+# Minimum hardware: 4 CPU cores, 8GB RAM allocated to Docker Desktop
+#
+# Usage:
+#   kustomize build infra/eks/overlays/local/
+#   make k8s-local-up
+#   make k8s-local-down
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Reference all service groups (local overlay deploys the full stack)
+resources:
+  # Core services (via base overlay)
+  - ../base
+  # SPIRE identity infrastructure
+  - ../../spire
+  # SPIKE Nexus secret management
+  - ../../spike
+  # Observability stack (namespace + network policies)
+  - ../../observability
+  # Local-only resources
+  - keydb.yaml
+  - spire-token-generator.yaml
+
+patches:
+  # --------------------------------------------------------------------------
+  # Gateway: NodePort on 30090, reduced resources, debug logging
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Service
+      name: mcp-security-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: mcp-security-gateway
+        namespace: gateway
+      spec:
+        type: NodePort
+        ports:
+          - name: http
+            port: 9090
+            targetPort: http
+            nodePort: 30090
+            protocol: TCP
+
+  - target:
+      kind: Deployment
+      name: mcp-security-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-security-gateway
+        namespace: gateway
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: mcp-security-gateway
+                env:
+                  - name: LOG_LEVEL
+                    value: "debug"
+                  - name: SPIFFE_MODE
+                    value: "dev"
+                  - name: KEYDB_URL
+                    value: "redis://keydb.data.svc.cluster.local:6379"
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+
+  # --------------------------------------------------------------------------
+  # MCP Server: reduced resources
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Deployment
+      name: mcp-server
+      namespace: tools
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-server
+        namespace: tools
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: mcp-server
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 32Mi
+                  limits:
+                    cpu: 50m
+                    memory: 64Mi
+
+  # --------------------------------------------------------------------------
+  # SPIRE Server: single replica, join_token attestor, hostpath storage
+  # --------------------------------------------------------------------------
+  - target:
+      kind: StatefulSet
+      name: spire-server
+      namespace: spire-system
+    patch: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: spire-server
+        namespace: spire-system
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: spire-server
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+        volumeClaimTemplates:
+          - metadata:
+              name: spire-server-data
+              labels:
+                app.kubernetes.io/name: spire-server
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 1Gi
+              # Use default StorageClass (hostpath on Docker Desktop)
+              # instead of EBS gp2
+
+  # SPIRE Server config: replace k8s_psat with join_token attestor
+  - target:
+      kind: ConfigMap
+      name: spire-server-config
+      namespace: spire-system
+    path: patch-spire-server-config.yaml
+
+  # --------------------------------------------------------------------------
+  # SPIRE Agent: reduced resources, join_token attestor
+  # --------------------------------------------------------------------------
+  - target:
+      kind: DaemonSet
+      name: spire-agent
+      namespace: spire-system
+    patch: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: spire-agent
+        namespace: spire-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: spire-agent
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 32Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+
+  # SPIRE Agent config: replace k8s_psat with join_token attestor
+  - target:
+      kind: ConfigMap
+      name: spire-agent-config
+      namespace: spire-system
+    path: patch-spire-agent-config.yaml
+
+  # --------------------------------------------------------------------------
+  # SPIRE namespace: relax PSS for agent (needs hostPID/hostNetwork)
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Namespace
+      name: spire-system
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: spire-system
+        labels:
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
+
+  # --------------------------------------------------------------------------
+  # SPIKE Nexus: reduced resources
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Deployment
+      name: spike-nexus
+      namespace: spike-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: spike-nexus
+        namespace: spike-system
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: spike-nexus
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 32Mi
+                  limits:
+                    cpu: 50m
+                    memory: 64Mi
+
+  # --------------------------------------------------------------------------
+  # Registration entries: replace k8s_psat selectors with join_token
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Job
+      name: spire-register-entries
+      namespace: spire-system
+    path: patch-spire-registration.yaml
+
+commonAnnotations:
+  app.kubernetes.io/environment: local
+  app.kubernetes.io/managed-by: kustomize-local-overlay
