@@ -2,3 +2,17 @@ data/
 /gateway
 *.exe
 *.out
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# OpenTofu / Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
