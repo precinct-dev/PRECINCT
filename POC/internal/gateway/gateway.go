@@ -32,6 +32,7 @@ type Gateway struct {
 	uiCapabilityGating   *UICapabilityGating              // RFA-j2d.1: MCP-UI capability gating
 	uiResourceControls   *UIResourceControls              // RFA-j2d.2: UI resource content controls
 	uiResponseProcessor  *UIResponseProcessor             // RFA-j2d.6: UI response processing pipeline
+	spikeRedeemer        middleware.SecretRedeemer        // RFA-a2y.1: SPIKE Nexus or POC secret redeemer
 }
 
 // New creates a new gateway instance
@@ -61,7 +62,12 @@ func New(cfg *Config) (*Gateway, error) {
 		return nil, fmt.Errorf("failed to create tool registry: %w", err)
 	}
 	dlpScanner := middleware.NewBuiltInScanner()
-	deepScanner := middleware.NewDeepScanner(cfg.GroqAPIKey, time.Duration(cfg.DeepScanTimeout)*time.Second)
+	deepScanner := middleware.NewDeepScannerWithConfig(middleware.DeepScannerConfig{
+		APIKey:       cfg.GroqAPIKey,
+		Timeout:      time.Duration(cfg.DeepScanTimeout) * time.Second,
+		FallbackMode: cfg.DeepScanFallback,
+		Auditor:      auditor,
+	})
 	sessionContext := middleware.NewSessionContext()
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPM, cfg.RateLimitBurst)
 
@@ -132,6 +138,21 @@ func New(cfg *Config) (*Gateway, error) {
 		auditor,
 	)
 
+	// RFA-a2y.1: Create secret redeemer (SPIKE Nexus for production, POC for dev/test)
+	var spikeRedeemer middleware.SecretRedeemer
+	if cfg.SPIKENexusURL != "" {
+		// SPIKE Nexus mode: use mTLS via SPIRE to redeem secrets from Nexus.
+		// x509Source is nil here because the SPIRE agent socket connection is
+		// established at runtime via the SPIFFE_ENDPOINT_SOCKET env var.
+		// In a full production setup, we would create an X509Source here.
+		// For Docker Compose POC, we pass nil and the redeemer uses
+		// InsecureSkipVerify (acceptable for POC per ADR-001).
+		spikeRedeemer = middleware.NewSPIKENexusRedeemer(cfg.SPIKENexusURL, nil)
+	} else {
+		// Fallback to POC redeemer (Phase 1 behavior with deterministic mock secrets)
+		spikeRedeemer = middleware.NewPOCSecretRedeemer()
+	}
+
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
 
@@ -153,6 +174,7 @@ func New(cfg *Config) (*Gateway, error) {
 		uiCapabilityGating:   uiCapabilityGating,
 		uiResourceControls:   uiResourceControls,
 		uiResponseProcessor:  uiResponseProcessor,
+		spikeRedeemer:        spikeRedeemer,
 	}, nil
 }
 
@@ -188,7 +210,7 @@ func (g *Gateway) Handler() http.Handler {
 	handler := http.Handler(proxyWithResponseFirewall)
 
 	// Apply middleware in reverse order (innermost first)
-	handler = middleware.TokenSubstitution(handler)                                                                            // 13 - LAST before proxy
+	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer)                                                           // 13 - LAST before proxy
 	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                   // 12
 	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                           // 11
 	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)                                                            // 10
@@ -511,6 +533,10 @@ func (g *Gateway) Close() error {
 	// RFA-j2d.6: Clean up UI resource controls cache
 	if g.uiResourceControls != nil {
 		g.uiResourceControls.Close()
+	}
+	// RFA-a2y.1: Close SPIKE Nexus redeemer (releases X.509 source if present)
+	if closer, ok := g.spikeRedeemer.(interface{ Close() error }); ok {
+		_ = closer.Close()
 	}
 	if g.opa != nil {
 		return g.opa.Close()
