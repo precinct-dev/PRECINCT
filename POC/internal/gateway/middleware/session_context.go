@@ -152,15 +152,48 @@ func classifyResource(resource string) string {
 		return "public"
 	}
 
-	// Check for sensitive keywords
+	// Check for sensitive keywords (case-insensitive substring match)
 	sensitiveKeywords := []string{"password", "secret", "token", "key", "credential"}
+	resourceLower := resource
 	for _, keyword := range sensitiveKeywords {
-		if contains([]string{resource}, keyword) {
+		if containsSubstring(resourceLower, keyword) {
 			return "sensitive"
 		}
 	}
 
 	return "internal"
+}
+
+// containsSubstring checks if s contains substr (case-insensitive)
+func containsSubstring(s, substr string) bool {
+	// Simple case-insensitive contains check
+	sLen := len(s)
+	subLen := len(substr)
+	if subLen > sLen {
+		return false
+	}
+	for i := 0; i <= sLen-subLen; i++ {
+		match := true
+		for j := 0; j < subLen; j++ {
+			c1 := s[i+j]
+			c2 := substr[j]
+			// Convert to lowercase for comparison
+			if c1 >= 'A' && c1 <= 'Z' {
+				c1 = c1 + ('a' - 'A')
+			}
+			if c2 >= 'A' && c2 <= 'Z' {
+				c2 = c2 + ('a' - 'A')
+			}
+			if c1 != c2 {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
 }
 
 // isExternalTarget determines if destination is external
@@ -261,7 +294,7 @@ func SessionContextMiddleware(next http.Handler, sessionCtx *SessionContext) htt
 				existingFlags = make([]string, 0)
 			}
 			existingFlags = append(existingFlags, "exfiltration_detected")
-			ctx = WithSecurityFlags(ctx, existingFlags)
+			r = r.WithContext(WithSecurityFlags(ctx, existingFlags))
 
 			// Block with 403
 			http.Error(w, "Forbidden: Exfiltration pattern detected", http.StatusForbidden)
