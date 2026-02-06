@@ -1,0 +1,60 @@
+# ------------------------------------------------------------------------------
+# NetworkPolicy Verification Test Pod
+# Story: RFA-9fv.8
+#
+# Temporary pod for testing network connectivity between namespaces.
+# Deployed into different namespaces to verify NetworkPolicy enforcement.
+#
+# Usage:
+#   # Deploy into a specific namespace:
+#   kubectl apply -f verify-pod.yaml -n <namespace>
+#
+#   # Or use envsubst for namespace-specific deployment:
+#   VERIFY_NAMESPACE=tools envsubst < verify-pod.yaml | kubectl apply -f -
+#
+# The pod runs for 5 minutes (300s) then exits automatically.
+# Use 'make cleanup' or 'kubectl delete pod netpol-verify -n <ns>' to remove early.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Pod
+metadata:
+  name: netpol-verify
+  labels:
+    app.kubernetes.io/name: netpol-verify
+    app.kubernetes.io/component: test
+    purpose: network-policy-verification
+spec:
+  # Auto-terminate after 5 minutes to avoid lingering test pods
+  activeDeadlineSeconds: 300
+  restartPolicy: Never
+  terminationGracePeriodSeconds: 5
+  containers:
+    - name: netpol-verify
+      # curlimages/curl includes curl, wget, and basic networking tools
+      image: curlimages/curl:8.5.0
+      command:
+        - /bin/sh
+        - -c
+        - |
+          echo "NetworkPolicy verification pod ready."
+          echo "Namespace: $(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace 2>/dev/null || echo 'unknown')"
+          echo "Pod will auto-terminate in 300 seconds."
+          sleep 300
+      resources:
+        requests:
+          cpu: 10m
+          memory: 16Mi
+        limits:
+          cpu: 50m
+          memory: 32Mi
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 100
+        runAsGroup: 101
+        allowPrivilegeEscalation: false
+        readOnlyRootFilesystem: true
+        capabilities:
+          drop:
+            - ALL
+        seccompProfile:
+          type: RuntimeDefault
