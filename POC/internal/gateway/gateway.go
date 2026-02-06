@@ -79,10 +79,16 @@ func New(cfg *Config) (*Gateway, error) {
 	// RFA-hh5.2: Also select rate limit store. Both share the same redis client
 	// when KeyDB is available, enabling distributed session persistence and
 	// distributed rate limiting from a single connection pool.
+	// RFA-8z8.2: In SPIFFE_MODE=prod, the KeyDB client uses TLS on port 6380.
+	// The URL is converted from redis:// to rediss:// and port 6379 to 6380.
+	// TLS config uses the same SPIRE X509Source as the gateway's server TLS
+	// (set later by EnableSPIFFETLS). In New(), we use the converted URL; the
+	// TLS config is applied in EnableKeyDBTLS() after SPIRE is connected.
 	var sessionStore middleware.SessionStore
 	var rateLimitStore middleware.RateLimitStore
 	if cfg.KeyDBURL != "" {
-		redisClient := middleware.NewKeyDBClient(cfg.KeyDBURL, cfg.KeyDBPoolMin, cfg.KeyDBPoolMax)
+		keyDBURL := KeyDBURLForMode(cfg.KeyDBURL, cfg.SPIFFEMode)
+		redisClient := middleware.NewKeyDBClient(keyDBURL, cfg.KeyDBPoolMin, cfg.KeyDBPoolMax)
 		sessionStore = middleware.NewKeyDBStoreFromClient(redisClient, cfg.SessionTTL)
 		rateLimitStore = middleware.NewKeyDBRateLimitStore(redisClient)
 	} else {
@@ -173,6 +179,13 @@ func New(cfg *Config) (*Gateway, error) {
 		// Fallback to POC redeemer (Phase 1 behavior with deterministic mock secrets)
 		spikeRedeemer = middleware.NewPOCSecretRedeemer()
 	}
+
+	// RFA-m6j.3: Wrap the reverse proxy transport with trace context propagation.
+	// This injects traceparent/tracestate headers into every outbound request
+	// to the MCP server, enabling cross-service distributed tracing.
+	// The base transport is either the default or will be replaced later by
+	// EnableSPIFFETLS (which re-wraps with TracingTransport -- see below).
+	proxy.Transport = NewTracingTransport(proxy.Transport)
 
 	// RFA-8z8.1: Log which SPIFFE mode is active at startup (AC5)
 	log.Printf("SPIFFE mode: %s", cfg.SPIFFEMode)
@@ -630,6 +643,9 @@ func (g *Gateway) Close() error {
 // configures both the server's TLS listener and the reverse proxy's upstream
 // transport for mutual TLS.
 //
+// RFA-8z8.2: Also configures the KeyDB client for TLS when KeyDB is in use.
+// The same X509Source provides mTLS for KeyDB, upstream proxy, and server TLS.
+//
 // This method must be called AFTER New() and BEFORE starting the HTTP server.
 // It is separated from New() because SPIRE connectivity is an infrastructure
 // dependency that should fail loudly at startup, not silently during config.
@@ -644,9 +660,59 @@ func (g *Gateway) EnableSPIFFETLS(ctx context.Context) error {
 	// RFA-8z8.1 AC3: Configure the reverse proxy transport for mTLS to upstream.
 	// This replaces the default HTTP transport with one that presents the
 	// gateway's SVID and validates the upstream's certificate.
-	g.proxy.Transport = spiffeTLS.UpstreamTransport
+	// RFA-m6j.3: Wrap with TracingTransport to propagate trace context
+	// over the mTLS connection to upstream MCP servers.
+	g.proxy.Transport = NewTracingTransport(spiffeTLS.UpstreamTransport)
+
+	// RFA-8z8.2 AC2: Configure the KeyDB client for TLS if KeyDB is in use.
+	// The KeyDB client needs the same X509Source for mTLS to KeyDB.
+	if g.config.KeyDBURL != "" {
+		if err := g.enableKeyDBTLS(spiffeTLS); err != nil {
+			log.Printf("WARNING: Failed to enable KeyDB TLS: %v (KeyDB may not support TLS yet)", err)
+			// Non-fatal: KeyDB TLS is best-effort during transition. The URL was
+			// already converted to rediss:// in New(), but the TLS config was not
+			// applied because the X509Source was not yet available. If this fails,
+			// the connection will fail at first use, which is the correct behavior
+			// (fail loudly, not silently).
+		}
+	}
 
 	log.Printf("SPIFFE mTLS: server TLS configured, upstream proxy transport set to mTLS")
+
+	return nil
+}
+
+// enableKeyDBTLS configures the KeyDB session store and rate limiter clients
+// with TLS from the SPIRE X509Source. This replaces the plain redis client
+// created in New() with a TLS-enabled one.
+//
+// RFA-8z8.2: KeyDB does not speak SPIRE Workload API natively. It receives
+// filesystem-based certs via an init script (scripts/keydb-svid-refresh.sh).
+// The gateway connects to it using the same X509Source as other mTLS connections.
+func (g *Gateway) enableKeyDBTLS(spiffeTLS *SPIFFETLSConfig) error {
+	keyDBTLSCfg, err := NewKeyDBTLSConfigFromSPIRE(spiffeTLS.x509Source)
+	if err != nil {
+		return fmt.Errorf("failed to create KeyDB TLS config: %w", err)
+	}
+
+	// Create a new TLS-enabled redis client and replace the stores
+	keyDBURL := KeyDBURLForMode(g.config.KeyDBURL, g.config.SPIFFEMode)
+	redisClient := NewKeyDBClientTLS(keyDBURL, g.config.KeyDBPoolMin, g.config.KeyDBPoolMax, keyDBTLSCfg.TLSConfig)
+
+	// Close old stores before replacing
+	if closer, ok := g.sessionStore.(interface{ Close() error }); ok {
+		_ = closer.Close()
+	}
+
+	// Create new stores with TLS client
+	g.sessionStore = middleware.NewKeyDBStoreFromClient(redisClient, g.config.SessionTTL)
+	rateLimitStore := middleware.NewKeyDBRateLimitStore(redisClient)
+
+	// Update the session context and rate limiter with new stores
+	g.sessionContext = middleware.NewSessionContext(g.sessionStore)
+	g.rateLimiter = middleware.NewRateLimiter(g.config.RateLimitRPM, g.config.RateLimitBurst, rateLimitStore)
+
+	log.Printf("SPIFFE mTLS: KeyDB client configured with TLS (URL: %s)", keyDBURL)
 
 	return nil
 }

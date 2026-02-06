@@ -12,6 +12,8 @@ import (
 
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 // SPIKENexusRedeemer redeems SPIKE tokens by calling SPIKE Nexus via mTLS.
@@ -106,6 +108,11 @@ func (s *SPIKENexusRedeemer) RedeemSecret(ctx context.Context, token *SPIKEToken
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+
+	// RFA-m6j.3: Inject W3C Trace Context (traceparent/tracestate) into
+	// outbound request headers. This enables distributed trace correlation
+	// between the gateway and SPIKE Nexus.
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 	// Execute request
 	resp, err := s.httpClient.Do(req)
