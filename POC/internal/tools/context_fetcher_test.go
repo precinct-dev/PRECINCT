@@ -448,8 +448,8 @@ func TestFetchAndValidate(t *testing.T) {
 // RFA-xwc: The policy uses classification to decide if content is too sensitive
 func TestClassifyDLPResult(t *testing.T) {
 	tests := []struct {
-		name               string
-		result             middleware.ScanResult
+		name                   string
+		result                 middleware.ScanResult
 		expectedClassification string
 	}{
 		{

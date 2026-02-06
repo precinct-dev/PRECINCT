@@ -199,6 +199,44 @@ func TestConfigFromEnv(t *testing.T) {
 	if cfg.AllowedBasePath != "/workspace/poc" {
 		t.Errorf("Expected AllowedBasePath=/workspace/poc, got %s", cfg.AllowedBasePath)
 	}
+
+	// RFA-hh5.1: Test KeyDB config defaults
+	t.Setenv("KEYDB_URL", "")
+	t.Setenv("KEYDB_POOL_MIN", "")
+	t.Setenv("KEYDB_POOL_MAX", "")
+	t.Setenv("SESSION_TTL", "")
+	cfg = ConfigFromEnv()
+	if cfg.KeyDBURL != "" {
+		t.Errorf("Expected default KeyDBURL empty, got %s", cfg.KeyDBURL)
+	}
+	if cfg.KeyDBPoolMin != 5 {
+		t.Errorf("Expected default KeyDBPoolMin=5, got %d", cfg.KeyDBPoolMin)
+	}
+	if cfg.KeyDBPoolMax != 20 {
+		t.Errorf("Expected default KeyDBPoolMax=20, got %d", cfg.KeyDBPoolMax)
+	}
+	if cfg.SessionTTL != 3600 {
+		t.Errorf("Expected default SessionTTL=3600, got %d", cfg.SessionTTL)
+	}
+
+	// RFA-hh5.1: Test KeyDB config custom values
+	t.Setenv("KEYDB_URL", "redis://keydb:6379")
+	t.Setenv("KEYDB_POOL_MIN", "10")
+	t.Setenv("KEYDB_POOL_MAX", "50")
+	t.Setenv("SESSION_TTL", "7200")
+	cfg = ConfigFromEnv()
+	if cfg.KeyDBURL != "redis://keydb:6379" {
+		t.Errorf("Expected KeyDBURL=redis://keydb:6379, got %s", cfg.KeyDBURL)
+	}
+	if cfg.KeyDBPoolMin != 10 {
+		t.Errorf("Expected KeyDBPoolMin=10, got %d", cfg.KeyDBPoolMin)
+	}
+	if cfg.KeyDBPoolMax != 50 {
+		t.Errorf("Expected KeyDBPoolMax=50, got %d", cfg.KeyDBPoolMax)
+	}
+	if cfg.SessionTTL != 7200 {
+		t.Errorf("Expected SessionTTL=7200, got %d", cfg.SessionTTL)
+	}
 }
 
 // TestMiddlewareChainIntegration verifies full middleware chain integration
@@ -675,7 +713,7 @@ ui_capability_grants:
 	}
 
 	if upstreamCalled {
-		t.Errorf("WIRING FAILURE: upstream was called for a denied ui:// resource read. "+
+		t.Errorf("WIRING FAILURE: upstream was called for a denied ui:// resource read. " +
 			"checkUIResourceReadAllowed did NOT block the request before proxying.")
 	}
 

@@ -35,6 +35,13 @@ func main() {
 	// Load configuration from environment
 	cfg := gateway.ConfigFromEnv()
 
+	// RFA-m6j.1: Initialize OpenTelemetry TracerProvider.
+	// When OTelEndpoint is empty, this is a no-op (AC6).
+	otelShutdown, err := gateway.InitTracer(context.Background(), cfg.OTelEndpoint, cfg.OTelServiceName)
+	if err != nil {
+		log.Fatalf("Failed to initialize OTel tracer: %v", err)
+	}
+
 	// Create gateway server
 	gw, err := gateway.New(cfg)
 	if err != nil {
@@ -71,6 +78,11 @@ func main() {
 
 	if err := srv.Shutdown(ctx); err != nil {
 		log.Fatalf("Gateway forced to shutdown: %v", err)
+	}
+
+	// RFA-m6j.1: Flush pending OTel spans before exit.
+	if err := otelShutdown(ctx); err != nil {
+		log.Printf("OTel shutdown error: %v", err)
 	}
 
 	log.Println("Gateway stopped")

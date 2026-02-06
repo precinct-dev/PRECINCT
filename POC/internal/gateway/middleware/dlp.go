@@ -40,16 +40,16 @@ func NewBuiltInScanner() *BuiltInScanner {
 	return &BuiltInScanner{
 		credentialPatterns: []*regexp.Regexp{
 			// API keys and tokens
-			regexp.MustCompile(`\bsk-proj-[a-zA-Z0-9]{20,}\b`),                // OpenAI project keys
-			regexp.MustCompile(`\bsk-[a-zA-Z0-9]{32,}\b`),                     // OpenAI keys
-			regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),                        // AWS access keys
-			regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36,}\b`),                    // GitHub personal access tokens
-			regexp.MustCompile(`\bgho_[a-zA-Z0-9]{36,}\b`),                    // GitHub OAuth tokens
-			regexp.MustCompile(`\bghs_[a-zA-Z0-9]{36,}\b`),                    // GitHub server-to-server tokens
-			regexp.MustCompile(`\bghr_[a-zA-Z0-9]{36,}\b`),                    // GitHub refresh tokens
-			regexp.MustCompile(`\bglpat-[a-zA-Z0-9_\-]{20,}\b`),               // GitLab personal access tokens
+			regexp.MustCompile(`\bsk-proj-[a-zA-Z0-9]{20,}\b`),                              // OpenAI project keys
+			regexp.MustCompile(`\bsk-[a-zA-Z0-9]{32,}\b`),                                   // OpenAI keys
+			regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),                                      // AWS access keys
+			regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36,}\b`),                                  // GitHub personal access tokens
+			regexp.MustCompile(`\bgho_[a-zA-Z0-9]{36,}\b`),                                  // GitHub OAuth tokens
+			regexp.MustCompile(`\bghs_[a-zA-Z0-9]{36,}\b`),                                  // GitHub server-to-server tokens
+			regexp.MustCompile(`\bghr_[a-zA-Z0-9]{36,}\b`),                                  // GitHub refresh tokens
+			regexp.MustCompile(`\bglpat-[a-zA-Z0-9_\-]{20,}\b`),                             // GitLab personal access tokens
 			regexp.MustCompile(`\bxox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}\b`), // Slack tokens
-			regexp.MustCompile(`-----BEGIN [A-Z ]+ PRIVATE KEY-----`),         // Private keys
+			regexp.MustCompile(`-----BEGIN [A-Z ]+ PRIVATE KEY-----`),                       // Private keys
 
 			// Obvious credential patterns in key=value format or JSON
 			regexp.MustCompile(`(?i)\bpassword\s*[:=]\s*[^\s]{8,}`),
@@ -221,7 +221,7 @@ func ValidateABAChecksum(number string) bool {
 	for i, c := range number {
 		d[i] = int(c - '0')
 	}
-	checksum := 3*(d[0]+d[3]+d[6]) + 7*(d[1]+d[4]+d[7]) + (d[2]+d[5]+d[8])
+	checksum := 3*(d[0]+d[3]+d[6]) + 7*(d[1]+d[4]+d[7]) + (d[2] + d[5] + d[8])
 	return checksum%10 == 0
 }
 

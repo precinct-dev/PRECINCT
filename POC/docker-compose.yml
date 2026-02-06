@@ -130,6 +130,27 @@ services:
       - "spiffe-id=spike-bootstrap"
     restart: "no"
 
+  # KeyDB - Redis-compatible session persistence store (RFA-hh5.1)
+  # Enables cross-request exfiltration detection by persisting session context
+  # across HTTP requests. BSD-3-Clause licensed.
+  keydb:
+    image: bitnami/keydb:latest
+    container_name: keydb
+    hostname: keydb
+    ports:
+      - "6379:6379"
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes  # Dev mode only -- production uses mTLS (RFA-8z8.2)
+    volumes:
+      - keydb-data:/bitnami/keydb/data
+    networks:
+      - agentic-net
+    healthcheck:
+      test: ["CMD", "keydb-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
   # OpenTelemetry Collector - Observability data pipeline
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
@@ -181,6 +202,8 @@ services:
     depends_on:
       spire-agent:
         condition: service_healthy
+      keydb:
+        condition: service_healthy
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
       - ./config:/config:ro  # Mount config directory for OPA policies and tool registry
@@ -197,6 +220,9 @@ services:
       - SPIRE_AGENT_SOCKET=/tmp/spire-agent/public/api.sock
       - AUDIT_LOG_PATH=/tmp/audit.jsonl
       - SPIKE_NEXUS_URL=https://spike-nexus:8443
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_SERVICE_NAME=mcp-security-gateway
+      - KEYDB_URL=redis://keydb:6379  # RFA-hh5.1: KeyDB session persistence
     networks:
       - agentic-net
     labels:
@@ -234,3 +260,7 @@ volumes:
   # SPIRE Join Token - Temporary volume for passing fresh join tokens from generator to agent
   spire-join-token:
     name: spire-join-token
+
+  # KeyDB persistent data (RFA-hh5.1)
+  keydb-data:
+    name: keydb-data

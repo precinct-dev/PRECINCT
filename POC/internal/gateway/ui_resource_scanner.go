@@ -59,9 +59,9 @@ const (
 // ScanFinding represents a single dangerous pattern match in scanned content.
 type ScanFinding struct {
 	Category ScanFindingCategory `json:"category"`
-	Pattern  string              `json:"pattern"`  // The regexp pattern that matched
-	Match    string              `json:"match"`     // The actual text that matched
-	Offset   int                 `json:"offset"`    // Byte offset in the content
+	Pattern  string              `json:"pattern"` // The regexp pattern that matched
+	Match    string              `json:"match"`   // The actual text that matched
+	Offset   int                 `json:"offset"`  // Byte offset in the content
 }
 
 // String returns a human-readable description of the finding.
