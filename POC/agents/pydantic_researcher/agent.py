@@ -14,6 +14,7 @@ Identity: spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev
 import json
 import logging
 import os
+import pathlib
 import sys
 import time
 import uuid
@@ -53,10 +54,11 @@ SESSION_ID = os.environ.get("SESSION_ID", str(uuid.uuid4()))
 MAX_503_RETRIES = 3
 RETRY_BACKOFF_BASE = 1.0  # seconds
 
-# POC directory for file reads
+# POC directory for file reads.
+# Defaults to the directory two levels above this agent's location (agents/pydantic_researcher/).
 POC_DIR = os.environ.get(
     "POC_DIR",
-    "/Users/ramirosalas/workspace/agentic_reference_architecture/POC",
+    str(pathlib.Path(__file__).resolve().parent.parent.parent),
 )
 
 

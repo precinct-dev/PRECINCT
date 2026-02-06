@@ -15,7 +15,7 @@ MARKER_ID="chain-test-$(date +%s)"
 
 # Send the tool call through the full chain
 # Use a valid POC path so OPA allows the request and it traverses ALL 13 middleware steps
-gateway_request "$DEFAULT_SPIFFE_ID" "read" "{\"file_path\": \"/Users/ramirosalas/workspace/agentic_reference_architecture/POC/go.mod\"}"
+gateway_request "$DEFAULT_SPIFFE_ID" "read" "{\"file_path\": \"${POC_DIR}/go.mod\"}"
 log_info "Gateway response code: $RESP_CODE"
 log_info "Gateway response body: $RESP_BODY"
 echo ""
@@ -156,7 +156,7 @@ RATE_HEADERS=$(curl -s -D - -o /dev/null -X POST "${GATEWAY_URL}/" \
     -d '{
         "jsonrpc": "2.0",
         "method": "read",
-        "params": {"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/go.mod"},
+        "params": {"file_path": "'"${POC_DIR}"'/go.mod"},
         "id": 1
     }' 2>&1 | grep -i "ratelimit" || echo "")
 

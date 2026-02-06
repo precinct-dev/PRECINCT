@@ -30,7 +30,7 @@ log_pass "Gateway is running and healthy"
 # ============================================================
 log_subheader "A1: Authorized tool call (read)"
 
-gateway_request "$DEFAULT_SPIFFE_ID" "read" '{"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/go.mod"}'
+gateway_request "$DEFAULT_SPIFFE_ID" "read" "{\"file_path\": \"${POC_DIR}/go.mod\"}"
 
 log_info "Response code: $RESP_CODE"
 log_info "Response body (first 200 chars): ${RESP_BODY:0:200}"

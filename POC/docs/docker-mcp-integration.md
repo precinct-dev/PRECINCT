@@ -554,7 +554,7 @@ docker mcp config reset tavily
 
 **Tasks:**
 1. Add filesystem configuration to `docker-mcp.yaml` with volume mounts
-2. Mount POC workspace: `-v /Users/ramirosalas/workspace/agentic_reference_architecture/POC:/workspace`
+2. Mount POC workspace: `-v $POC_DIR:/workspace`
 3. Enable filesystem server: `docker mcp server enable filesystem`
 4. Test `read_file` tool with known file
 5. Test `search_files` tool (grep functionality)

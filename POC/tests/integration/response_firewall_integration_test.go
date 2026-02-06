@@ -170,7 +170,7 @@ func publicToolCall(t *testing.T, gwURL, spiffeID string) *http.Response {
 	t.Helper()
 	// read requires file_path starting with POC directory
 	params := map[string]interface{}{
-		"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md",
+		"file_path": pocDir() + "/README.md",
 	}
 	return sendMCPRequestWithParams(t, gwURL, "read", spiffeID, params, nil)
 }

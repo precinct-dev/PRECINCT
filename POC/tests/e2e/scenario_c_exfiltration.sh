@@ -34,7 +34,7 @@ SPIFFE_ID="$DEFAULT_SPIFFE_ID"
 log_info "Step 1: Access sensitive resource (file with 'secret' keyword)"
 # Read a file with 'secret' in the resource, triggering 'sensitive' classification
 gateway_request "$SPIFFE_ID" "read" \
-    '{"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/go.mod", "path": "/var/data/secrets/credentials.db"}' \
+    "{\"file_path\": \"${POC_DIR}/go.mod\", \"path\": \"/var/data/secrets/credentials.db\"}" \
     "X-Session-ID: ${SESSION_ID}"
 
 log_info "Step 1 response code: $RESP_CODE"

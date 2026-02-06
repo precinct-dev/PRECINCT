@@ -91,7 +91,7 @@ python agent.py "What are the key differences between SPIFFE and traditional OAu
 | `OTEL_ENDPOINT` | `http://localhost:4317` | OpenTelemetry collector gRPC endpoint |
 | `LLM_MODEL` | `groq:llama-3.3-70b-versatile` | PydanticAI model identifier |
 | `SESSION_ID` | auto-generated UUID | Session ID for trace correlation |
-| `POC_DIR` | `/Users/ramirosalas/workspace/agentic_reference_architecture/POC` | POC directory path |
+| `POC_DIR` | Auto-detected from script location | POC directory path |
 
 ## Running Tests
 

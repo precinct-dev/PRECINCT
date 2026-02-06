@@ -17,6 +17,10 @@ GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
 PHOENIX_URL="${PHOENIX_URL:-http://localhost:6006}"
 OTEL_URL="${OTEL_URL:-http://localhost:4318}"
 
+# POC directory - resolved from env var or discovered from script location.
+# The e2e scripts live in tests/e2e/ so the POC root is two levels up.
+POC_DIR="${POC_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+
 # Default test SPIFFE ID (DSPy researcher agent)
 DEFAULT_SPIFFE_ID="spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 # Secondary agent for cross-agent tests
