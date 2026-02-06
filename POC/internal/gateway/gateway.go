@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -190,11 +191,130 @@ func (g *Gateway) Handler() http.Handler {
 	return mux
 }
 
-// proxyHandler proxies requests to upstream MCP server
+// proxyHandler proxies requests to upstream MCP server with UI capability gating.
+// RFA-j2d.1: This handler intercepts two types of MCP traffic:
+//   - tools/list responses: captured after upstream returns, then processed through
+//     applyUICapabilityGating to strip _meta.ui for denied/unapproved servers/tools
+//   - resources/read for ui:// URIs: checked BEFORE proxying via checkUIResourceReadAllowed;
+//     blocked with HTTP 403 if the server/tenant is not in allow mode
+//
+// Server and tenant are identified via X-MCP-Server and X-Tenant request headers.
+// If not set, "default" is used for both (fail-closed: no grant match = deny mode).
 func (g *Gateway) proxyHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		g.proxy.ServeHTTP(w, r)
+		// Extract MCP method from request body (already captured by BodyCapture middleware)
+		mcpMethod, mcpParams := g.extractMCPMethodAndParams(r.Context())
+
+		server := r.Header.Get("X-MCP-Server")
+		if server == "" {
+			server = "default"
+		}
+		tenant := r.Header.Get("X-Tenant")
+		if tenant == "" {
+			tenant = "default"
+		}
+
+		switch {
+		case mcpMethod == "resources/read" && g.isUIResourceRequest(mcpParams):
+			// RFA-j2d.1: Block ui:// resource reads for denied servers BEFORE proxying
+			resourceURI := g.extractResourceURI(mcpParams)
+			if !g.checkUIResourceReadAllowed(server, tenant, resourceURI) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_ = json.NewEncoder(w).Encode(map[string]string{
+					"error":  "ui_capability_denied",
+					"detail": "UI resource reads are not permitted for this server/tenant.",
+				})
+				return
+			}
+			// Allowed - proxy the request
+			g.proxy.ServeHTTP(w, r)
+
+		case mcpMethod == "tools/list":
+			// RFA-j2d.1: Capture tools/list response, apply UI capability gating,
+			// then return the (potentially modified) response to the caller.
+			capture := &uiResponseCapture{
+				ResponseWriter: w,
+				body:           &bytes.Buffer{},
+				statusCode:     http.StatusOK,
+			}
+			g.proxy.ServeHTTP(capture, r)
+
+			responseBody := capture.body.Bytes()
+
+			// Apply UI capability gating to strip _meta.ui as needed
+			processedBody := g.applyUICapabilityGating(responseBody, server, tenant)
+
+			// Forward captured headers, then write the processed body
+			w.Header().Del("Content-Length") // Body size may have changed
+			w.WriteHeader(capture.statusCode)
+			_, _ = w.Write(processedBody)
+
+		default:
+			// Standard request - proxy unchanged
+			g.proxy.ServeHTTP(w, r)
+		}
 	})
+}
+
+// uiResponseCapture captures the upstream response so UI capability gating can
+// modify it before sending to the client. Follows the same pattern as
+// responseCapture in the response firewall (middleware/response_firewall.go).
+type uiResponseCapture struct {
+	http.ResponseWriter
+	body       *bytes.Buffer
+	statusCode int
+	written    bool
+}
+
+func (c *uiResponseCapture) WriteHeader(code int) {
+	c.statusCode = code
+	c.written = true
+	// Capture status but do not forward yet -- we may modify the body
+}
+
+func (c *uiResponseCapture) Write(b []byte) (int, error) {
+	if !c.written {
+		c.statusCode = http.StatusOK
+		c.written = true
+	}
+	return c.body.Write(b)
+}
+
+// extractMCPMethodAndParams parses the MCP JSON-RPC method and params from the
+// request body already captured in context by BodyCapture middleware.
+func (g *Gateway) extractMCPMethodAndParams(ctx context.Context) (string, map[string]interface{}) {
+	body := middleware.GetRequestBody(ctx)
+	if len(body) == 0 {
+		return "", nil
+	}
+	var req struct {
+		Method string                 `json:"method"`
+		Params map[string]interface{} `json:"params"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		return "", nil
+	}
+	return req.Method, req.Params
+}
+
+// isUIResourceRequest checks whether the MCP params contain a ui:// resource URI,
+// indicating a UI resource read that must pass capability gating.
+func (g *Gateway) isUIResourceRequest(params map[string]interface{}) bool {
+	uri := g.extractResourceURI(params)
+	return IsUIResourceURI(uri)
+}
+
+// extractResourceURI extracts the resource URI from resources/read params.
+// MCP resources/read requests use params.uri for the resource identifier.
+func (g *Gateway) extractResourceURI(params map[string]interface{}) string {
+	if params == nil {
+		return ""
+	}
+	if uri, ok := params["uri"].(string); ok {
+		return uri
+	}
+	return ""
 }
 
 // dataHandleDereferenceHandler returns approved views of handle-ized data (RFA-qq0.16)
