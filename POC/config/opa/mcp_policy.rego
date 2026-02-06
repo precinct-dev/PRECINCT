@@ -1,6 +1,7 @@
-# MCP Authorization Policy - RFA-qq0.5
+# MCP Authorization Policy - RFA-qq0.5, RFA-qq0.19
 # Based on Reference Architecture Section 6.4
 # Implements path-based restrictions, step-up gating, and destination controls
+# RFA-qq0.19: Adds poisoning pattern detection to identify malicious tool descriptions
 
 package mcp
 
@@ -210,4 +211,41 @@ allow := {
     path_allowed(input.tool, input.params)
     destination_allowed(input.tool, input.params)
     not step_up_satisfied(input.tool, input.step_up_token)
+}
+
+# RFA-qq0.19: Poisoning pattern detection
+# Check if tool description contains poisoning indicators
+contains_poisoning_indicators(description) if {
+    # Pattern 1: <IMPORTANT> tag
+    regex.match(`(?i)<IMPORTANT>.*?</IMPORTANT>`, description)
+}
+
+contains_poisoning_indicators(description) if {
+    # Pattern 2: <SYSTEM> tag
+    regex.match(`(?i)<SYSTEM>.*?</SYSTEM>`, description)
+}
+
+contains_poisoning_indicators(description) if {
+    # Pattern 3: HTML comment
+    regex.match(`(?i)<!--.*?-->`, description)
+}
+
+contains_poisoning_indicators(description) if {
+    # Pattern 4: before using...first instruction
+    regex.match(`(?i)before\s+using\s+this\s+tool.*?first`, description)
+}
+
+contains_poisoning_indicators(description) if {
+    # Pattern 5: ignore instructions command
+    regex.match(`(?i)ignore\s+(previous|all|prior)\s+instructions`, description)
+}
+
+contains_poisoning_indicators(description) if {
+    # Pattern 6: you must command
+    regex.match(`(?i)you\s+must\s+(always|first|never)`, description)
+}
+
+contains_poisoning_indicators(description) if {
+    # Pattern 7: send to external destination
+    regex.match(`(?i)send.*?(email|http|webhook|upload).*?to`, description)
 }
