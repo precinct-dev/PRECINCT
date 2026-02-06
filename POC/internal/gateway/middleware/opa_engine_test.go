@@ -487,6 +487,113 @@ default allow = {"allow": true, "reason": "allowed"}
 	}
 }
 
+// TestOPAEngineConfigInjection verifies runtime config is injected into OPA data store (RFA-2jl)
+func TestOPAEngineConfigInjection(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write a policy that uses data.config.allowed_base_path for path restriction
+	policyContent := `package mcp
+import future.keywords.if
+import future.keywords.in
+
+default poc_directory := "__UNCONFIGURED__"
+poc_directory := data.config.allowed_base_path
+
+default allow := {"allow": false, "reason": "default_deny"}
+
+allow := {"allow": true, "reason": "allowed"} if {
+	input.tool == "read"
+	startswith(input.params.file_path, poc_directory)
+}
+
+allow := {"allow": false, "reason": "path_denied"} if {
+	input.tool == "read"
+	not startswith(input.params.file_path, poc_directory)
+}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "test_policy.rego"), []byte(policyContent), 0644); err != nil {
+		t.Fatalf("Failed to write test policy: %v", err)
+	}
+
+	tests := []struct {
+		name            string
+		allowedBasePath string
+		filePath        string
+		wantAllow       bool
+		wantReason      string
+	}{
+		{
+			name:            "AllowedPathWithConfig",
+			allowedBasePath: "/workspace/poc",
+			filePath:        "/workspace/poc/README.md",
+			wantAllow:       true,
+			wantReason:      "allowed",
+		},
+		{
+			name:            "DeniedPathOutsideConfig",
+			allowedBasePath: "/workspace/poc",
+			filePath:        "/etc/passwd",
+			wantAllow:       false,
+			wantReason:      "path_denied",
+		},
+		{
+			name:            "DeniedWithoutConfig",
+			allowedBasePath: "", // No config injection
+			filePath:        "/workspace/poc/README.md",
+			wantAllow:       false,
+			wantReason:      "path_denied", // Falls back to __UNCONFIGURED__ sentinel
+		},
+		{
+			name:            "DifferentBasePathAllowed",
+			allowedBasePath: "/home/user/project",
+			filePath:        "/home/user/project/src/main.go",
+			wantAllow:       true,
+			wantReason:      "allowed",
+		},
+		{
+			name:            "DifferentBasePathDenied",
+			allowedBasePath: "/home/user/project",
+			filePath:        "/home/user/other/secret.txt",
+			wantAllow:       false,
+			wantReason:      "path_denied",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var cfg []OPAEngineConfig
+			if tt.allowedBasePath != "" {
+				cfg = append(cfg, OPAEngineConfig{AllowedBasePath: tt.allowedBasePath})
+			}
+			engine, err := NewOPAEngine(tmpDir, cfg...)
+			if err != nil {
+				t.Fatalf("Failed to create OPA engine: %v", err)
+			}
+			defer engine.Close()
+
+			input := OPAInput{
+				SPIFFEID: "spiffe://test/agent",
+				Tool:     "read",
+				Action:   "execute",
+				Params: map[string]interface{}{
+					"file_path": tt.filePath,
+				},
+			}
+
+			allowed, reason, err := engine.Evaluate(input)
+			if err != nil {
+				t.Errorf("Evaluate failed: %v", err)
+			}
+			if allowed != tt.wantAllow {
+				t.Errorf("Expected allow=%v, got %v (reason: %s)", tt.wantAllow, allowed, reason)
+			}
+			if reason != tt.wantReason {
+				t.Errorf("Expected reason=%s, got %s", tt.wantReason, reason)
+			}
+		})
+	}
+}
+
 // TestOPAEnginePerformance verifies sub-millisecond evaluation latency
 func TestOPAEnginePerformance(t *testing.T) {
 	tmpDir := t.TempDir()

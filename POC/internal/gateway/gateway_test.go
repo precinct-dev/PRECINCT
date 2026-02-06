@@ -182,6 +182,20 @@ func TestConfigFromEnv(t *testing.T) {
 	if cfg.CircuitSuccessThreshold != 3 {
 		t.Errorf("Expected CircuitSuccessThreshold=3, got %d", cfg.CircuitSuccessThreshold)
 	}
+
+	// RFA-2jl: Test AllowedBasePath defaults to working directory
+	t.Setenv("ALLOWED_BASE_PATH", "")
+	cfg = ConfigFromEnv()
+	if cfg.AllowedBasePath == "" {
+		t.Error("Expected AllowedBasePath to default to working directory, got empty string")
+	}
+
+	// RFA-2jl: Test AllowedBasePath from environment
+	t.Setenv("ALLOWED_BASE_PATH", "/workspace/poc")
+	cfg = ConfigFromEnv()
+	if cfg.AllowedBasePath != "/workspace/poc" {
+		t.Errorf("Expected AllowedBasePath=/workspace/poc, got %s", cfg.AllowedBasePath)
+	}
 }
 
 // TestMiddlewareChainIntegration verifies full middleware chain integration

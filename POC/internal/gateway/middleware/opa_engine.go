@@ -15,9 +15,20 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// OPAEngineConfig holds runtime configuration injected into OPA data store.
+// These values are accessible in Rego policies via data.config.<key>.
+type OPAEngineConfig struct {
+	// AllowedBasePath is the base directory for path-based access control.
+	// Injected as data.config.allowed_base_path in OPA policies.
+	// If empty, the policy falls back to its default ("/" -- fail-open for
+	// path checks; SPIFFE and tool authorization still enforce access control).
+	AllowedBasePath string
+}
+
 // OPAEngine handles embedded OPA policy evaluation
 type OPAEngine struct {
 	policyDir    string
+	runtimeCfg   OPAEngineConfig
 	query        *rego.PreparedEvalQuery
 	contextQuery *rego.PreparedEvalQuery // RFA-xwc: query for mcp.context policy
 	mu           sync.RWMutex
@@ -25,11 +36,18 @@ type OPAEngine struct {
 	stopChan     chan struct{}
 }
 
-// NewOPAEngine creates a new embedded OPA engine
-func NewOPAEngine(policyDir string) (*OPAEngine, error) {
+// NewOPAEngine creates a new embedded OPA engine.
+// cfg provides runtime configuration injected into the OPA data store.
+// Pass an empty OPAEngineConfig{} for backward-compatible behavior (policy defaults apply).
+func NewOPAEngine(policyDir string, cfg ...OPAEngineConfig) (*OPAEngine, error) {
+	var runtimeCfg OPAEngineConfig
+	if len(cfg) > 0 {
+		runtimeCfg = cfg[0]
+	}
 	engine := &OPAEngine{
-		policyDir: policyDir,
-		stopChan:  make(chan struct{}),
+		policyDir:  policyDir,
+		runtimeCfg: runtimeCfg,
+		stopChan:   make(chan struct{}),
 	}
 
 	// Load and compile policies
@@ -113,6 +131,19 @@ func (e *OPAEngine) loadPolicies() error {
 					log.Printf("Warning: failed to write data to store for key %s: %v", key, err)
 				}
 			}
+		}
+	}
+
+	// Inject runtime config into the data store as data.config.*
+	// This makes values available to Rego policies via data.config.<key>.
+	// RFA-2jl: allowed_base_path replaces hardcoded path in mcp_policy.rego.
+	if e.runtimeCfg.AllowedBasePath != "" {
+		configData := map[string]interface{}{
+			"allowed_base_path": e.runtimeCfg.AllowedBasePath,
+		}
+		configPath := storage.MustParsePath("/config")
+		if err := storage.WriteOne(ctx, dataStore, storage.AddOp, configPath, configData); err != nil {
+			return fmt.Errorf("failed to write runtime config to OPA data store: %w", err)
 		}
 	}
 
