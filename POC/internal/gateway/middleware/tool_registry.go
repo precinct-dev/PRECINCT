@@ -478,7 +478,19 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", result.Reason),
 				)
-				http.Error(w, fmt.Sprintf("Tool not authorized: %s", result.Reason), http.StatusForbidden)
+				// Map tool registry reasons to specific error codes
+				errCode := ErrRegistryToolUnknown
+				if strings.Contains(result.Reason, "hash_mismatch") {
+					errCode = ErrRegistryHashMismatch
+				}
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           errCode,
+					Message:        fmt.Sprintf("Tool not authorized: %s", result.Reason),
+					Middleware:     "tool_registry_verify",
+					MiddlewareStep: 5,
+					Details:        map[string]any{"tool": toolName, "reason": result.Reason, "alert_level": result.AlertLevel},
+					Remediation:    "Verify the tool is registered and its hash matches the registry.",
+				})
 				return
 			}
 			toolHashVerified = true

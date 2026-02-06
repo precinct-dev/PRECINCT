@@ -421,20 +421,25 @@ func TestCircuitBreakerMiddleware_OpenState_Returns503(t *testing.T) {
 		t.Error("expected next handler NOT to be called when circuit is open")
 	}
 
-	// Verify JSON response body
-	var respBody map[string]interface{}
+	// Verify unified JSON error envelope
+	var respBody GatewayError
 	if err := json.NewDecoder(rec.Body).Decode(&respBody); err != nil {
 		t.Fatalf("failed to decode response body: %v", err)
 	}
 
-	if respBody["error"] != "circuit_breaker_open" {
-		t.Errorf("expected error=circuit_breaker_open, got %v", respBody["error"])
+	if respBody.Code != ErrCircuitOpen {
+		t.Errorf("expected code=%q, got %q", ErrCircuitOpen, respBody.Code)
 	}
-	if respBody["message"] != "upstream temporarily unavailable" {
-		t.Errorf("expected message='upstream temporarily unavailable', got %v", respBody["message"])
+	if respBody.Middleware != "circuit_breaker" {
+		t.Errorf("expected middleware=circuit_breaker, got %q", respBody.Middleware)
 	}
-	if _, exists := respBody["retry_after_seconds"]; !exists {
-		t.Error("expected retry_after_seconds in response")
+	if respBody.MiddlewareStep != 12 {
+		t.Errorf("expected middleware_step=12, got %d", respBody.MiddlewareStep)
+	}
+	if respBody.Details == nil {
+		t.Error("expected details in response")
+	} else if _, exists := respBody.Details["retry_after_seconds"]; !exists {
+		t.Error("expected retry_after_seconds in details")
 	}
 
 	// Verify Retry-After header

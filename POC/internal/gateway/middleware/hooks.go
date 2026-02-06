@@ -30,7 +30,12 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 		// Get SPIFFE ID from context
 		spiffeID := GetSPIFFEID(ctx)
 		if spiffeID == "" {
-			http.Error(w, "Missing SPIFFE ID for token substitution", http.StatusUnauthorized)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
+				Code:           ErrAuthMissingIdentity,
+				Message:        "Missing SPIFFE ID for token substitution",
+				Middleware:     "token_substitution",
+				MiddlewareStep: 13,
+			})
 			return
 		}
 
@@ -80,7 +85,12 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "invalid SPIKE token"),
 				)
-				http.Error(w, fmt.Sprintf("Invalid SPIKE token: %v", err), http.StatusBadRequest)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusBadRequest, GatewayError{
+					Code:           "invalid_spike_token",
+					Message:        fmt.Sprintf("Invalid SPIKE token: %v", err),
+					Middleware:     "token_substitution",
+					MiddlewareStep: 13,
+				})
 				return
 			}
 
@@ -92,7 +102,12 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "token ownership failed"),
 				)
-				http.Error(w, fmt.Sprintf("Token ownership validation failed: %v", err), http.StatusForbidden)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           "token_ownership_failed",
+					Message:        fmt.Sprintf("Token ownership validation failed: %v", err),
+					Middleware:     "token_substitution",
+					MiddlewareStep: 13,
+				})
 				return
 			}
 
@@ -104,7 +119,12 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "token expired"),
 				)
-				http.Error(w, fmt.Sprintf("Token expired: %v", err), http.StatusUnauthorized)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
+					Code:           "token_expired",
+					Message:        fmt.Sprintf("Token expired: %v", err),
+					Middleware:     "token_substitution",
+					MiddlewareStep: 13,
+				})
 				return
 			}
 
@@ -117,7 +137,12 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "token scope failed"),
 				)
-				http.Error(w, fmt.Sprintf("Token scope validation failed: %v", err), http.StatusForbidden)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           "token_scope_failed",
+					Message:        fmt.Sprintf("Token scope validation failed: %v", err),
+					Middleware:     "token_substitution",
+					MiddlewareStep: 13,
+				})
 				return
 			}
 
@@ -130,7 +155,12 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "token redemption failed"),
 				)
-				http.Error(w, fmt.Sprintf("Token redemption failed: %v", err), http.StatusInternalServerError)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusInternalServerError, GatewayError{
+					Code:           "token_redemption_failed",
+					Message:        fmt.Sprintf("Token redemption failed: %v", err),
+					Middleware:     "token_substitution",
+					MiddlewareStep: 13,
+				})
 				return
 			}
 

@@ -476,18 +476,25 @@ func TestRateLimitMiddleware_RateLimitExceeded(t *testing.T) {
 		t.Errorf("expected X-RateLimit-Limit=1, got %s", limit)
 	}
 
-	// Verify JSON response body
-	var respBody map[string]interface{}
+	// Verify unified JSON error envelope
+	var respBody GatewayError
 	if err := json.NewDecoder(rec2.Body).Decode(&respBody); err != nil {
 		t.Fatalf("failed to decode response body: %v", err)
 	}
 
-	if respBody["error"] != "rate_limit_exceeded" {
-		t.Errorf("expected error=rate_limit_exceeded, got %v", respBody["error"])
+	if respBody.Code != ErrRateLimitExceeded {
+		t.Errorf("expected code=%q, got %q", ErrRateLimitExceeded, respBody.Code)
 	}
-
-	if _, exists := respBody["retry_after_seconds"]; !exists {
-		t.Error("expected retry_after_seconds in response")
+	if respBody.Middleware != "rate_limit" {
+		t.Errorf("expected middleware=rate_limit, got %q", respBody.Middleware)
+	}
+	if respBody.MiddlewareStep != 11 {
+		t.Errorf("expected middleware_step=11, got %d", respBody.MiddlewareStep)
+	}
+	if respBody.Details == nil {
+		t.Error("expected details in response")
+	} else if _, exists := respBody.Details["retry_after_seconds"]; !exists {
+		t.Error("expected retry_after_seconds in details")
 	}
 }
 

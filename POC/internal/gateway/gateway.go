@@ -405,11 +405,11 @@ func (g *Gateway) handleUIResourceRead(
 
 	// RFA-j2d.1: Block ui:// resource reads for denied servers BEFORE proxying
 	if !g.checkUIResourceReadAllowed(server, tenant, resourceURI) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"error":  "ui_capability_denied",
-			"detail": "UI resource reads are not permitted for this server/tenant.",
+		middleware.WriteGatewayError(w, r, http.StatusForbidden, middleware.GatewayError{
+			Code:        middleware.ErrUICapabilityDenied,
+			Message:     "UI resource reads are not permitted for this server/tenant.",
+			Middleware:  "ui_capability_gating",
+			Remediation: "Grant UI capabilities for this server/tenant in ui_capability_grants.yaml.",
 		})
 		return
 	}
@@ -432,9 +432,13 @@ func (g *Gateway) handleUIResourceRead(
 
 	if !allowed {
 		// Resource blocked by controls - return error instead of upstream content
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		_ = json.NewEncoder(w).Encode(NewUIResourceBlockedError(reason))
+		middleware.WriteGatewayError(w, r, http.StatusForbidden, middleware.GatewayError{
+			Code:        middleware.ErrUIResourceBlocked,
+			Message:     fmt.Sprintf("UI resource blocked: %s", reason),
+			Middleware:  "ui_resource_controls",
+			Details:     map[string]any{"reason": reason},
+			Remediation: "Ensure the resource passes content-type, size, scan, and hash verification.",
+		})
 		return
 	}
 
