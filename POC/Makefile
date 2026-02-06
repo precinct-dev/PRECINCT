@@ -269,10 +269,18 @@ k8s-local-up: ## Deploy full stack to Docker Desktop K8s via Kustomize overlay
 	@echo "    Checking Gateway..."
 	-kubectl -n gateway rollout status deployment/mcp-security-gateway --timeout=120s 2>/dev/null || \
 		echo "    WARNING: Gateway rollout not yet complete"
+	@echo "    Checking policy-controller webhook..."
+	-kubectl -n cosign-system rollout status deployment/policy-controller-webhook --timeout=60s 2>/dev/null || \
+		echo "    WARNING: policy-controller webhook rollout not yet complete"
 	@echo ""
 	@echo "==> Deployment complete."
 	@echo "    Gateway: http://localhost:30090"
 	@echo "    Health check: curl -s http://localhost:30090/health"
+	@echo ""
+	@echo "    Admission control:"
+	@echo "      OPA Gatekeeper: digest pinning + registry allowlist"
+	@echo "      sigstore/policy-controller: cosign signature verification"
+	@echo "      Dev namespace (dev): exempt from signature verification"
 
 k8s-local-down: ## Tear down all services from Docker Desktop K8s
 	@echo "==> Tearing down local K8s deployment..."

@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------------------
 # Kustomize Local Overlay -- Docker Desktop kubeadm K8s
-# Story: RFA-7bh.1
+# Stories: RFA-7bh.1, RFA-7bh.2
 #
 # Adapts EKS manifests for Docker Desktop's single-node kubeadm cluster.
 # Patches applied:
@@ -11,6 +11,8 @@
 #   - 3-AZ topology -> Single node (1 replica)
 #   - SPIRE k8s_psat node attestor -> join_token attestor
 #   - Reduced resource limits to fit 4 CPU / 8GB RAM
+#   - sigstore/policy-controller for cosign signature verification
+#   - Development namespaces exempt from signature enforcement
 #
 # Minimum hardware: 4 CPU cores, 8GB RAM allocated to Docker Desktop
 #
@@ -32,9 +34,13 @@ resources:
   - ../../spike
   # Observability stack (namespace + network policies)
   - ../../observability
+  # Admission control (OPA Gatekeeper + sigstore/policy-controller)
+  - ../../admission
   # Local-only resources
   - keydb.yaml
   - spire-token-generator.yaml
+  # Development namespace with policy-controller exemption
+  - namespace-dev-exempt.yaml
 
 patches:
   # --------------------------------------------------------------------------
@@ -248,6 +254,133 @@ patches:
       name: spire-register-entries
       namespace: spire-system
     path: patch-spire-registration.yaml
+
+  # --------------------------------------------------------------------------
+  # sigstore/policy-controller: reduced resources for local dev (RFA-7bh.2)
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Deployment
+      name: policy-controller-webhook
+      namespace: cosign-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: policy-controller-webhook
+        namespace: cosign-system
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: policy-webhook
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 32Mi
+                  limits:
+                    cpu: 50m
+                    memory: 64Mi
+
+  # --------------------------------------------------------------------------
+  # policy-controller webhook: Ignore failures for local dev (RFA-7bh.2)
+  #
+  # In production, failurePolicy is Fail (reject if webhook unavailable).
+  # For local dev, set to Ignore so locally-built unsigned images can deploy
+  # when the webhook is starting up or unhealthy.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ValidatingWebhookConfiguration
+      name: policy-controller-validating
+    patch: |
+      apiVersion: admissionregistration.k8s.io/v1
+      kind: ValidatingWebhookConfiguration
+      metadata:
+        name: policy-controller-validating
+      webhooks:
+        - name: policy.sigstore.dev
+          failurePolicy: Ignore
+
+  # --------------------------------------------------------------------------
+  # Namespace labels: opt enforcement namespaces into policy-controller
+  # (RFA-7bh.2)
+  #
+  # The policy-controller webhook only intercepts pods in namespaces
+  # labeled with policy.sigstore.dev/include: "true".
+  #
+  # For local development: enforcement namespaces get the label so the
+  # policy works when signed images are deployed. The "dev" namespace
+  # is excluded so locally-built unsigned images can deploy without
+  # signature verification.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Namespace
+      name: gateway
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: gateway
+        labels:
+          policy.sigstore.dev/include: "true"
+
+  - target:
+      kind: Namespace
+      name: tools
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: tools
+        labels:
+          policy.sigstore.dev/include: "true"
+
+  - target:
+      kind: Namespace
+      name: spike-system
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: spike-system
+        labels:
+          policy.sigstore.dev/include: "true"
+
+  # cosign-system namespace: relax PSS for local dev
+  # (policy-controller webhook container runs as non-root but the
+  # restricted PSS may conflict with seccomp profile on Docker Desktop)
+  - target:
+      kind: Namespace
+      name: cosign-system
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: cosign-system
+        labels:
+          pod-security.kubernetes.io/enforce: baseline
+          pod-security.kubernetes.io/audit: baseline
+          pod-security.kubernetes.io/warn: baseline
+
+  # Gatekeeper excluded namespaces: add cosign-system and dev
+  - target:
+      kind: ConfigMap
+      name: gatekeeper-config
+      namespace: gatekeeper-system
+    patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: gatekeeper-config
+        namespace: gatekeeper-system
+      data:
+        excluded-namespaces: |
+          kube-system
+          kube-public
+          kube-node-lease
+          gatekeeper-system
+          cosign-system
+          dev
 
 commonAnnotations:
   app.kubernetes.io/environment: local
