@@ -13,13 +13,14 @@ import (
 
 // Gateway represents the MCP security gateway
 type Gateway struct {
-	config      *Config
-	proxy       *httputil.ReverseProxy
-	auditor     *middleware.Auditor
-	opa         *middleware.OPAClient
-	registry    *middleware.ToolRegistry
-	dlpScanner  middleware.DLPScanner
-	deepScanner *middleware.DeepScanner
+	config         *Config
+	proxy          *httputil.ReverseProxy
+	auditor        *middleware.Auditor
+	opa            *middleware.OPAClient
+	registry       *middleware.ToolRegistry
+	dlpScanner     middleware.DLPScanner
+	deepScanner    *middleware.DeepScanner
+	sessionContext *middleware.SessionContext
 }
 
 // New creates a new gateway instance
@@ -45,18 +46,20 @@ func New(cfg *Config) (*Gateway, error) {
 	}
 	dlpScanner := middleware.NewBuiltInScanner()
 	deepScanner := middleware.NewDeepScanner(cfg.GroqAPIKey, time.Duration(cfg.DeepScanTimeout)*time.Second)
+	sessionContext := middleware.NewSessionContext()
 
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
 
 	return &Gateway{
-		config:      cfg,
-		proxy:       proxy,
-		auditor:     auditor,
-		opa:         opa,
-		registry:    registry,
-		dlpScanner:  dlpScanner,
-		deepScanner: deepScanner,
+		config:         cfg,
+		proxy:          proxy,
+		auditor:        auditor,
+		opa:            opa,
+		registry:       registry,
+		dlpScanner:     dlpScanner,
+		deepScanner:    deepScanner,
+		sessionContext: sessionContext,
 	}, nil
 }
 
@@ -69,18 +72,20 @@ func (g *Gateway) Handler() http.Handler {
 	// 4. Audit log
 	// 5. Tool registry verify
 	// 6. OPA policy
-	// 7. DLP scanning (after OPA, before session context)
-	// 8. Step-up gating hook (no-op for skeleton)
-	// 9. Token substitution hook (no-op for skeleton)
-	// 10. Deep scan dispatch (async, after step-up gating)
-	// 11. Proxy to upstream
+	// 7. DLP scanning
+	// 8. Session context (RFA-qq0.15)
+	// 9. Step-up gating hook (no-op for skeleton)
+	// 10. Token substitution hook (no-op for skeleton)
+	// 11. Deep scan dispatch (async, after step-up gating)
+	// 12. Proxy to upstream
 
 	handler := g.proxyHandler()
 
 	// Apply middleware in reverse order (innermost first)
-	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)              // 10
-	handler = middleware.TokenSubstitution(handler)                              // 9
-	handler = middleware.StepUpGating(handler)                                   // 8
+	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)              // 11
+	handler = middleware.TokenSubstitution(handler)                              // 10
+	handler = middleware.StepUpGating(handler)                                   // 9
+	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)     // 8
 	handler = middleware.DLPMiddleware(handler, g.dlpScanner)                    // 7
 	handler = middleware.OPAPolicy(handler, g.opa)                               // 6
 	handler = middleware.ToolRegistryVerify(handler, g.registry)                 // 5

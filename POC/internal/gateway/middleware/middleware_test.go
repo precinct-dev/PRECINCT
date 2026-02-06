@@ -23,28 +23,31 @@ func TestMiddlewareChainOrder(t *testing.T) {
 		}
 	}
 
-	// Build chain in expected order
+	// Build chain in expected order per Architecture Section 9.2
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		executionOrder = append(executionOrder, "handler")
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler = track("token_sub")(handler)
-	handler = track("step_up")(handler)
-	handler = track("opa")(handler)
-	handler = track("registry")(handler)
-	handler = track("audit")(handler)
-	handler = track("spiffe")(handler)
-	handler = track("body")(handler)
-	handler = track("size")(handler)
+	// Apply in reverse order (innermost first) - token_sub MUST be last before handler
+	handler = track("token_sub")(handler)    // 13 - LAST before proxy
+	handler = track("deep_scan")(handler)    // 10
+	handler = track("step_up")(handler)      // 9
+	handler = track("dlp")(handler)          // 7
+	handler = track("opa")(handler)          // 6
+	handler = track("registry")(handler)     // 5
+	handler = track("audit")(handler)        // 4
+	handler = track("spiffe")(handler)       // 3
+	handler = track("body")(handler)         // 2
+	handler = track("size")(handler)         // 1
 
 	// Execute request
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString("test"))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	// Verify order
-	expected := []string{"size", "body", "spiffe", "audit", "registry", "opa", "step_up", "token_sub", "handler"}
+	// Verify order - token_sub MUST be last before handler (step 13)
+	expected := []string{"size", "body", "spiffe", "audit", "registry", "opa", "dlp", "step_up", "deep_scan", "token_sub", "handler"}
 	if len(executionOrder) != len(expected) {
 		t.Fatalf("Expected %d middleware, got %d", len(expected), len(executionOrder))
 	}
