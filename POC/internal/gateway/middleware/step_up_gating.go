@@ -571,12 +571,7 @@ func StepUpGating(
 		if !result.Allowed {
 			w.Header().Set("Content-Type", "application/json")
 
-			statusCode := http.StatusForbidden
-			if result.Reason == "guard model unavailable" {
-				statusCode = http.StatusServiceUnavailable
-			}
-
-			w.WriteHeader(statusCode)
+			w.WriteHeader(http.StatusForbidden)
 			_ = json.NewEncoder(w).Encode(map[string]interface{}{
 				"error":      "step_up_gating_denied",
 				"reason":     result.Reason,
