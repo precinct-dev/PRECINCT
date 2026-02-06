@@ -1,0 +1,90 @@
+# ------------------------------------------------------------------------------
+# MCP Server Allow NetworkPolicies
+# Story: RFA-9fv.4
+#
+# Explicit allow rules for the MCP tool server (tools namespace).
+# These rules layer on top of the default-deny policy to permit only the
+# traffic flows required for tool servers to function:
+#
+#   INGRESS:
+#     - From gateway namespace on port 8081 (JSON-RPC requests)
+#       Tool servers can ONLY receive traffic from the gateway -- no direct
+#       access from agents or other namespaces.
+#
+#   EGRESS:
+#     - To kube-dns on port 53 (DNS resolution)
+#     - To SPIRE agent on the host (SPIFFE SVID retrieval)
+#     - To internal CIDRs only (10.0.0.0/8) -- NO public internet access
+#
+# Reference Architecture Section 9.4:
+#   "Tool pods can ONLY receive traffic from the gateway namespace"
+#   "Default-deny egress -- tool pods cannot reach the public internet"
+# ------------------------------------------------------------------------------
+
+# Allow inbound from gateway namespace only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-server-allow-ingress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow inbound ONLY from gateway namespace pods on port 8081
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mcp-security-gateway
+      ports:
+        - protocol: TCP
+          port: 8081
+---
+# Allow tool server egress to DNS and internal services only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-server-allow-egress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server
+  policyTypes:
+    - Egress
+  egress:
+    # Allow egress to kube-dns for DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # Allow egress to internal CIDRs only (no public internet)
+    # This covers internal Kubernetes services, SPIRE agent, etc.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+    - to:
+        - ipBlock:
+            cidr: 172.16.0.0/12
+    - to:
+        - ipBlock:
+            cidr: 192.168.0.0/16

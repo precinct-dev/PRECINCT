@@ -1,0 +1,22 @@
+# ------------------------------------------------------------------------------
+# Gateway RBAC
+# Story: RFA-9fv.4
+#
+# ServiceAccount for the MCP Security Gateway. Used for SPIFFE identity via
+# the SPIRE Agent k8s workload attestor (matches namespace + service account
+# to issue the correct SVID).
+#
+# SPIFFE ID: spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway
+# (Registered in RFA-9fv.3 spire/registration-entries.yaml)
+#
+# The gateway does not need Kubernetes API access beyond its own identity,
+# so no ClusterRole or RoleBinding is required.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-security-gateway
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: mcp-security-gateway
+    app.kubernetes.io/part-of: mcp-security-gateway
