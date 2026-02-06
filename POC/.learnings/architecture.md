@@ -127,3 +127,31 @@
 **Applies to:** All non-Go services or services without Workload API support needing SPIRE certificates
 
 **Source stories:** RFA-8z8.2
+
+---
+
+## [Added from Epic RFA-8jl retro - 2026-02-06]
+
+### GDPR Article 30 ROPA has exactly 7 mandatory categories
+
+**Priority:** Important
+
+**Context:** GDPR Article 30(1) requires exactly 7 categories in ROPA: controller/processor ID, data subject categories, processing categories, purposes, retention periods, technical measures (Art. 32 cross-ref), and third-country transfers. The list is exhaustive in the regulation text.
+
+**Recommendation:** When implementing compliance documentation, work from the regulation text directly, not summaries. For GDPR Art. 30, the 7 categories are non-negotiable and exhaustive.
+
+**Applies to:** All compliance documentation stories, especially GDPR-related
+
+**Source stories:** RFA-w4m
+
+### SPIFFE IDs are pseudonymous identifiers under GDPR
+
+**Priority:** Important
+
+**Context:** SPIFFE IDs are pseudonymous identifiers under GDPR Recital 26 -- not directly personal data, but subject to GDPR if the controller can link them to natural persons.
+
+**Recommendation:** For privacy impact assessments, classify SPIFFE IDs (and similar machine identifiers) as pseudonymous data, not non-personal data. Document this classification in the ROPA.
+
+**Applies to:** All privacy/GDPR stories involving machine identifiers
+
+**Source stories:** RFA-w4m
