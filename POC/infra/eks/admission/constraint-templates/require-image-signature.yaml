@@ -2,25 +2,33 @@
 # ConstraintTemplate: RequireImageSignature
 # Story: RFA-9fv.9
 #
-# Rejects container images that are not signed with a valid cosign signature.
-# Uses Gatekeeper external data provider for cosign signature verification,
-# or validates that images reference a trusted registry with signature metadata.
+# SIGNATURE PREREQUISITE CHECK: Enforces digest-pinned images from allowed
+# registries. This is a PREREQUISITE for cryptographic signature verification,
+# not the verification itself.
 #
-# This template checks:
+# What this policy enforces (Rego-level):
 #   1. Each container image (initContainers + containers) in the pod spec
-#   2. Verifies the image has a valid cosign signature via the configured
-#      verification mechanism
-#   3. Rejects the admission request with a clear error if unsigned
+#      must be from an allowed registry (allowedRegistries parameter)
+#   2. Each image must be pinned by digest (@sha256:...), which is a
+#      prerequisite for any signature verification
+#   3. Rejects the admission request with a clear error if either check fails
 #
-# Integration with cosign verification:
-#   Gatekeeper's external data feature or a cosign-policy-controller webhook
-#   performs the actual cryptographic verification. This template enforces
-#   that the verification annotation is present and valid.
+# What this policy does NOT do:
+#   - Cryptographic cosign signature verification
+#   - Rekor transparency log validation
+#   - OIDC issuer checking
+#
+# PRODUCTION REQUIREMENT: For actual cryptographic signature verification,
+# deploy one of the following IN ADDITION to this policy:
+#   - sigstore/policy-controller webhook (recommended)
+#   - Gatekeeper external data provider calling cosign verify
+#   - Kyverno image verification policy
 #
 # For keyless OIDC signing (as used in CI - see .github/workflows/ci.yaml):
 #   - Images are signed with cosign keyless mode (Fulcio + Rekor)
-#   - Verification checks the Rekor transparency log entry
-#   - The OIDC issuer is validated against allowed issuers
+#   - The sigstore/policy-controller webhook verifies signatures at admission
+#   - This Rego policy ensures the prerequisite format (digest-pinned, allowed
+#     registry) is met before the webhook performs crypto verification
 #
 # Reference Architecture Section 10.5.1: Signature verification
 # ------------------------------------------------------------------------------
@@ -33,8 +41,9 @@ metadata:
     app.kubernetes.io/component: supply-chain-security
   annotations:
     description: >-
-      Requires all container images to have a valid cosign signature.
-      Images without verified signatures are rejected at admission time.
+      Signature prerequisite: requires all container images to be
+      digest-pinned and from allowed registries. Production requires
+      sigstore/policy-controller webhook for cryptographic verification.
 spec:
   crd:
     spec:
