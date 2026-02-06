@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -295,6 +296,286 @@ func TestToolRegistryVerify(t *testing.T) {
 		// Should pass through without error
 		if rec.Code != http.StatusOK {
 			t.Errorf("Expected 200, got %d", rec.Code)
+		}
+	})
+}
+
+// TestToolRegistryVerify_MCPProtocolMethodsPassThrough verifies that MCP protocol-level
+// methods (tools/list, resources/read, ping, etc.) pass through the tool registry
+// middleware without verification. These are part of the MCP protocol itself, not
+// user-defined tools. Bug fix for RFA-rqj.
+func TestToolRegistryVerify_MCPProtocolMethodsPassThrough(t *testing.T) {
+	// Create a registry with NO tools registered.
+	// Protocol methods must pass through even when the registry is empty.
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: file_read
+    description: "Read files"
+    hash: "abc123"
+    risk_level: low
+`
+	os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	nextCalled := false
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}), registry)
+
+	// All MCP protocol methods that must pass through
+	protocolMethods := []string{
+		"tools/list",
+		"tools/call",
+		"resources/read",
+		"resources/list",
+		"prompts/list",
+		"prompts/get",
+		"sampling/createMessage",
+		"initialize",
+		"ping",
+	}
+
+	for _, method := range protocolMethods {
+		t.Run("ProtocolMethod_"+method, func(t *testing.T) {
+			nextCalled = false
+			body := []byte(fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":{},"id":1}`, method))
+			req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+			ctx := WithRequestBody(req.Context(), body)
+			req = req.WithContext(ctx)
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("Protocol method %q should pass through, got status %d", method, rec.Code)
+			}
+			if !nextCalled {
+				t.Errorf("Protocol method %q should call next handler", method)
+			}
+		})
+	}
+}
+
+// TestToolRegistryVerify_NotificationsPassThrough verifies that notification methods
+// (notifications/*) pass through the tool registry middleware. These are MCP protocol
+// notifications and should never be subject to tool verification.
+func TestToolRegistryVerify_NotificationsPassThrough(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools: []
+`
+	os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	nextCalled := false
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}), registry)
+
+	notificationMethods := []string{
+		"notifications/initialized",
+		"notifications/cancelled",
+		"notifications/progress",
+		"notifications/tools/list_changed",
+		"notifications/resources/list_changed",
+	}
+
+	for _, method := range notificationMethods {
+		t.Run("Notification_"+method, func(t *testing.T) {
+			nextCalled = false
+			body := []byte(fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":{},"id":1}`, method))
+			req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+			ctx := WithRequestBody(req.Context(), body)
+			req = req.WithContext(ctx)
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("Notification method %q should pass through, got status %d", method, rec.Code)
+			}
+			if !nextCalled {
+				t.Errorf("Notification method %q should call next handler", method)
+			}
+		})
+	}
+}
+
+// TestToolRegistryVerify_NonProtocolMethodsStillVerified verifies that non-protocol
+// methods (user-defined tools) are still subject to tool registry verification
+// after the protocol method allowlist is applied.
+func TestToolRegistryVerify_NonProtocolMethodsStillVerified(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: file_read
+    description: "Read files"
+    hash: "abc123"
+    risk_level: low
+`
+	os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), registry)
+
+	// Registered tool should still be allowed
+	t.Run("RegisteredToolAllowed", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"file_read","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Registered tool should be allowed, got %d", rec.Code)
+		}
+	})
+
+	// Unregistered non-protocol method should still be blocked
+	t.Run("UnregisteredToolBlocked", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"evil_tool","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Unregistered tool should be blocked, got %d", rec.Code)
+		}
+	})
+
+	// Methods that look similar to protocol methods but aren't
+	t.Run("FakeProtocolMethodBlocked", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/evil","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Fake protocol method 'tools/evil' should be blocked, got %d", rec.Code)
+		}
+	})
+}
+
+// TestToolRegistryVerify_ProtocolMethodIntegration exercises the ToolRegistryVerify
+// middleware end-to-end through the full HTTP handler chain (BodyCapture -> ToolRegistryVerify).
+// This is an integration test with no mocks - it uses real middleware instances.
+func TestToolRegistryVerify_ProtocolMethodIntegration(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: registered_tool
+    description: "A registered tool"
+    hash: "hash123"
+    risk_level: low
+`
+	os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	// Build a real middleware chain: BodyCapture -> ToolRegistryVerify -> handler
+	// This exercises the full integration path with no mocks.
+	var handlerReached bool
+	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerReached = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Wrap with ToolRegistryVerify, then BodyCapture (outer -> inner execution order)
+	chain := BodyCapture(ToolRegistryVerify(innerHandler, registry))
+
+	// Test: protocol method passes through the full chain
+	t.Run("ProtocolMethodThroughFullChain", func(t *testing.T) {
+		handlerReached = false
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+
+		chain.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200 for protocol method through full chain, got %d", rec.Code)
+		}
+		if !handlerReached {
+			t.Error("Protocol method should reach the inner handler through full middleware chain")
+		}
+	})
+
+	// Test: registered tool passes through the full chain
+	t.Run("RegisteredToolThroughFullChain", func(t *testing.T) {
+		handlerReached = false
+		body := []byte(`{"jsonrpc":"2.0","method":"registered_tool","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+
+		chain.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200 for registered tool through full chain, got %d", rec.Code)
+		}
+		if !handlerReached {
+			t.Error("Registered tool should reach the inner handler through full middleware chain")
+		}
+	})
+
+	// Test: unregistered tool is blocked in the full chain
+	t.Run("UnregisteredToolBlockedInFullChain", func(t *testing.T) {
+		handlerReached = false
+		body := []byte(`{"jsonrpc":"2.0","method":"unknown_tool","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+
+		chain.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Expected 403 for unregistered tool through full chain, got %d", rec.Code)
+		}
+		if handlerReached {
+			t.Error("Unregistered tool should NOT reach the inner handler")
+		}
+	})
+
+	// Test: notification passes through the full chain
+	t.Run("NotificationThroughFullChain", func(t *testing.T) {
+		handlerReached = false
+		body := []byte(`{"jsonrpc":"2.0","method":"notifications/tools/list_changed","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+
+		chain.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200 for notification through full chain, got %d", rec.Code)
+		}
+		if !handlerReached {
+			t.Error("Notification should reach the inner handler through full middleware chain")
 		}
 	})
 }
