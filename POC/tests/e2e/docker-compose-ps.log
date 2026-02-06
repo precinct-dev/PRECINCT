@@ -1,0 +1,7 @@
+NAME                   IMAGE                                         COMMAND                  SERVICE                CREATED          STATUS                    PORTS
+mcp-security-gateway   mcp-security-gateway:latest                   "/app/gateway"           mcp-security-gateway   29 minutes ago   Up 29 minutes (healthy)   0.0.0.0:9090->9090/tcp, [::]:9090->9090/tcp
+otel-collector         otel/opentelemetry-collector-contrib:latest   "/otelcol-contrib --…"   otel-collector         7 hours ago      Up 7 hours                0.0.0.0:4317-4318->4317-4318/tcp, [::]:4317-4318->4317-4318/tcp
+phoenix                arizephoenix/phoenix:latest                   "/usr/bin/python3.11…"   phoenix                7 hours ago      Up 7 hours (healthy)      0.0.0.0:6006->6006/tcp, [::]:6006->6006/tcp
+spire-agent            spire-agent-wrapper:latest                    "/entrypoint-wrapper…"   spire-agent            7 hours ago      Up 7 hours (healthy)      
+spire-server           ghcr.io/spiffe/spire-server:1.10.0            "/opt/spire/bin/spir…"   spire-server           7 hours ago      Up 7 hours (healthy)      0.0.0.0:8080-8081->8080-8081/tcp, [::]:8080-8081->8080-8081/tcp
+tool-registry          golang:1.23                                   "sleep infinity"         tool-registry          7 hours ago      Up 7 hours                
