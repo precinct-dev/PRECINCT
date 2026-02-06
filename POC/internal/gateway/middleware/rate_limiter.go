@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"math"
 	"net/http"
@@ -291,7 +290,12 @@ func RateLimitMiddleware(next http.Handler, limiter *RateLimiter) http.Handler {
 				attribute.String("mcp.result", "denied"),
 				attribute.String("mcp.reason", "missing SPIFFE ID"),
 			)
-			http.Error(w, "Unauthorized: Missing SPIFFE ID", http.StatusUnauthorized)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
+				Code:           ErrAuthMissingIdentity,
+				Message:        "Missing SPIFFE ID for rate limiting",
+				Middleware:     "rate_limit",
+				MiddlewareStep: 11,
+			})
 			return
 		}
 
@@ -322,14 +326,18 @@ func RateLimitMiddleware(next http.Handler, limiter *RateLimiter) http.Handler {
 				attribute.String("mcp.result", "denied"),
 				attribute.String("mcp.reason", "rate limit exceeded"),
 			)
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusTooManyRequests)
-
-			resp := map[string]interface{}{
-				"error":               "rate_limit_exceeded",
-				"retry_after_seconds": retryAfter,
-			}
-			_ = json.NewEncoder(w).Encode(resp)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusTooManyRequests, GatewayError{
+				Code:           ErrRateLimitExceeded,
+				Message:        "Rate limit exceeded",
+				Middleware:     "rate_limit",
+				MiddlewareStep: 11,
+				Details: map[string]any{
+					"retry_after_seconds": retryAfter,
+					"limit":               limiter.rpm,
+					"remaining":           0,
+				},
+				Remediation: fmt.Sprintf("Wait %d seconds before retrying.", retryAfter),
+			})
 			return
 		}
 
