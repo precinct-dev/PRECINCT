@@ -1,6 +1,8 @@
-// Tool Registry Implementation - RFA-qq0.5
+// Tool Registry Implementation - RFA-qq0.5, RFA-qq0.19
 // Implements hash-based verification of MCP tools to detect poisoning attacks.
 // Loads tool definitions from config/tool-registry.yaml and verifies SHA-256 hashes.
+// RFA-qq0.19: Adds poisoning pattern detection using regex patterns to identify
+// malicious instructions embedded in tool descriptions.
 package middleware
 
 import (
@@ -10,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"regexp"
 
 	"gopkg.in/yaml.v3"
 )
@@ -20,6 +23,39 @@ type MCPRequest struct {
 	Method  string                 `json:"method"`
 	Params  map[string]interface{} `json:"params"`
 	ID      interface{}            `json:"id"`
+}
+
+// VerifyResult represents the result of tool verification
+type VerifyResult struct {
+	Allowed    bool
+	Reason     string
+	Action     string // ActionAllow or ActionBlock
+	AlertLevel string // AlertInfo, AlertWarning, AlertCritical
+}
+
+// Action constants for verification results
+const (
+	ActionAllow = "allow"
+	ActionBlock = "block"
+)
+
+// Alert level constants
+const (
+	AlertInfo     = "info"
+	AlertWarning  = "warning"
+	AlertCritical = "critical"
+)
+
+// Poisoning patterns to detect (RFA-qq0.19)
+// These patterns identify malicious instructions embedded in tool descriptions
+var poisoningPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`(?i)<IMPORTANT>.*?</IMPORTANT>`),
+	regexp.MustCompile(`(?i)<SYSTEM>.*?</SYSTEM>`),
+	regexp.MustCompile(`(?i)<!--.*?-->`),
+	regexp.MustCompile(`(?i)before\s+using\s+this\s+tool.*?first`),
+	regexp.MustCompile(`(?i)ignore\s+(previous|all|prior)\s+instructions`),
+	regexp.MustCompile(`(?i)you\s+must\s+(always|first|never)`),
+	regexp.MustCompile(`(?i)send.*?(email|http|webhook|upload).*?to`),
 }
 
 // ToolDefinition represents a tool from the registry config
@@ -83,6 +119,7 @@ func (tr *ToolRegistry) loadConfig(configPath string) error {
 }
 
 // VerifyTool checks if a tool is allowed and matches expected hash
+// Returns (allowed, reason/hash)
 func (tr *ToolRegistry) VerifyTool(toolName string, providedHash string) (bool, string) {
 	toolDef, exists := tr.tools[toolName]
 	if !exists {
@@ -95,6 +132,69 @@ func (tr *ToolRegistry) VerifyTool(toolName string, providedHash string) (bool, 
 	}
 
 	return true, toolDef.Hash
+}
+
+// VerifyToolWithPoisoningCheck checks tool authorization, hash, and poisoning patterns (RFA-qq0.19)
+// Returns VerifyResult with action and alert level
+func (tr *ToolRegistry) VerifyToolWithPoisoningCheck(toolName string, providedHash string) VerifyResult {
+	// Check if tool exists
+	toolDef, exists := tr.tools[toolName]
+	if !exists {
+		return VerifyResult{
+			Allowed:    false,
+			Reason:     "tool_not_found",
+			Action:     ActionBlock,
+			AlertLevel: AlertWarning,
+		}
+	}
+
+	// Check for poisoning patterns in description (RFA-qq0.19)
+	if matchedPattern := containsPoisoningPattern(toolDef.Description); matchedPattern != "" {
+		return VerifyResult{
+			Allowed:    false,
+			Reason:     fmt.Sprintf("poisoning_pattern_detected: %s", matchedPattern),
+			Action:     ActionBlock,
+			AlertLevel: AlertCritical,
+		}
+	}
+
+	// Verify hash if provided
+	if providedHash != "" && providedHash != toolDef.Hash {
+		return VerifyResult{
+			Allowed:    false,
+			Reason:     "hash_mismatch",
+			Action:     ActionBlock,
+			AlertLevel: AlertWarning,
+		}
+	}
+
+	return VerifyResult{
+		Allowed:    true,
+		Reason:     "verified",
+		Action:     ActionAllow,
+		AlertLevel: AlertInfo,
+	}
+}
+
+// containsPoisoningPattern checks if text contains any known poisoning patterns (RFA-qq0.19)
+// Returns the matched pattern name or empty string if no match
+func containsPoisoningPattern(text string) string {
+	patternNames := []string{
+		"<IMPORTANT> tag",
+		"<SYSTEM> tag",
+		"HTML comment",
+		"before using...first instruction",
+		"ignore instructions command",
+		"you must command",
+		"send to external destination",
+	}
+
+	for i, pattern := range poisoningPatterns {
+		if pattern.MatchString(text) {
+			return patternNames[i]
+		}
+	}
+	return ""
 }
 
 // GetToolDefinition returns the tool definition for a given tool name
@@ -119,7 +219,7 @@ func ComputeHash(description string, inputSchema map[string]interface{}) string 
 	return hex.EncodeToString(hash[:])
 }
 
-// ToolRegistryVerify middleware verifies tool authorization with hash checking
+// ToolRegistryVerify middleware verifies tool authorization with hash checking and poisoning detection (RFA-qq0.19)
 func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Get request body from context
@@ -150,6 +250,8 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 		}
 
 		// Verify tool if we extracted a name
+		ctx := r.Context()
+		toolHashVerified := false
 		if toolName != "" {
 			// Extract provided hash from params if present
 			providedHash := ""
@@ -159,13 +261,23 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 				}
 			}
 
-			allowed, reason := registry.VerifyTool(toolName, providedHash)
-			if !allowed {
-				http.Error(w, fmt.Sprintf("Tool not authorized: %s", reason), http.StatusForbidden)
+			// Use new verification with poisoning check (RFA-qq0.19)
+			result := registry.VerifyToolWithPoisoningCheck(toolName, providedHash)
+			if !result.Allowed {
+				// Log critical alert for poisoning detection
+				if result.AlertLevel == AlertCritical {
+					// TODO: Emit audit event with critical alert level
+					// For now, log to stdout (audit logging is middleware step 4)
+					fmt.Printf("[CRITICAL] Poisoning pattern detected in tool %s: %s\n", toolName, result.Reason)
+				}
+				http.Error(w, fmt.Sprintf("Tool not authorized: %s", result.Reason), http.StatusForbidden)
 				return
 			}
+			toolHashVerified = true
 		}
 
-		next.ServeHTTP(w, r)
+		// Store verification status in context for audit (RFA-qq0.13)
+		ctx = WithToolHashVerified(ctx, toolHashVerified)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
