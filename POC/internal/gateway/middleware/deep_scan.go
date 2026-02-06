@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -34,15 +36,41 @@ type DeepScanner struct {
 	auditor      *Auditor
 }
 
+// Chunking constants for Prompt Guard 2 model constraints.
+// The 512-token context window is a model limit, not configurable.
+const (
+	// maxChunkTokens is the maximum tokens per chunk (model context window).
+	maxChunkTokens = 512
+	// overlapTokens is the overlap between consecutive chunks to catch
+	// injection patterns spanning chunk boundaries.
+	overlapTokens = 64
+	// maxChunkConcurrency is the maximum number of concurrent Groq API calls
+	// for chunk classification, to avoid overwhelming the rate limit.
+	maxChunkConcurrency = 3
+	// tokensPerWord is the approximate token-to-word ratio for whitespace-based
+	// token estimation. Exact tokenization is unnecessary for chunking boundaries.
+	tokensPerWord = 1.3
+)
+
+// ChunkResult contains the classification result for a single chunk.
+type ChunkResult struct {
+	ChunkIndex         int
+	InjectionScore     float64
+	JailbreakScore     float64
+	Error              error
+}
+
 // DeepScanResult contains the results of a deep scan
 type DeepScanResult struct {
 	RequestID      string
 	TraceID        string
 	Timestamp      time.Time
-	InjectionScore float64 // 0.0 to 1.0
-	JailbreakScore float64 // 0.0 to 1.0
+	InjectionScore float64 // 0.0 to 1.0 (highest across all chunks)
+	JailbreakScore float64 // 0.0 to 1.0 (highest across all chunks)
 	ModelUsed      string
 	LatencyMs      int64
+	ChunkCount     int            // number of chunks (1 for short payloads)
+	ChunkResults   []ChunkResult  // per-chunk results (nil for single-chunk)
 	Error          error
 }
 
@@ -138,13 +166,17 @@ func (d *DeepScanner) Scan(ctx context.Context, content string, traceID string) 
 	return d.scan(ctx, content, traceID)
 }
 
-// scan performs the actual deep scan using Groq Prompt Guard 2
+// scan performs the actual deep scan using Groq Prompt Guard 2.
+// For payloads exceeding 512 estimated tokens, the content is split into
+// overlapping chunks and classified in parallel. The highest probability
+// across all chunks is used (any flagged chunk flags the entire request).
 func (d *DeepScanner) scan(ctx context.Context, content string, traceID string) DeepScanResult {
 	start := time.Now()
 	result := DeepScanResult{
-		TraceID:   traceID,
-		Timestamp: start,
-		ModelUsed: "meta-llama/llama-prompt-guard-2-86m",
+		TraceID:    traceID,
+		Timestamp:  start,
+		ModelUsed:  "meta-llama/llama-prompt-guard-2-86m",
+		ChunkCount: 1,
 	}
 
 	// If no API key, report error (caller determines fail behavior)
@@ -153,16 +185,39 @@ func (d *DeepScanner) scan(ctx context.Context, content string, traceID string) 
 		return result
 	}
 
-	// Call Groq API for Prompt Guard 2 classification
-	pgResult, err := d.classifyWithPromptGuard(ctx, content)
+	tokenCount := estimateTokens(content)
+
+	if tokenCount <= maxChunkTokens {
+		// AC5: Short payloads -- single API call, no chunking overhead
+		pgResult, err := d.classifyWithPromptGuard(ctx, content)
+		if err != nil {
+			result.Error = err
+			result.LatencyMs = time.Since(start).Milliseconds()
+			return result
+		}
+
+		result.InjectionScore = pgResult.InjectionProbability
+		result.JailbreakScore = pgResult.JailbreakProbability
+		result.LatencyMs = time.Since(start).Milliseconds()
+		return result
+	}
+
+	// AC1: Split into overlapping chunks for large payloads
+	chunks := chunkContent(content, maxChunkTokens, overlapTokens)
+	result.ChunkCount = len(chunks)
+
+	// AC2/AC3/AC4: Classify chunks in parallel, aggregate results
+	pgResult, chunkResults, err := d.classifyChunksParallel(ctx, chunks)
 	if err != nil {
 		result.Error = err
+		result.ChunkResults = chunkResults
 		result.LatencyMs = time.Since(start).Milliseconds()
 		return result
 	}
 
 	result.InjectionScore = pgResult.InjectionProbability
 	result.JailbreakScore = pgResult.JailbreakProbability
+	result.ChunkResults = chunkResults
 	result.LatencyMs = time.Since(start).Milliseconds()
 
 	return result
@@ -292,6 +347,138 @@ func parsePromptGuardContent(content string) (PromptGuardResponse, error) {
 	}, nil
 }
 
+// estimateTokens returns an approximate token count for a string using
+// whitespace-based word counting with a 1.3 tokens/word multiplier.
+// This is intentionally approximate -- exact tokenization is unnecessary
+// for chunking boundary decisions.
+func estimateTokens(content string) int {
+	words := len(strings.Fields(content))
+	return int(math.Ceil(float64(words) * tokensPerWord))
+}
+
+// chunkContent splits content into overlapping chunks sized for the
+// Prompt Guard 2 context window. Each chunk contains at most maxTokens
+// estimated tokens, with overlapToks token overlap between consecutive
+// chunks to ensure injection patterns spanning boundaries are detected.
+//
+// Returns a single-element slice if content fits in one chunk.
+func chunkContent(content string, maxToks int, overlapToks int) []string {
+	words := strings.Fields(content)
+	if len(words) == 0 {
+		return []string{""}
+	}
+
+	// Convert token limits to word counts
+	maxWords := int(float64(maxToks) / tokensPerWord)
+	if maxWords < 1 {
+		maxWords = 1
+	}
+	overlapWords := int(float64(overlapToks) / tokensPerWord)
+	if overlapWords < 0 {
+		overlapWords = 0
+	}
+
+	// Step size: how many NEW words each chunk advances
+	step := maxWords - overlapWords
+	if step < 1 {
+		step = 1
+	}
+
+	// If all words fit in one chunk, return as-is
+	if len(words) <= maxWords {
+		return []string{strings.Join(words, " ")}
+	}
+
+	var chunks []string
+	for start := 0; start < len(words); start += step {
+		end := start + maxWords
+		if end > len(words) {
+			end = len(words)
+		}
+		chunks = append(chunks, strings.Join(words[start:end], " "))
+		// If we've reached the end of words, stop
+		if end == len(words) {
+			break
+		}
+	}
+
+	return chunks
+}
+
+// classifyChunksParallel classifies multiple content chunks against the
+// Groq Prompt Guard 2 API with bounded concurrency. Returns the aggregated
+// result: the highest injection/jailbreak probability across all chunks.
+// If ANY chunk returns an error, the entire classification fails.
+func (d *DeepScanner) classifyChunksParallel(ctx context.Context, chunks []string) (PromptGuardResponse, []ChunkResult, error) {
+	chunkResults := make([]ChunkResult, len(chunks))
+
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxChunkConcurrency)
+
+	// Track first error for early reporting
+	var firstErr error
+	var errOnce sync.Once
+
+	for i, chunk := range chunks {
+		wg.Add(1)
+		go func(idx int, content string) {
+			defer wg.Done()
+
+			// Acquire semaphore slot (bounded concurrency)
+			select {
+			case sem <- struct{}{}:
+				defer func() { <-sem }()
+			case <-ctx.Done():
+				chunkResults[idx] = ChunkResult{
+					ChunkIndex: idx,
+					Error:      ctx.Err(),
+				}
+				errOnce.Do(func() { firstErr = ctx.Err() })
+				return
+			}
+
+			pgResult, err := d.classifyWithPromptGuard(ctx, content)
+			if err != nil {
+				chunkResults[idx] = ChunkResult{
+					ChunkIndex: idx,
+					Error:      err,
+				}
+				errOnce.Do(func() { firstErr = err })
+				return
+			}
+
+			chunkResults[idx] = ChunkResult{
+				ChunkIndex:     idx,
+				InjectionScore: pgResult.InjectionProbability,
+				JailbreakScore: pgResult.JailbreakProbability,
+			}
+		}(i, chunk)
+	}
+
+	wg.Wait()
+
+	// Check for any errors
+	if firstErr != nil {
+		return PromptGuardResponse{}, chunkResults, firstErr
+	}
+
+	// Aggregate: highest probability across all chunks
+	var maxInjection, maxJailbreak float64
+	for _, cr := range chunkResults {
+		if cr.InjectionScore > maxInjection {
+			maxInjection = cr.InjectionScore
+		}
+		if cr.JailbreakScore > maxJailbreak {
+			maxJailbreak = cr.JailbreakScore
+		}
+	}
+
+	return PromptGuardResponse{
+		InjectionProbability: maxInjection,
+		JailbreakProbability: maxJailbreak,
+	}, chunkResults, nil
+}
+
 // DeepScanMiddleware creates middleware for deep scanning of requests flagged
 // by DLP as potential_injection.
 //
@@ -361,10 +548,30 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 	})
 }
 
-// emitAuditEvent records a guard model decision in the audit log (AC7)
+// emitAuditEvent records a guard model decision in the audit log.
+// When chunks are used, the audit event includes chunk_count and
+// per-chunk probabilities for forensic analysis.
 func (d *DeepScanner) emitAuditEvent(ctx context.Context, result DeepScanResult, reason string) {
 	if d.auditor == nil {
 		return
+	}
+
+	auditResult := fmt.Sprintf(
+		"reason=%s injection_probability=%.4f jailbreak_probability=%.4f model=%s latency_ms=%d chunk_count=%d",
+		reason, result.InjectionScore, result.JailbreakScore, result.ModelUsed, result.LatencyMs, result.ChunkCount,
+	)
+
+	// Append per-chunk probabilities when chunking was used
+	if len(result.ChunkResults) > 0 {
+		var chunkDetails []string
+		for _, cr := range result.ChunkResults {
+			if cr.Error != nil {
+				chunkDetails = append(chunkDetails, fmt.Sprintf("chunk_%d=error(%s)", cr.ChunkIndex, cr.Error.Error()))
+			} else {
+				chunkDetails = append(chunkDetails, fmt.Sprintf("chunk_%d=inj:%.4f/jb:%.4f", cr.ChunkIndex, cr.InjectionScore, cr.JailbreakScore))
+			}
+		}
+		auditResult += " chunks=[" + strings.Join(chunkDetails, ",") + "]"
 	}
 
 	d.auditor.Log(AuditEvent{
@@ -373,10 +580,7 @@ func (d *DeepScanner) emitAuditEvent(ctx context.Context, result DeepScanResult,
 		TraceID:    result.TraceID,
 		SPIFFEID:   GetSPIFFEID(ctx),
 		Action:     "deep_scan",
-		Result: fmt.Sprintf(
-			"reason=%s injection_probability=%.4f jailbreak_probability=%.4f model=%s latency_ms=%d",
-			reason, result.InjectionScore, result.JailbreakScore, result.ModelUsed, result.LatencyMs,
-		),
+		Result:     auditResult,
 	})
 }
 
