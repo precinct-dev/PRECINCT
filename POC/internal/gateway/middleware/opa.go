@@ -221,7 +221,12 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 				attribute.String("mcp.result", "error"),
 				attribute.String("mcp.reason", err.Error()),
 			)
-			http.Error(w, fmt.Sprintf("Policy evaluation failed: %v", err), http.StatusInternalServerError)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusInternalServerError, GatewayError{
+				Code:           "authz_evaluation_error",
+				Message:        fmt.Sprintf("Policy evaluation failed: %v", err),
+				Middleware:     "opa_policy",
+				MiddlewareStep: 6,
+			})
 			return
 		}
 
@@ -239,7 +244,14 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		ctx = WithOPADecisionID(ctx, opaDecisionID)
 
 		if !allowed {
-			http.Error(w, fmt.Sprintf("Policy denied: %s", reason), http.StatusForbidden)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+				Code:           ErrAuthzPolicyDenied,
+				Message:        fmt.Sprintf("Policy denied: %s", reason),
+				Middleware:     "opa_policy",
+				MiddlewareStep: 6,
+				Details:        map[string]any{"reason": reason},
+				Remediation:    "Check that the SPIFFE ID has a grant for the requested tool and path.",
+			})
 			return
 		}
 

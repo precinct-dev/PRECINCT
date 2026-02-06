@@ -339,7 +339,13 @@ func SessionContextMiddleware(next http.Handler, sessionCtx *SessionContext) htt
 				attribute.String("mcp.reason", "exfiltration pattern detected"),
 			)
 			// Block with 403
-			http.Error(w, "Forbidden: Exfiltration pattern detected", http.StatusForbidden)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+				Code:           ErrExfiltrationDetected,
+				Message:        "Exfiltration pattern detected",
+				Middleware:     "session_context",
+				MiddlewareStep: 8,
+				Remediation:    "Sensitive data access followed by external transmission is not permitted.",
+			})
 			return
 		}
 

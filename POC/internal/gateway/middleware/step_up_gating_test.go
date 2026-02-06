@@ -389,12 +389,19 @@ func TestStepUpGating_StepUp_DisallowedDestination(t *testing.T) {
 		t.Errorf("Expected 403, got %d", rr.Code)
 	}
 
-	// Verify the response body contains the reason
-	var resp map[string]interface{}
-	_ = json.NewDecoder(rr.Body).Decode(&resp)
-	reason, _ := resp["reason"].(string)
-	if reason != "destination not allowed" {
-		t.Errorf("Expected reason 'destination not allowed', got %q", reason)
+	// Verify the unified JSON error envelope
+	var resp GatewayError
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode JSON error envelope: %v", err)
+	}
+	if resp.Code != ErrStepUpDestinationBlocked {
+		t.Errorf("Expected code %q, got %q", ErrStepUpDestinationBlocked, resp.Code)
+	}
+	if resp.Middleware != "step_up_gating" {
+		t.Errorf("Expected middleware 'step_up_gating', got %q", resp.Middleware)
+	}
+	if resp.MiddlewareStep != 9 {
+		t.Errorf("Expected middleware_step 9, got %d", resp.MiddlewareStep)
 	}
 }
 
@@ -503,12 +510,20 @@ func TestStepUpGating_ApprovalRequired_CriticalTool(t *testing.T) {
 		t.Errorf("Expected 403, got %d", rr.Code)
 	}
 
-	var resp map[string]interface{}
-	_ = json.NewDecoder(rr.Body).Decode(&resp)
-	reason, _ := resp["reason"].(string)
-	// Should be either "human approval required" or "risk score exceeds maximum threshold"
-	if reason != "human approval required" && reason != "risk score exceeds maximum threshold - denied by default" {
-		t.Errorf("Expected approval required or deny reason, got %q", reason)
+	// Verify the unified JSON error envelope
+	var resp GatewayError
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("Failed to decode JSON error envelope: %v", err)
+	}
+	// Should be either approval_required or deny code
+	if resp.Code != ErrStepUpApprovalRequired && resp.Code != ErrStepUpDenied {
+		t.Errorf("Expected code %q or %q, got %q", ErrStepUpApprovalRequired, ErrStepUpDenied, resp.Code)
+	}
+	if resp.Middleware != "step_up_gating" {
+		t.Errorf("Expected middleware 'step_up_gating', got %q", resp.Middleware)
+	}
+	if resp.MiddlewareStep != 9 {
+		t.Errorf("Expected middleware_step 9, got %d", resp.MiddlewareStep)
 	}
 }
 
@@ -691,16 +706,32 @@ func TestStepUpGating_ResponseBodyContainsRiskBreakdown(t *testing.T) {
 		t.Fatalf("Expected 403, got %d", rr.Code)
 	}
 
-	var resp map[string]interface{}
+	// Verify unified JSON error envelope
+	var resp GatewayError
 	bodyBytes, _ := io.ReadAll(rr.Body)
 	if err := json.Unmarshal(bodyBytes, &resp); err != nil {
 		t.Fatalf("Failed to parse response body: %v", err)
 	}
 
-	// Verify risk_breakdown is present
-	breakdown, ok := resp["risk_breakdown"].(map[string]interface{})
+	// Verify error code is a step-up related code
+	if resp.Code != ErrStepUpApprovalRequired && resp.Code != ErrStepUpDenied {
+		t.Errorf("Expected step-up error code, got %q", resp.Code)
+	}
+	if resp.Middleware != "step_up_gating" {
+		t.Errorf("Expected middleware 'step_up_gating', got %q", resp.Middleware)
+	}
+	if resp.MiddlewareStep != 9 {
+		t.Errorf("Expected middleware_step 9, got %d", resp.MiddlewareStep)
+	}
+
+	// Verify risk_breakdown is in details
+	if resp.Details == nil {
+		t.Fatal("Expected details in response body")
+	}
+
+	breakdown, ok := resp.Details["risk_breakdown"].(map[string]interface{})
 	if !ok {
-		t.Fatal("Expected risk_breakdown in response body")
+		t.Fatal("Expected risk_breakdown in details")
 	}
 
 	// Verify all 4 dimensions are present
@@ -710,14 +741,14 @@ func TestStepUpGating_ResponseBodyContainsRiskBreakdown(t *testing.T) {
 		}
 	}
 
-	// Verify risk_score is present
-	if _, ok := resp["risk_score"]; !ok {
-		t.Error("Expected risk_score in response body")
+	// Verify risk_score is in details
+	if _, ok := resp.Details["risk_score"]; !ok {
+		t.Error("Expected risk_score in details")
 	}
 
-	// Verify gate is present
-	if _, ok := resp["gate"]; !ok {
-		t.Error("Expected gate in response body")
+	// Verify gate is in details
+	if _, ok := resp.Details["gate"]; !ok {
+		t.Error("Expected gate in details")
 	}
 }
 

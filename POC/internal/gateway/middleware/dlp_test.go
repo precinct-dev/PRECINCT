@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -479,10 +480,19 @@ func TestDLPMiddleware_BlocksCredentials(t *testing.T) {
 		t.Errorf("Expected status 403, got %d", w.Code)
 	}
 
-	// Verify error message contains "Forbidden"
-	body := w.Body.String()
-	if len(body) == 0 || body[:9] != "Forbidden" {
-		t.Errorf("Expected Forbidden message, got: %s", body)
+	// Verify unified JSON error envelope
+	var ge GatewayError
+	if err := json.NewDecoder(w.Body).Decode(&ge); err != nil {
+		t.Fatalf("Failed to decode JSON error envelope: %v", err)
+	}
+	if ge.Code != ErrDLPCredentialsDetected {
+		t.Errorf("Expected code %q, got %q", ErrDLPCredentialsDetected, ge.Code)
+	}
+	if ge.Middleware != "dlp_scan" {
+		t.Errorf("Expected middleware 'dlp_scan', got %q", ge.Middleware)
+	}
+	if ge.MiddlewareStep != 7 {
+		t.Errorf("Expected middleware_step 7, got %d", ge.MiddlewareStep)
 	}
 }
 

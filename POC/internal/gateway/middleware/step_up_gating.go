@@ -623,20 +623,32 @@ func StepUpGating(
 
 		// Block if not allowed
 		if !result.Allowed {
-			w.Header().Set("Content-Type", "application/json")
-
-			w.WriteHeader(http.StatusForbidden)
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"error":      "step_up_gating_denied",
-				"reason":     result.Reason,
-				"gate":       result.Gate,
-				"risk_score": result.TotalScore,
-				"risk_breakdown": map[string]int{
-					"impact":        riskScore.Impact,
-					"reversibility": riskScore.Reversibility,
-					"exposure":      riskScore.Exposure,
-					"novelty":       riskScore.Novelty,
+			// Map gate to specific error code
+			errCode := ErrStepUpDenied
+			switch {
+			case result.Gate == "approval":
+				errCode = ErrStepUpApprovalRequired
+			case result.GuardResult != nil && result.GuardResult.Blocked:
+				errCode = ErrStepUpGuardBlocked
+			case strings.Contains(result.Reason, "destination not allowed"):
+				errCode = ErrStepUpDestinationBlocked
+			}
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+				Code:           errCode,
+				Message:        result.Reason,
+				Middleware:     "step_up_gating",
+				MiddlewareStep: 9,
+				Details: map[string]any{
+					"gate":       result.Gate,
+					"risk_score": result.TotalScore,
+					"risk_breakdown": map[string]int{
+						"impact":        riskScore.Impact,
+						"reversibility": riskScore.Reversibility,
+						"exposure":      riskScore.Exposure,
+						"novelty":       riskScore.Novelty,
+					},
 				},
+				Remediation: "Reduce risk score or obtain step-up approval.",
 			})
 			return
 		}

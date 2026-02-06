@@ -37,7 +37,13 @@ func BodyCapture(next http.Handler) http.Handler {
 		if r.Body != nil {
 			bodyBytes, err := io.ReadAll(r.Body)
 			if err != nil {
-				http.Error(w, "Failed to read request body", http.StatusBadRequest)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusBadRequest, GatewayError{
+					Code:           ErrRequestTooLarge,
+					Message:        "Failed to read request body",
+					Middleware:     "body_capture",
+					MiddlewareStep: 2,
+					Remediation:    "Reduce the request body size or check for network issues.",
+				})
 				return
 			}
 			_ = r.Body.Close()

@@ -565,7 +565,13 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "guard model unavailable - fail closed"),
 				)
-				http.Error(w, "deepscan_unavailable_fail_closed", http.StatusServiceUnavailable)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusServiceUnavailable, GatewayError{
+					Code:           ErrDeepScanUnavailableFailClosed,
+					Message:        "Guard model unavailable and fallback mode is fail_closed",
+					Middleware:     "deep_scan_dispatch",
+					MiddlewareStep: 10,
+					Remediation:    "Retry when the guard model service is available, or switch fallback to fail_open.",
+				})
 				return
 			}
 			// AC6: fail_open -- allow the request, audit event already emitted

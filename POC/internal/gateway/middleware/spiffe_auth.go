@@ -34,13 +34,25 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 			// Dev mode: read from header (Phase 1 behavior preserved)
 			spiffeID = r.Header.Get("X-SPIFFE-ID")
 			if spiffeID == "" {
-				http.Error(w, "Missing X-SPIFFE-ID header", http.StatusUnauthorized)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
+					Code:           ErrAuthMissingIdentity,
+					Message:        "Missing X-SPIFFE-ID header",
+					Middleware:     "spiffe_auth",
+					MiddlewareStep: 3,
+					Remediation:    "Include a valid X-SPIFFE-ID header in the request.",
+				})
 				return
 			}
 
 			// Basic validation: must start with spiffe://
 			if !strings.HasPrefix(spiffeID, "spiffe://") {
-				http.Error(w, "Invalid SPIFFE ID format", http.StatusUnauthorized)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
+					Code:           ErrAuthInvalidIdentity,
+					Message:        "Invalid SPIFFE ID format",
+					Middleware:     "spiffe_auth",
+					MiddlewareStep: 3,
+					Remediation:    "SPIFFE ID must start with spiffe:// scheme.",
+				})
 				return
 			}
 		} else {
@@ -50,7 +62,13 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 			// from the URI SAN (Subject Alternative Name) of the peer certificate.
 			spiffeID = ExtractSPIFFEIDFromTLS(r)
 			if spiffeID == "" {
-				http.Error(w, "No valid SPIFFE ID in client certificate", http.StatusUnauthorized)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
+					Code:           ErrAuthMissingIdentity,
+					Message:        "No valid SPIFFE ID in client certificate",
+					Middleware:     "spiffe_auth",
+					MiddlewareStep: 3,
+					Remediation:    "Present a valid client certificate with a spiffe:// URI SAN.",
+				})
 				return
 			}
 		}

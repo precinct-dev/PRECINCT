@@ -298,7 +298,13 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
 				attribute.String("mcp.result", "denied"),
 				attribute.String("mcp.reason", "credentials detected"),
 			)
-			http.Error(w, "Forbidden: Request contains sensitive credentials", http.StatusForbidden)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+				Code:           ErrDLPCredentialsDetected,
+				Message:        "Request contains sensitive credentials",
+				Middleware:     "dlp_scan",
+				MiddlewareStep: 7,
+				Remediation:    "Remove credentials from the request body before retrying.",
+			})
 			return
 		}
 
