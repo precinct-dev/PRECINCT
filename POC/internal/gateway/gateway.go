@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -395,9 +394,6 @@ func (g *Gateway) extractMCPMethodAndParams(ctx context.Context) (string, map[st
 	return req.Method, req.Params
 }
 
-// Note: isUIResourceRequest and extractResourceURI have been replaced by
-// MCPRequestInfo.IsUIResource() and MCPRequestInfo.ResourceURI() (RFA-j2d.6).
-
 // dataHandleDereferenceHandler returns approved views of handle-ized data (RFA-qq0.16)
 // POST /data/dereference with JSON body: {"handle_ref": "<ref>"}
 // Validates:
@@ -484,39 +480,6 @@ func (g *Gateway) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(health)
-}
-
-// applyUICapabilityGating processes a tools/list response through UI capability gating.
-// RFA-j2d.1: Called from the response processing path for tools/list responses.
-// RFA-j2d.8: Emits UI audit events via EmitUIEvent for hash chain integration.
-//
-// This method delegates to UICapabilityGating.ApplyUICapabilityGating and emits
-// structured UI audit events for any gating decisions made.
-//
-// Parameters:
-//   - responseBody: the raw JSON-RPC response body from upstream
-//   - server: the MCP server name
-//   - tenant: the tenant identifier
-//
-// Returns the processed response body with _meta.ui stripped as appropriate.
-func (g *Gateway) applyUICapabilityGating(responseBody []byte, server, tenant string) []byte {
-	processed, events, err := g.uiCapabilityGating.ApplyUICapabilityGating(responseBody, server, tenant)
-	if err != nil {
-		log.Printf("[ERROR] UI capability gating failed: %v", err)
-		return responseBody
-	}
-
-	// RFA-j2d.8: Emit structured UI audit events via EmitUIEvent
-	for _, evt := range events {
-		g.auditor.EmitUIEvent(middleware.UIAuditEventParams{
-			EventType: evt.EventType,
-			UI: &middleware.UIAuditData{
-				CapabilityGrantMode: evt.Mode,
-			},
-		})
-	}
-
-	return processed
 }
 
 // checkUIResourceReadAllowed checks whether a ui:// resource read is permitted.
