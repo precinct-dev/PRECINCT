@@ -24,6 +24,18 @@ allow_context if {
     not session_is_high_risk
 }
 
+# Allow sensitive content with valid step-up authorization
+# Per Section 10.15.3: sensitive content requires step-up gating
+# Step-up token must be present AND session must NOT be high-risk
+allow_context if {
+    input.context.source == "external"
+    input.context.validated == true
+    input.context.classification == "sensitive"
+    input.context.handle != ""
+    not session_is_high_risk
+    input.step_up_token != ""
+}
+
 # Check if session is flagged as high-risk
 # Session flags is an object/set; "high_risk" being present means high-risk
 session_is_high_risk if {
@@ -44,6 +56,15 @@ deny_reason := "content_classified_sensitive" if {
     input.context.source == "external"
     input.context.validated == true
     input.context.classification == "sensitive"
+    input.step_up_token == ""
+}
+
+deny_reason := "sensitive_requires_step_up_high_risk" if {
+    input.context.source == "external"
+    input.context.validated == true
+    input.context.classification == "sensitive"
+    input.step_up_token != ""
+    session_is_high_risk
 }
 
 deny_reason := "missing_content_handle" if {

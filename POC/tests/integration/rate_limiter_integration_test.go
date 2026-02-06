@@ -6,41 +6,11 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"os"
 	"strconv"
 	"testing"
 	"time"
 )
-
-var (
-	gatewayURL = getEnvOrDefault("GATEWAY_URL", "http://localhost:9090")
-)
-
-// Helper functions
-
-func waitForService(url string, timeout time.Duration) error {
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		resp, err := http.Get(url)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode < 500 {
-				return nil
-			}
-		}
-		time.Sleep(500 * time.Millisecond)
-	}
-	return fmt.Errorf("service %s not ready after %v", url, timeout)
-}
-
-func getEnvOrDefault(key, defaultValue string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
-	}
-	return defaultValue
-}
 
 // TestRateLimiterIntegration verifies rate limiting behavior against running compose stack
 // This test exercises rate limiting with real API calls, no mocks

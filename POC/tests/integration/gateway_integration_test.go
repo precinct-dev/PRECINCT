@@ -11,12 +11,6 @@ import (
 	"time"
 )
 
-// Integration test configuration
-var (
-	opaURL          = getEnvOrDefault("OPA_URL", "http://localhost:8181")
-	toolRegistryURL = getEnvOrDefault("TOOL_REGISTRY_URL", "http://localhost:8082")
-)
-
 // TestGatewayHealth verifies gateway health endpoint
 func TestGatewayHealth(t *testing.T) {
 	// Wait for gateway to be ready

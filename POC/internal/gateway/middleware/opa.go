@@ -112,8 +112,9 @@ type OPAEvaluator interface {
 // ContextPolicyInput represents input to the OPA context injection policy (mcp.context)
 // RFA-xwc: Step 7 of the mandatory validation pipeline (Section 10.15.1)
 type ContextPolicyInput struct {
-	Context ContextInput        `json:"context"`
-	Session ContextSessionInput `json:"session"`
+	Context     ContextInput        `json:"context"`
+	Session     ContextSessionInput `json:"session"`
+	StepUpToken string              `json:"step_up_token"` // Non-empty when step-up approval was obtained for sensitive content
 }
 
 // ContextInput represents the external context metadata for policy evaluation
