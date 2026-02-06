@@ -1,0 +1,26 @@
+# ------------------------------------------------------------------------------
+# SPIKE Nexus Service
+# Story: RFA-9fv.3
+#
+# ClusterIP service exposing SPIKE Nexus HTTPS API on port 8443.
+# Other workloads (gateway, tools) connect to this service to:
+#   - Request short-lived tokens (with their SVID as proof of identity)
+#   - Validate tokens presented by callers
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: spike-nexus
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-nexus
+    app.kubernetes.io/part-of: spike
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: spike-nexus
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+      protocol: TCP
