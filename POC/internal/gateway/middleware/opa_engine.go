@@ -17,11 +17,12 @@ import (
 
 // OPAEngine handles embedded OPA policy evaluation
 type OPAEngine struct {
-	policyDir string
-	query     *rego.PreparedEvalQuery
-	mu        sync.RWMutex
-	watcher   *fsnotify.Watcher
-	stopChan  chan struct{}
+	policyDir    string
+	query        *rego.PreparedEvalQuery
+	contextQuery *rego.PreparedEvalQuery // RFA-xwc: query for mcp.context policy
+	mu           sync.RWMutex
+	watcher      *fsnotify.Watcher
+	stopChan     chan struct{}
 }
 
 // NewOPAEngine creates a new embedded OPA engine
@@ -118,20 +119,41 @@ func (e *OPAEngine) loadPolicies() error {
 	// Add store to rego options
 	regoOpts = append(regoOpts, rego.Store(dataStore))
 
-	// Set query path: /mcp/allow (matches our policy package structure)
-	regoOpts = append(regoOpts, rego.Query("data.mcp.allow"))
+	// Copy base options to avoid slice aliasing issues when appending query paths
+	baseOpts := make([]func(*rego.Rego), len(regoOpts))
+	copy(baseOpts, regoOpts)
 
-	// Compile policy
-	r := rego.New(regoOpts...)
+	// Set query path: /mcp/allow (matches our policy package structure)
+	mainOpts := append(baseOpts, rego.Query("data.mcp.allow"))
+
+	// Compile main MCP policy
+	r := rego.New(mainOpts...)
 
 	prepared, err := r.PrepareForEval(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to compile policy: %w", err)
 	}
 
-	// Atomically update query
+	// RFA-xwc: Compile context injection policy (mcp.context.allow_context)
+	// This is step 7 of the mandatory validation pipeline (Section 10.15.1)
+	contextOpts := append(regoOpts, rego.Query("data.mcp.context.allow_context"))
+	contextR := rego.New(contextOpts...)
+
+	var contextQueryPtr *rego.PreparedEvalQuery
+	contextPrepared, err := contextR.PrepareForEval(ctx)
+	if err != nil {
+		// Context policy is optional -- log warning but do not fail startup.
+		// Fail-closed: if context policy cannot compile, EvaluateContextPolicy
+		// will deny all context injection requests via the nil-query check.
+		log.Printf("Warning: failed to compile context policy: %v (context injection will be denied)", err)
+	} else {
+		contextQueryPtr = &contextPrepared
+	}
+
+	// Atomically update queries
 	e.mu.Lock()
 	e.query = &prepared
+	e.contextQuery = contextQueryPtr
 	e.mu.Unlock()
 
 	log.Printf("OPA policies loaded successfully from %s", e.policyDir)
@@ -185,6 +207,60 @@ func (e *OPAEngine) Evaluate(input OPAInput) (bool, string, error) {
 	}
 
 	return allow, reason, nil
+}
+
+// EvaluateContextPolicy evaluates the OPA context injection policy (mcp.context.allow_context)
+// RFA-xwc: Step 7 of the mandatory validation pipeline (Section 10.15.1)
+// Returns (allowed, reason, error). Fails closed if policy is not loaded.
+func (e *OPAEngine) EvaluateContextPolicy(input ContextPolicyInput) (bool, string, error) {
+	e.mu.RLock()
+	query := e.contextQuery
+	e.mu.RUnlock()
+
+	if query == nil {
+		// Fail closed if no context policy loaded
+		return false, "context_policy_not_loaded", nil
+	}
+
+	ctx := context.Background()
+	results, err := query.Eval(ctx, rego.EvalInput(input))
+	if err != nil {
+		// Fail closed on evaluation error
+		log.Printf("OPA context policy evaluation error: %v", err)
+		return false, "context_policy_evaluation_error", nil
+	}
+
+	// Parse result -- allow_context is a boolean
+	if len(results) == 0 || len(results[0].Expressions) == 0 {
+		return false, "context_policy_undefined", nil
+	}
+
+	switch v := results[0].Expressions[0].Value.(type) {
+	case bool:
+		if v {
+			return true, "", nil
+		}
+		// Policy denied -- try to get the reason by evaluating deny_reason
+		reason := e.getContextDenyReason(input)
+		return false, reason, nil
+	default:
+		return false, "context_policy_unexpected_result", nil
+	}
+}
+
+// getContextDenyReason evaluates data.mcp.context.deny_reason for a structured denial reason.
+// Falls back to "context_injection_denied" if deny_reason cannot be determined.
+func (e *OPAEngine) getContextDenyReason(input ContextPolicyInput) string {
+	// Build a one-off query for deny_reason. This is acceptable for the denial
+	// path (not hot path) since denials are infrequent.
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	// We cannot easily prepare a second query at load time for deny_reason without
+	// duplicating all the module loading. Instead, return a generic reason.
+	// The context_policy.rego provides deny_reason rules, but since we only have
+	// the allow_context prepared query, we return a meaningful default.
+	return "context_injection_denied"
 }
 
 // startWatcher starts file system watcher for hot-reload

@@ -109,6 +109,33 @@ type OPAEvaluator interface {
 	Evaluate(input OPAInput) (bool, string, error)
 }
 
+// ContextPolicyInput represents input to the OPA context injection policy (mcp.context)
+// RFA-xwc: Step 7 of the mandatory validation pipeline (Section 10.15.1)
+type ContextPolicyInput struct {
+	Context ContextInput        `json:"context"`
+	Session ContextSessionInput `json:"session"`
+}
+
+// ContextInput represents the external context metadata for policy evaluation
+type ContextInput struct {
+	Source         string `json:"source"`         // "external" for fetched content
+	Validated      bool   `json:"validated"`      // true if steps 1-6 passed
+	Classification string `json:"classification"` // DLP classification result (e.g., "clean", "sensitive", "pii")
+	Handle         string `json:"handle"`         // UUID content_ref handle
+}
+
+// ContextSessionInput represents session data for context policy evaluation
+// Uses a map for flags so OPA can check input.session.flags["high_risk"]
+type ContextSessionInput struct {
+	Flags map[string]bool `json:"flags"`
+}
+
+// ContextPolicyEvaluator interface for context injection policy evaluation
+// RFA-xwc: Separated from OPAEvaluator because input shape is different
+type ContextPolicyEvaluator interface {
+	EvaluateContextPolicy(input ContextPolicyInput) (bool, string, error)
+}
+
 // OPAPolicy middleware enforces OPA authorization
 func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
