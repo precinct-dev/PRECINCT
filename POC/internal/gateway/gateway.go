@@ -407,8 +407,10 @@ func (g *Gateway) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 // applyUICapabilityGating processes a tools/list response through UI capability gating.
 // RFA-j2d.1: Called from the response processing path for tools/list responses.
+// RFA-j2d.8: Emits UI audit events via EmitUIEvent for hash chain integration.
+//
 // This method delegates to UICapabilityGating.ApplyUICapabilityGating and emits
-// audit events for any gating decisions made.
+// structured UI audit events for any gating decisions made.
 //
 // Parameters:
 //   - responseBody: the raw JSON-RPC response body from upstream
@@ -423,12 +425,13 @@ func (g *Gateway) applyUICapabilityGating(responseBody []byte, server, tenant st
 		return responseBody
 	}
 
-	// Emit audit events for gating decisions
+	// RFA-j2d.8: Emit structured UI audit events via EmitUIEvent
 	for _, evt := range events {
-		g.auditor.Log(middleware.AuditEvent{
-			Action: evt.EventType,
-			Result: fmt.Sprintf("server=%s tenant=%s tool=%s mode=%s reason=%s",
-				evt.Server, evt.Tenant, evt.ToolName, evt.Mode, evt.Reason),
+		g.auditor.EmitUIEvent(middleware.UIAuditEventParams{
+			EventType: evt.EventType,
+			UI: &middleware.UIAuditData{
+				CapabilityGrantMode: evt.Mode,
+			},
 		})
 	}
 
@@ -437,15 +440,19 @@ func (g *Gateway) applyUICapabilityGating(responseBody []byte, server, tenant st
 
 // checkUIResourceReadAllowed checks whether a ui:// resource read is permitted.
 // RFA-j2d.1: Called from the response processing path for resources/read of ui:// URIs.
+// RFA-j2d.8: Emits UI audit events via EmitUIEvent for hash chain integration.
 // Returns true if the read should proceed, false if it should be blocked with 403.
 func (g *Gateway) checkUIResourceReadAllowed(server, tenant, resourceURI string) bool {
 	allowed, event := g.uiCapabilityGating.CheckUIResourceReadAllowed(server, tenant, resourceURI)
 
 	if event != nil {
-		g.auditor.Log(middleware.AuditEvent{
-			Action: event.EventType,
-			Result: fmt.Sprintf("server=%s tenant=%s mode=%s reason=%s uri=%s",
-				event.Server, event.Tenant, event.Mode, event.Reason, resourceURI),
+		// RFA-j2d.8: Emit structured UI audit event
+		g.auditor.EmitUIEvent(middleware.UIAuditEventParams{
+			EventType: event.EventType,
+			UI: &middleware.UIAuditData{
+				ResourceURI:         resourceURI,
+				CapabilityGrantMode: event.Mode,
+			},
 		})
 	}
 
