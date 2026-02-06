@@ -112,7 +112,8 @@ services:
       - "4317:4317"  # OTLP gRPC receiver
       - "4318:4318"  # OTLP HTTP receiver
     depends_on:
-      - phoenix
+      phoenix:
+        condition: service_healthy
     networks:
       - agentic-net
     # Health provided by health_check extension on :13133 (configured in otel-collector.yaml).
