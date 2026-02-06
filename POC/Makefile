@@ -1,4 +1,4 @@
-.PHONY: help up down build test test-integration lint demo-walking-skeleton logs clean register-spire
+.PHONY: help up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register
 
 # Default target
 help: ## Show this help message
@@ -95,3 +95,15 @@ register-spire: ## Run SPIRE registration script to register workload entries
 	docker compose exec -T spire-server /bin/bash < scripts/register-spire-entries.sh
 	@echo ""
 	@echo "SPIRE registration complete"
+
+tool-register: ## Register a new MCP tool (RFA-fu1). Usage: make tool-register TOOL_NAME=name TOOL_DESCRIPTION="desc" TOOL_SCHEMA='{"type":"object",...}'
+	@if [ -z "$(TOOL_NAME)" ]; then echo "ERROR: TOOL_NAME is required"; echo "Usage: make tool-register TOOL_NAME=name TOOL_DESCRIPTION=\"desc\" TOOL_SCHEMA='{\"type\":\"object\"}'"; exit 1; fi
+	@if [ -z "$(TOOL_DESCRIPTION)" ]; then echo "ERROR: TOOL_DESCRIPTION is required"; exit 1; fi
+	@if [ -z "$(TOOL_SCHEMA)" ]; then echo "ERROR: TOOL_SCHEMA is required"; exit 1; fi
+	@go run scripts/tool_register/main.go \
+		--name "$(TOOL_NAME)" \
+		--description "$(TOOL_DESCRIPTION)" \
+		--schema '$(TOOL_SCHEMA)' \
+		$(if $(RISK_LEVEL),--risk-level "$(RISK_LEVEL)") \
+		$(if $(ALLOWED_DESTINATIONS),--allowed-destinations "$(ALLOWED_DESTINATIONS)") \
+		$(if $(filter true,$(REQUIRES_STEP_UP)),--requires-step-up)
