@@ -1,0 +1,32 @@
+# ------------------------------------------------------------------------------
+# S3 MCP Tool Server ConfigMap
+# Story: RFA-9fv.5
+#
+# Configuration for the S3 MCP tool server's destination allowlist.
+# The ALLOWED_BUCKETS environment variable defines which S3 buckets and
+# prefixes the server may access.
+#
+# Format: "bucket1:prefix1,bucket2:prefix2"
+# - Each entry is "bucket:prefix" separated by commas
+# - Prefix restricts access to objects with that key prefix
+# - Omitting the prefix (just "bucket") allows the entire bucket
+#
+# Security: This is the enforcement point for destination allowlisting.
+# Requests for buckets/prefixes not in this list are rejected at the
+# application layer BEFORE any S3 API call is made.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: s3-mcp-server-config
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: s3-mcp-server
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: configuration
+data:
+  # Allowlist of S3 buckets and prefixes this tool server may access.
+  # Update these values to match your deployment's S3 bucket structure.
+  ALLOWED_BUCKETS: "agentic-poc-data:documents/,agentic-poc-data:reports/"
+  # AWS region for S3 API calls
+  AWS_REGION: "us-east-1"

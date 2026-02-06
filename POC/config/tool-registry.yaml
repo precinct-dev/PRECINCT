@@ -100,6 +100,50 @@ tools:
     allowed_paths:
       - "${ALLOWED_BASE_PATH}/**"
 
+  # S3 List Objects - S3 bucket listing (RFA-9fv.5)
+  - name: "s3_list_objects"
+    description: "List objects in an S3 bucket with allowed prefix"
+    hash: "8e007a4ef7ffb625b72e43f04febb0f7409435f9551018b6dbb3d3858fcef0ea"  # SHA-256 (RFA-9fv.5)
+    input_schema:
+      type: "object"
+      required: ["bucket", "prefix"]
+      properties:
+        bucket:
+          type: "string"
+          description: "S3 bucket name"
+        prefix:
+          type: "string"
+          description: "Object key prefix"
+        max_keys:
+          type: "integer"
+          description: "Max objects to return"
+          default: 100
+    allowed_destinations:
+      - "*.s3.amazonaws.com"
+      - "*.s3.*.amazonaws.com"
+    risk_level: "low"
+    requires_step_up: false
+
+  # S3 Get Object - S3 object read (RFA-9fv.5)
+  - name: "s3_get_object"
+    description: "Read an object from an S3 bucket with allowed prefix"
+    hash: "c2fd4dfceb57d856cdf0bdf9d50d64798dae998d5e107b28220f2fea76c7f7f4"  # SHA-256 (RFA-9fv.5)
+    input_schema:
+      type: "object"
+      required: ["bucket", "key"]
+      properties:
+        bucket:
+          type: "string"
+          description: "S3 bucket name"
+        key:
+          type: "string"
+          description: "Object key"
+    allowed_destinations:
+      - "*.s3.amazonaws.com"
+      - "*.s3.*.amazonaws.com"
+    risk_level: "low"
+    requires_step_up: false
+
 # Hash computation reference:
 # For each tool, the hash is computed as:
 # SHA-256(description + canonical_json(input_schema))
