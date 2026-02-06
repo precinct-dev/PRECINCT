@@ -70,12 +70,9 @@ lint: ## Run linting for Go and Python code
 	@echo ""
 	@echo "Linting complete"
 
-demo-walking-skeleton: ## Run the walking skeleton demo (placeholder)
+demo-walking-skeleton: ## Run the walking skeleton demo (RFA-qq0.13)
 	@echo "==> Running walking skeleton demo..."
-	@echo "    [PLACEHOLDER] Walking skeleton demo not yet implemented"
-	@echo "    This will demonstrate end-to-end flow from agent -> gateway -> tool"
-	@echo ""
-	@echo "Demo complete (placeholder)"
+	@bash scripts/demo-walking-skeleton.sh
 
 logs: ## Tail gateway audit logs
 	@echo "==> Tailing MCP Security Gateway logs..."
