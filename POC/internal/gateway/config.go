@@ -25,6 +25,8 @@ type Config struct {
 	CircuitResetTimeout     int // seconds in Open before trying Half-Open
 	CircuitSuccessThreshold int // consecutive successes in Half-Open before closing
 	HandleTTL               int // TTL in seconds for response firewall data handles (default 300)
+	DestinationsConfigPath  string // Path to destinations allowlist YAML
+	RiskThresholdsPath      string // Path to risk thresholds YAML
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -111,6 +113,8 @@ func ConfigFromEnv() *Config {
 		CircuitResetTimeout:     circuitResetTimeout,
 		CircuitSuccessThreshold: circuitSuccessThreshold,
 		HandleTTL:               handleTTL,
+		DestinationsConfigPath:  getEnvOrDefault("DESTINATIONS_CONFIG_PATH", "/config/destinations.yaml"),
+		RiskThresholdsPath:      getEnvOrDefault("RISK_THRESHOLDS_PATH", "/config/risk_thresholds.yaml"),
 	}
 }
 
