@@ -1,0 +1,89 @@
+# ------------------------------------------------------------------------------
+# Kustomize Production Overlay
+# Story: RFA-9fv.6
+#
+# Production environment configuration:
+#   - 3 replicas for gateway (HA)
+#   - 2 replicas for MCP server
+#   - Structured logging with audit enabled
+#   - Production image tags (promoted from staging via promote.yaml)
+#   - Increased resource limits
+#   - Pod disruption budgets for availability
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+  # Production-only resources
+  - gateway-pdb.yaml
+  - mcp-server-pdb.yaml
+
+images:
+  - name: mcp-security-gateway
+    newName: ghcr.io/OWNER/agentic-ref-arch/mcp-security-gateway
+    newTag: prod  # mcp-security-gateway
+  - name: python  # placeholder MCP server image
+    newName: python
+    newTag: "3.12-slim"
+
+patches:
+  # Gateway: 3 replicas, structured logging, audit, higher resources
+  - target:
+      kind: Deployment
+      name: mcp-security-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-security-gateway
+        namespace: gateway
+      spec:
+        replicas: 3
+        template:
+          spec:
+            containers:
+              - name: mcp-security-gateway
+                env:
+                  - name: LOG_LEVEL
+                    value: "info"
+                  - name: LOG_FORMAT
+                    value: "json"
+                  - name: AUDIT_ENABLED
+                    value: "true"
+                resources:
+                  requests:
+                    cpu: 250m
+                    memory: 256Mi
+                  limits:
+                    cpu: "1"
+                    memory: 512Mi
+
+  # MCP Server: 2 replicas, higher resources
+  - target:
+      kind: Deployment
+      name: mcp-server
+      namespace: tools
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-server
+        namespace: tools
+      spec:
+        replicas: 2
+        template:
+          spec:
+            containers:
+              - name: mcp-server
+                resources:
+                  requests:
+                    cpu: 200m
+                    memory: 256Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+
+commonAnnotations:
+  app.kubernetes.io/environment: production
