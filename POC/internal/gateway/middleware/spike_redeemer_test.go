@@ -9,6 +9,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 // TestSPIKENexusRedeemer_SuccessfulRedemption tests that the redeemer
@@ -369,5 +374,133 @@ func TestTokenSubstitutionFallbackToPOC(t *testing.T) {
 	// POC redeemer returns "secret-value-for-<ref>"
 	if !strings.Contains(upstreamBody, "secret-value-for-abc123") {
 		t.Errorf("POC fallback did not substitute correctly. Got: %s", upstreamBody)
+	}
+}
+
+// ---------- RFA-m6j.3: Trace context propagation tests ----------
+
+// setupTestPropagator installs a TracerProvider and W3C TraceContext propagator
+// for testing trace context injection on SPIKE Nexus requests.
+func setupTestPropagator(t *testing.T) (*tracetest.InMemoryExporter, func()) {
+	t.Helper()
+	exporter := tracetest.NewInMemoryExporter()
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSyncer(exporter),
+	)
+	prevTP := otel.GetTracerProvider()
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+
+	return exporter, func() {
+		_ = tp.Shutdown(context.Background())
+		otel.SetTracerProvider(prevTP)
+		otel.SetTextMapPropagator(prevProp)
+	}
+}
+
+// TestSPIKENexusRedeemer_InjectsTraceparent verifies that outbound requests
+// to SPIKE Nexus contain the traceparent header from the gateway's span (AC2).
+func TestSPIKENexusRedeemer_InjectsTraceparent(t *testing.T) {
+	exporter, teardown := setupTestPropagator(t)
+	defer teardown()
+
+	var receivedTraceparent string
+
+	nexusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedTraceparent = r.Header.Get("Traceparent")
+		resp := spikeSecretResponse{
+			Data: map[string]string{"value": "test-secret"},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer nexusServer.Close()
+
+	redeemer := NewSPIKENexusRedeemerWithClient(nexusServer.URL, nexusServer.Client())
+
+	// Create a span to provide trace context
+	tracer := otel.Tracer("test")
+	ctx, span := tracer.Start(context.Background(), "gateway.token_substitution")
+
+	token := &SPIKEToken{Ref: "test-key"}
+	secret, err := redeemer.RedeemSecret(ctx, token)
+	span.End()
+
+	if err != nil {
+		t.Fatalf("RedeemSecret() unexpected error: %v", err)
+	}
+	if secret.Value != "test-secret" {
+		t.Errorf("Expected secret 'test-secret', got %q", secret.Value)
+	}
+
+	// Verify traceparent was injected
+	if receivedTraceparent == "" {
+		t.Fatal("Expected traceparent header on SPIKE Nexus request, got empty")
+	}
+
+	// Verify W3C format: version-traceid-parentid-flags
+	parts := strings.Split(receivedTraceparent, "-")
+	if len(parts) != 4 {
+		t.Fatalf("traceparent format invalid: expected 4 parts, got %d: %q", len(parts), receivedTraceparent)
+	}
+
+	// Extract trace_id from traceparent and compare with gateway span
+	propagatedTraceID := parts[1]
+
+	spans := exporter.GetSpans()
+	var gatewayTraceID string
+	for _, s := range spans {
+		if s.Name == "gateway.token_substitution" {
+			gatewayTraceID = s.SpanContext.TraceID().String()
+			break
+		}
+	}
+	if gatewayTraceID == "" {
+		t.Fatal("Gateway span 'gateway.token_substitution' not found in exporter")
+	}
+
+	// AC4: Same trace_id correlates gateway and SPIKE Nexus spans
+	if propagatedTraceID != gatewayTraceID {
+		t.Errorf("Trace ID mismatch: propagated=%q, gateway span=%q", propagatedTraceID, gatewayTraceID)
+	}
+
+	t.Logf("SPIKE Nexus traceparent: %s (trace_id matches gateway span)", receivedTraceparent)
+}
+
+// TestSPIKENexusRedeemer_NoSpanContext_NoTraceparent verifies graceful behavior
+// when no span context exists (e.g., OTel not configured).
+func TestSPIKENexusRedeemer_NoSpanContext_NoTraceparent(t *testing.T) {
+	// Register the propagator but do NOT create a span
+	prevProp := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.TraceContext{})
+	defer otel.SetTextMapPropagator(prevProp)
+
+	var receivedTraceparent string
+
+	nexusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedTraceparent = r.Header.Get("Traceparent")
+		resp := spikeSecretResponse{
+			Data: map[string]string{"value": "test-secret"},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer nexusServer.Close()
+
+	redeemer := NewSPIKENexusRedeemerWithClient(nexusServer.URL, nexusServer.Client())
+
+	// No span in context
+	token := &SPIKEToken{Ref: "test-key"}
+	_, err := redeemer.RedeemSecret(context.Background(), token)
+	if err != nil {
+		t.Fatalf("RedeemSecret() unexpected error: %v", err)
+	}
+
+	// Without an active span, no traceparent should be injected
+	if receivedTraceparent != "" {
+		t.Errorf("Expected no traceparent without active span, got: %q", receivedTraceparent)
 	}
 }
