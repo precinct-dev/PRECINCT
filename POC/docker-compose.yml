@@ -79,26 +79,56 @@ services:
     # Privileged mode required for Docker socket access
     privileged: true
 
-  # SPIKE Nexus - Token-based authorization gateway
-  # Temporarily disabled - placeholder for future implementation
-  # spike-nexus:
-  #   image: spike/nexus:latest
-  #   container_name: spike-nexus
-  #   hostname: spike-nexus
-  #   environment:
-  #     - SPIKE_MODE=token
-  #     - SPIKE_TOKEN_ISSUER=https://spike.ist
-  #     - LOG_LEVEL=debug
-  #   ports:
-  #     - "8443:8443"  # HTTPS API
-  #   networks:
-  #     - agentic-net
-  #   healthcheck:
-  #     test: ["CMD", "wget", "--spider", "-q", "-k", "https://localhost:8443/health"]
-  #     interval: 10s
-  #     timeout: 5s
-  #     retries: 5
+  # SPIKE Nexus - Late-binding secrets vault with SPIFFE mTLS (RFA-a2y.1)
+  # Provides token-based secret redemption so agents never see raw credentials.
+  # Docker Compose Tier 1: in-memory root key (lost on restart, acceptable for POC per ADR-001).
+  spike-nexus:
+    image: ghcr.io/spiffe/spike-nexus:0.8.0
+    container_name: spike-nexus
+    hostname: spike-nexus
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+    ports:
+      - "8443:8443"  # HTTPS API
+    environment:
+      - SPIKE_NEXUS_MODE=token
+      - SPIKE_NEXUS_ADDR=:8443
+      - SPIKE_NEXUS_TRUST_DOMAIN=poc.local
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+    networks:
+      - agentic-net
+    labels:
+      - "spiffe-id=spike-nexus"
+      - "component=secrets"
+      - "service=spike"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "-k", "https://localhost:8443/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
+  # SPIKE Bootstrap - One-shot init container to generate and deliver root key to Nexus (RFA-a2y.1)
+  spike-bootstrap:
+    image: ghcr.io/spiffe/spike-nexus:0.8.0
+    container_name: spike-bootstrap
+    depends_on:
+      spike-nexus:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - SPIKE_NEXUS_ADDR=https://spike-nexus:8443
+    command: ["spike", "init"]
+    networks:
+      - agentic-net
+    labels:
+      - "spiffe-id=spike-bootstrap"
+    restart: "no"
 
   # OpenTelemetry Collector - Observability data pipeline
   otel-collector:
@@ -166,6 +196,7 @@ services:
       - LOG_LEVEL=info
       - SPIRE_AGENT_SOCKET=/tmp/spire-agent/public/api.sock
       - AUDIT_LOG_PATH=/tmp/audit.jsonl
+      - SPIKE_NEXUS_URL=https://spike-nexus:8443
     networks:
       - agentic-net
     labels:

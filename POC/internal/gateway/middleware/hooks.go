@@ -9,8 +9,11 @@ import (
 	"time"
 )
 
-// TokenSubstitution is the middleware that substitutes SPIKE tokens with actual secrets
-func TokenSubstitution(next http.Handler) http.Handler {
+// TokenSubstitution is the middleware that substitutes SPIKE tokens with actual secrets.
+// The redeemer parameter controls how tokens are resolved to secret values:
+// - SPIKENexusRedeemer: calls SPIKE Nexus via mTLS (production)
+// - POCSecretRedeemer: returns deterministic mock secrets (dev/test)
+func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Get SPIFFE ID from context
 		spiffeID := GetSPIFFEID(r.Context())
@@ -36,9 +39,6 @@ func TokenSubstitution(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r)
 			return
 		}
-
-		// Create a secret redeemer (POC implementation)
-		redeemer := NewPOCSecretRedeemer()
 
 		// Process each token
 		tokenMap := make(map[string]string)
