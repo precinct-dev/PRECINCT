@@ -991,9 +991,11 @@ func upstreamUIResource(contentType string, content []byte) http.HandlerFunc {
 }
 
 // TestIntegration_ValidUIResource_PassesThrough proves that a valid text/html;profile=mcp-app
-// resource from an allowed server passes through the gateway.
+// resource from an allowed server passes through the gateway's full response pipeline
+// (RFA-j2d.6: capability gating + resource controls + registry verification).
 func TestIntegration_ValidUIResource_PassesThrough(t *testing.T) {
 	safeHTML := []byte(`<html><body><h1>Analytics Dashboard</h1><p>Safe content</p></body></html>`)
+	contentHash := middleware.ComputeUIResourceHash(safeHTML)
 
 	upstream := upstreamUIResource("text/html;profile=mcp-app", safeHTML)
 
@@ -1006,6 +1008,14 @@ ui_capability_grants:
     max_resource_size_bytes: 2097152
 `
 	gw := newTestGatewayForProxyHandler(t, upstream, true, grants)
+
+	// RFA-j2d.6: Register the UI resource so it passes registry verification
+	gw.registry.RegisterUIResource(middleware.RegisteredUIResource{
+		Server:      "dashboard-server",
+		ResourceURI: "ui://dashboard-server/analytics.html",
+		ContentHash: contentHash,
+	})
+
 	handler := middleware.BodyCapture(gw.proxyHandler())
 
 	body := []byte(`{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"ui://dashboard-server/analytics.html"},"id":1}`)
@@ -1029,7 +1039,7 @@ ui_capability_grants:
 		t.Logf("Note: upstream response format may differ. Status=%d, body=%s", rec.Code, string(respBody))
 	}
 
-	t.Logf("PASS: valid ui:// resource proxied through (status=%d)", rec.Code)
+	t.Logf("PASS: valid ui:// resource proxied through full pipeline (status=%d)", rec.Code)
 }
 
 // TestIntegration_WrongContentType_Blocked proves that a resource with wrong content-type
@@ -1383,9 +1393,11 @@ func TestIntegration_ScanFindingDetails(t *testing.T) {
 }
 
 // TestIntegration_FullGatewayProxy_UIResourceRead_Allowed proves that a ui:// resource
-// read flows through the full proxy handler when the server is allowed.
+// read flows through the full proxy handler and response processing pipeline
+// (RFA-j2d.6) when the server is allowed and the resource is registered.
 func TestIntegration_FullGatewayProxy_UIResourceRead_Allowed(t *testing.T) {
 	safeHTML := []byte(`<html><body><h1>Safe Dashboard</h1></body></html>`)
+	contentHash := middleware.ComputeUIResourceHash(safeHTML)
 
 	upstreamCalled := false
 	upstream := func(w http.ResponseWriter, r *http.Request) {
@@ -1403,6 +1415,14 @@ ui_capability_grants:
     approved_tools: []
 `
 	gw := newTestGatewayForProxyHandler(t, upstream, true, grants)
+
+	// RFA-j2d.6: Register the UI resource so it passes registry verification
+	gw.registry.RegisterUIResource(middleware.RegisteredUIResource{
+		Server:      "allowed-server",
+		ResourceURI: "ui://allowed-server/dashboard.html",
+		ContentHash: contentHash,
+	})
+
 	handler := middleware.BodyCapture(gw.proxyHandler())
 
 	body := []byte(`{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"ui://allowed-server/dashboard.html"},"id":1}`)
@@ -1423,7 +1443,7 @@ ui_capability_grants:
 		t.Errorf("Allowed ui:// resource read should not be blocked: %s", string(respBody))
 	}
 
-	t.Logf("PASS: allowed ui:// resource read proxied to upstream (status=%d)", rec.Code)
+	t.Logf("PASS: allowed ui:// resource read proxied through full pipeline (status=%d)", rec.Code)
 }
 
 // TestIntegration_FullGatewayProxy_UIResourceRead_Denied proves that denied

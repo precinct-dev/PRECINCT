@@ -31,6 +31,8 @@ type Gateway struct {
 	destinationAllowlist *middleware.DestinationAllowlist // RFA-qq0.17: destination allowlist
 	riskConfig           *middleware.RiskConfig           // RFA-qq0.17: risk scoring thresholds
 	uiCapabilityGating   *UICapabilityGating              // RFA-j2d.1: MCP-UI capability gating
+	uiResourceControls   *UIResourceControls              // RFA-j2d.2: UI resource content controls
+	uiResponseProcessor  *UIResponseProcessor             // RFA-j2d.6: UI response processing pipeline
 }
 
 // New creates a new gateway instance
@@ -110,8 +112,26 @@ func New(cfg *Config) (*Gateway, error) {
 		riskConfig = middleware.DefaultRiskConfig()
 	}
 
+	// RFA-j2d.1: Ensure UIConfig exists (default to secure defaults if nil)
+	uiConfig := cfg.UI
+	if uiConfig == nil {
+		uiConfig = UIConfigDefaults()
+	}
+
 	// RFA-j2d.1: Create UI capability gating
-	uiCapabilityGating := NewUICapabilityGating(cfg.UI, cfg.UICapabilityGrantsPath)
+	uiCapabilityGating := NewUICapabilityGating(uiConfig, cfg.UICapabilityGrantsPath)
+
+	// RFA-j2d.2: Create UI resource controls
+	uiResourceControls := NewUIResourceControls(uiConfig)
+
+	// RFA-j2d.6: Create UI response processor (integrates j2d.1, j2d.2, j2d.3, j2d.5)
+	uiResponseProcessor := NewUIResponseProcessor(
+		uiCapabilityGating,
+		uiResourceControls,
+		registry,
+		uiConfig,
+		auditor,
+	)
 
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
@@ -132,6 +152,8 @@ func New(cfg *Config) (*Gateway, error) {
 		destinationAllowlist: destinationAllowlist,
 		riskConfig:           riskConfig,
 		uiCapabilityGating:   uiCapabilityGating,
+		uiResourceControls:   uiResourceControls,
+		uiResponseProcessor:  uiResponseProcessor,
 	}, nil
 }
 
@@ -191,12 +213,19 @@ func (g *Gateway) Handler() http.Handler {
 	return mux
 }
 
-// proxyHandler proxies requests to upstream MCP server with UI capability gating.
-// RFA-j2d.1: This handler intercepts two types of MCP traffic:
+// proxyHandler proxies requests to upstream MCP server with UI response processing.
+// RFA-j2d.1: Capability gating (strip _meta.ui for denied/unapproved servers/tools)
+// RFA-j2d.3: CSP and permissions mediation (rewrite _meta.ui.csp and _meta.ui.permissions)
+// RFA-j2d.2: Resource controls (content-type, size, scan, hash verification)
+// RFA-j2d.5: Registry verification for ui:// resources
+// RFA-j2d.6: Unified response processing pipeline (processUpstreamResponse)
+//
+// This handler intercepts MCP traffic based on request type:
 //   - tools/list responses: captured after upstream returns, then processed through
-//     applyUICapabilityGating to strip _meta.ui for denied/unapproved servers/tools
+//     processUpstreamResponse which applies capability gating + CSP/permissions mediation
 //   - resources/read for ui:// URIs: checked BEFORE proxying via checkUIResourceReadAllowed;
-//     blocked with HTTP 403 if the server/tenant is not in allow mode
+//     on the response path, resource controls and registry verification are applied
+//   - all other requests: proxied unchanged
 //
 // Server and tenant are identified via X-MCP-Server and X-Tenant request headers.
 // If not set, "default" is used for both (fail-closed: no grant match = deny mode).
@@ -204,6 +233,7 @@ func (g *Gateway) proxyHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Extract MCP method from request body (already captured by BodyCapture middleware)
 		mcpMethod, mcpParams := g.extractMCPMethodAndParams(r.Context())
+		reqInfo := NewMCPRequestInfo(mcpMethod, mcpParams)
 
 		server := r.Header.Get("X-MCP-Server")
 		if server == "" {
@@ -214,47 +244,114 @@ func (g *Gateway) proxyHandler() http.Handler {
 			tenant = "default"
 		}
 
-		switch {
-		case mcpMethod == "resources/read" && g.isUIResourceRequest(mcpParams):
-			// RFA-j2d.1: Block ui:// resource reads for denied servers BEFORE proxying
-			resourceURI := g.extractResourceURI(mcpParams)
-			if !g.checkUIResourceReadAllowed(server, tenant, resourceURI) {
-				w.Header().Set("Content-Type", "application/json")
-				w.WriteHeader(http.StatusForbidden)
-				_ = json.NewEncoder(w).Encode(map[string]string{
-					"error":  "ui_capability_denied",
-					"detail": "UI resource reads are not permitted for this server/tenant.",
-				})
-				return
-			}
-			// Allowed - proxy the request
-			g.proxy.ServeHTTP(w, r)
-
-		case mcpMethod == "tools/list":
-			// RFA-j2d.1: Capture tools/list response, apply UI capability gating,
-			// then return the (potentially modified) response to the caller.
-			capture := &uiResponseCapture{
-				ResponseWriter: w,
-				body:           &bytes.Buffer{},
-				statusCode:     http.StatusOK,
-			}
-			g.proxy.ServeHTTP(capture, r)
-
-			responseBody := capture.body.Bytes()
-
-			// Apply UI capability gating to strip _meta.ui as needed
-			processedBody := g.applyUICapabilityGating(responseBody, server, tenant)
-
-			// Forward captured headers, then write the processed body
-			w.Header().Del("Content-Length") // Body size may have changed
-			w.WriteHeader(capture.statusCode)
-			_, _ = w.Write(processedBody)
-
-		default:
-			// Standard request - proxy unchanged
-			g.proxy.ServeHTTP(w, r)
-		}
+		// RFA-j2d.6: Route through processUpstreamResponse based on request type
+		g.processUpstreamResponse(w, r, reqInfo, server, tenant)
 	})
+}
+
+// processUpstreamResponse routes MCP responses through the appropriate UI
+// control pipeline based on request type. This is the central dispatch for
+// UI-specific response processing (Reference Architecture Section 7.9.7).
+//
+// Routing:
+//   - tools/list -> capability gating + CSP/permissions mediation
+//   - resources/read + ui:// -> request-side capability check + response-side resource controls
+//   - everything else -> proxy unchanged
+func (g *Gateway) processUpstreamResponse(
+	w http.ResponseWriter,
+	r *http.Request,
+	reqInfo MCPRequestInfo,
+	server, tenant string,
+) {
+	switch {
+	case reqInfo.IsResourceRead() && reqInfo.IsUIResource():
+		g.handleUIResourceRead(w, r, reqInfo, server, tenant)
+
+	case reqInfo.IsToolsList():
+		g.handleToolsListResponse(w, r, server, tenant)
+
+	default:
+		// Standard request - proxy unchanged
+		g.proxy.ServeHTTP(w, r)
+	}
+}
+
+// handleToolsListResponse captures the upstream tools/list response and applies
+// the full UI processing pipeline: capability gating + CSP/permissions mediation.
+func (g *Gateway) handleToolsListResponse(
+	w http.ResponseWriter,
+	r *http.Request,
+	server, tenant string,
+) {
+	// Capture upstream response for processing
+	capture := &uiResponseCapture{
+		ResponseWriter: w,
+		body:           &bytes.Buffer{},
+		statusCode:     http.StatusOK,
+	}
+	g.proxy.ServeHTTP(capture, r)
+
+	responseBody := capture.body.Bytes()
+
+	// RFA-j2d.6: Apply full tools/list processing pipeline
+	// (capability gating from j2d.1 + CSP/permissions mediation from j2d.3)
+	processedBody := g.uiResponseProcessor.ProcessToolsListResponse(responseBody, server, tenant)
+
+	// Forward captured headers, then write the processed body
+	w.Header().Del("Content-Length") // Body size may have changed
+	w.WriteHeader(capture.statusCode)
+	_, _ = w.Write(processedBody)
+}
+
+// handleUIResourceRead handles ui:// resource reads with both request-side
+// capability checks and response-side resource controls.
+func (g *Gateway) handleUIResourceRead(
+	w http.ResponseWriter,
+	r *http.Request,
+	reqInfo MCPRequestInfo,
+	server, tenant string,
+) {
+	resourceURI := reqInfo.ResourceURI()
+
+	// RFA-j2d.1: Block ui:// resource reads for denied servers BEFORE proxying
+	if !g.checkUIResourceReadAllowed(server, tenant, resourceURI) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"error":  "ui_capability_denied",
+			"detail": "UI resource reads are not permitted for this server/tenant.",
+		})
+		return
+	}
+
+	// Proxy to upstream and capture the response for resource controls
+	capture := &uiResponseCapture{
+		ResponseWriter: w,
+		body:           &bytes.Buffer{},
+		statusCode:     http.StatusOK,
+	}
+	g.proxy.ServeHTTP(capture, r)
+
+	responseContent := capture.body.Bytes()
+	contentType := capture.Header().Get("Content-Type")
+
+	// RFA-j2d.6: Apply resource controls (j2d.2) + registry verification (j2d.5)
+	allowed, reason, _ := g.uiResponseProcessor.ProcessUIResourceResponse(
+		responseContent, contentType, server, tenant, resourceURI,
+	)
+
+	if !allowed {
+		// Resource blocked by controls - return error instead of upstream content
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(NewUIResourceBlockedError(reason))
+		return
+	}
+
+	// Resource passed all controls - forward the upstream response
+	w.Header().Del("Content-Length")
+	w.WriteHeader(capture.statusCode)
+	_, _ = w.Write(responseContent)
 }
 
 // uiResponseCapture captures the upstream response so UI capability gating can
@@ -298,24 +395,8 @@ func (g *Gateway) extractMCPMethodAndParams(ctx context.Context) (string, map[st
 	return req.Method, req.Params
 }
 
-// isUIResourceRequest checks whether the MCP params contain a ui:// resource URI,
-// indicating a UI resource read that must pass capability gating.
-func (g *Gateway) isUIResourceRequest(params map[string]interface{}) bool {
-	uri := g.extractResourceURI(params)
-	return IsUIResourceURI(uri)
-}
-
-// extractResourceURI extracts the resource URI from resources/read params.
-// MCP resources/read requests use params.uri for the resource identifier.
-func (g *Gateway) extractResourceURI(params map[string]interface{}) string {
-	if params == nil {
-		return ""
-	}
-	if uri, ok := params["uri"].(string); ok {
-		return uri
-	}
-	return ""
-}
+// Note: isUIResourceRequest and extractResourceURI have been replaced by
+// MCPRequestInfo.IsUIResource() and MCPRequestInfo.ResourceURI() (RFA-j2d.6).
 
 // dataHandleDereferenceHandler returns approved views of handle-ized data (RFA-qq0.16)
 // POST /data/dereference with JSON body: {"handle_ref": "<ref>"}
@@ -463,6 +544,10 @@ func (g *Gateway) checkUIResourceReadAllowed(server, tenant, resourceURI string)
 func (g *Gateway) Close() error {
 	if g.handleStore != nil {
 		g.handleStore.Close()
+	}
+	// RFA-j2d.6: Clean up UI resource controls cache
+	if g.uiResourceControls != nil {
+		g.uiResourceControls.Close()
 	}
 	if g.opa != nil {
 		return g.opa.Close()

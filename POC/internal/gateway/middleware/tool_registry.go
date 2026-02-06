@@ -301,6 +301,13 @@ func (tr *ToolRegistry) UIResourceCount() int {
 	return len(tr.uiResources)
 }
 
+// RegisterUIResource adds or updates a UI resource registration programmatically.
+// RFA-j2d.6: Used for test injection and dynamic registration workflows.
+func (tr *ToolRegistry) RegisterUIResource(res RegisteredUIResource) {
+	key := uiResourceKey(res.Server, res.ResourceURI)
+	tr.uiResources[key] = res
+}
+
 // VerifyUIResource checks if a UI resource is registered and its content hash matches.
 // This implements Reference Architecture Section 7.9.6:
 //   - Not registered: block with reason "ui resource not in registry"
