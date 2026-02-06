@@ -24,6 +24,7 @@ type Gateway struct {
 	sessionContext *middleware.SessionContext
 	rateLimiter    *middleware.RateLimiter
 	circuitBreaker *middleware.CircuitBreaker
+	handleStore    *HandleStore // RFA-qq0.16: response firewall data handle cache
 }
 
 // New creates a new gateway instance
@@ -67,6 +68,9 @@ func New(cfg *Config) (*Gateway, error) {
 		})
 	})
 
+	// RFA-qq0.16: Create handle store for response firewall
+	handleStore := NewHandleStore(time.Duration(cfg.HandleTTL) * time.Second)
+
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
 
@@ -81,6 +85,7 @@ func New(cfg *Config) (*Gateway, error) {
 		sessionContext: sessionContext,
 		rateLimiter:    rateLimiter,
 		circuitBreaker: circuitBreaker,
+		handleStore:    handleStore,
 	}, nil
 }
 
@@ -100,9 +105,20 @@ func (g *Gateway) Handler() http.Handler {
 	// 11. Rate limiting (per-agent token bucket)
 	// 12. Circuit breaker (protect upstream from cascading failures)
 	// 13. Token substitution hook (SECURITY: LAST before proxy - no middleware sees real secrets)
-	// 14. Proxy to upstream
+	// 14. Response firewall (RFA-qq0.16: wraps proxy, intercepts responses before return)
+	// 15. Proxy to upstream
 
-	handler := g.proxyHandler()
+	// RFA-qq0.16: Wrap proxy handler with response firewall
+	// The response firewall intercepts responses AFTER they come back from upstream
+	// but BEFORE they flow back through the middleware chain to the agent
+	proxyWithResponseFirewall := middleware.ResponseFirewall(
+		g.proxyHandler(),
+		g.registry,
+		g.handleStore,
+		g.config.HandleTTL,
+	)
+
+	handler := http.Handler(proxyWithResponseFirewall)
 
 	// Apply middleware in reverse order (innermost first)
 	handler = middleware.TokenSubstitution(handler)                              // 13 - LAST before proxy
@@ -119,9 +135,11 @@ func (g *Gateway) Handler() http.Handler {
 	handler = middleware.BodyCapture(handler)                                    // 2
 	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
 
-	// Add health check endpoint
+	// Add endpoints
 	mux := http.NewServeMux()
 	mux.Handle("/health", http.HandlerFunc(g.healthHandler))
+	// RFA-qq0.16: Handle dereference endpoint
+	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
 
 	return mux
@@ -132,6 +150,80 @@ func (g *Gateway) proxyHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		g.proxy.ServeHTTP(w, r)
 	})
+}
+
+// dataHandleDereferenceHandler returns approved views of handle-ized data (RFA-qq0.16)
+// POST /data/dereference with JSON body: {"handle_ref": "<ref>"}
+// Validates:
+//   - Handle exists and hasn't expired (410 Gone if expired/missing)
+//   - SPIFFE ID matches the original requester (403 Forbidden if mismatch)
+//
+// Returns approved views only (for POC: the raw data wrapped in an approved_view envelope)
+func (g *Gateway) dataHandleDereferenceHandler() http.Handler {
+	// Wrap with SPIFFE auth so we can validate the caller's identity
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		// Parse request body
+		var req struct {
+			HandleRef string `json:"handle_ref"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			return
+		}
+
+		if req.HandleRef == "" {
+			http.Error(w, "Missing handle_ref", http.StatusBadRequest)
+			return
+		}
+
+		// Look up handle
+		entry := g.handleStore.Get(req.HandleRef)
+		if entry == nil {
+			// Handle not found or expired
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusGone)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":  "handle_expired_or_not_found",
+				"detail": "The data handle has expired or does not exist.",
+			})
+			return
+		}
+
+		// Validate SPIFFE ID matches
+		callerSPIFFEID := middleware.GetSPIFFEID(r.Context())
+		if callerSPIFFEID != entry.SPIFFEID {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"error":  "spiffe_id_mismatch",
+				"detail": "You are not authorized to dereference this handle.",
+			})
+			return
+		}
+
+		// Return approved view
+		// In production, this would apply view transformations:
+		// aggregates, top-N, redacted rows, etc.
+		// For POC, we return the raw data wrapped in an approved_view envelope.
+		approvedView := map[string]interface{}{
+			"view_type":  "approved_view",
+			"tool":       entry.ToolName,
+			"created_at": entry.CreatedAt.UTC().Format("2006-01-02T15:04:05Z"),
+			"data":       json.RawMessage(entry.RawData),
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(approvedView)
+	})
+
+	// Apply SPIFFE auth middleware to the dereference endpoint
+	return middleware.SPIFFEAuth(inner, g.config.SPIFFEMode)
 }
 
 // healthHandler returns gateway health status including circuit breaker state
@@ -150,6 +242,9 @@ func (g *Gateway) healthHandler(w http.ResponseWriter, r *http.Request) {
 
 // Close cleans up gateway resources
 func (g *Gateway) Close() error {
+	if g.handleStore != nil {
+		g.handleStore.Close()
+	}
 	if g.opa != nil {
 		return g.opa.Close()
 	}

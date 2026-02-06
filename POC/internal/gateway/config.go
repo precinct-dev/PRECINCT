@@ -24,6 +24,7 @@ type Config struct {
 	CircuitFailureThreshold int // consecutive failures before opening circuit
 	CircuitResetTimeout     int // seconds in Open before trying Half-Open
 	CircuitSuccessThreshold int // consecutive successes in Half-Open before closing
+	HandleTTL               int // TTL in seconds for response firewall data handles (default 300)
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -84,6 +85,13 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	handleTTL := 300 // 300 seconds (5 minutes) default per Section 7.8
+	if ht := os.Getenv("HANDLE_TTL"); ht != "" {
+		if parsed, err := strconv.Atoi(ht); err == nil {
+			handleTTL = parsed
+		}
+	}
+
 	return &Config{
 		Port:                   port,
 		UpstreamURL:            getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8080/mcp"),
@@ -102,6 +110,7 @@ func ConfigFromEnv() *Config {
 		CircuitFailureThreshold: circuitFailureThreshold,
 		CircuitResetTimeout:     circuitResetTimeout,
 		CircuitSuccessThreshold: circuitSuccessThreshold,
+		HandleTTL:               handleTTL,
 	}
 }
 
