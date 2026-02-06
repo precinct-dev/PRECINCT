@@ -21,7 +21,7 @@ processors:
 exporters:
   # Export to Phoenix for trace visualization
   otlp/phoenix:
-    endpoint: phoenix:6006
+    endpoint: phoenix:4317
     tls:
       insecure: true
 

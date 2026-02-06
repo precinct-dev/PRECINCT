@@ -150,9 +150,11 @@ services:
     hostname: phoenix
     ports:
       - "6006:6006"  # Phoenix UI
+      - "4317:4317"  # Phoenix gRPC (OTLP)
     environment:
       - PHOENIX_PORT=6006
       - PHOENIX_HOST=0.0.0.0
+      - PHOENIX_GRPC_PORT=4317
     networks:
       - agentic-net
     healthcheck:
