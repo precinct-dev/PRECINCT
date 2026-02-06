@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -61,6 +63,26 @@ func getAttrInt(attrs []attribute.KeyValue, key string) (int64, bool) {
 	for _, a := range attrs {
 		if string(a.Key) == key {
 			return a.Value.AsInt64(), true
+		}
+	}
+	return 0, false
+}
+
+// getAttrBool extracts a bool attribute value.
+func getAttrBool(attrs []attribute.KeyValue, key string) (bool, bool) {
+	for _, a := range attrs {
+		if string(a.Key) == key {
+			return a.Value.AsBool(), true
+		}
+	}
+	return false, false
+}
+
+// getAttrFloat64 extracts a float64 attribute value.
+func getAttrFloat64(attrs []attribute.KeyValue, key string) (float64, bool) {
+	for _, a := range attrs {
+		if string(a.Key) == key {
+			return a.Value.AsFloat64(), true
 		}
 	}
 	return 0, false
@@ -340,6 +362,820 @@ func TestOTelSpan_OPAPolicy_Error(t *testing.T) {
 		t.Errorf("Expected mcp.result='error', got %q (found=%v)", result, ok)
 	}
 }
+
+// ---------- Step 4: AuditLog ----------
+
+func TestOTelSpan_AuditLog(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	// Create auditor with temporary files
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+	bundlePath := filepath.Join(tmpDir, "bundle.rego")
+	registryPath := filepath.Join(tmpDir, "registry.yaml")
+	_ = os.WriteFile(bundlePath, []byte("package test\ndefault allow = false"), 0644)
+	_ = os.WriteFile(registryPath, []byte("tools:\n  - file_read"), 0644)
+
+	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create auditor: %v", err)
+	}
+	defer auditor.Close()
+
+	handler := AuditLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), auditor)
+
+	req := httptest.NewRequest("POST", "/test", nil)
+	ctx := WithSessionID(req.Context(), "session-otel-4")
+	ctx = WithDecisionID(ctx, "decision-otel-4")
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.audit_log")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.audit_log' not found")
+	}
+
+	step, ok := getAttrInt(span.Attributes, "mcp.gateway.step")
+	if !ok || step != 4 {
+		t.Errorf("Expected mcp.gateway.step=4, got %d (found=%v)", step, ok)
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "audit_log" {
+		t.Errorf("Expected mcp.gateway.middleware='audit_log', got %q (found=%v)", mw, ok)
+	}
+
+	sid, ok := getAttrString(span.Attributes, "mcp.session_id")
+	if !ok || sid != "session-otel-4" {
+		t.Errorf("Expected mcp.session_id='session-otel-4', got %q (found=%v)", sid, ok)
+	}
+
+	did, ok := getAttrString(span.Attributes, "mcp.decision_id")
+	if !ok || did != "decision-otel-4" {
+		t.Errorf("Expected mcp.decision_id='decision-otel-4', got %q (found=%v)", did, ok)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+// ---------- Step 5: ToolRegistryVerify ----------
+
+func TestOTelSpan_ToolRegistryVerify(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	// Create registry with a known tool
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tools.yaml")
+	config := `tools:
+  - name: "file_read"
+    description: "Read a file"
+    hash: "abc123"
+    risk_level: "low"
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), registry)
+
+	body := []byte(`{"jsonrpc":"2.0","method":"file_read","params":{"tool":"file_read"},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.tool_registry_verify")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.tool_registry_verify' not found")
+	}
+
+	step, ok := getAttrInt(span.Attributes, "mcp.gateway.step")
+	if !ok || step != 5 {
+		t.Errorf("Expected mcp.gateway.step=5, got %d (found=%v)", step, ok)
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "tool_registry_verify" {
+		t.Errorf("Expected mcp.gateway.middleware='tool_registry_verify', got %q (found=%v)", mw, ok)
+	}
+
+	toolName, ok := getAttrString(span.Attributes, "tool_name")
+	if !ok || toolName != "file_read" {
+		t.Errorf("Expected tool_name='file_read', got %q (found=%v)", toolName, ok)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+// ---------- Step 7: DLP Scan ----------
+
+func TestOTelSpan_DLPScan_Clean(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	scanner := NewBuiltInScanner()
+	handler := DLPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), scanner)
+
+	body := []byte(`{"method":"file_read","params":{}}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.dlp_scan")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.dlp_scan' not found")
+	}
+
+	step, ok := getAttrInt(span.Attributes, "mcp.gateway.step")
+	if !ok || step != 7 {
+		t.Errorf("Expected mcp.gateway.step=7, got %d (found=%v)", step, ok)
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "dlp_scan" {
+		t.Errorf("Expected mcp.gateway.middleware='dlp_scan', got %q (found=%v)", mw, ok)
+	}
+
+	hasCreds, ok := getAttrBool(span.Attributes, "has_credentials")
+	if !ok || hasCreds {
+		t.Errorf("Expected has_credentials=false, got %v (found=%v)", hasCreds, ok)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+func TestOTelSpan_DLPScan_Credentials(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	scanner := NewBuiltInScanner()
+	handler := DLPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), scanner)
+
+	// Body contains an AWS key pattern to trigger credential detection
+	body := []byte(`{"method":"file_read","params":{"content":"AKIAIOSFODNN7EXAMPLE"}}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403 for credentials, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.dlp_scan")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.dlp_scan' not found")
+	}
+
+	hasCreds, ok := getAttrBool(span.Attributes, "has_credentials")
+	if !ok || !hasCreds {
+		t.Errorf("Expected has_credentials=true, got %v (found=%v)", hasCreds, ok)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "denied" {
+		t.Errorf("Expected mcp.result='denied', got %q (found=%v)", result, ok)
+	}
+
+	reason, ok := getAttrString(span.Attributes, "mcp.reason")
+	if !ok || reason != "credentials detected" {
+		t.Errorf("Expected mcp.reason='credentials detected', got %q (found=%v)", reason, ok)
+	}
+}
+
+// ---------- Step 8: SessionContext ----------
+
+func TestOTelSpan_SessionContext(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	sessionStore := NewInMemoryStore()
+	sessionCtx := NewSessionContext(sessionStore)
+
+	handler := SessionContextMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), sessionCtx)
+
+	body := []byte(`{"method":"file_read","params":{}}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/test")
+	ctx = WithSessionID(ctx, "session-otel-8")
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.session_context")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.session_context' not found")
+	}
+
+	step, ok := getAttrInt(span.Attributes, "mcp.gateway.step")
+	if !ok || step != 8 {
+		t.Errorf("Expected mcp.gateway.step=8, got %d (found=%v)", step, ok)
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "session_context" {
+		t.Errorf("Expected mcp.gateway.middleware='session_context', got %q (found=%v)", mw, ok)
+	}
+
+	sid, ok := getAttrString(span.Attributes, "session_id")
+	if !ok || sid == "" {
+		t.Errorf("Expected session_id to be non-empty, got %q (found=%v)", sid, ok)
+	}
+
+	_, ok = getAttrFloat64(span.Attributes, "risk_score")
+	if !ok {
+		t.Error("Expected risk_score attribute to be present")
+	}
+
+	actionCount, ok := getAttrInt(span.Attributes, "action_count")
+	if !ok {
+		t.Error("Expected action_count attribute to be present")
+	}
+	if actionCount < 1 {
+		t.Errorf("Expected action_count >= 1 (action was recorded), got %d", actionCount)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+// ---------- Step 9: StepUpGating ----------
+
+func TestOTelSpan_StepUpGating_FastPath(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	// Create minimal dependencies for step-up gating
+	guard := &mockGuardClient{injectionProb: 0.0, jailbreakProb: 0.0}
+	allowlist := defaultAllowlist()
+	riskCfg := defaultRiskConfig()
+	registry := testRegistry()
+
+	// Auditor for step-up gating
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+	bundlePath := filepath.Join(tmpDir, "bundle.rego")
+	registryPath := filepath.Join(tmpDir, "registry.yaml")
+	_ = os.WriteFile(bundlePath, []byte("package test\ndefault allow = false"), 0644)
+	_ = os.WriteFile(registryPath, []byte("tools:\n  - read"), 0644)
+	auditor, _ := NewAuditor(auditPath, bundlePath, registryPath)
+	defer auditor.Close()
+
+	handler := StepUpGating(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), guard, allowlist, riskCfg, registry, auditor)
+
+	// "read" is a low-risk tool -> fast path (score 0-3)
+	body := []byte(`{"jsonrpc":"2.0","method":"read","params":{"tool":"read"},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/test")
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.step_up_gating")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.step_up_gating' not found")
+	}
+
+	step, ok := getAttrInt(span.Attributes, "mcp.gateway.step")
+	if !ok || step != 9 {
+		t.Errorf("Expected mcp.gateway.step=9, got %d (found=%v)", step, ok)
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "step_up_gating" {
+		t.Errorf("Expected mcp.gateway.middleware='step_up_gating', got %q (found=%v)", mw, ok)
+	}
+
+	gate, ok := getAttrString(span.Attributes, "gate")
+	if !ok || gate != "fast_path" {
+		t.Errorf("Expected gate='fast_path', got %q (found=%v)", gate, ok)
+	}
+
+	_, ok = getAttrInt(span.Attributes, "total_score")
+	if !ok {
+		t.Error("Expected total_score attribute to be present")
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+// ---------- Step 10: DeepScanDispatch ----------
+
+func TestOTelSpan_DeepScanDispatch(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	// Create deep scanner without API key (will skip deep scan)
+	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+		APIKey:       "",
+		Timeout:      5 * time.Second,
+		FallbackMode: "fail_open",
+	})
+
+	handler := DeepScanMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), scanner)
+
+	body := []byte(`{"method":"file_read","params":{}}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.deep_scan_dispatch")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.deep_scan_dispatch' not found")
+	}
+
+	step, ok := getAttrInt(span.Attributes, "mcp.gateway.step")
+	if !ok || step != 10 {
+		t.Errorf("Expected mcp.gateway.step=10, got %d (found=%v)", step, ok)
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "deep_scan_dispatch" {
+		t.Errorf("Expected mcp.gateway.middleware='deep_scan_dispatch', got %q (found=%v)", mw, ok)
+	}
+
+	dispatched, ok := getAttrBool(span.Attributes, "dispatched")
+	if !ok {
+		t.Error("Expected dispatched attribute to be present")
+	}
+	if dispatched {
+		t.Error("Expected dispatched=false (no injection flags)")
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+// ---------- Step 11: RateLimit ----------
+
+func TestOTelSpan_RateLimit_Allowed(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	store := NewInMemoryRateLimitStore()
+	limiter := NewRateLimiter(60, 10, store)
+
+	handler := RateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), limiter)
+
+	req := httptest.NewRequest("POST", "/", nil)
+	ctx := WithSPIFFEID(req.Context(), "spiffe://poc.local/test")
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.rate_limit")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.rate_limit' not found")
+	}
+
+	step, ok := getAttrInt(span.Attributes, "mcp.gateway.step")
+	if !ok || step != 11 {
+		t.Errorf("Expected mcp.gateway.step=11, got %d (found=%v)", step, ok)
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "rate_limit" {
+		t.Errorf("Expected mcp.gateway.middleware='rate_limit', got %q (found=%v)", mw, ok)
+	}
+
+	remaining, ok := getAttrInt(span.Attributes, "remaining")
+	if !ok {
+		t.Error("Expected remaining attribute to be present")
+	}
+	if remaining < 0 {
+		t.Errorf("Expected remaining >= 0, got %d", remaining)
+	}
+
+	limit, ok := getAttrInt(span.Attributes, "limit")
+	if !ok || limit != 60 {
+		t.Errorf("Expected limit=60, got %d (found=%v)", limit, ok)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+func TestOTelSpan_RateLimit_Denied(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	// Create a limiter with 0 RPM and burst 0 -> immediate denial
+	store := NewInMemoryRateLimitStore()
+	limiter := NewRateLimiter(0, 1, store) // burst=1 (minimum), but rpm=0 means no refill
+
+	handler := RateLimitMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), limiter)
+
+	// First request uses the initial burst token
+	req := httptest.NewRequest("POST", "/", nil)
+	ctx := WithSPIFFEID(req.Context(), "spiffe://poc.local/test-ratelimit")
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// Second request should be denied (no tokens left, no refill)
+	exporter.Reset()
+	req2 := httptest.NewRequest("POST", "/", nil)
+	ctx2 := WithSPIFFEID(req2.Context(), "spiffe://poc.local/test-ratelimit")
+	req2 = req2.WithContext(ctx2)
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("Expected 429 on second request, got %d", rec2.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.rate_limit")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.rate_limit' not found")
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "denied" {
+		t.Errorf("Expected mcp.result='denied', got %q (found=%v)", result, ok)
+	}
+
+	reason, ok := getAttrString(span.Attributes, "mcp.reason")
+	if !ok || reason != "rate limit exceeded" {
+		t.Errorf("Expected mcp.reason='rate limit exceeded', got %q (found=%v)", reason, ok)
+	}
+}
+
+// ---------- Step 12: CircuitBreaker ----------
+
+func TestOTelSpan_CircuitBreaker_Closed(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	cb := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 5,
+		ResetTimeout:     30 * time.Second,
+		SuccessThreshold: 2,
+	}, nil)
+
+	handler := CircuitBreakerMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), cb)
+
+	req := httptest.NewRequest("POST", "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.circuit_breaker")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.circuit_breaker' not found")
+	}
+
+	step, ok := getAttrInt(span.Attributes, "mcp.gateway.step")
+	if !ok || step != 12 {
+		t.Errorf("Expected mcp.gateway.step=12, got %d (found=%v)", step, ok)
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "circuit_breaker" {
+		t.Errorf("Expected mcp.gateway.middleware='circuit_breaker', got %q (found=%v)", mw, ok)
+	}
+
+	state, ok := getAttrString(span.Attributes, "state")
+	if !ok || state != "closed" {
+		t.Errorf("Expected state='closed', got %q (found=%v)", state, ok)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+func TestOTelSpan_CircuitBreaker_Open(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	cb := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 1, // Trip after 1 failure
+		ResetTimeout:     30 * time.Second,
+		SuccessThreshold: 2,
+	}, nil)
+
+	// Force circuit open by recording a failure
+	cb.RecordFailure()
+
+	handler := CircuitBreakerMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), cb)
+
+	req := httptest.NewRequest("POST", "/", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Expected 503 when circuit is open, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.circuit_breaker")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.circuit_breaker' not found")
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "denied" {
+		t.Errorf("Expected mcp.result='denied', got %q (found=%v)", result, ok)
+	}
+
+	reason, ok := getAttrString(span.Attributes, "mcp.reason")
+	if !ok || reason != "circuit breaker open" {
+		t.Errorf("Expected mcp.reason='circuit breaker open', got %q (found=%v)", reason, ok)
+	}
+}
+
+// ---------- Step 13: TokenSubstitution ----------
+
+func TestOTelSpan_TokenSubstitution_NoTokens(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	redeemer := NewPOCSecretRedeemer()
+	handler := TokenSubstitution(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), redeemer)
+
+	body := []byte(`{"method":"file_read","params":{}}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/test")
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.token_substitution")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.token_substitution' not found")
+	}
+
+	step, ok := getAttrInt(span.Attributes, "mcp.gateway.step")
+	if !ok || step != 13 {
+		t.Errorf("Expected mcp.gateway.step=13, got %d (found=%v)", step, ok)
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "token_substitution" {
+		t.Errorf("Expected mcp.gateway.middleware='token_substitution', got %q (found=%v)", mw, ok)
+	}
+
+	spikeRefCount, ok := getAttrInt(span.Attributes, "spike_ref_count")
+	if !ok || spikeRefCount != 0 {
+		t.Errorf("Expected spike_ref_count=0, got %d (found=%v)", spikeRefCount, ok)
+	}
+
+	tokensSubstituted, ok := getAttrInt(span.Attributes, "tokens_substituted")
+	if !ok || tokensSubstituted != 0 {
+		t.Errorf("Expected tokens_substituted=0, got %d (found=%v)", tokensSubstituted, ok)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+// ---------- ResponseFirewall ----------
+
+func TestOTelSpan_ResponseFirewall_Public(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	// Create registry with a public (low risk) tool
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tools.yaml")
+	config := `tools:
+  - name: "public_tool"
+    description: "A public tool"
+    hash: "abc123"
+    risk_level: "low"
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	store := newMockHandleStore()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"result":"data"}`))
+	})
+
+	handler := ResponseFirewall(inner, registry, store, 300)
+
+	body := []byte(`{"method":"public_tool","params":{}}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.response_firewall")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.response_firewall' not found")
+	}
+
+	mw, ok := getAttrString(span.Attributes, "mcp.gateway.middleware")
+	if !ok || mw != "response_firewall" {
+		t.Errorf("Expected mcp.gateway.middleware='response_firewall', got %q (found=%v)", mw, ok)
+	}
+
+	handleized, ok := getAttrBool(span.Attributes, "data_handleized")
+	if !ok || handleized {
+		t.Errorf("Expected data_handleized=false for public tool, got %v (found=%v)", handleized, ok)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+}
+
+func TestOTelSpan_ResponseFirewall_Sensitive(t *testing.T) {
+	exporter, teardown := setupTestTracer(t)
+	defer teardown()
+
+	// Create registry with a sensitive (high risk) tool
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tools.yaml")
+	config := `tools:
+  - name: "sensitive_tool"
+    description: "A sensitive tool"
+    hash: "xyz789"
+    risk_level: "high"
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	store := newMockHandleStore()
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"result":"sensitive data"}`))
+	})
+
+	handler := ResponseFirewall(inner, registry, store, 300)
+
+	body := []byte(`{"method":"sensitive_tool","params":{}}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/test")
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+
+	// Verify the response was handleized
+	var respBody HandleizedResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &respBody); err != nil {
+		t.Fatalf("Failed to unmarshal handleized response: %v", err)
+	}
+	if respBody.Classification != "sensitive" {
+		t.Errorf("Expected classification='sensitive', got %q", respBody.Classification)
+	}
+
+	spans := exporter.GetSpans()
+	span := findSpan(spans, "gateway.response_firewall")
+	if span == nil {
+		t.Fatal("Expected span 'gateway.response_firewall' not found")
+	}
+
+	handleized, ok := getAttrBool(span.Attributes, "data_handleized")
+	if !ok || !handleized {
+		t.Errorf("Expected data_handleized=true for sensitive tool, got %v (found=%v)", handleized, ok)
+	}
+
+	handlesCreated, ok := getAttrInt(span.Attributes, "handles_created")
+	if !ok || handlesCreated != 1 {
+		t.Errorf("Expected handles_created=1, got %d (found=%v)", handlesCreated, ok)
+	}
+
+	result, ok := getAttrString(span.Attributes, "mcp.result")
+	if !ok || result != "allowed" {
+		t.Errorf("Expected mcp.result='allowed', got %q (found=%v)", result, ok)
+	}
+
+	reason, ok := getAttrString(span.Attributes, "mcp.reason")
+	if !ok || reason != "data handleized" {
+		t.Errorf("Expected mcp.reason='data handleized', got %q (found=%v)", reason, ok)
+	}
+}
+
+// ---------- Extended Full Chain (RFA-m6j.2) ----------
 
 // TestOTelSpan_FullChain verifies span creation when multiple instrumented
 // middleware run together (steps 1, 2, 3, 6), proving parent-child
