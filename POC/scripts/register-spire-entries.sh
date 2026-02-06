@@ -157,6 +157,16 @@ main() {
         "docker:label:spiffe-id:spike-bootstrap"
 
     echo ""
+
+    # 7. KeyDB Session Store (RFA-8z8.2)
+    # KeyDB uses filesystem-based certs (cannot use Workload API directly).
+    # The keydb-svid-init container fetches the SVID and writes PEM files.
+    create_entry \
+        "spiffe://${TRUST_DOMAIN}/keydb" \
+        "${parent_id}" \
+        "docker:label:spiffe-id:keydb"
+
+    echo ""
     log_info "Registration complete!"
     echo ""
 
