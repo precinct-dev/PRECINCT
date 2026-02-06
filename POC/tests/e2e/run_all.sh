@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# E2E Validation Master Runner - RFA-70p
+# E2E Validation Master Runner - RFA-70p + RFA-a2y.2
 # Runs all 5 scenarios + readiness checklist + middleware chain verification
+# + SPIKE Nexus late-binding secrets validation
 # Produces a comprehensive report for capstone milestone validation
 
 set -uo pipefail
@@ -85,6 +86,7 @@ run_scenario "Scenario D: Tool Poisoning" "${SCRIPT_DIR}/scenario_d_tool_poisoni
 run_scenario "Scenario E: DLP Detection" "${SCRIPT_DIR}/scenario_e_dlp.sh"
 run_scenario "Section 10.13.1 Readiness Checklist" "${SCRIPT_DIR}/readiness_checklist.sh"
 run_scenario "Full 13-Middleware Chain" "${SCRIPT_DIR}/middleware_chain_verify.sh"
+run_scenario "Scenario SPIKE Nexus: Late-Binding Secrets" "${SCRIPT_DIR}/scenario_spike_nexus.sh"
 
 # ================================================================
 # Grand Summary
