@@ -1,9 +1,7 @@
 package middleware
 
 import (
-	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -293,18 +291,17 @@ func CircuitBreakerMiddleware(next http.Handler, cb *CircuitBreaker) http.Handle
 				attribute.String("mcp.reason", "circuit breaker open"),
 			)
 
-			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
-			w.WriteHeader(http.StatusServiceUnavailable)
-
-			resp := map[string]interface{}{
-				"error":               "circuit_breaker_open",
-				"message":             "upstream temporarily unavailable",
-				"retry_after_seconds": retryAfter,
-			}
-			if err := json.NewEncoder(w).Encode(resp); err != nil {
-				log.Printf("ERROR: Failed to encode circuit breaker response: %v", err)
-			}
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusServiceUnavailable, GatewayError{
+				Code:           ErrCircuitOpen,
+				Message:        "Upstream temporarily unavailable",
+				Middleware:     "circuit_breaker",
+				MiddlewareStep: 12,
+				Details: map[string]any{
+					"retry_after_seconds": retryAfter,
+				},
+				Remediation: fmt.Sprintf("Retry after %d seconds.", retryAfter),
+			})
 			return
 		}
 

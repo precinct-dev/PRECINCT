@@ -1,4 +1,4 @@
-.PHONY: help up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance
+.PHONY: help up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete
 
 # Default target
 help: ## Show this help message
@@ -213,3 +213,15 @@ test-compliance: $(COMPLIANCE_VENV) ## Run compliance tooling tests (unit + inte
 	cd tools/compliance && $(CURDIR)/$(COMPLIANCE_PYTHON) -m pytest test_generate.py -v
 	@echo ""
 	@echo "Compliance tests complete"
+
+# ==============================================================================
+# GDPR/CCPA Right-to-Deletion (RFA-hh5.3)
+# ==============================================================================
+
+gdpr-delete: ## Delete all session/rate-limit data for a SPIFFE ID. Usage: make gdpr-delete SPIFFE_ID=spiffe://poc.local/agents/example
+	@if [ -z "$(SPIFFE_ID)" ]; then \
+		echo "ERROR: SPIFFE_ID is required"; \
+		echo "Usage: make gdpr-delete SPIFFE_ID=spiffe://poc.local/agents/example"; \
+		exit 1; \
+	fi
+	go run ./cmd/gdpr-delete/ "$(SPIFFE_ID)"
