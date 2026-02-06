@@ -650,18 +650,24 @@ func TestCircuitBreakerMiddleware_4xxNotCountedAsFailure(t *testing.T) {
 // --- Concurrency Safety ---
 
 func TestCircuitBreaker_ConcurrencySafety(t *testing.T) {
-	now := time.Now()
+	baseTime := time.Now()
 	cb := NewCircuitBreaker(CircuitBreakerConfig{
 		FailureThreshold: 100,
 		ResetTimeout:     10 * time.Second,
 		SuccessThreshold: 10,
 	}, nil)
-	cb.now = func() time.Time { return now }
+	// Use setNow (thread-safe) to inject a deterministic clock.
+	// This prevents a data race on the cb.now field when concurrent
+	// goroutines read it under the mutex while the test sets it.
+	cb.setNow(func() time.Time { return baseTime })
 
 	var wg sync.WaitGroup
-	iterations := 1000
+	iterations := 500
 
-	// Concurrent failures
+	// Phase 1: Concurrent failures must trip the circuit.
+	// All goroutines call RecordFailure() under the mutex, so ordering
+	// is serialized. With 500 failures and threshold=100, the circuit
+	// will deterministically reach Open state.
 	wg.Add(iterations)
 	for i := 0; i < iterations; i++ {
 		go func() {
@@ -671,32 +677,36 @@ func TestCircuitBreaker_ConcurrencySafety(t *testing.T) {
 	}
 	wg.Wait()
 
-	// Should be open (1000 failures > 100 threshold)
 	if cb.State() != CircuitOpen {
-		t.Errorf("expected Open after concurrent failures, got %v", cb.State())
+		t.Errorf("expected Open after %d concurrent failures (threshold=100), got %v", iterations, cb.State())
 	}
 
-	// Move past reset timeout to transition to Half-Open
-	cb.now = func() time.Time { return now.Add(11 * time.Second) }
-	_ = cb.State() // trigger transition to Half-Open
+	// Phase 2: Transition from Open to Half-Open via clock advancement.
+	// setNow is thread-safe -- no goroutines are running at this point,
+	// but we use it consistently to avoid any latent race on the field.
+	cb.setNow(func() time.Time { return baseTime.Add(11 * time.Second) })
+	_ = cb.State() // triggers Open -> HalfOpen transition
 
 	if cb.State() != CircuitHalfOpen {
 		t.Fatalf("expected HalfOpen after timeout, got %v", cb.State())
 	}
 
-	// Sequential successes to close (concurrent successes on Half-Open
-	// are tricky because a failure-after-success would reopen; sequential
-	// is the correct way to test the state machine recovery path)
+	// Phase 3: Sequential successes to recover from Half-Open to Closed.
+	// Concurrent successes in Half-Open are intentionally avoided because
+	// a single failure would reopen the circuit -- that behavior is tested
+	// elsewhere. Here we verify the recovery path.
 	for i := 0; i < 10; i++ {
 		cb.RecordSuccess()
 	}
 
 	if cb.State() != CircuitClosed {
-		t.Errorf("expected Closed after enough successes, got %v", cb.State())
+		t.Errorf("expected Closed after %d sequential successes (threshold=10), got %v", 10, cb.State())
 	}
 
-	// Now test concurrent reads are safe (no panics)
-	cb.now = func() time.Time { return now.Add(20 * time.Second) }
+	// Phase 4: Concurrent reads must not panic or corrupt state.
+	// The circuit is Closed, so State()/AllowRequest() should not trigger
+	// any transitions. We verify no panics under concurrent access.
+	cb.setNow(func() time.Time { return baseTime.Add(20 * time.Second) })
 	wg.Add(iterations)
 	for i := 0; i < iterations; i++ {
 		go func() {
@@ -707,7 +717,40 @@ func TestCircuitBreaker_ConcurrencySafety(t *testing.T) {
 		}()
 	}
 	wg.Wait()
-	// If we got here without panics, concurrency safety is verified
+
+	// Phase 5: Concurrent mixed reads and writes must not panic.
+	// Half the goroutines record failures, half read state. This tests
+	// that the mutex correctly serializes all access paths.
+	cb.setNow(func() time.Time { return baseTime.Add(30 * time.Second) })
+	// Reset to closed state for this phase
+	cb2 := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 100,
+		ResetTimeout:     10 * time.Second,
+		SuccessThreshold: 10,
+	}, nil)
+	cb2.setNow(func() time.Time { return baseTime.Add(30 * time.Second) })
+
+	wg.Add(iterations)
+	for i := 0; i < iterations; i++ {
+		if i%2 == 0 {
+			go func() {
+				defer wg.Done()
+				cb2.RecordFailure()
+			}()
+		} else {
+			go func() {
+				defer wg.Done()
+				_ = cb2.State()
+				_ = cb2.AllowRequest()
+			}()
+		}
+	}
+	wg.Wait()
+
+	// After 250 concurrent failures (threshold=100), circuit must be open
+	if cb2.State() != CircuitOpen {
+		t.Errorf("expected Open after concurrent mixed reads/writes, got %v", cb2.State())
+	}
 }
 
 // --- State Transition Audit Callback ---

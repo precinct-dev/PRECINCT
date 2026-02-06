@@ -299,13 +299,22 @@ func TestToolRegistryVerify(t *testing.T) {
 	})
 }
 
-// TestStepUpGating verifies step-up hook is pass-through
+// TestStepUpGating verifies step-up gating passes through when no body is present.
+// The real StepUpGating implementation (step_up_gating.go) fast-paths requests
+// with no body, which is what this test validates.
 func TestStepUpGating(t *testing.T) {
 	called := false
-	handler := StepUpGating(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusOK)
-	}))
+	handler := StepUpGating(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			w.WriteHeader(http.StatusOK)
+		}),
+		nil, // guardClient
+		nil, // allowlist
+		nil, // riskConfig
+		nil, // registry
+		nil, // auditor
+	)
 
 	req := httptest.NewRequest("POST", "/", nil)
 	rec := httptest.NewRecorder()

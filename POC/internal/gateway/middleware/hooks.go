@@ -9,17 +9,6 @@ import (
 	"time"
 )
 
-// StepUpGating is a placeholder hook for step-up authentication
-// In skeleton: no-op pass-through
-// In production: would check if tool requires step-up (MFA, manager approval)
-func StepUpGating(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Placeholder: would check tool_definitions.requires_step_up
-		// and verify user has elevated session if required
-		next.ServeHTTP(w, r)
-	})
-}
-
 // TokenSubstitution is the middleware that substitutes SPIKE tokens with actual secrets
 func TokenSubstitution(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
