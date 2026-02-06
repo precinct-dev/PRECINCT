@@ -3,6 +3,9 @@ package middleware
 import (
 	"net/http"
 	"strings"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // SPIFFEAuth validates SPIFFE identity
@@ -10,6 +13,15 @@ import (
 // In prod mode: would extract from mTLS cert (not implemented in skeleton)
 func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.1: Create OTel span for step 3
+		ctx, span := tracer.Start(r.Context(), "gateway.spiffe_auth",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 3),
+				attribute.String("mcp.gateway.middleware", "spiffe_auth"),
+			),
+		)
+		defer span.End()
+
 		var spiffeID string
 
 		if mode == "dev" {
@@ -31,8 +43,11 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 			spiffeID = "spiffe://poc.local/unknown/prod"
 		}
 
+		// Record the SPIFFE ID as a span attribute
+		span.SetAttributes(attribute.String("mcp.spiffe_id", spiffeID))
+
 		// Add SPIFFE ID to context
-		ctx := WithSPIFFEID(r.Context(), spiffeID)
+		ctx = WithSPIFFEID(ctx, spiffeID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

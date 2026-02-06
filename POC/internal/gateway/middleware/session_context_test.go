@@ -6,7 +6,7 @@ import (
 )
 
 func TestSessionContextGetOrCreateSession(t *testing.T) {
-	sc := NewSessionContext()
+	sc := NewSessionContext(NewInMemoryStore())
 
 	spiffeID := "spiffe://example.org/agent/test"
 	sessionID := "session-123"
@@ -28,7 +28,7 @@ func TestSessionContextGetOrCreateSession(t *testing.T) {
 }
 
 func TestRecordAction(t *testing.T) {
-	sc := NewSessionContext()
+	sc := NewSessionContext(NewInMemoryStore())
 	session := sc.GetOrCreateSession("spiffe://example.org/agent/test", "session-123")
 
 	action := ToolAction{
@@ -112,7 +112,7 @@ func TestDetectsExfiltrationPattern(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sc := NewSessionContext()
+			sc := NewSessionContext(NewInMemoryStore())
 			session := sc.GetOrCreateSession("spiffe://example.org/agent/test", "session-123")
 
 			// Record all actions
@@ -130,10 +130,10 @@ func TestDetectsExfiltrationPattern(t *testing.T) {
 
 func TestComputeActionRisk(t *testing.T) {
 	tests := []struct {
-		name           string
-		action         ToolAction
-		expectedRisk   float64
-		riskThreshold  float64 // acceptable difference
+		name          string
+		action        ToolAction
+		expectedRisk  float64
+		riskThreshold float64 // acceptable difference
 	}{
 		{
 			name: "InternalNonSensitive",
@@ -240,7 +240,7 @@ func TestIsExternalTarget(t *testing.T) {
 }
 
 func TestRiskScoreAccumulation(t *testing.T) {
-	sc := NewSessionContext()
+	sc := NewSessionContext(NewInMemoryStore())
 	session := sc.GetOrCreateSession("spiffe://example.org/agent/test", "session-123")
 
 	// Record multiple actions

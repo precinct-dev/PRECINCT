@@ -25,12 +25,12 @@ import (
 // UIResourceControlResult represents the outcome of applying resource controls
 // to a ui:// resource read response.
 type UIResourceControlResult struct {
-	Allowed  bool                      `json:"allowed"`
-	Reason   string                    `json:"reason,omitempty"`
-	Finding  string                    `json:"finding,omitempty"`  // e.g., "ui_dangerous_pattern", "ui_csp_violation"
-	Severity string                    `json:"severity,omitempty"` // "critical", "high", "medium"
-	Events   []UIResourceControlEvent  `json:"events,omitempty"`
-	Findings []ScanFinding             `json:"scan_findings,omitempty"`
+	Allowed  bool                     `json:"allowed"`
+	Reason   string                   `json:"reason,omitempty"`
+	Finding  string                   `json:"finding,omitempty"`  // e.g., "ui_dangerous_pattern", "ui_csp_violation"
+	Severity string                   `json:"severity,omitempty"` // "critical", "high", "medium"
+	Events   []UIResourceControlEvent `json:"events,omitempty"`
+	Findings []ScanFinding            `json:"scan_findings,omitempty"`
 }
 
 // UIResourceControlEvent is an audit event emitted by resource controls.

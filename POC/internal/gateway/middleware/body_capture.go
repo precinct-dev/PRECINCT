@@ -6,19 +6,29 @@ import (
 	"net/http"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // BodyCapture captures the request body and makes it available in context
 // Also generates session, decision, and trace IDs
 func BodyCapture(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.1: Create OTel span for step 2
+		ctx, span := tracer.Start(r.Context(), "gateway.body_capture",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 2),
+				attribute.String("mcp.gateway.middleware", "body_capture"),
+			),
+		)
+		defer span.End()
+
 		// Generate IDs for this request
 		sessionID := uuid.New().String()
 		decisionID := uuid.New().String()
 		traceID := uuid.New().String()
 
 		// Add IDs to context
-		ctx := r.Context()
 		ctx = WithSessionID(ctx, sessionID)
 		ctx = WithDecisionID(ctx, decisionID)
 		ctx = WithTraceID(ctx, traceID)

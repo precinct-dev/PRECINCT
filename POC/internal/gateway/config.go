@@ -32,6 +32,12 @@ type Config struct {
 	UI                      *UIConfig // MCP-UI configuration (RFA-j2d.9)
 	UICapabilityGrantsPath  string    // Path to UI capability grants YAML (RFA-j2d.1)
 	SPIKENexusURL           string    // SPIKE Nexus URL for secret redemption via mTLS (RFA-a2y.1)
+	OTelEndpoint            string    // OTLP gRPC endpoint for trace export (RFA-m6j.1)
+	OTelServiceName         string    // OTel service name (RFA-m6j.1)
+	KeyDBURL                string    // KeyDB/Redis URL for session persistence (RFA-hh5.1)
+	KeyDBPoolMin            int       // Minimum idle connections in KeyDB pool (default 5)
+	KeyDBPoolMax            int       // Maximum connections in KeyDB pool (default 20)
+	SessionTTL              int       // Session TTL in seconds (default 3600)
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -104,6 +110,28 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	// RFA-hh5.1: KeyDB connection pool configuration
+	keyDBPoolMin := 5 // default minimum idle connections
+	if pm := os.Getenv("KEYDB_POOL_MIN"); pm != "" {
+		if parsed, err := strconv.Atoi(pm); err == nil {
+			keyDBPoolMin = parsed
+		}
+	}
+
+	keyDBPoolMax := 20 // default maximum connections
+	if pm := os.Getenv("KEYDB_POOL_MAX"); pm != "" {
+		if parsed, err := strconv.Atoi(pm); err == nil {
+			keyDBPoolMax = parsed
+		}
+	}
+
+	sessionTTL := 3600 // default 1 hour
+	if ttl := os.Getenv("SESSION_TTL"); ttl != "" {
+		if parsed, err := strconv.Atoi(ttl); err == nil {
+			sessionTTL = parsed
+		}
+	}
+
 	// RFA-2jl: Discover allowed base path from environment or working directory.
 	// ALLOWED_BASE_PATH is the single source of truth for OPA path-based access control.
 	// Defaults to the current working directory if not set.
@@ -151,6 +179,12 @@ func ConfigFromEnv() *Config {
 		UI:                      uiConfig,
 		UICapabilityGrantsPath:  getEnvOrDefault("UI_CAPABILITY_GRANTS_PATH", "/config/opa/ui_capability_grants.yaml"),
 		SPIKENexusURL:           getEnvOrDefault("SPIKE_NEXUS_URL", ""),
+		OTelEndpoint:            os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), // empty = no-op (AC6)
+		OTelServiceName:         getEnvOrDefault("OTEL_SERVICE_NAME", "mcp-security-gateway"),
+		KeyDBURL:                getEnvOrDefault("KEYDB_URL", ""),
+		KeyDBPoolMin:            keyDBPoolMin,
+		KeyDBPoolMax:            keyDBPoolMax,
+		SessionTTL:              sessionTTL,
 	}
 }
 

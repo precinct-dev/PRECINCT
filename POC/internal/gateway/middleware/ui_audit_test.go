@@ -20,15 +20,15 @@ func TestAllUIEventTypes_Returns10Types(t *testing.T) {
 
 	// Verify all expected types are present
 	expected := map[string]bool{
-		"ui.capability.stripped":                 false,
-		"ui.capability.audit_passthrough":        false,
-		"ui.resource.read":                       false,
-		"ui.resource.blocked":                    false,
-		"ui.resource.hash_mismatch":              false,
-		"ui.csp.domain_stripped":                 false,
-		"ui.permission.denied":                   false,
-		"tool.invocation.app_driven":             false,
-		"tool.invocation.app_driven.blocked":     false,
+		"ui.capability.stripped":                  false,
+		"ui.capability.audit_passthrough":         false,
+		"ui.resource.read":                        false,
+		"ui.resource.blocked":                     false,
+		"ui.resource.hash_mismatch":               false,
+		"ui.csp.domain_stripped":                  false,
+		"ui.permission.denied":                    false,
+		"tool.invocation.app_driven":              false,
+		"tool.invocation.app_driven.blocked":      false,
 		"tool.invocation.app_driven.rate_limited": false,
 	}
 
@@ -210,8 +210,8 @@ func TestAppDrivenData_JSONMarshal(t *testing.T) {
 			SessionID:       "sess-abc123",
 		},
 		Correlation: &AppDrivenCorrelation{
-			UISessionStart:         "2026-02-04T14:30:00Z",
-			ToolCallsInUISession:   5,
+			UISessionStart:          "2026-02-04T14:30:00Z",
+			ToolCallsInUISession:    5,
 			UserInteractionInferred: true,
 		},
 	}
@@ -327,8 +327,8 @@ func TestAuditEvent_WithAppDrivenField_JSONMarshal(t *testing.T) {
 				SessionID:       "sess-abc123",
 			},
 			Correlation: &AppDrivenCorrelation{
-				UISessionStart:         "2026-02-04T14:30:00Z",
-				ToolCallsInUISession:   3,
+				UISessionStart:          "2026-02-04T14:30:00Z",
+				ToolCallsInUISession:    3,
 				UserInteractionInferred: false,
 			},
 		},
@@ -991,8 +991,8 @@ func TestUIAuditEvents_FullScenario_10EventTypes_HashChain(t *testing.T) {
 				SessionID:       "sess-1",
 			},
 			Correlation: &AppDrivenCorrelation{
-				UISessionStart:         "2026-02-04T14:30:00Z",
-				ToolCallsInUISession:   1,
+				UISessionStart:          "2026-02-04T14:30:00Z",
+				ToolCallsInUISession:    1,
 				UserInteractionInferred: true,
 			},
 		},

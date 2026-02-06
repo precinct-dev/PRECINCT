@@ -38,7 +38,7 @@ func TestUIResourceScanner_EventHandlerInjection(t *testing.T) {
 		`<input onfocus= "steal()">`,
 		`<a onblur ="track()">`,
 		`<span onmouseover="hover()">`,
-		`<div ONERROR="alert(1)">`,                // case insensitive
+		`<div ONERROR="alert(1)">`, // case insensitive
 		`<input onkeydown="capture(event)">`,
 		`<input onkeyup="capture(event)">`,
 		`<input onkeypress="capture(event)">`,
@@ -451,8 +451,8 @@ func TestValidateContentType_Invalid(t *testing.T) {
 	invalidTypes := []string{
 		"application/json",
 		"text/plain",
-		"text/html",                       // missing profile
-		"text/html; charset=utf-8",        // missing profile
+		"text/html",                // missing profile
+		"text/html; charset=utf-8", // missing profile
 		"application/octet-stream",
 		"",
 	}

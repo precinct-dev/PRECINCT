@@ -33,6 +33,7 @@ type Gateway struct {
 	uiResourceControls   *UIResourceControls              // RFA-j2d.2: UI resource content controls
 	uiResponseProcessor  *UIResponseProcessor             // RFA-j2d.6: UI response processing pipeline
 	spikeRedeemer        middleware.SecretRedeemer        // RFA-a2y.1: SPIKE Nexus or POC secret redeemer
+	sessionStore         middleware.SessionStore          // RFA-hh5.1: session persistence store (InMemory or KeyDB)
 }
 
 // New creates a new gateway instance
@@ -68,7 +69,16 @@ func New(cfg *Config) (*Gateway, error) {
 		FallbackMode: cfg.DeepScanFallback,
 		Auditor:      auditor,
 	})
-	sessionContext := middleware.NewSessionContext()
+	// RFA-hh5.1: Select session store based on KeyDB availability.
+	// When KEYDB_URL is set, use KeyDB for cross-request session persistence.
+	// Otherwise, fall back to in-memory store (Phase 1 behavior).
+	var sessionStore middleware.SessionStore
+	if cfg.KeyDBURL != "" {
+		sessionStore = middleware.NewKeyDBStore(cfg.KeyDBURL, cfg.KeyDBPoolMin, cfg.KeyDBPoolMax, cfg.SessionTTL)
+	} else {
+		sessionStore = middleware.NewInMemoryStore()
+	}
+	sessionContext := middleware.NewSessionContext(sessionStore)
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPM, cfg.RateLimitBurst)
 
 	// Create circuit breaker with audit logging for state transitions
@@ -175,6 +185,7 @@ func New(cfg *Config) (*Gateway, error) {
 		uiResourceControls:   uiResourceControls,
 		uiResponseProcessor:  uiResponseProcessor,
 		spikeRedeemer:        spikeRedeemer,
+		sessionStore:         sessionStore,
 	}, nil
 }
 
@@ -536,6 +547,10 @@ func (g *Gateway) Close() error {
 	}
 	// RFA-a2y.1: Close SPIKE Nexus redeemer (releases X.509 source if present)
 	if closer, ok := g.spikeRedeemer.(interface{ Close() error }); ok {
+		_ = closer.Close()
+	}
+	// RFA-hh5.1: Close KeyDB session store if applicable
+	if closer, ok := g.sessionStore.(interface{ Close() error }); ok {
 		_ = closer.Close()
 	}
 	if g.opa != nil {

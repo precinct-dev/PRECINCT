@@ -154,10 +154,10 @@ func TestMCPRequestInfo_ResourceURI(t *testing.T) {
 // processUpstreamResponse uses to dispatch requests.
 func TestMCPRequestInfo_CombinedRouting(t *testing.T) {
 	tests := []struct {
-		name         string
-		method       string
-		params       map[string]interface{}
-		expectRoute  string // "tools_list", "ui_resource_read", "standard"
+		name        string
+		method      string
+		params      map[string]interface{}
+		expectRoute string // "tools_list", "ui_resource_read", "standard"
 	}{
 		{
 			"tools/list routes to tools_list",

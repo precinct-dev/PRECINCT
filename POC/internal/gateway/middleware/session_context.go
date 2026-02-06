@@ -3,8 +3,8 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,10 +15,10 @@ func GenerateID() string {
 	return uuid.New().String()
 }
 
-// SessionContext manages agent sessions and tracks behavior
+// SessionContext manages agent sessions and tracks behavior.
+// It delegates storage to a SessionStore implementation (InMemoryStore or KeyDBStore).
 type SessionContext struct {
-	mu       sync.RWMutex
-	sessions map[string]*AgentSession
+	store SessionStore
 }
 
 // AgentSession represents a single agent's session
@@ -34,33 +34,38 @@ type AgentSession struct {
 
 // ToolAction represents a single tool invocation
 type ToolAction struct {
-	Timestamp          time.Time
-	Tool               string
-	Resource           string
-	Classification     string
-	ExternalTarget     bool
-	DestinationDomain  string
+	Timestamp         time.Time
+	Tool              string
+	Resource          string
+	Classification    string
+	ExternalTarget    bool
+	DestinationDomain string
 }
 
-// NewSessionContext creates a new session context manager
-func NewSessionContext() *SessionContext {
+// NewSessionContext creates a new session context manager backed by the given store.
+// Use NewInMemoryStore() for Phase 1 (in-process) behavior or
+// NewKeyDBStore(...) for persistent cross-request sessions.
+func NewSessionContext(store SessionStore) *SessionContext {
 	return &SessionContext{
-		sessions: make(map[string]*AgentSession),
+		store: store,
 	}
 }
 
-// GetOrCreateSession retrieves or creates a session for the given SPIFFE ID and session ID
+// GetOrCreateSession retrieves or creates a session for the given SPIFFE ID and session ID.
+// Uses the underlying SessionStore for persistence.
 func (sc *SessionContext) GetOrCreateSession(spiffeID, sessionID string) *AgentSession {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
+	ctx := context.Background()
 
-	key := spiffeID + ":" + sessionID
-	if session, exists := sc.sessions[key]; exists {
+	session, err := sc.store.GetSession(ctx, spiffeID, sessionID)
+	if err != nil {
+		log.Printf("session store get error: %v (falling back to new session)", err)
+	}
+	if session != nil {
 		return session
 	}
 
 	// Create new session
-	session := &AgentSession{
+	session = &AgentSession{
 		ID:                  sessionID,
 		SPIFFEID:            spiffeID,
 		StartTime:           time.Now(),
@@ -69,31 +74,51 @@ func (sc *SessionContext) GetOrCreateSession(spiffeID, sessionID string) *AgentS
 		RiskScore:           0.0,
 		Flags:               make([]string, 0),
 	}
-	sc.sessions[key] = session
+
+	if err := sc.store.SaveSession(ctx, spiffeID, sessionID, session); err != nil {
+		log.Printf("session store save error: %v", err)
+	}
+
 	return session
 }
 
-// RecordAction adds a tool action to the session
+// RecordAction adds a tool action to the session and persists it via the store.
+// The store handles action list persistence. Session metadata (risk score,
+// classifications) is updated in-memory first, then persisted.
 func (sc *SessionContext) RecordAction(session *AgentSession, action ToolAction) {
-	sc.mu.Lock()
-	defer sc.mu.Unlock()
+	ctx := context.Background()
 
-	session.Actions = append(session.Actions, action)
-
-	// Update data classifications
+	// Update data classifications (in-memory, then persisted via SaveSession)
 	if action.Classification != "" && !contains(session.DataClassifications, action.Classification) {
 		session.DataClassifications = append(session.DataClassifications, action.Classification)
 	}
 
 	// Accumulate risk score
 	session.RiskScore += computeActionRisk(action)
+
+	// Persist action to store. For InMemoryStore, this modifies session.Actions
+	// directly via the stored pointer. For KeyDB, this writes to a Redis LIST.
+	if err := sc.store.AppendAction(ctx, session.SPIFFEID, session.ID, action); err != nil {
+		log.Printf("session store append action error: %v", err)
+	}
+
+	// For KeyDB: also update the local session.Actions so that exfiltration
+	// detection (which reads session.Actions) works within the same request.
+	// For InMemoryStore: AppendAction already modified session.Actions via pointer.
+	if _, isInMemory := sc.store.(*InMemoryStore); !isInMemory {
+		session.Actions = append(session.Actions, action)
+	}
+
+	// Persist updated session metadata (risk score, classifications, flags)
+	if err := sc.store.SaveSession(ctx, session.SPIFFEID, session.ID, session); err != nil {
+		log.Printf("session store save session error: %v", err)
+	}
 }
 
-// DetectsExfiltrationPattern checks if current session shows exfiltration behavior
+// DetectsExfiltrationPattern checks if current session shows exfiltration behavior.
+// It operates on the in-memory session object whose Actions are already populated
+// (either from InMemoryStore directly or loaded from KeyDB on GetOrCreateSession).
 func (sc *SessionContext) DetectsExfiltrationPattern(session *AgentSession) bool {
-	sc.mu.RLock()
-	defer sc.mu.RUnlock()
-
 	if len(session.Actions) < 2 {
 		return false
 	}

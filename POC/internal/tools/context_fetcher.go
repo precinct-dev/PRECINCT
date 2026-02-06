@@ -47,10 +47,10 @@ type ProvenanceMetadata struct {
 
 // ContextFetcher handles external content ingestion with validation
 type ContextFetcher struct {
-	scanner       middleware.DLPScanner
-	policyEval    middleware.ContextPolicyEvaluator // RFA-xwc: OPA policy gate (step 7)
-	storageDir    string
-	httpClient    *http.Client
+	scanner    middleware.DLPScanner
+	policyEval middleware.ContextPolicyEvaluator // RFA-xwc: OPA policy gate (step 7)
+	storageDir string
+	httpClient *http.Client
 }
 
 // NewContextFetcher creates a new context fetcher instance

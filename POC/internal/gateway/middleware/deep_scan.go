@@ -54,10 +54,10 @@ const (
 
 // ChunkResult contains the classification result for a single chunk.
 type ChunkResult struct {
-	ChunkIndex         int
-	InjectionScore     float64
-	JailbreakScore     float64
-	Error              error
+	ChunkIndex     int
+	InjectionScore float64
+	JailbreakScore float64
+	Error          error
 }
 
 // DeepScanResult contains the results of a deep scan
@@ -69,8 +69,8 @@ type DeepScanResult struct {
 	JailbreakScore float64 // 0.0 to 1.0 (highest across all chunks)
 	ModelUsed      string
 	LatencyMs      int64
-	ChunkCount     int            // number of chunks (1 for short payloads)
-	ChunkResults   []ChunkResult  // per-chunk results (nil for single-chunk)
+	ChunkCount     int           // number of chunks (1 for short payloads)
+	ChunkResults   []ChunkResult // per-chunk results (nil for single-chunk)
 	Error          error
 }
 

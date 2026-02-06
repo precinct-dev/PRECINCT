@@ -31,11 +31,11 @@ type AuditEvent struct {
 	StatusCode     int            `json:"status_code,omitempty"`
 	Security       *SecurityAudit `json:"security,omitempty"`
 	Authorization  *AuthzAudit    `json:"authorization,omitempty"`
-	UI             *UIAuditData   `json:"ui,omitempty"`          // RFA-j2d.8: UI-specific audit data
-	AppDriven      *AppDrivenData `json:"app_driven,omitempty"`  // RFA-j2d.8: app-driven tool invocation data
-	PrevHash       string         `json:"prev_hash"`             // SHA-256 of previous event
-	BundleDigest   string         `json:"bundle_digest"`         // SHA-256 of OPA policy bundle
-	RegistryDigest string         `json:"registry_digest"`       // SHA-256 of tool registry config
+	UI             *UIAuditData   `json:"ui,omitempty"`         // RFA-j2d.8: UI-specific audit data
+	AppDriven      *AppDrivenData `json:"app_driven,omitempty"` // RFA-j2d.8: app-driven tool invocation data
+	PrevHash       string         `json:"prev_hash"`            // SHA-256 of previous event
+	BundleDigest   string         `json:"bundle_digest"`        // SHA-256 of OPA policy bundle
+	RegistryDigest string         `json:"registry_digest"`      // SHA-256 of tool registry config
 }
 
 // SecurityAudit contains security-related audit information

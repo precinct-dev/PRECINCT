@@ -32,16 +32,16 @@ const (
 // UICapabilityGrant defines a per-server/tenant capability grant from the
 // ui_capability_grants.yaml policy data file.
 type UICapabilityGrant struct {
-	Server                   string   `yaml:"server"                     json:"server"`
-	Tenant                   string   `yaml:"tenant"                     json:"tenant"`
-	Mode                     string   `yaml:"mode"                       json:"mode"`
-	ApprovedTools            []string `yaml:"approved_tools"             json:"approved_tools"`
-	MaxResourceSizeBytes     int64    `yaml:"max_resource_size_bytes"    json:"max_resource_size_bytes"`
+	Server                    string   `yaml:"server"                     json:"server"`
+	Tenant                    string   `yaml:"tenant"                     json:"tenant"`
+	Mode                      string   `yaml:"mode"                       json:"mode"`
+	ApprovedTools             []string `yaml:"approved_tools"             json:"approved_tools"`
+	MaxResourceSizeBytes      int64    `yaml:"max_resource_size_bytes"    json:"max_resource_size_bytes"`
 	AllowedCSPConnectDomains  []string `yaml:"allowed_csp_connect_domains"  json:"allowed_csp_connect_domains"`
 	AllowedCSPResourceDomains []string `yaml:"allowed_csp_resource_domains" json:"allowed_csp_resource_domains"`
 	AllowedPermissions        []string `yaml:"allowed_permissions"          json:"allowed_permissions"`
-	ApprovedAt               string   `yaml:"approved_at"                json:"approved_at"`
-	ApprovedBy               string   `yaml:"approved_by"                json:"approved_by"`
+	ApprovedAt                string   `yaml:"approved_at"                json:"approved_at"`
+	ApprovedBy                string   `yaml:"approved_by"                json:"approved_by"`
 }
 
 // uiCapabilityGrantsFile is the YAML wrapper for the grants data file.

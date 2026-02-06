@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // OPAClient handles OPA policy evaluation
@@ -141,7 +144,14 @@ type ContextPolicyEvaluator interface {
 // OPAPolicy middleware enforces OPA authorization
 func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		// RFA-m6j.1: Create OTel span for step 6
+		ctx, span := tracer.Start(r.Context(), "gateway.opa_policy",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 6),
+				attribute.String("mcp.gateway.middleware", "opa_policy"),
+			),
+		)
+		defer span.End()
 
 		// Extract tool name and params from request body
 		body := GetRequestBody(ctx)
@@ -207,9 +217,21 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		// Evaluate policy
 		allowed, reason, err := opa.Evaluate(input)
 		if err != nil {
+			span.SetAttributes(
+				attribute.String("mcp.result", "error"),
+				attribute.String("mcp.reason", err.Error()),
+			)
 			http.Error(w, fmt.Sprintf("Policy evaluation failed: %v", err), http.StatusInternalServerError)
 			return
 		}
+
+		// RFA-m6j.1: Record decision outcome on the span
+		if allowed {
+			span.SetAttributes(attribute.String("mcp.result", "allowed"))
+		} else {
+			span.SetAttributes(attribute.String("mcp.result", "denied"))
+		}
+		span.SetAttributes(attribute.String("mcp.reason", reason))
 
 		// Store OPA decision ID in context for audit (RFA-qq0.13)
 		// Use the decision ID from context (same as request decision ID for now)

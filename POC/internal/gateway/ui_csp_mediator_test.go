@@ -130,9 +130,9 @@ func TestMediateCSP_ResourceDomainsIntersection(t *testing.T) {
 
 	input := UICSPInput{
 		ResourceDomains: []string{
-			"https://cdn.acme.corp",       // allowed
-			"https://malicious.cdn.com",   // NOT allowed
-			"https://static.acme.corp",    // allowed
+			"https://cdn.acme.corp",     // allowed
+			"https://malicious.cdn.com", // NOT allowed
+			"https://static.acme.corp",  // allowed
 		},
 	}
 
@@ -304,9 +304,9 @@ func TestMediateCSP_GlobMatching(t *testing.T) {
 
 	input := UICSPInput{
 		ConnectDomains: []string{
-			"api.acme.corp",     // matches *.acme.corp
-			"data.acme.corp",    // matches *.acme.corp
-			"evil.example.com",  // does NOT match
+			"api.acme.corp",    // matches *.acme.corp
+			"data.acme.corp",   // matches *.acme.corp
+			"evil.example.com", // does NOT match
 		},
 	}
 
@@ -323,7 +323,7 @@ func TestMediateCSP_EmptyDomainsSkipped(t *testing.T) {
 	grant := &UICapabilityGrant{}
 
 	input := UICSPInput{
-		FrameDomains:   []string{"", ""},   // Empty strings should not generate events
+		FrameDomains:   []string{"", ""}, // Empty strings should not generate events
 		BaseURIDomains: []string{"", ""},
 	}
 
@@ -674,8 +674,8 @@ func TestMediateCSP_Integration_WithRealGrantFile(t *testing.T) {
 			"https://api.acme.corp",    // Should be allowed (in grant)
 			"https://evil.example.com", // Should be stripped (not in grant)
 		},
-		FrameDomains:   []string{"https://embed.evil.com"},   // Always stripped
-		BaseURIDomains: []string{"https://base.evil.com"},    // Always stripped
+		FrameDomains:   []string{"https://embed.evil.com"}, // Always stripped
+		BaseURIDomains: []string{"https://base.evil.com"},  // Always stripped
 	}
 
 	result := MediateCSP(input, dashboardGrant, config, "mcp-dashboard-server", "acme-corp", "render-analytics")
@@ -941,11 +941,11 @@ ui_capability_grants:
 
 	input := UICSPInput{
 		ConnectDomains: []string{
-			"https://api.acme.corp",      // allowed
-			"https://evil.hacker.com",    // NOT allowed
-			"https://data.acme.corp",     // allowed
-			"https://malware.bad.com",    // NOT allowed
-			"https://auth.acme.corp",     // allowed
+			"https://api.acme.corp",   // allowed
+			"https://evil.hacker.com", // NOT allowed
+			"https://data.acme.corp",  // allowed
+			"https://malware.bad.com", // NOT allowed
+			"https://auth.acme.corp",  // allowed
 		},
 	}
 

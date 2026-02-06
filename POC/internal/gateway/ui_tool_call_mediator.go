@@ -69,10 +69,10 @@ type ToolCallMediationRequest struct {
 
 // ToolCallMediationResult contains the outcome of tool call mediation.
 type ToolCallMediationResult struct {
-	Allowed       bool   `json:"allowed"`
-	Reason        string `json:"reason"`
-	RequiresStepUp bool  `json:"requires_step_up"`
-	RateLimited   bool   `json:"rate_limited"`
+	Allowed        bool   `json:"allowed"`
+	Reason         string `json:"reason"`
+	RequiresStepUp bool   `json:"requires_step_up"`
+	RateLimited    bool   `json:"rate_limited"`
 	AuditEventType string `json:"audit_event_type,omitempty"`
 }
 
@@ -87,7 +87,7 @@ type AppDrivenRateLimitConfig struct {
 // ToolCallMediator implements the mediation logic for app-driven tool calls.
 // It is stateless per-call; rate limiting state lives in the RateLimiter.
 type ToolCallMediator struct {
-	uiConfig       *UIConfig
+	uiConfig         *UIConfig
 	capabilityGating *UICapabilityGating
 }
 

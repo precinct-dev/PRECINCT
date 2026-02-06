@@ -53,40 +53,40 @@ func testRegistry() *ToolRegistry {
 	return &ToolRegistry{
 		tools: map[string]ToolDefinition{
 			"read": {
-				Name:        "read",
-				Description: "Read file contents",
-				RiskLevel:   "low",
+				Name:                "read",
+				Description:         "Read file contents",
+				RiskLevel:           "low",
 				AllowedDestinations: []string{},
 			},
 			"grep": {
-				Name:        "grep",
-				Description: "Search for patterns",
-				RiskLevel:   "low",
+				Name:                "grep",
+				Description:         "Search for patterns",
+				RiskLevel:           "low",
 				AllowedDestinations: []string{},
 			},
 			"tavily_search": {
-				Name:        "tavily_search",
-				Description: "Search the web",
-				RiskLevel:   "medium",
+				Name:                "tavily_search",
+				Description:         "Search the web",
+				RiskLevel:           "medium",
 				AllowedDestinations: []string{"api.tavily.com", "*.tavily.com"},
 			},
 			"bash": {
-				Name:           "bash",
-				Description:    "Execute shell commands",
-				RiskLevel:      "critical",
-				RequiresStepUp: true,
+				Name:                "bash",
+				Description:         "Execute shell commands",
+				RiskLevel:           "critical",
+				RequiresStepUp:      true,
 				AllowedDestinations: []string{},
 			},
 			"email_send": {
-				Name:        "email_send",
-				Description: "Send email",
-				RiskLevel:   "high",
+				Name:                "email_send",
+				Description:         "Send email",
+				RiskLevel:           "high",
 				AllowedDestinations: []string{"smtp.internal.com"},
 			},
 			"http_request": {
-				Name:        "http_request",
-				Description: "Make HTTP request",
-				RiskLevel:   "medium",
+				Name:                "http_request",
+				Description:         "Make HTTP request",
+				RiskLevel:           "medium",
 				AllowedDestinations: []string{"api.github.com"},
 			},
 		},
@@ -187,13 +187,13 @@ func TestDestinationAllowlist_IsAllowed(t *testing.T) {
 	}{
 		{"", true},                      // Empty destination = internal
 		{"localhost", true},             // Exact match
-		{"127.0.0.1", true},            // Exact match
-		{"api.tavily.com", true},       // Exact match
-		{"search.tavily.com", true},    // Wildcard match
-		{"api.github.com", true},       // Exact match
-		{"evil.com", false},            // Not on allowlist
-		{"attacker.example.com", false},// Not on allowlist
-		{"fake-tavily.com", false},     // Does not match *.tavily.com
+		{"127.0.0.1", true},             // Exact match
+		{"api.tavily.com", true},        // Exact match
+		{"search.tavily.com", true},     // Wildcard match
+		{"api.github.com", true},        // Exact match
+		{"evil.com", false},             // Not on allowlist
+		{"attacker.example.com", false}, // Not on allowlist
+		{"fake-tavily.com", false},      // Does not match *.tavily.com
 	}
 
 	for _, tt := range tests {
@@ -970,13 +970,13 @@ func TestStepUpGating_AllThresholdBands(t *testing.T) {
 	guardClient := &mockGuardClient{injectionProb: 0.0, jailbreakProb: 0.0}
 
 	tests := []struct {
-		name           string
-		toolName       string
-		params         map[string]interface{}
-		session        *AgentSession
-		expectedGate   string
-		expectAllowed  bool
-		expectCode     int
+		name          string
+		toolName      string
+		params        map[string]interface{}
+		session       *AgentSession
+		expectedGate  string
+		expectAllowed bool
+		expectCode    int
 	}{
 		{
 			name:          "FastPath_ReadTool",
@@ -1001,7 +1001,7 @@ func TestStepUpGating_AllThresholdBands(t *testing.T) {
 			toolName:      "unknown_tool",
 			params:        map[string]interface{}{},
 			session:       nil,
-			expectedGate:  "approval",  // defaults: 2+2+2+3=9
+			expectedGate:  "approval", // defaults: 2+2+2+3=9
 			expectAllowed: false,
 			expectCode:    http.StatusForbidden,
 		},

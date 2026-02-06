@@ -98,15 +98,15 @@ func UIEventSeverity(eventType string) string {
 // UIAuditData holds UI-specific fields for audit events. Populated for events
 // with the "ui." prefix or "tool.invocation.app_driven*" event types.
 type UIAuditData struct {
-	ResourceURI         string                `json:"resource_uri,omitempty"`
-	ResourceContentHash string                `json:"resource_content_hash,omitempty"`
-	ResourceSizeBytes   int64                 `json:"resource_size_bytes,omitempty"`
-	ContentType         string                `json:"content_type,omitempty"`
-	HashVerified        *bool                 `json:"hash_verified,omitempty"` // pointer to distinguish false from absent
-	ScanResult          *UIAuditScanResult    `json:"scan_result,omitempty"`
-	CSPMediation        *UIAuditCSPMediation  `json:"csp_mediation,omitempty"`
+	ResourceURI          string               `json:"resource_uri,omitempty"`
+	ResourceContentHash  string               `json:"resource_content_hash,omitempty"`
+	ResourceSizeBytes    int64                `json:"resource_size_bytes,omitempty"`
+	ContentType          string               `json:"content_type,omitempty"`
+	HashVerified         *bool                `json:"hash_verified,omitempty"` // pointer to distinguish false from absent
+	ScanResult           *UIAuditScanResult   `json:"scan_result,omitempty"`
+	CSPMediation         *UIAuditCSPMediation `json:"csp_mediation,omitempty"`
 	PermissionsMediation *UIAuditPermissions  `json:"permissions_mediation,omitempty"`
-	CapabilityGrantMode string                `json:"capability_grant_mode,omitempty"`
+	CapabilityGrantMode  string               `json:"capability_grant_mode,omitempty"`
 }
 
 // UIAuditScanResult holds resource scan results.
@@ -146,8 +146,8 @@ type AppDrivenUIContext struct {
 // AppDrivenCorrelation provides correlation data for app-driven tool calls
 // within a UI session.
 type AppDrivenCorrelation struct {
-	UISessionStart         string `json:"ui_session_start,omitempty"`
-	ToolCallsInUISession   int    `json:"tool_calls_in_ui_session"`
+	UISessionStart          string `json:"ui_session_start,omitempty"`
+	ToolCallsInUISession    int    `json:"tool_calls_in_ui_session"`
 	UserInteractionInferred bool   `json:"user_interaction_inferred"`
 }
 
