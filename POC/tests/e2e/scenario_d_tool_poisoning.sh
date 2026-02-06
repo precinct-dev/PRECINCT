@@ -26,7 +26,7 @@ log_pass "Gateway is running"
 log_subheader "D1: Valid tool call (correct hash)"
 
 gateway_request "$DEFAULT_SPIFFE_ID" "read" \
-    '{"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/go.mod"}'
+    "{\"file_path\": \"${POC_DIR}/go.mod\"}"
 
 log_info "Response code: $RESP_CODE"
 
@@ -52,7 +52,7 @@ fi
 log_subheader "D2: Poisoned tool (wrong hash)"
 
 gateway_request "$DEFAULT_SPIFFE_ID" "read" \
-    '{"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/go.mod", "tool_hash": "0000000000000000000000000000000000000000000000000000000000000000"}'
+    "{\"file_path\": \"${POC_DIR}/go.mod\", \"tool_hash\": \"0000000000000000000000000000000000000000000000000000000000000000\"}"
 
 log_info "Response code: $RESP_CODE"
 log_info "Response body: $RESP_BODY"

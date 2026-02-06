@@ -19,6 +19,7 @@ Run with: pytest test_agent.py -v
 import json
 import logging
 import os
+import pathlib
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
@@ -51,8 +52,12 @@ OTEL_ENDPOINT = os.environ.get("OTEL_ENDPOINT", "http://localhost:4317")
 PHOENIX_URL = os.environ.get("PHOENIX_URL", "http://localhost:6006")
 SPIFFE_ID_PYDANTIC = "spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev"
 
-# POC directory for file reads
-POC_DIR = "/Users/ramirosalas/workspace/agentic_reference_architecture/POC"
+# POC directory for file reads.
+# Defaults to the directory two levels above this test file (agents/pydantic_researcher/).
+POC_DIR = os.environ.get(
+    "POC_DIR",
+    str(pathlib.Path(__file__).resolve().parent.parent.parent),
+)
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,12 @@
 # Defines MCP tools with SHA-256 hashes for poisoning detection
 # Each tool is identified by name and verified via SHA-256 hash
 # Hash is computed over: tool description + input schema (canonical JSON)
+#
+# NOTE (RFA-n6g): allowed_paths uses a placeholder. At runtime, path-based
+# access control is enforced by the OPA policy engine using the ALLOWED_BASE_PATH
+# environment variable (see config.go and mcp_policy.rego). The allowed_paths
+# field here is declarative metadata; it is not consumed by the Go tool registry
+# loader. When the POC is deployed, set ALLOWED_BASE_PATH to the repository root.
 
 tools:
   # Tavily - Web search API
@@ -43,7 +49,7 @@ tools:
           type: "integer"
           description: "Number of lines to read"
     allowed_paths:
-      - "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/**"
+      - "${ALLOWED_BASE_PATH}/**"
     risk_level: "low"
     requires_step_up: false
 
@@ -68,7 +74,7 @@ tools:
           type: "string"
           enum: ["content", "files_with_matches", "count"]
     allowed_paths:
-      - "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/**"
+      - "${ALLOWED_BASE_PATH}/**"
     risk_level: "low"
     requires_step_up: false
 
@@ -92,7 +98,7 @@ tools:
     risk_level: "critical"
     requires_step_up: true  # MUST have step-up authentication
     allowed_paths:
-      - "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/**"
+      - "${ALLOWED_BASE_PATH}/**"
 
 # Hash computation reference:
 # For each tool, the hash is computed as:
