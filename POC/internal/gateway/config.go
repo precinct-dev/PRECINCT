@@ -10,7 +10,6 @@ type Config struct {
 	Port                    int
 	UpstreamURL             string
 	OPAPolicyDir            string
-	ToolRegistryURL         string
 	ToolRegistryConfigPath  string
 	AuditLogPath            string
 	OPAPolicyPath           string
@@ -109,7 +108,6 @@ func ConfigFromEnv() *Config {
 		Port:                    port,
 		UpstreamURL:             getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
 		OPAPolicyDir:            getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
-		ToolRegistryURL:         getEnvOrDefault("TOOL_REGISTRY_URL", ""),
 		ToolRegistryConfigPath:  getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
 		AuditLogPath:            getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
 		OPAPolicyPath:           getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
