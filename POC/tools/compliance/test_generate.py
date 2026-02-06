@@ -23,6 +23,7 @@ from generate import (
     CSV_COLUMNS,
     FRAMEWORK_DISPLAY_NAMES,
     FRAMEWORK_REQUIREMENTS,
+    GDPR_ART30_ROPA_PATH,
     IMPLEMENTED_MIDDLEWARE,
     STATUS_COLORS,
     CompliancePDF,
@@ -1451,4 +1452,330 @@ class TestIntegrationAllOutputs:
 
             assert csv_row_count == xlsx_row_count, (
                 f"CSV {csv_row_count} rows != XLSX {xlsx_row_count} rows"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Validation Tests: GDPR Article 30 ROPA Document (RFA-w4m)
+# ---------------------------------------------------------------------------
+
+
+ROPA_PATH = PROJECT_ROOT / "docs" / "compliance" / "gdpr-article-30-ropa.md"
+
+
+class TestGDPRArticle30ROPA:
+    """Validate that the ROPA document contains all required sections per Article 30(1)."""
+
+    def test_ropa_file_exists(self):
+        """ROPA document must exist at the expected path."""
+        assert ROPA_PATH.exists(), (
+            f"ROPA document not found at {ROPA_PATH}"
+        )
+
+    def test_ropa_is_non_empty(self):
+        """ROPA document must not be empty."""
+        content = ROPA_PATH.read_text()
+        assert len(content) > 100, "ROPA document is too short to be complete"
+
+    def test_ropa_section_1_controller_processor(self):
+        """Section 1: Controller and Processor identification."""
+        content = ROPA_PATH.read_text()
+        assert "## 1." in content, "Missing Section 1 heading"
+        assert "Controller" in content, "Missing Controller identification"
+        assert "Processor" in content, "Missing Processor identification"
+        assert "Data Controller" in content, "Missing Data Controller subsection"
+        assert "Data Processor" in content, "Missing Data Processor subsection"
+        # Controller is the deploying org, processor is the gateway
+        assert "deploying organization" in content.lower(), (
+            "Should identify deploying organization as controller"
+        )
+        assert "MCP Security Gateway" in content, (
+            "Should identify MCP Security Gateway as processor"
+        )
+
+    def test_ropa_section_2_data_subject_categories(self):
+        """Section 2: Categories of data subjects."""
+        content = ROPA_PATH.read_text()
+        assert "## 2." in content, "Missing Section 2 heading"
+        assert "Data Subjects" in content, "Missing data subjects heading"
+        assert "SPIFFE ID" in content, "Must mention SPIFFE IDs as identifiers"
+        assert "pseudonymous" in content.lower(), (
+            "Must note SPIFFE IDs are pseudonymous identifiers"
+        )
+
+    def test_ropa_section_3_processing_categories(self):
+        """Section 3: Categories of processing activities."""
+        content = ROPA_PATH.read_text()
+        assert "## 3." in content, "Missing Section 3 heading"
+        # All required processing categories
+        assert "Session" in content, "Missing session tracking processing"
+        assert "Tool Action" in content or "tool action" in content.lower(), (
+            "Missing tool action recording processing"
+        )
+        assert "Risk Score" in content or "risk score" in content.lower(), (
+            "Missing risk score computation processing"
+        )
+        assert "Exfiltration" in content or "exfiltration" in content.lower(), (
+            "Missing exfiltration detection processing"
+        )
+        assert "Audit" in content, "Missing audit logging processing"
+        assert "Rate Limit" in content or "rate limit" in content.lower(), (
+            "Missing rate limiting processing"
+        )
+
+    def test_ropa_section_4_purpose(self):
+        """Section 4: Purpose of processing."""
+        content = ROPA_PATH.read_text()
+        assert "## 4." in content, "Missing Section 4 heading"
+        assert "Purpose" in content, "Missing purpose heading"
+        # Required purposes
+        assert "security monitoring" in content.lower(), (
+            "Missing security monitoring purpose"
+        )
+        assert "audit trail" in content.lower(), (
+            "Missing audit trail purpose"
+        )
+        assert "rate limiting" in content.lower(), (
+            "Missing rate limiting purpose"
+        )
+
+    def test_ropa_section_5_retention(self):
+        """Section 5: Data retention periods."""
+        content = ROPA_PATH.read_text()
+        assert "## 5." in content, "Missing Section 5 heading"
+        assert "Retention" in content, "Missing retention heading"
+        # Specific retention values
+        assert "3600" in content, "Missing session TTL of 3600s"
+        assert "120" in content, "Missing rate limit TTL of 120s"
+        assert "indefinite" in content.lower() or "Indefinite" in content, (
+            "Missing indefinite retention for audit logs"
+        )
+
+    def test_ropa_section_6_technical_measures(self):
+        """Section 6: Technical and organizational measures (Art. 32 cross-ref)."""
+        content = ROPA_PATH.read_text()
+        assert "## 6." in content, "Missing Section 6 heading"
+        assert "Article 32" in content or "Art. 32" in content, (
+            "Must reference Article 32"
+        )
+        # Required technical measures
+        assert "Encryption in Transit" in content or "encryption in transit" in content.lower(), (
+            "Missing encryption in transit measure"
+        )
+        assert "mTLS" in content, "Missing mTLS reference"
+        assert "SPIRE" in content, "Missing SPIRE reference for mTLS"
+        assert "SVID" in content, "Missing SVID reference"
+        assert "Right-to-Deletion" in content or "right-to-deletion" in content.lower() or "gdpr-delete" in content, (
+            "Missing right-to-deletion measure"
+        )
+        assert "Access Control" in content or "access control" in content.lower(), (
+            "Missing access control measure"
+        )
+        # OTel Collector exception per story learnings
+        assert "OTel Collector" in content or "OpenTelemetry Collector" in content, (
+            "Must document OTel Collector mTLS exception"
+        )
+
+    def test_ropa_section_7_third_country_transfers(self):
+        """Section 7: Transfers to third countries."""
+        content = ROPA_PATH.read_text()
+        assert "## 7." in content, "Missing Section 7 heading"
+        assert "Third Countr" in content or "third countr" in content.lower(), (
+            "Missing third country transfers heading"
+        )
+        # Default: no transfers
+        assert "no personal data is transferred" in content.lower() or "none" in content.lower(), (
+            "Must state no transfers by default"
+        )
+        # Groq API risk
+        assert "Groq" in content, "Must document Groq API as transfer risk"
+        assert "United States" in content or "US-based" in content, (
+            "Must document Groq API is US-based"
+        )
+
+    def test_ropa_all_7_sections_present(self):
+        """All 7 required ROPA sections must be present as numbered headings."""
+        content = ROPA_PATH.read_text()
+        for i in range(1, 8):
+            assert f"## {i}." in content, (
+                f"Missing required ROPA section {i}"
+            )
+
+    def test_ropa_keydb_session_processing_documented(self):
+        """KeyDB session data processing must be explicitly documented."""
+        content = ROPA_PATH.read_text()
+        assert "KeyDB" in content, "KeyDB must be mentioned as storage backend"
+        assert "session:" in content, (
+            "KeyDB key format session:{spiffe_id}:{session_id} should be documented"
+        )
+
+    def test_ropa_audit_log_processing_documented(self):
+        """Audit log processing must be explicitly documented."""
+        content = ROPA_PATH.read_text()
+        assert "JSONL" in content, "Audit log format (JSONL) must be documented"
+        assert "append-only" in content.lower(), (
+            "Audit log append-only nature must be documented"
+        )
+
+    def test_ropa_groq_third_country_risk_documented(self):
+        """Deep scan to Groq API must be documented as a third-country data transfer risk."""
+        content = ROPA_PATH.read_text()
+        # Find the third country section specifically
+        section_7_start = content.find("## 7.")
+        assert section_7_start >= 0, "Section 7 not found"
+        section_7_content = content[section_7_start:]
+        assert "Groq" in section_7_content, (
+            "Groq API must be documented in the third-country transfers section"
+        )
+        assert "deep scan" in section_7_content.lower(), (
+            "Deep scan feature must be mentioned in transfer risk context"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Integration Test: make gdpr-ropa Target (RFA-w4m)
+# ---------------------------------------------------------------------------
+
+
+class TestMakeGDPRROPA:
+    """Integration tests for the 'make gdpr-ropa' Makefile target."""
+
+    def test_gdpr_ropa_target_exists_in_makefile(self):
+        """The gdpr-ropa target must exist in the Makefile."""
+        makefile_path = PROJECT_ROOT / "Makefile"
+        content = makefile_path.read_text()
+        assert "gdpr-ropa:" in content, (
+            "gdpr-ropa target not found in Makefile"
+        )
+
+    def test_gdpr_ropa_output_non_empty(self):
+        """'make gdpr-ropa' must produce non-empty output."""
+        import subprocess
+
+        result = subprocess.run(
+            ["make", "gdpr-ropa"],
+            capture_output=True,
+            text=True,
+            cwd=str(PROJECT_ROOT),
+            timeout=30,
+        )
+        assert result.returncode == 0, (
+            f"'make gdpr-ropa' failed with return code {result.returncode}: {result.stderr}"
+        )
+        assert len(result.stdout) > 100, (
+            f"'make gdpr-ropa' output is too short ({len(result.stdout)} chars)"
+        )
+
+    def test_gdpr_ropa_output_contains_required_headings(self):
+        """'make gdpr-ropa' output must contain all 7 required ROPA section headings."""
+        import subprocess
+
+        result = subprocess.run(
+            ["make", "gdpr-ropa"],
+            capture_output=True,
+            text=True,
+            cwd=str(PROJECT_ROOT),
+            timeout=30,
+        )
+        assert result.returncode == 0
+        output = result.stdout
+
+        # All 7 section headings
+        required_headings = [
+            "Controller and Processor",
+            "Categories of Data Subjects",
+            "Categories of Processing",
+            "Purpose of Processing",
+            "Data Retention",
+            "Technical and Organizational Measures",
+            "Transfers to Third Countries",
+        ]
+        for heading in required_headings:
+            assert heading in output, (
+                f"Required ROPA heading '{heading}' not found in 'make gdpr-ropa' output"
+            )
+
+    def test_gdpr_ropa_output_contains_gdpr_reference(self):
+        """Output must reference GDPR Article 30."""
+        import subprocess
+
+        result = subprocess.run(
+            ["make", "gdpr-ropa"],
+            capture_output=True,
+            text=True,
+            cwd=str(PROJECT_ROOT),
+            timeout=30,
+        )
+        assert result.returncode == 0
+        assert "Article 30" in result.stdout, (
+            "Output must reference GDPR Article 30"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Cross-Reference Test: Compliance Report Generator and ROPA (RFA-w4m)
+# ---------------------------------------------------------------------------
+
+
+class TestROPACrossReference:
+    """Verify the compliance report generator cross-references the ROPA document."""
+
+    def test_gdpr_art30_ropa_path_constant(self):
+        """GDPR_ART30_ROPA_PATH constant must point to existing file."""
+        ropa_full_path = PROJECT_ROOT / GDPR_ART30_ROPA_PATH
+        assert ropa_full_path.exists(), (
+            f"GDPR_ART30_ROPA_PATH points to {ropa_full_path} which does not exist"
+        )
+
+    def test_art30_rows_reference_ropa(self):
+        """Compliance rows mapped to GDPR Art. 30 must reference the ROPA document."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        rows = generate_rows(controls, [], configs, PROJECT_ROOT)
+
+        art30_rows = [
+            r for r in rows
+            if r["framework"] == "GDPR" and "Art. 30" in r["framework_requirement"]
+        ]
+        assert len(art30_rows) > 0, (
+            "No GDPR Art. 30 rows found in compliance report"
+        )
+        for row in art30_rows:
+            assert GDPR_ART30_ROPA_PATH in row["implementation_notes"], (
+                f"Control {row['control_id']} mapped to Art. 30 does not reference "
+                f"ROPA document in implementation_notes. Got: {row['implementation_notes']}"
+            )
+
+    def test_art30_rows_with_audit_data_reference_ropa(self, sample_audit_entries):
+        """Art. 30 rows still reference ROPA even when audit data is present."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        rows = generate_rows(controls, sample_audit_entries, configs, PROJECT_ROOT)
+
+        art30_rows = [
+            r for r in rows
+            if r["framework"] == "GDPR" and "Art. 30" in r["framework_requirement"]
+        ]
+        assert len(art30_rows) > 0
+        for row in art30_rows:
+            assert GDPR_ART30_ROPA_PATH in row["implementation_notes"], (
+                f"Control {row['control_id']} Art. 30 row missing ROPA reference "
+                f"when audit data present. Got: {row['implementation_notes']}"
+            )
+
+    def test_non_art30_rows_do_not_reference_ropa(self):
+        """Rows NOT mapped to Art. 30 should NOT reference the ROPA document."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        rows = generate_rows(controls, [], configs, PROJECT_ROOT)
+
+        non_art30_rows = [
+            r for r in rows
+            if not ("Art. 30" in r.get("framework_requirement", ""))
+        ]
+        assert len(non_art30_rows) > 0
+        for row in non_art30_rows:
+            assert GDPR_ART30_ROPA_PATH not in row["implementation_notes"], (
+                f"Control {row['control_id']} ({row['framework_requirement']}) "
+                f"should NOT reference ROPA. Got: {row['implementation_notes']}"
             )
