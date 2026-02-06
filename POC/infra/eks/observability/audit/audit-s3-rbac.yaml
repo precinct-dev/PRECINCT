@@ -1,0 +1,33 @@
+# ------------------------------------------------------------------------------
+# Audit S3 Sink RBAC -- IRSA ServiceAccount
+# Story: RFA-9fv.7
+#
+# ServiceAccount with IRSA (IAM Roles for Service Accounts) annotation.
+# The gateway pod uses this ServiceAccount to assume an IAM role with
+# permissions to write audit events to S3 with Object Lock.
+#
+# The IAM role is created by audit-s3-iam.tf and trusts the EKS OIDC provider
+# for the observability namespace's audit-s3-sink service account.
+#
+# The gateway Deployment should reference this ServiceAccount (or the gateway
+# ServiceAccount should have the same IRSA annotation) to gain S3 write access.
+#
+# Permissions granted via IAM role:
+#   - s3:PutObject (write audit batches)
+#   - s3:PutObjectRetention (set Object Lock retention)
+#   - s3:PutObjectLegalHold (support legal hold workflow)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: audit-s3-sink
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: audit-s3-sink
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: audit
+  annotations:
+    # IRSA annotation: tells EKS to inject AWS credentials for this IAM role
+    # Replace <ACCOUNT_ID> and <CLUSTER_NAME> after Terraform apply
+    # or use Kustomize/Helm to template this value.
+    eks.amazonaws.com/role-arn: "arn:aws:iam:::<ACCOUNT_ID>:role/agentic-ref-arch-poc-audit-s3-sink"

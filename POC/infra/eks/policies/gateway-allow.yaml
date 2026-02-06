@@ -12,6 +12,7 @@
 #
 #   EGRESS:
 #     - To mcp-server in tools namespace on port 8081 (upstream tool calls)
+#     - To otel-collector in observability namespace on 4317/4318 (OTLP traces)
 #     - To SPIRE agent on the host (SPIFFE SVID retrieval via Unix socket)
 #     - To kube-dns on port 53 (DNS resolution)
 #     - To SPIKE Nexus in spike-system on port 8443 (token operations)
@@ -72,6 +73,21 @@ spec:
       ports:
         - protocol: TCP
           port: 8081
+
+    # Allow egress to OTEL Collector in observability namespace (OTLP traces)
+    # Story: RFA-9fv.7
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
 
     # Allow egress to SPIKE Nexus in spike-system on port 8443
     - to:

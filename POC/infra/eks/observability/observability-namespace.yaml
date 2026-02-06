@@ -1,0 +1,23 @@
+# ------------------------------------------------------------------------------
+# Observability Namespace
+# Story: RFA-9fv.7
+#
+# Dedicated namespace for the observability stack:
+#   - OpenTelemetry Collector (trace/metric/log pipeline)
+#   - Phoenix (trace visualization and analysis)
+#   - Audit S3 sink configuration
+#
+# Pod security standards enforce restricted profile (non-root, no privilege
+# escalation, read-only root filesystem, etc.).
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    app.kubernetes.io/part-of: mcp-observability
+    # Label used by NetworkPolicy namespaceSelector to allow traffic TO observability
+    name: observability
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

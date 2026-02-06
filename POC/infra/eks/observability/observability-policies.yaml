@@ -1,0 +1,162 @@
+# ------------------------------------------------------------------------------
+# Observability NetworkPolicies
+# Story: RFA-9fv.7
+#
+# Network policies for the observability namespace implementing least-privilege
+# traffic flows:
+#
+# Default Deny:
+#   - All ingress and egress blocked unless explicitly allowed
+#
+# OTEL Collector:
+#   INGRESS:
+#     - From gateway namespace on ports 4317 (gRPC) and 4318 (HTTP)
+#   EGRESS:
+#     - To Phoenix on port 4317 (gRPC trace forwarding)
+#     - To kube-dns on port 53 (DNS resolution)
+#
+# Phoenix:
+#   INGRESS:
+#     - From otel-collector on port 4317 (gRPC trace ingestion)
+#     - From any on port 6006 (UI access -- restrict in production)
+#   EGRESS:
+#     - To kube-dns on port 53 (DNS resolution)
+#
+# Reference Architecture Section 9.4: NetworkPolicy enforcement
+# ------------------------------------------------------------------------------
+
+# Default deny all traffic in observability namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow gateway -> otel-collector on OTLP ports (4317 gRPC, 4318 HTTP)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-allow-ingress
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow inbound OTLP from gateway namespace
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+---
+# Allow otel-collector -> phoenix on gRPC port 4317 + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: otel-collector-allow-egress
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: otel-collector
+  policyTypes:
+    - Egress
+  egress:
+    # Allow egress to Phoenix for trace forwarding
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: phoenix
+      ports:
+        - protocol: TCP
+          port: 4317
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Allow otel-collector -> phoenix on port 4317 + any -> phoenix UI on port 6006
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: phoenix-allow-ingress
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: phoenix
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow inbound gRPC from otel-collector
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+    # Allow inbound UI access from any source
+    # In production, restrict to specific namespaces or operator CIDRs
+    - ports:
+        - protocol: TCP
+          port: 6006
+---
+# Allow Phoenix DNS egress (for any outbound resolution needs)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: phoenix-allow-egress
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: phoenix
+  policyTypes:
+    - Egress
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
