@@ -10,16 +10,22 @@ from __future__ import annotations
 import csv
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
+
+import openpyxl
 
 import pytest
 
 # Module under test
 from generate import (
     CSV_COLUMNS,
+    FRAMEWORK_DISPLAY_NAMES,
     FRAMEWORK_REQUIREMENTS,
     IMPLEMENTED_MIDDLEWARE,
+    STATUS_COLORS,
+    CompliancePDF,
     build_evidence_description,
     build_evidence_reference,
     build_implementation_notes,
@@ -27,12 +33,20 @@ from generate import (
     build_recommendation,
     check_config_exists,
     check_evidence_in_log,
+    copy_evidence,
     determine_status,
     generate_rows,
     load_audit_log,
     load_taxonomy,
     main,
     write_csv,
+    write_pdf,
+    write_xlsx,
+    _apply_xlsx_formatting,
+    _build_control_area_matrix,
+    _compute_framework_summary,
+    _gather_partial_documented_controls,
+    _select_evidence_highlights,
 )
 
 
@@ -779,3 +793,662 @@ class TestEvidenceCrossReferencing:
                     assert test_file.exists(), (
                         f"Middleware {middleware} has no test file at {test_file}"
                     )
+
+
+# ---------------------------------------------------------------------------
+# Unit Tests: Framework Summary Computation
+# ---------------------------------------------------------------------------
+
+
+class TestComputeFrameworkSummary:
+    """Tests for _compute_framework_summary."""
+
+    def test_summary_counts(self):
+        rows = [
+            {"framework": "SOC2", "status": "Implemented"},
+            {"framework": "SOC2", "status": "Implemented"},
+            {"framework": "SOC2", "status": "Partial"},
+            {"framework": "GDPR", "status": "Documented Only"},
+        ]
+        summary = _compute_framework_summary(rows)
+        assert summary["SOC2"]["total"] == 3
+        assert summary["SOC2"]["Implemented"] == 2
+        assert summary["SOC2"]["Partial"] == 1
+        assert summary["SOC2"]["pct_implemented"] == 67  # 2/3 = 66.6... rounds to 67
+        assert summary["GDPR"]["total"] == 1
+        assert summary["GDPR"]["Documented Only"] == 1
+        assert summary["GDPR"]["pct_implemented"] == 0
+
+    def test_empty_rows(self):
+        summary = _compute_framework_summary([])
+        assert summary == {}
+
+    def test_all_implemented(self):
+        rows = [
+            {"framework": "CCPA", "status": "Implemented"},
+            {"framework": "CCPA", "status": "Implemented"},
+        ]
+        summary = _compute_framework_summary(rows)
+        assert summary["CCPA"]["pct_implemented"] == 100
+
+
+# ---------------------------------------------------------------------------
+# Unit Tests: XLSX Formatting
+# ---------------------------------------------------------------------------
+
+
+class TestXLSXFormatting:
+    """Tests for XLSX generation functions."""
+
+    def test_write_xlsx_creates_file(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """XLSX file is created with correct path."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            assert path.exists()
+            assert path.stat().st_size > 0
+
+    def test_xlsx_has_summary_sheet(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """XLSX has a Summary sheet."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            wb = openpyxl.load_workbook(str(path))
+            assert "Summary" in wb.sheetnames
+            wb.close()
+
+    def test_xlsx_has_framework_sheets(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """XLSX has one sheet per framework present in data."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            wb = openpyxl.load_workbook(str(path))
+            # sample_control maps to SOC2, ISO27001, GDPR
+            assert "SOC 2" in wb.sheetnames
+            assert "ISO 27001" in wb.sheetnames
+            assert "GDPR" in wb.sheetnames
+            wb.close()
+
+    def test_xlsx_framework_sheet_has_headers(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """Framework sheets have CSV_COLUMNS as headers."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            wb = openpyxl.load_workbook(str(path))
+            ws = wb["SOC 2"]
+            header_vals = [cell.value for cell in ws[1]]
+            assert header_vals == CSV_COLUMNS
+            wb.close()
+
+    def test_xlsx_conditional_formatting_colors(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """Rows with 'Implemented' status get green fill."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            wb = openpyxl.load_workbook(str(path))
+            ws = wb["SOC 2"]
+            # Row 2 should be the first data row -- sample_control is Implemented
+            status_col_idx = CSV_COLUMNS.index("status") + 1
+            status_cell = ws.cell(row=2, column=status_col_idx)
+            assert status_cell.value == "Implemented"
+            # Check fill color on data cell (any cell in the row)
+            first_cell = ws.cell(row=2, column=1)
+            # The fill should be the green color
+            assert first_cell.fill.start_color.rgb is not None
+            fill_hex = first_cell.fill.start_color.rgb
+            # openpyxl may prefix with FF for alpha
+            assert fill_hex.endswith("C6EFCE") or fill_hex == "00C6EFCE"
+            wb.close()
+
+    def test_xlsx_summary_contains_framework_percentages(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """Summary sheet contains percentage values for frameworks."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            wb = openpyxl.load_workbook(str(path))
+            ws = wb["Summary"]
+            # Gather all cell values
+            all_vals = []
+            for row in ws.iter_rows(values_only=True):
+                all_vals.extend([str(v) for v in row if v is not None])
+            # Should contain percentage strings
+            pct_found = any("%" in v for v in all_vals)
+            assert pct_found, f"No percentage found in Summary sheet. Values: {all_vals}"
+            wb.close()
+
+    def test_xlsx_summary_has_report_date(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """Summary sheet contains the report date."""
+        from datetime import date as dt_date
+
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            wb = openpyxl.load_workbook(str(path))
+            ws = wb["Summary"]
+            all_vals = []
+            for row in ws.iter_rows(values_only=True):
+                all_vals.extend([str(v) for v in row if v is not None])
+            today = dt_date.today().isoformat()
+            assert any(today in v for v in all_vals), (
+                f"Report date {today} not found in Summary. Values: {all_vals}"
+            )
+            wb.close()
+
+    def test_xlsx_bold_headers(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """Header row in framework sheets should be bold."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            wb = openpyxl.load_workbook(str(path))
+            ws = wb["SOC 2"]
+            for cell in ws[1]:
+                assert cell.font.bold is True, (
+                    f"Header cell '{cell.value}' is not bold"
+                )
+            wb.close()
+
+    def test_xlsx_data_row_count_matches_csv(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """Number of data rows in XLSX framework sheets matches CSV rows."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            wb = openpyxl.load_workbook(str(path))
+            total_xlsx_rows = 0
+            for fw_code, display in FRAMEWORK_DISPLAY_NAMES.items():
+                if display in wb.sheetnames:
+                    ws = wb[display]
+                    # Subtract header row
+                    total_xlsx_rows += ws.max_row - 1
+            assert total_xlsx_rows == len(rows), (
+                f"XLSX has {total_xlsx_rows} data rows but CSV has {len(rows)}"
+            )
+            wb.close()
+
+
+# ---------------------------------------------------------------------------
+# Unit Tests: PDF Generation
+# ---------------------------------------------------------------------------
+
+
+class TestPDFGeneration:
+    """Tests for PDF generation functions."""
+
+    def test_write_pdf_creates_file(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """PDF file is created."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "summary.pdf"
+            num_pages = write_pdf(rows, sample_audit_entries, path)
+            assert path.exists()
+            assert path.stat().st_size > 0
+
+    def test_pdf_has_4_pages(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """PDF must have exactly 4 pages."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "summary.pdf"
+            num_pages = write_pdf(rows, sample_audit_entries, path)
+            assert num_pages == 4, f"PDF has {num_pages} pages, expected 4"
+
+    def test_pdf_contains_header_text(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        """PDF file should be a valid PDF (starts with %PDF)."""
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "summary.pdf"
+            write_pdf(rows, sample_audit_entries, path)
+            with open(path, "rb") as f:
+                header = f.read(5)
+            assert header == b"%PDF-", "File is not a valid PDF"
+
+    def test_pdf_with_no_audit_entries(
+        self, sample_control, sample_configs
+    ):
+        """PDF generates correctly even without audit entries."""
+        rows = generate_rows(
+            [sample_control], [], sample_configs, PROJECT_ROOT
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "summary.pdf"
+            num_pages = write_pdf(rows, [], path)
+            assert path.exists()
+            assert num_pages == 4
+
+
+# ---------------------------------------------------------------------------
+# Unit Tests: Control Area Matrix
+# ---------------------------------------------------------------------------
+
+
+class TestControlAreaMatrix:
+    """Tests for _build_control_area_matrix."""
+
+    def test_matrix_structure(self):
+        rows = [
+            {"control_id": "GW-AUTH-001", "framework": "SOC2", "status": "Implemented"},
+            {"control_id": "GW-AUTH-001", "framework": "GDPR", "status": "Partial"},
+            {"control_id": "GW-DLP-001", "framework": "SOC2", "status": "Documented Only"},
+        ]
+        matrix = _build_control_area_matrix(rows)
+        assert "GW-AUTH" in matrix
+        assert "GW-DLP" in matrix
+        assert matrix["GW-AUTH"]["SOC2"] == "Implemented"
+        assert matrix["GW-AUTH"]["GDPR"] == "Partial"
+        assert matrix["GW-DLP"]["SOC2"] == "Documented Only"
+
+    def test_best_status_wins(self):
+        """When multiple controls in same area map to same framework, best status wins."""
+        rows = [
+            {"control_id": "GW-AUTH-001", "framework": "SOC2", "status": "Partial"},
+            {"control_id": "GW-AUTH-002", "framework": "SOC2", "status": "Implemented"},
+        ]
+        matrix = _build_control_area_matrix(rows)
+        assert matrix["GW-AUTH"]["SOC2"] == "Implemented"
+
+
+# ---------------------------------------------------------------------------
+# Unit Tests: Evidence Highlights Selection
+# ---------------------------------------------------------------------------
+
+
+class TestEvidenceHighlights:
+    """Tests for _select_evidence_highlights."""
+
+    def test_selects_diverse_actions(self, sample_audit_entries):
+        highlights = _select_evidence_highlights(sample_audit_entries)
+        actions = {h.get("action") for h in highlights}
+        # Sample has mcp_request and step_up_gating
+        assert "mcp_request" in actions
+        assert "step_up_gating" in actions
+
+    def test_redacts_uuids(self, sample_audit_entries):
+        highlights = _select_evidence_highlights(sample_audit_entries)
+        for h in highlights:
+            if "session_id" in h:
+                assert len(h["session_id"]) < 40, (
+                    f"session_id not truncated: {h['session_id']}"
+                )
+                assert h["session_id"].endswith("...")
+
+    def test_max_entries_respected(self, sample_audit_entries):
+        highlights = _select_evidence_highlights(sample_audit_entries, max_entries=2)
+        assert len(highlights) <= 2
+
+    def test_empty_entries(self):
+        highlights = _select_evidence_highlights([])
+        assert highlights == []
+
+
+# ---------------------------------------------------------------------------
+# Unit Tests: Partial/Documented Only Gathering
+# ---------------------------------------------------------------------------
+
+
+class TestGatherIncompleteControls:
+    """Tests for _gather_partial_documented_controls."""
+
+    def test_filters_implemented(self):
+        rows = [
+            {"control_id": "GW-A-001", "control_name": "A", "status": "Implemented",
+             "recommendation": "ok"},
+            {"control_id": "GW-B-001", "control_name": "B", "status": "Partial",
+             "recommendation": "fix"},
+            {"control_id": "GW-C-001", "control_name": "C", "status": "Documented Only",
+             "recommendation": "impl"},
+        ]
+        result = _gather_partial_documented_controls(rows)
+        ids = {r["control_id"] for r in result}
+        assert "GW-A-001" not in ids
+        assert "GW-B-001" in ids
+        assert "GW-C-001" in ids
+
+    def test_deduplicates(self):
+        rows = [
+            {"control_id": "GW-B-001", "control_name": "B", "status": "Partial",
+             "recommendation": "fix", "framework": "SOC2"},
+            {"control_id": "GW-B-001", "control_name": "B", "status": "Partial",
+             "recommendation": "fix", "framework": "GDPR"},
+        ]
+        result = _gather_partial_documented_controls(rows)
+        assert len(result) == 1
+
+
+# ---------------------------------------------------------------------------
+# Unit Tests: Evidence Copying
+# ---------------------------------------------------------------------------
+
+
+class TestCopyEvidence:
+    """Tests for copy_evidence function."""
+
+    def test_copies_audit_excerpt(self, sample_audit_entries):
+        """Audit log excerpt is copied to evidence directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a sample audit log
+            audit_path = Path(tmpdir) / "audit.jsonl"
+            with open(audit_path, "w") as f:
+                for entry in sample_audit_entries:
+                    f.write(json.dumps(entry) + "\n")
+
+            output_dir = Path(tmpdir) / "output"
+            copied = copy_evidence(PROJECT_ROOT, str(audit_path), output_dir)
+
+            assert "evidence/audit-log-excerpt.jsonl" in copied
+            excerpt = output_dir / "evidence" / "audit-log-excerpt.jsonl"
+            assert excerpt.exists()
+            with open(excerpt) as f:
+                lines = f.readlines()
+            assert len(lines) == len(sample_audit_entries)
+
+    def test_copies_policy_configs(self):
+        """Policy config files are copied when they exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "output"
+            copied = copy_evidence(PROJECT_ROOT, "/nonexistent", output_dir)
+
+            # OPA policy and tool registry should exist in the real project
+            assert "evidence/policy-configs/opa-policy.rego" in copied
+            assert "evidence/policy-configs/tool-registry.yaml" in copied
+            assert (output_dir / "evidence" / "policy-configs" / "opa-policy.rego").exists()
+            assert (output_dir / "evidence" / "policy-configs" / "tool-registry.yaml").exists()
+
+    def test_copies_risk_thresholds(self):
+        """Risk thresholds config is copied."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "output"
+            copied = copy_evidence(PROJECT_ROOT, "/nonexistent", output_dir)
+            assert "evidence/policy-configs/risk-thresholds.yaml" in copied
+
+    def test_no_audit_log_still_copies_configs(self):
+        """When no audit log exists, configs are still copied."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "output"
+            copied = copy_evidence(PROJECT_ROOT, "/nonexistent/audit.jsonl", output_dir)
+            # Should still have policy configs
+            config_files = [f for f in copied if "policy-configs" in f]
+            assert len(config_files) > 0
+
+    def test_audit_excerpt_limited_to_50_lines(self):
+        """Audit excerpt is limited to first 50 lines."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audit_path = Path(tmpdir) / "big-audit.jsonl"
+            with open(audit_path, "w") as f:
+                for i in range(100):
+                    f.write(json.dumps({"line": i}) + "\n")
+
+            output_dir = Path(tmpdir) / "output"
+            copy_evidence(PROJECT_ROOT, str(audit_path), output_dir)
+
+            excerpt = output_dir / "evidence" / "audit-log-excerpt.jsonl"
+            with open(excerpt) as f:
+                lines = f.readlines()
+            assert len(lines) == 50
+
+    def test_e2e_test_results_copied(self):
+        """E2E test results file is copied if it exists."""
+        real_log = PROJECT_ROOT / "tests" / "e2e" / "gateway-audit-logs.log"
+        if not real_log.exists():
+            pytest.skip("Real E2E audit log not available")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "output"
+            copied = copy_evidence(PROJECT_ROOT, "/nonexistent", output_dir)
+            assert "evidence/e2e-test-results.txt" in copied
+
+
+# ---------------------------------------------------------------------------
+# Integration Tests: Full Pipeline with All Outputs
+# ---------------------------------------------------------------------------
+
+
+class TestIntegrationAllOutputs:
+    """Integration tests generating all three outputs (CSV, XLSX, PDF)."""
+
+    def test_all_three_outputs_from_real_taxonomy(self, sample_audit_entries):
+        """Generate CSV, XLSX, and PDF from real taxonomy and sample audit data."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        rows = generate_rows(controls, sample_audit_entries, configs, PROJECT_ROOT)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "report"
+
+            # CSV
+            csv_path = output_dir / "compliance-report.csv"
+            write_csv(rows, csv_path)
+
+            # XLSX
+            xlsx_path = output_dir / "compliance-report.xlsx"
+            write_xlsx(rows, xlsx_path)
+
+            # PDF
+            pdf_path = output_dir / "compliance-summary.pdf"
+            num_pages = write_pdf(rows, sample_audit_entries, pdf_path)
+
+            # Verify all exist
+            assert csv_path.exists()
+            assert xlsx_path.exists()
+            assert pdf_path.exists()
+
+            # PDF has 4 pages
+            assert num_pages == 4
+
+    def test_csv_and_xlsx_data_consistency(self, sample_audit_entries):
+        """CSV and XLSX contain consistent data."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        rows = generate_rows(controls, sample_audit_entries, configs, PROJECT_ROOT)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            csv_path = Path(tmpdir) / "report.csv"
+            xlsx_path = Path(tmpdir) / "report.xlsx"
+
+            write_csv(rows, csv_path)
+            write_xlsx(rows, xlsx_path)
+
+            # Read CSV
+            with open(csv_path) as f:
+                reader = csv.DictReader(f)
+                csv_rows = list(reader)
+
+            # Read XLSX (all framework sheets)
+            wb = openpyxl.load_workbook(str(xlsx_path))
+            xlsx_rows: list[dict[str, str]] = []
+            for fw_display in ["SOC 2", "ISO 27001", "CCPA", "GDPR"]:
+                if fw_display in wb.sheetnames:
+                    ws = wb[fw_display]
+                    headers = [cell.value for cell in ws[1]]
+                    for row in ws.iter_rows(min_row=2, values_only=True):
+                        xlsx_rows.append(dict(zip(headers, row)))
+            wb.close()
+
+            # Same total count
+            assert len(csv_rows) == len(xlsx_rows), (
+                f"CSV has {len(csv_rows)} rows, XLSX has {len(xlsx_rows)}"
+            )
+
+            # Same control IDs
+            csv_ids = sorted(r["control_id"] for r in csv_rows)
+            xlsx_ids = sorted(r["control_id"] for r in xlsx_rows)
+            assert csv_ids == xlsx_ids
+
+            # Same statuses
+            csv_statuses = sorted(r["status"] for r in csv_rows)
+            xlsx_statuses = sorted(r["status"] for r in xlsx_rows)
+            assert csv_statuses == xlsx_statuses
+
+    def test_xlsx_has_all_4_framework_sheets_plus_summary(self):
+        """Full taxonomy XLSX has Summary + 4 framework sheets."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        rows = generate_rows(controls, [], configs, PROJECT_ROOT)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "report.xlsx"
+            write_xlsx(rows, path)
+            wb = openpyxl.load_workbook(str(path))
+            assert "Summary" in wb.sheetnames
+            assert "SOC 2" in wb.sheetnames
+            assert "ISO 27001" in wb.sheetnames
+            assert "CCPA" in wb.sheetnames
+            assert "GDPR" in wb.sheetnames
+            assert len(wb.sheetnames) == 5
+            wb.close()
+
+    def test_pdf_with_real_audit_log(self):
+        """Integration test with real E2E audit log for PDF generation."""
+        real_log = PROJECT_ROOT / "tests" / "e2e" / "gateway-audit-logs.log"
+        if not real_log.exists():
+            pytest.skip("Real audit log not available (run E2E suite first)")
+
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        audit_entries = load_audit_log(str(real_log))
+        rows = generate_rows(controls, audit_entries, configs, PROJECT_ROOT)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "summary.pdf"
+            num_pages = write_pdf(rows, audit_entries, path)
+            assert path.exists()
+            assert num_pages == 4
+            assert path.stat().st_size > 1000  # PDF should be non-trivial
+
+    def test_cli_main_produces_all_outputs(self, sample_audit_entries):
+        """CLI main() produces CSV, XLSX, and PDF."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audit_path = Path(tmpdir) / "audit.jsonl"
+            with open(audit_path, "w") as f:
+                for entry in sample_audit_entries:
+                    f.write(json.dumps(entry) + "\n")
+
+            output_dir = Path(tmpdir) / "output"
+
+            exit_code = main([
+                "--audit-log", str(audit_path),
+                "--output-dir", str(output_dir),
+                "--project-root", str(PROJECT_ROOT),
+            ])
+
+            assert exit_code == 0
+            assert (output_dir / "compliance-report.csv").exists()
+            assert (output_dir / "compliance-report.xlsx").exists()
+            assert (output_dir / "compliance-summary.pdf").exists()
+
+    def test_cli_main_produces_evidence_directory(self, sample_audit_entries):
+        """CLI main() copies evidence files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audit_path = Path(tmpdir) / "audit.jsonl"
+            with open(audit_path, "w") as f:
+                for entry in sample_audit_entries:
+                    f.write(json.dumps(entry) + "\n")
+
+            output_dir = Path(tmpdir) / "output"
+
+            exit_code = main([
+                "--audit-log", str(audit_path),
+                "--output-dir", str(output_dir),
+                "--project-root", str(PROJECT_ROOT),
+            ])
+
+            assert exit_code == 0
+            evidence_dir = output_dir / "evidence"
+            assert evidence_dir.exists()
+            assert (evidence_dir / "audit-log-excerpt.jsonl").exists()
+            assert (evidence_dir / "policy-configs").exists()
+
+    def test_full_pipeline_with_real_audit_all_outputs(self):
+        """Full integration: real audit log -> all three outputs + evidence."""
+        real_log = PROJECT_ROOT / "tests" / "e2e" / "gateway-audit-logs.log"
+        if not real_log.exists():
+            pytest.skip("Real audit log not available (run E2E suite first)")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            output_dir = Path(tmpdir) / "output"
+
+            exit_code = main([
+                "--audit-log", str(real_log),
+                "--output-dir", str(output_dir),
+                "--project-root", str(PROJECT_ROOT),
+            ])
+
+            assert exit_code == 0
+
+            # All three outputs
+            assert (output_dir / "compliance-report.csv").exists()
+            assert (output_dir / "compliance-report.xlsx").exists()
+            assert (output_dir / "compliance-summary.pdf").exists()
+
+            # Evidence
+            assert (output_dir / "evidence" / "audit-log-excerpt.jsonl").exists()
+            assert (output_dir / "evidence" / "policy-configs" / "opa-policy.rego").exists()
+
+            # CSV and XLSX have consistent data
+            with open(output_dir / "compliance-report.csv") as f:
+                csv_row_count = sum(1 for _ in csv.reader(f)) - 1  # subtract header
+
+            wb = openpyxl.load_workbook(str(output_dir / "compliance-report.xlsx"))
+            xlsx_row_count = 0
+            for fw_display in ["SOC 2", "ISO 27001", "CCPA", "GDPR"]:
+                if fw_display in wb.sheetnames:
+                    xlsx_row_count += wb[fw_display].max_row - 1
+            wb.close()
+
+            assert csv_row_count == xlsx_row_count, (
+                f"CSV {csv_row_count} rows != XLSX {xlsx_row_count} rows"
+            )
