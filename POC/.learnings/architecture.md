@@ -73,3 +73,57 @@
 **Applies to:** Bulk delete, bulk update, GDPR deletion, data migration operations on Redis/KeyDB.
 
 **Source stories:** RFA-hh5.3
+
+---
+
+## [Added from Epic RFA-m6j retro - 2026-02-06]
+
+### OTel Collector dependencies must be explicit in docker-compose
+
+**Priority:** Important
+
+**Context:** docker-compose.yml gateway service does not declare depends_on for otel-collector. If the collector is not ready when the gateway starts, spans may be lost during startup.
+
+**Recommendation:** When services depend on the OTel Collector for observability, add explicit `depends_on` declarations in docker-compose.yml to ensure collector is ready before dependent services start. This prevents lost spans during startup.
+
+**Applies to:** All docker-compose configurations with OTel Collector
+
+**Source stories:** RFA-m6j.1 (spawned bug RFA-39h)
+
+
+---
+
+## [Added from Epic RFA-8z8 retro - 2026-02-06]
+
+### go-spiffe v2 SDK is production-ready for SPIRE integration
+
+**Priority:** Important
+
+**Context:** Both stories leveraged go-spiffe v2 SDK's high-level APIs with no issues. The SDK handled X.509 Source creation, TLS config generation, and Workload API communication cleanly. No low-level certificate management was needed.
+
+**Recommendation:** For all SPIRE integrations in Go services:
+1. Use workloadapi.NewX509Source() for obtaining SVIDs (don't manually fetch from Workload API)
+2. Use tlsconfig.TLSServerConfig() for servers accepting mTLS
+3. Use tlsconfig.MTLSClientConfig() + AuthorizeAny() for clients connecting to SPIRE-protected services
+4. Let go-spiffe handle certificate rotation automatically (no manual refresh logic needed)
+
+**Applies to:** All Go services integrating with SPIRE for mTLS
+
+**Source stories:** RFA-8z8.1, RFA-8z8.2
+
+### SVID-to-PEM init container pattern for non-Workload-API services
+
+**Priority:** Important
+
+**Context:** KeyDB cannot speak the SPIRE Workload API directly. The pattern of using an init container (or sidecar) to fetch SVID and write PEM files to a shared volume is the correct approach for services that need TLS but can't use the Workload API.
+
+**Recommendation:** For services that need SPIRE-issued certificates but can't use the Workload API:
+1. Use a small init container (or sidecar) that runs `spire-agent api fetch x509` and writes PEM files
+2. Mount a shared volume between init container and target service
+3. Configure target service with standard TLS cert/key/CA paths
+4. Document this as an explicit architectural pattern (not a workaround)
+5. Consider: a lighter-weight SVID-fetch tool instead of the full spire-agent image
+
+**Applies to:** All non-Go services or services without Workload API support needing SPIRE certificates
+
+**Source stories:** RFA-8z8.2

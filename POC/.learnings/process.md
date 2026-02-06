@@ -91,3 +91,51 @@ This table provides:
 **Applies to:** Developer tooling configuration, auto-formatters, linters with auto-fix.
 
 **Source stories:** RFA-hh5.2
+
+---
+
+## [Added from Epic RFA-m6j retro - 2026-02-06]
+
+### Verify clean working tree before starting story
+
+**Priority:** Critical
+
+**Context:** Pre-existing KeyDB store refactor changes were uncommitted in the working tree and got auto-merged during linter processing in RFA-m6j.1, accidentally including unrelated changes in the commit.
+
+**Recommendation:** Developers MUST verify clean working tree (`git status`) before starting story implementation. If uncommitted changes exist, either commit them separately or stash them. Never start story work with a dirty working tree.
+
+**Applies to:** All stories
+
+**Source stories:** RFA-m6j.1
+
+### Developer delivery checklist must include push verification
+
+**Priority:** Important
+
+**Context:** RFA-m6j.3 was rejected once for missing remote push (developer forgot `git push`), then accepted on redelivery after push.
+
+**Recommendation:** Developer delivery checklist should explicitly include "Verify commit pushed to remote (`git log origin/epic/<epic-id>..HEAD` must be empty)". This is a mechanical step that shouldn't cause rejections.
+
+**Applies to:** All stories
+
+**Source stories:** RFA-m6j.3
+
+---
+
+## [Added from Epic RFA-8z8 retro - 2026-02-06]
+
+### Verify git diff before committing to avoid bundling unrelated changes
+
+**Priority:** Important
+
+**Context:** RFA-8z8.2 discovered that gateway.go changes had been committed in a prior session, causing confusion about what needed committing. When developer agents run concurrently or sessions overlap, changes can be accidentally bundled.
+
+**Recommendation:** Developer agents should ALWAYS run `git diff` before committing to verify:
+1. Only the current story's changes are staged
+2. No unrelated changes from concurrent agents are included
+3. If unexpected changes appear, investigate (don't blindly commit)
+4. If changes belong to another story, coordinate or alert orchestrator
+
+**Applies to:** All stories when multiple developer agents are active or sessions overlap
+
+**Source stories:** RFA-8z8.2

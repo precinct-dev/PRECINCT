@@ -68,3 +68,39 @@
 **Applies to:** All refactoring stories, particularly those replacing libraries or algorithms.
 
 **Source stories:** RFA-hh5.2
+
+---
+
+## [Added from Epic RFA-m6j retro - 2026-02-06]
+
+### Verify config field types before writing test assertions
+
+**Priority:** Nice-to-have
+
+**Context:** DeepScannerConfig.FallbackMode is a string type, not the DeepScanFallbackMode const type that tests initially assumed.
+
+**Recommendation:** When writing tests for config structs, verify actual field types in the codebase before writing type assertions. Don't assume enum types without checking the struct definition.
+
+**Applies to:** All config testing stories
+
+**Source stories:** RFA-m6j.2
+
+---
+
+## [Added from Epic RFA-8z8 retro - 2026-02-06]
+
+### TLS proxy pattern for testing services with non-TLS-aware mocks
+
+**Priority:** Nice-to-have
+
+**Context:** miniredis (the standard in-memory Redis mock for Go) doesn't support TLS. The pattern of creating a TLS listener that proxies to the plaintext mock was proven in keydb_tls_test.go. This pattern generalizes to any mock that lacks TLS support.
+
+**Recommendation:** For testing TLS connections when the mock doesn't support TLS:
+1. Create a net.Listener with tls.Config (real TLS handshake)
+2. Accept connections, proxy bytes to/from the non-TLS mock
+3. This allows real TLS handshake testing without needing a TLS-capable mock
+4. Document this pattern in testing guidelines for future reference
+
+**Applies to:** Stories testing TLS connections where no TLS-capable mock exists
+
+**Source stories:** RFA-8z8.2
