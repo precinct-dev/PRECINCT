@@ -1,5 +1,6 @@
 data/
 /gateway
+/s3-mcp-server
 *.exe
 *.out
 

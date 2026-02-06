@@ -1,0 +1,96 @@
+# ------------------------------------------------------------------------------
+# S3 MCP Tool Server NetworkPolicies
+# Story: RFA-9fv.5
+#
+# Network policies for the S3 MCP tool server in the tools namespace.
+# These layer on top of the default-deny policy.
+#
+#   INGRESS:
+#     - From gateway namespace on port 8082 (JSON-RPC requests)
+#
+#   EGRESS:
+#     - To kube-dns on port 53 (DNS resolution)
+#     - To HTTPS port 443 (AWS S3 API endpoints)
+#     - To internal CIDRs (SPIRE agent, internal services)
+#
+# Unlike the generic MCP server which is restricted to internal CIDRs only,
+# the S3 MCP server needs egress to AWS S3 endpoints on port 443.
+# The destination allowlist at the application layer provides the fine-grained
+# access control (which buckets/prefixes); the NetworkPolicy provides the
+# network-layer control (which ports/protocols).
+# ------------------------------------------------------------------------------
+
+# Allow inbound from gateway namespace only on port 8082
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: s3-mcp-server-allow-ingress
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: s3-mcp-server
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: s3-mcp-server
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mcp-security-gateway
+      ports:
+        - protocol: TCP
+          port: 8082
+---
+# Allow S3 MCP server egress to DNS, AWS S3, and internal services
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: s3-mcp-server-allow-egress
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: s3-mcp-server
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: s3-mcp-server
+  policyTypes:
+    - Egress
+  egress:
+    # Allow egress to kube-dns for DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # Allow egress to AWS S3 API (HTTPS on port 443)
+    # S3 endpoints resolve to public IPs, so we allow 443 broadly here.
+    # Fine-grained bucket/prefix control is enforced by the application allowlist.
+    - ports:
+        - protocol: TCP
+          port: 443
+
+    # Allow egress to internal CIDRs (SPIRE agent, etc.)
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+    - to:
+        - ipBlock:
+            cidr: 172.16.0.0/12
+    - to:
+        - ipBlock:
+            cidr: 192.168.0.0/16
