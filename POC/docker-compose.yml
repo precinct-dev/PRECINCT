@@ -133,25 +133,69 @@ services:
   # KeyDB - Redis-compatible session persistence store (RFA-hh5.1)
   # Enables cross-request exfiltration detection by persisting session context
   # across HTTP requests. BSD-3-Clause licensed.
+  #
+  # RFA-8z8.2: In SPIFFE_MODE=prod, KeyDB also listens on TLS port 6380 using
+  # SPIRE-issued X.509 SVIDs written to /certs/ by keydb-svid-init. The gateway
+  # connects via rediss://keydb:6380 with mTLS.
+  # In SPIFFE_MODE=dev (default), only port 6379 is used (no TLS).
   keydb:
     image: bitnami/keydb:latest
     container_name: keydb
     hostname: keydb
     ports:
-      - "6379:6379"
+      - "6379:6379"    # Plain Redis protocol (dev mode)
+      - "6380:6380"    # TLS Redis protocol (prod mode, RFA-8z8.2)
     environment:
       - ALLOW_EMPTY_PASSWORD=yes  # Dev mode only -- production uses mTLS (RFA-8z8.2)
     volumes:
       - keydb-data:/bitnami/keydb/data
+      - keydb-certs:/certs:ro      # RFA-8z8.2: SVID PEM files from keydb-svid-init
     networks:
       - agentic-net
+    labels:
+      - "spiffe-id=keydb"          # RFA-8z8.2: SPIRE workload attestation
+      - "component=session-store"
     healthcheck:
       test: ["CMD", "keydb-cli", "ping"]
       interval: 10s
       timeout: 3s
       retries: 5
 
+  # KeyDB SVID Init - One-shot init container to fetch SPIRE SVID for KeyDB TLS (RFA-8z8.2)
+  # KeyDB cannot speak the SPIRE Workload API natively. This container fetches
+  # the X.509 SVID from SPIRE Agent and writes PEM files to a shared volume.
+  # KeyDB then uses these PEM files for its TLS listener on port 6380.
+  #
+  # In SPIFFE_MODE=dev, this service is defined but KeyDB ignores the certs
+  # (it only listens on plain port 6379). The init runs harmlessly.
+  keydb-svid-init:
+    image: ghcr.io/spiffe/spire-agent:1.10.0
+    container_name: keydb-svid-init
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - keydb-certs:/certs
+      - ./scripts/keydb-svid-refresh.sh:/usr/local/bin/keydb-svid-refresh.sh:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - CERT_DIR=/certs
+    entrypoint: ["/bin/sh", "-c", "/usr/local/bin/keydb-svid-refresh.sh init"]
+    networks:
+      - agentic-net
+    labels:
+      - "spiffe-id=keydb"
+    restart: "no"
+
   # OpenTelemetry Collector - Observability data pipeline
+  #
+  # RFA-8z8.2 AC4: EXPLICIT mTLS EXCEPTION. The OTel Collector receives telemetry
+  # data (spans, metrics) over plain HTTP/gRPC. It does NOT require mTLS because:
+  # 1. It never receives or transmits secrets (only observability data)
+  # 2. Telemetry data is not sensitive under SOC 2 CC6.6 / ISO 27001 A.13.1.1
+  # 3. Adding mTLS to the telemetry pipeline adds latency to every span export
+  # This exception is documented in ADR-003 and verified in tcpdump tests.
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: otel-collector
@@ -160,8 +204,8 @@ services:
       - ./config/otel-collector.yaml:/etc/otel-collector-config.yaml:ro
     command: ["--config=/etc/otel-collector-config.yaml"]
     ports:
-      - "4317:4317"  # OTLP gRPC receiver
-      - "4318:4318"  # OTLP HTTP receiver
+      - "4317:4317"  # OTLP gRPC receiver (plain, no TLS -- see mTLS exception above)
+      - "4318:4318"  # OTLP HTTP receiver (plain, no TLS -- see mTLS exception above)
     depends_on:
       phoenix:
         condition: service_healthy
@@ -226,7 +270,7 @@ services:
       - SPIKE_NEXUS_URL=https://spike-nexus:8443
       - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
       - OTEL_SERVICE_NAME=mcp-security-gateway
-      - KEYDB_URL=redis://keydb:6379  # RFA-hh5.1: KeyDB session persistence
+      - KEYDB_URL=redis://keydb:6379  # RFA-hh5.1: KeyDB session persistence (auto-converts to rediss://keydb:6380 in prod mode per RFA-8z8.2)
     networks:
       - agentic-net
     labels:
@@ -268,3 +312,7 @@ volumes:
   # KeyDB persistent data (RFA-hh5.1)
   keydb-data:
     name: keydb-data
+
+  # KeyDB SVID certificates (RFA-8z8.2) - shared between keydb-svid-init and keydb
+  keydb-certs:
+    name: keydb-certs
