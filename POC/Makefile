@@ -99,7 +99,7 @@ register-spire: ## Run SPIRE registration script to register workload entries
 tool-register: ## Register a new MCP tool (RFA-fu1). Usage: make tool-register TOOL_NAME=name TOOL_DESCRIPTION="desc" TOOL_SCHEMA='{"type":"object",...}'
 	@if [ -z "$(TOOL_NAME)" ]; then echo "ERROR: TOOL_NAME is required"; echo "Usage: make tool-register TOOL_NAME=name TOOL_DESCRIPTION=\"desc\" TOOL_SCHEMA='{\"type\":\"object\"}'"; exit 1; fi
 	@if [ -z "$(TOOL_DESCRIPTION)" ]; then echo "ERROR: TOOL_DESCRIPTION is required"; exit 1; fi
-	@if [ -z "$(TOOL_SCHEMA)" ]; then echo "ERROR: TOOL_SCHEMA is required"; exit 1; fi
+	@test -n '$(TOOL_SCHEMA)' || { echo "ERROR: TOOL_SCHEMA is required"; exit 1; }
 	@go run scripts/tool_register/main.go \
 		--name "$(TOOL_NAME)" \
 		--description "$(TOOL_DESCRIPTION)" \
