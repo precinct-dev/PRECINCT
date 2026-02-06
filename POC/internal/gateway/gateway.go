@@ -75,15 +75,16 @@ func (g *Gateway) Handler() http.Handler {
 	// 7. DLP scanning
 	// 8. Session context (RFA-qq0.15)
 	// 9. Step-up gating hook (no-op for skeleton)
-	// 10. Token substitution hook (no-op for skeleton)
-	// 11. Deep scan dispatch (async, after step-up gating)
-	// 12. Proxy to upstream
+	// 10. Deep scan dispatch (async, after step-up gating)
+	// 11-12. [Reserved for future middleware]
+	// 13. Token substitution hook (SECURITY: LAST before proxy - no middleware sees real secrets)
+	// 14. Proxy to upstream
 
 	handler := g.proxyHandler()
 
 	// Apply middleware in reverse order (innermost first)
-	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)              // 11
-	handler = middleware.TokenSubstitution(handler)                              // 10
+	handler = middleware.TokenSubstitution(handler)                              // 13 - LAST before proxy
+	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)              // 10
 	handler = middleware.StepUpGating(handler)                                   // 9
 	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)     // 8
 	handler = middleware.DLPMiddleware(handler, g.dlpScanner)                    // 7
