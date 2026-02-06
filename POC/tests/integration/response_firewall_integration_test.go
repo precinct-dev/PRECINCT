@@ -60,7 +60,6 @@ func buildTestGateway(t *testing.T, handleTTL int) (*httptest.Server, func()) {
 		Port:                    0,
 		UpstreamURL:             upstream.URL,
 		OPAPolicyDir:            "../../config/opa",
-		ToolRegistryURL:         "http://localhost:8082",
 		ToolRegistryConfigPath:  "../../config/tool-registry.yaml",
 		AuditLogPath:            "/tmp/audit-response-firewall-test.jsonl",
 		OPAPolicyPath:           "../../config/opa/mcp_policy.rego",

@@ -15,7 +15,6 @@ func TestNewGateway(t *testing.T) {
 		Port:                   9090,
 		UpstreamURL:            "http://localhost:8080",
 		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryURL:        "http://localhost:8082",
 		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
 		AuditLogPath:           "", // Empty = stdout only
 		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
@@ -76,7 +75,6 @@ func TestHealthEndpoint(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            "http://localhost:8080",
 		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryURL:        "http://localhost:8082",
 		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
 		AuditLogPath:           "", // Empty = stdout only
 		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
@@ -210,7 +208,6 @@ func TestMiddlewareChainIntegration(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            upstream.URL,
 		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryURL:        "http://localhost:8082",
 		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
 		AuditLogPath:           "", // Empty = stdout only
 		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
@@ -262,7 +259,6 @@ func TestTokenSubstitutionOrderingInRealHandler(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            upstream.URL,
 		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryURL:        "http://localhost:8082",
 		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
 		AuditLogPath:           "",
 		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
