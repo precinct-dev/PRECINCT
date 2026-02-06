@@ -217,6 +217,233 @@ default allow = {
 	}
 }
 
+// TestOPAEngineContextPolicyEvaluate verifies the context injection policy evaluation
+// RFA-xwc: Tests for step 7 of the mandatory validation pipeline
+func TestOPAEngineContextPolicyEvaluate(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Write the actual context policy from config/opa/context_policy.rego
+	contextPolicy := `package mcp.context
+
+import rego.v1
+
+default allow_context := false
+
+allow_context if {
+    input.context.source == "external"
+    input.context.validated == true
+    input.context.classification != "sensitive"
+    input.context.handle != ""
+    not session_is_high_risk
+}
+
+session_is_high_risk if {
+    input.session.flags["high_risk"]
+}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "context_policy.rego"), []byte(contextPolicy), 0644); err != nil {
+		t.Fatalf("Failed to write context policy: %v", err)
+	}
+
+	// Also need a basic MCP policy so the main query compiles
+	mcpPolicy := `package mcp
+default allow = {"allow": true, "reason": "allowed"}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "mcp_policy.rego"), []byte(mcpPolicy), 0644); err != nil {
+		t.Fatalf("Failed to write MCP policy: %v", err)
+	}
+
+	engine, err := NewOPAEngine(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create OPA engine: %v", err)
+	}
+	defer engine.Close()
+
+	tests := []struct {
+		name      string
+		input     ContextPolicyInput
+		wantAllow bool
+	}{
+		{
+			name: "allow_clean_external_content",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "external",
+					Validated:      true,
+					Classification: "clean",
+					Handle:         "abc123-uuid",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{},
+				},
+			},
+			wantAllow: true,
+		},
+		{
+			name: "deny_sensitive_content",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "external",
+					Validated:      true,
+					Classification: "sensitive",
+					Handle:         "abc123-uuid",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{},
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			name: "deny_high_risk_session",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "external",
+					Validated:      true,
+					Classification: "clean",
+					Handle:         "abc123-uuid",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{"high_risk": true},
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			name: "deny_unvalidated_content",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "external",
+					Validated:      false,
+					Classification: "clean",
+					Handle:         "abc123-uuid",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{},
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			name: "deny_missing_handle",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "external",
+					Validated:      true,
+					Classification: "clean",
+					Handle:         "",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{},
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			name: "deny_non_external_source",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "internal",
+					Validated:      true,
+					Classification: "clean",
+					Handle:         "abc123-uuid",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{},
+				},
+			},
+			wantAllow: false,
+		},
+		{
+			name: "allow_suspicious_but_not_sensitive",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "external",
+					Validated:      true,
+					Classification: "suspicious",
+					Handle:         "abc123-uuid",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{},
+				},
+			},
+			wantAllow: true,
+		},
+		{
+			name: "deny_high_risk_even_with_clean_content",
+			input: ContextPolicyInput{
+				Context: ContextInput{
+					Source:         "external",
+					Validated:      true,
+					Classification: "clean",
+					Handle:         "valid-handle-uuid",
+				},
+				Session: ContextSessionInput{
+					Flags: map[string]bool{"high_risk": true, "other_flag": true},
+				},
+			},
+			wantAllow: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			allowed, reason, err := engine.EvaluateContextPolicy(tt.input)
+			if err != nil {
+				t.Errorf("EvaluateContextPolicy failed: %v", err)
+			}
+			if allowed != tt.wantAllow {
+				t.Errorf("Expected allow=%v, got %v (reason: %s)", tt.wantAllow, allowed, reason)
+			}
+			// For denials, verify we get a reason
+			if !allowed && reason == "" {
+				t.Error("Expected non-empty reason for denial")
+			}
+		})
+	}
+}
+
+// TestOPAEngineContextPolicyFailClosed verifies fail-closed when context policy missing
+func TestOPAEngineContextPolicyFailClosed(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Only write MCP policy, no context policy
+	mcpPolicy := `package mcp
+default allow = {"allow": true, "reason": "allowed"}
+`
+	if err := os.WriteFile(filepath.Join(tmpDir, "mcp_policy.rego"), []byte(mcpPolicy), 0644); err != nil {
+		t.Fatalf("Failed to write MCP policy: %v", err)
+	}
+
+	engine, err := NewOPAEngine(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create OPA engine: %v", err)
+	}
+	defer engine.Close()
+
+	// Even with clean content and normal session, context policy should deny
+	// because the policy is not loaded (no mcp.context package)
+	input := ContextPolicyInput{
+		Context: ContextInput{
+			Source:         "external",
+			Validated:      true,
+			Classification: "clean",
+			Handle:         "abc123",
+		},
+		Session: ContextSessionInput{
+			Flags: map[string]bool{},
+		},
+	}
+
+	allowed, _, err := engine.EvaluateContextPolicy(input)
+	if err != nil {
+		t.Fatalf("Evaluation should not error (fail closed gracefully): %v", err)
+	}
+	if allowed {
+		t.Error("Expected fail-closed (deny) when context policy is not loaded, got allow")
+	}
+}
+
 // TestOPAEnginePerformance verifies sub-millisecond evaluation latency
 func TestOPAEnginePerformance(t *testing.T) {
 	tmpDir := t.TempDir()

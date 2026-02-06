@@ -208,6 +208,149 @@ func TestContextFetcherRealURL(t *testing.T) {
 	}
 }
 
+// TestContextPolicyGateIntegration tests the OPA context injection policy gate
+// RFA-xwc: Integration test using the REAL OPA engine with the actual context_policy.rego
+// No mocks -- proves the full policy evaluation path works.
+func TestContextPolicyGateIntegration(t *testing.T) {
+	// Set up test HTTP server for content
+	testServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/clean":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Clean content with no PII or credentials"))
+		case "/with-pii":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Contact us at test@example.com or call 555-123-4567"))
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("Default content"))
+		}
+	}))
+	defer testServer.Close()
+
+	tmpDir := t.TempDir()
+	policyDir := t.TempDir()
+
+	// Write the actual context policy (same as config/opa/context_policy.rego)
+	contextPolicy := `package mcp.context
+
+import rego.v1
+
+default allow_context := false
+
+allow_context if {
+    input.context.source == "external"
+    input.context.validated == true
+    input.context.classification != "sensitive"
+    input.context.handle != ""
+    not session_is_high_risk
+}
+
+session_is_high_risk if {
+    input.session.flags["high_risk"]
+}
+`
+	if err := os.WriteFile(policyDir+"/context_policy.rego", []byte(contextPolicy), 0644); err != nil {
+		t.Fatalf("Failed to write context policy: %v", err)
+	}
+
+	// Need a basic MCP policy so the engine compiles (main query target)
+	mcpPolicy := `package mcp
+default allow = {"allow": true, "reason": "allowed"}
+`
+	if err := os.WriteFile(policyDir+"/mcp_policy.rego", []byte(mcpPolicy), 0644); err != nil {
+		t.Fatalf("Failed to write MCP policy: %v", err)
+	}
+
+	// Create REAL OPA engine (no mocks)
+	opaEngine, err := middleware.NewOPAEngine(policyDir)
+	if err != nil {
+		t.Fatalf("Failed to create OPA engine: %v", err)
+	}
+	defer opaEngine.Close()
+
+	// Create real DLP scanner (no mocks)
+	scanner := middleware.NewBuiltInScanner()
+
+	// Create context fetcher WITH real policy evaluator
+	fetcher := tools.NewContextFetcherWithPolicy(scanner, tmpDir, opaEngine)
+
+	t.Run("clean_content_normal_session_allowed", func(t *testing.T) {
+		ctx := context.Background()
+		ref, err := fetcher.FetchAndValidateWithPolicy(ctx, testServer.URL+"/clean", &tools.SessionFlags{
+			Flags: map[string]bool{},
+		})
+		if err != nil {
+			t.Fatalf("Expected policy to allow clean content, got error: %v", err)
+		}
+		if ref == nil {
+			t.Fatal("Expected non-nil content ref for allowed content")
+		}
+		if ref.ContentID == "" {
+			t.Error("Expected non-empty content ID")
+		}
+
+		// Verify content was stored and is accessible
+		content, err := fetcher.GetContent(ref.ContentID)
+		if err != nil {
+			t.Fatalf("Failed to retrieve stored content: %v", err)
+		}
+		if !strings.Contains(content, "Clean content") {
+			t.Error("Retrieved content does not match expected")
+		}
+		t.Logf("PASS: Clean content allowed, content_ref=%s", ref.ContentID)
+	})
+
+	t.Run("sensitive_content_denied_by_policy", func(t *testing.T) {
+		ctx := context.Background()
+		_, err := fetcher.FetchAndValidateWithPolicy(ctx, testServer.URL+"/with-pii", &tools.SessionFlags{
+			Flags: map[string]bool{},
+		})
+		if err == nil {
+			t.Fatal("Expected policy to deny PII content")
+		}
+
+		// Verify it's a ContextPolicyDeniedError, not a different error
+		policyErr, ok := err.(*tools.ContextPolicyDeniedError)
+		if !ok {
+			t.Fatalf("Expected *ContextPolicyDeniedError, got %T: %v", err, err)
+		}
+		t.Logf("PASS: Sensitive content denied with reason: %s", policyErr.Reason)
+	})
+
+	t.Run("clean_content_high_risk_session_denied", func(t *testing.T) {
+		ctx := context.Background()
+		_, err := fetcher.FetchAndValidateWithPolicy(ctx, testServer.URL+"/clean", &tools.SessionFlags{
+			Flags: map[string]bool{"high_risk": true},
+		})
+		if err == nil {
+			t.Fatal("Expected policy to deny content in high-risk session")
+		}
+
+		// Verify it's a ContextPolicyDeniedError
+		policyErr, ok := err.(*tools.ContextPolicyDeniedError)
+		if !ok {
+			t.Fatalf("Expected *ContextPolicyDeniedError, got %T: %v", err, err)
+		}
+		t.Logf("PASS: High-risk session denied with reason: %s", policyErr.Reason)
+	})
+
+	t.Run("backward_compat_without_policy_still_works", func(t *testing.T) {
+		// Create fetcher WITHOUT policy evaluator (backward compatibility)
+		noPolicyFetcher := tools.NewContextFetcher(scanner, tmpDir)
+
+		ctx := context.Background()
+		ref, err := noPolicyFetcher.FetchAndValidate(ctx, testServer.URL+"/clean")
+		if err != nil {
+			t.Fatalf("Expected success without policy evaluator, got error: %v", err)
+		}
+		if ref == nil {
+			t.Fatal("Expected non-nil content ref")
+		}
+		t.Logf("PASS: Backward compatibility maintained, content_ref=%s", ref.ContentID)
+	})
+}
+
 // TestPolicyBlocksRawInjection tests that policy blocks raw content injection
 func TestPolicyBlocksRawInjection(t *testing.T) {
 	// This test verifies that the gateway policy blocks attempts to inject raw content

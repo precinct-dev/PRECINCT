@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -19,6 +20,21 @@ type mockDLPScanner struct {
 
 func (m *mockDLPScanner) Scan(content string) middleware.ScanResult {
 	return m.result
+}
+
+// mockContextPolicyEvaluator for testing OPA context policy gate
+// RFA-xwc: Used in unit tests to verify the policy gate integration
+type mockContextPolicyEvaluator struct {
+	allow  bool
+	reason string
+	err    error
+	// lastInput captures the input for verification
+	lastInput middleware.ContextPolicyInput
+}
+
+func (m *mockContextPolicyEvaluator) EvaluateContextPolicy(input middleware.ContextPolicyInput) (bool, string, error) {
+	m.lastInput = input
+	return m.allow, m.reason, m.err
 }
 
 func TestNewContextFetcher(t *testing.T) {
@@ -426,4 +442,267 @@ func TestFetchAndValidate(t *testing.T) {
 			t.Error("expected error for invalid URL")
 		}
 	})
+}
+
+// TestClassifyDLPResult verifies the DLP result classification for policy input
+// RFA-xwc: The policy uses classification to decide if content is too sensitive
+func TestClassifyDLPResult(t *testing.T) {
+	tests := []struct {
+		name               string
+		result             middleware.ScanResult
+		expectedClassification string
+	}{
+		{
+			name: "clean content",
+			result: middleware.ScanResult{
+				HasCredentials: false,
+				HasPII:         false,
+				HasSuspicious:  false,
+			},
+			expectedClassification: "clean",
+		},
+		{
+			name: "credentials classified as sensitive",
+			result: middleware.ScanResult{
+				HasCredentials: true,
+			},
+			expectedClassification: "sensitive",
+		},
+		{
+			name: "PII classified as sensitive",
+			result: middleware.ScanResult{
+				HasPII: true,
+			},
+			expectedClassification: "sensitive",
+		},
+		{
+			name: "suspicious content",
+			result: middleware.ScanResult{
+				HasSuspicious: true,
+			},
+			expectedClassification: "suspicious",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := classifyDLPResult(tt.result)
+			if result != tt.expectedClassification {
+				t.Errorf("expected classification %q, got %q", tt.expectedClassification, result)
+			}
+		})
+	}
+}
+
+// TestNewContextFetcherWithPolicy verifies constructor with policy evaluator
+func TestNewContextFetcherWithPolicy(t *testing.T) {
+	scanner := &mockDLPScanner{}
+	policyEval := &mockContextPolicyEvaluator{allow: true}
+	storageDir := "/tmp/test-storage"
+
+	fetcher := NewContextFetcherWithPolicy(scanner, storageDir, policyEval)
+
+	if fetcher == nil {
+		t.Fatal("expected non-nil fetcher")
+	}
+	if fetcher.policyEval == nil {
+		t.Error("policy evaluator not set")
+	}
+}
+
+// TestFetchAndValidateWithPolicy tests the policy-gated context injection
+// RFA-xwc: Step 7 of the mandatory validation pipeline
+func TestFetchAndValidateWithPolicy(t *testing.T) {
+	// Create test server serving clean content
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("<html><body>Clean test content</body></html>"))
+	}))
+	defer server.Close()
+
+	tmpDir := t.TempDir()
+
+	t.Run("policy_allows_clean_content", func(t *testing.T) {
+		scanner := &mockDLPScanner{
+			result: middleware.ScanResult{
+				HasCredentials: false,
+				HasPII:         false,
+				Flags:          []string{},
+			},
+		}
+		policyEval := &mockContextPolicyEvaluator{allow: true}
+		fetcher := NewContextFetcherWithPolicy(scanner, tmpDir, policyEval)
+
+		ctx := context.Background()
+		ref, err := fetcher.FetchAndValidateWithPolicy(ctx, server.URL, &SessionFlags{
+			Flags: map[string]bool{},
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ref == nil {
+			t.Fatal("expected non-nil content ref")
+		}
+		if ref.ContentID == "" {
+			t.Error("content ID not set")
+		}
+
+		// Verify policy was called with correct input
+		if policyEval.lastInput.Context.Source != "external" {
+			t.Errorf("expected source 'external', got %q", policyEval.lastInput.Context.Source)
+		}
+		if !policyEval.lastInput.Context.Validated {
+			t.Error("expected validated=true")
+		}
+		if policyEval.lastInput.Context.Classification != "clean" {
+			t.Errorf("expected classification 'clean', got %q", policyEval.lastInput.Context.Classification)
+		}
+		if policyEval.lastInput.Context.Handle == "" {
+			t.Error("expected non-empty handle")
+		}
+	})
+
+	t.Run("policy_denies_returns_ContextPolicyDeniedError", func(t *testing.T) {
+		scanner := &mockDLPScanner{
+			result: middleware.ScanResult{
+				HasCredentials: false,
+				HasPII:         false,
+				Flags:          []string{},
+			},
+		}
+		policyEval := &mockContextPolicyEvaluator{
+			allow:  false,
+			reason: "context_injection_denied",
+		}
+		fetcher := NewContextFetcherWithPolicy(scanner, tmpDir, policyEval)
+
+		ctx := context.Background()
+		_, err := fetcher.FetchAndValidateWithPolicy(ctx, server.URL, &SessionFlags{
+			Flags: map[string]bool{"high_risk": true},
+		})
+		if err == nil {
+			t.Fatal("expected error when policy denies")
+		}
+
+		// Verify the error is a ContextPolicyDeniedError
+		policyErr, ok := err.(*ContextPolicyDeniedError)
+		if !ok {
+			t.Fatalf("expected *ContextPolicyDeniedError, got %T: %v", err, err)
+		}
+		if policyErr.Reason != "context_injection_denied" {
+			t.Errorf("expected reason 'context_injection_denied', got %q", policyErr.Reason)
+		}
+
+		// Verify session flags were passed to policy
+		if !policyEval.lastInput.Session.Flags["high_risk"] {
+			t.Error("expected high_risk flag to be passed to policy")
+		}
+	})
+
+	t.Run("policy_denies_sensitive_content", func(t *testing.T) {
+		scanner := &mockDLPScanner{
+			result: middleware.ScanResult{
+				HasCredentials: false,
+				HasPII:         true,
+				Flags:          []string{"potential_pii"},
+			},
+		}
+		policyEval := &mockContextPolicyEvaluator{
+			allow:  false,
+			reason: "context_injection_denied",
+		}
+		fetcher := NewContextFetcherWithPolicy(scanner, tmpDir, policyEval)
+
+		ctx := context.Background()
+		_, err := fetcher.FetchAndValidateWithPolicy(ctx, server.URL, &SessionFlags{
+			Flags: map[string]bool{},
+		})
+		if err == nil {
+			t.Fatal("expected error when policy denies sensitive content")
+		}
+
+		// Verify classification was set to sensitive (PII)
+		if policyEval.lastInput.Context.Classification != "sensitive" {
+			t.Errorf("expected classification 'sensitive', got %q", policyEval.lastInput.Context.Classification)
+		}
+	})
+
+	t.Run("nil_session_flags_handled_gracefully", func(t *testing.T) {
+		scanner := &mockDLPScanner{
+			result: middleware.ScanResult{
+				HasCredentials: false,
+				HasPII:         false,
+				Flags:          []string{},
+			},
+		}
+		policyEval := &mockContextPolicyEvaluator{allow: true}
+		fetcher := NewContextFetcherWithPolicy(scanner, tmpDir, policyEval)
+
+		ctx := context.Background()
+		ref, err := fetcher.FetchAndValidateWithPolicy(ctx, server.URL, nil)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ref == nil {
+			t.Fatal("expected non-nil content ref")
+		}
+
+		// Session flags should be empty map when nil is passed
+		if len(policyEval.lastInput.Session.Flags) != 0 {
+			t.Error("expected empty flags map for nil session")
+		}
+	})
+
+	t.Run("backward_compatible_without_policy", func(t *testing.T) {
+		// FetchAndValidate (without policy) should still work when no policy evaluator is set
+		scanner := &mockDLPScanner{
+			result: middleware.ScanResult{
+				HasCredentials: false,
+				HasPII:         false,
+				Flags:          []string{},
+			},
+		}
+		fetcher := NewContextFetcher(scanner, tmpDir) // no policy evaluator
+
+		ctx := context.Background()
+		ref, err := fetcher.FetchAndValidate(ctx, server.URL)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if ref == nil {
+			t.Fatal("expected non-nil content ref")
+		}
+	})
+
+	t.Run("policy_evaluation_error_fails_closed", func(t *testing.T) {
+		scanner := &mockDLPScanner{
+			result: middleware.ScanResult{
+				HasCredentials: false,
+				HasPII:         false,
+				Flags:          []string{},
+			},
+		}
+		policyEval := &mockContextPolicyEvaluator{
+			err: fmt.Errorf("OPA engine unavailable"),
+		}
+		fetcher := NewContextFetcherWithPolicy(scanner, tmpDir, policyEval)
+
+		ctx := context.Background()
+		_, err := fetcher.FetchAndValidateWithPolicy(ctx, server.URL, nil)
+		if err == nil {
+			t.Fatal("expected error when policy evaluation fails")
+		}
+		if !strings.Contains(err.Error(), "context policy evaluation failed") {
+			t.Errorf("expected policy evaluation failure error, got: %v", err)
+		}
+	})
+}
+
+// TestContextPolicyDeniedError verifies the error type
+func TestContextPolicyDeniedError(t *testing.T) {
+	err := &ContextPolicyDeniedError{Reason: "session_high_risk"}
+	expected := "context injection denied by policy: session_high_risk"
+	if err.Error() != expected {
+		t.Errorf("expected %q, got %q", expected, err.Error())
+	}
 }
