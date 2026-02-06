@@ -184,7 +184,10 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 				return
 			}
 
-			// Send handle-ized response instead of raw data
+			// Send handle-ized response instead of raw data.
+			// Delete Content-Length set by the upstream proxy (via captured Header())
+			// because the handle-ized response has a different body size.
+			w.Header().Del("Content-Length")
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Response-Classification", "sensitive")
 			w.Header().Set("X-Data-Handle", handleStr)
