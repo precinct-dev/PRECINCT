@@ -4,10 +4,11 @@
 //
 // Risk scoring rubric: 4 dimensions (Impact, Reversibility, Exposure, Novelty), 0-3 each, total 0-12.
 // Gating thresholds:
-//   0-3:   Fast path (no friction)
-//   4-6:   Step-up gating (destination allowlist + guard model)
-//   7-9:   Approval required (HTTP 403 stub)
-//   10-12: Deny by default (HTTP 403)
+//
+//	0-3:   Fast path (no friction)
+//	4-6:   Step-up gating (destination allowlist + guard model)
+//	7-9:   Approval required (HTTP 403 stub)
+//	10-12: Deny by default (HTTP 403)
 package middleware
 
 import (
@@ -26,10 +27,10 @@ import (
 
 // RiskDimension represents a single dimension of the risk scoring rubric
 type RiskDimension struct {
-	Impact       int `json:"impact"`       // 0-3: cosmetic/read-only to financial/legal/irreversible
+	Impact        int `json:"impact"`        // 0-3: cosmetic/read-only to financial/legal/irreversible
 	Reversibility int `json:"reversibility"` // 0-3: fully reversible to irreversible
-	Exposure     int `json:"exposure"`      // 0-3: no data to external egress/PII/secrets
-	Novelty      int `json:"novelty"`       // 0-3: known tool+dest to unknown/unvalidated
+	Exposure      int `json:"exposure"`      // 0-3: no data to external egress/PII/secrets
+	Novelty       int `json:"novelty"`       // 0-3: known tool+dest to unknown/unvalidated
 }
 
 // Total returns the sum of all dimensions (0-12)
@@ -52,10 +53,10 @@ type GuardThresholds struct {
 
 // UnknownToolDefaults holds default risk scores for tools not in the registry
 type UnknownToolDefaults struct {
-	Impact       int `yaml:"impact"`
+	Impact        int `yaml:"impact"`
 	Reversibility int `yaml:"reversibility"`
-	Exposure     int `yaml:"exposure"`
-	Novelty      int `yaml:"novelty"`
+	Exposure      int `yaml:"exposure"`
+	Novelty       int `yaml:"novelty"`
 }
 
 // RiskConfig holds the complete risk configuration loaded from YAML
@@ -72,12 +73,12 @@ type DestinationAllowlist struct {
 
 // StepUpGatingResult represents the outcome of step-up gating evaluation
 type StepUpGatingResult struct {
-	Allowed       bool          `json:"allowed"`
-	RiskScore     RiskDimension `json:"risk_score"`
-	TotalScore    int           `json:"total_score"`
-	Gate          string        `json:"gate"`    // "fast_path", "step_up", "approval", "deny"
-	Reason        string        `json:"reason"`  // human-readable reason for the decision
-	GuardResult   *GuardResult  `json:"guard_result,omitempty"`
+	Allowed     bool          `json:"allowed"`
+	RiskScore   RiskDimension `json:"risk_score"`
+	TotalScore  int           `json:"total_score"`
+	Gate        string        `json:"gate"`   // "fast_path", "step_up", "approval", "deny"
+	Reason      string        `json:"reason"` // human-readable reason for the decision
+	GuardResult *GuardResult  `json:"guard_result,omitempty"`
 }
 
 // GuardResult holds the result from the guard model check
@@ -214,10 +215,10 @@ func DefaultRiskConfig() *RiskConfig {
 			JailbreakThreshold: 0.30,
 		},
 		UnknownToolDefaults: UnknownToolDefaults{
-			Impact:       2,
+			Impact:        2,
 			Reversibility: 2,
-			Exposure:     2,
-			Novelty:      3,
+			Exposure:      2,
+			Novelty:       3,
 		},
 	}
 }
@@ -287,10 +288,10 @@ func ComputeRiskScore(
 	// If tool is unknown, use defaults with max novelty
 	if toolDef == nil {
 		return RiskDimension{
-			Impact:       defaults.Impact,
+			Impact:        defaults.Impact,
 			Reversibility: defaults.Reversibility,
-			Exposure:     defaults.Exposure,
-			Novelty:      defaults.Novelty,
+			Exposure:      defaults.Exposure,
+			Novelty:       defaults.Novelty,
 		}
 	}
 
@@ -307,10 +308,10 @@ func ComputeRiskScore(
 	novelty := computeNovelty(toolDef, destination, allowlist)
 
 	return RiskDimension{
-		Impact:       impact,
+		Impact:        impact,
 		Reversibility: reversibility,
-		Exposure:     exposure,
-		Novelty:      novelty,
+		Exposure:      exposure,
+		Novelty:       novelty,
 	}
 }
 
@@ -578,10 +579,10 @@ func StepUpGating(
 				"gate":       result.Gate,
 				"risk_score": result.TotalScore,
 				"risk_breakdown": map[string]int{
-					"impact":       riskScore.Impact,
+					"impact":        riskScore.Impact,
 					"reversibility": riskScore.Reversibility,
-					"exposure":     riskScore.Exposure,
-					"novelty":      riskScore.Novelty,
+					"exposure":      riskScore.Exposure,
+					"novelty":       riskScore.Novelty,
 				},
 			})
 			return
@@ -654,4 +655,25 @@ func applyStepUpControls(
 	}
 
 	return result
+}
+
+// IsAppDrivenHighRisk returns true when an app-driven tool call targets a
+// high or critical risk tool. In this case, step-up gating is ALWAYS required
+// regardless of the computed risk score (RFA-j2d.4, Section 7.9.5).
+//
+// Rationale: buttons create dangerously low-friction paths to high-impact actions.
+// A single click should not silently trigger a critical operation.
+//
+// Parameters:
+//   - callOrigin: "app" or "agent" (from context or mediator)
+//   - riskLevel: the tool's risk_level from the registry
+//   - forceStepUpEnabled: from UIConfig.AppToolCalls.ForceStepUpForHighRisk
+func IsAppDrivenHighRisk(callOrigin, riskLevel string, forceStepUpEnabled bool) bool {
+	if callOrigin != "app" {
+		return false
+	}
+	if !forceStepUpEnabled {
+		return false
+	}
+	return riskLevel == "high" || riskLevel == "critical"
 }

@@ -82,6 +82,40 @@ func (rl *RateLimiter) Allow(spiffeID string) (allowed bool, remaining int, rese
 	return allowed, remaining, limiter.resetTime
 }
 
+// AppDrivenRateLimiter manages a separate rate limit bucket for app-driven tool
+// calls (RFA-j2d.4). It reuses the same RateLimiter implementation but with
+// different RPM/burst values (default: 20 req/min, burst 5).
+//
+// The key prefix "app:" distinguishes app-driven buckets from agent-driven ones.
+type AppDrivenRateLimiter struct {
+	limiter *RateLimiter
+}
+
+// NewAppDrivenRateLimiter creates a rate limiter with app-driven defaults.
+// Per Section 7.9.5: 20 req/min with burst of 5.
+func NewAppDrivenRateLimiter(rpm, burst int) *AppDrivenRateLimiter {
+	return &AppDrivenRateLimiter{
+		limiter: NewRateLimiter(rpm, burst),
+	}
+}
+
+// Allow checks if an app-driven request is allowed under the separate
+// app-driven rate limit bucket. The key is prefixed with "app:" to keep
+// app-driven and agent-driven buckets separate.
+func (a *AppDrivenRateLimiter) Allow(spiffeID string) (allowed bool, remaining int, resetTime time.Time) {
+	return a.limiter.Allow("app:" + spiffeID)
+}
+
+// RPM returns the configured requests-per-minute for the app-driven limiter.
+func (a *AppDrivenRateLimiter) RPM() int {
+	return a.limiter.rpm
+}
+
+// Burst returns the configured burst allowance for the app-driven limiter.
+func (a *AppDrivenRateLimiter) Burst() int {
+	return a.limiter.burst
+}
+
 // RateLimitMiddleware creates middleware for per-agent rate limiting
 // Position: Step 11 (after deep scan, before circuit breaker)
 func RateLimitMiddleware(next http.Handler, limiter *RateLimiter) http.Handler {
