@@ -109,3 +109,70 @@ tools:
 # hash = sha256(content.encode('utf-8')).hexdigest()
 #
 # Hashes computed in RFA-qq0.6 using scripts/compute_tool_hashes.go
+
+# RFA-j2d.5: UI Resource Registry
+# Every ui:// resource must be registered with a content hash baseline.
+# On each read, the gateway verifies the content hash matches the registered baseline.
+# Hash mismatches are treated as rug-pull attacks (critical severity).
+#
+# UI resource hash computation:
+# SHA-256(raw HTML/resource content bytes)
+#
+# Onboarding workflow (Section 7.9.6):
+# 1. Server declares a tool with _meta.ui.resourceUri
+# 2. Gateway in audit-only mode logs resource content and metadata
+# 3. Security review: static analysis, CSP review, permissions review
+# 4. Upon approval: register (server, resourceUri, contentHash, approvedCSP, approvedPerms)
+# 5. Switch server to allow mode for this tool
+# 6. Ongoing: gateway verifies content hash on every resource read
+
+ui_resources:
+  # Analytics Dashboard - Example approved UI resource
+  - server: "dashboard-server"
+    resource_uri: "ui://dashboard/analytics.html"
+    content_hash: "944c21cc4f8c2cf5f9e9cb7662e14d271638dce52d0c86cec6afb483a5cacbaf"
+    version: "1.0.0"
+    approved_at: "2026-01-15T10:00:00Z"
+    approved_by: "security-team@example.com"
+    max_size_bytes: 524288  # 512 KB
+    declared_csp:
+      default_src: ["'self'"]
+      script_src: ["'self'"]
+      style_src: ["'self'", "'unsafe-inline'"]
+      connect_src: ["'self'", "https://api.example.com"]
+      img_src: ["'self'", "data:"]
+    declared_perms:
+      camera: false
+      microphone: false
+      geolocation: false
+      clipboard_write: false
+    scan_result:
+      scanned_at: "2026-01-15T09:55:00Z"
+      dangerous_pattern: false
+      script_count: 2
+      external_refs: 1
+
+  # Settings Panel - Example approved UI resource with minimal permissions
+  - server: "settings-server"
+    resource_uri: "ui://settings/panel.html"
+    content_hash: "cbb13550dd79cfda09926810f63d66e60e8e8841fdf5179df41a067ae2dc47de"
+    version: "2.1.0"
+    approved_at: "2026-01-20T14:30:00Z"
+    approved_by: "security-team@example.com"
+    max_size_bytes: 262144  # 256 KB
+    declared_csp:
+      default_src: ["'self'"]
+      script_src: ["'self'"]
+      style_src: ["'self'"]
+      connect_src: ["'self'"]
+      img_src: ["'self'"]
+    declared_perms:
+      camera: false
+      microphone: false
+      geolocation: false
+      clipboard_write: false
+    scan_result:
+      scanned_at: "2026-01-20T14:25:00Z"
+      dangerous_pattern: false
+      script_count: 1
+      external_refs: 0

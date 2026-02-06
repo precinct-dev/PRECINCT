@@ -29,6 +29,7 @@ type Config struct {
 	AllowedBasePath         string    // Base directory for OPA path-based access control (RFA-2jl)
 	UIConfigPath            string    // Path to MCP-UI config YAML (RFA-j2d.9)
 	UI                      *UIConfig // MCP-UI configuration (RFA-j2d.9)
+	UICapabilityGrantsPath  string    // Path to UI capability grants YAML (RFA-j2d.1)
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -140,6 +141,7 @@ func ConfigFromEnv() *Config {
 		AllowedBasePath:         allowedBasePath,
 		UIConfigPath:            uiConfigPath,
 		UI:                      uiConfig,
+		UICapabilityGrantsPath:  getEnvOrDefault("UI_CAPABILITY_GRANTS_PATH", "/config/opa/ui_capability_grants.yaml"),
 	}
 }
 
