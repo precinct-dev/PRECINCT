@@ -17,16 +17,18 @@ type Config struct {
 	SPIFFEMode              string // "dev" or "prod"
 	LogLevel                string
 	GroqAPIKey              string
-	DeepScanTimeout         int    // in seconds
-	RateLimitRPM            int    // requests per minute per agent
-	RateLimitBurst          int    // burst allowance
-	CircuitFailureThreshold int    // consecutive failures before opening circuit
-	CircuitResetTimeout     int    // seconds in Open before trying Half-Open
-	CircuitSuccessThreshold int    // consecutive successes in Half-Open before closing
-	HandleTTL               int    // TTL in seconds for response firewall data handles (default 300)
-	DestinationsConfigPath  string // Path to destinations allowlist YAML
-	RiskThresholdsPath      string // Path to risk thresholds YAML
-	AllowedBasePath         string // Base directory for OPA path-based access control (RFA-2jl)
+	DeepScanTimeout         int       // in seconds
+	RateLimitRPM            int       // requests per minute per agent
+	RateLimitBurst          int       // burst allowance
+	CircuitFailureThreshold int       // consecutive failures before opening circuit
+	CircuitResetTimeout     int       // seconds in Open before trying Half-Open
+	CircuitSuccessThreshold int       // consecutive successes in Half-Open before closing
+	HandleTTL               int       // TTL in seconds for response firewall data handles (default 300)
+	DestinationsConfigPath  string    // Path to destinations allowlist YAML
+	RiskThresholdsPath      string    // Path to risk thresholds YAML
+	AllowedBasePath         string    // Base directory for OPA path-based access control (RFA-2jl)
+	UIConfigPath            string    // Path to MCP-UI config YAML (RFA-j2d.9)
+	UI                      *UIConfig // MCP-UI configuration (RFA-j2d.9)
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -104,6 +106,17 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	// RFA-j2d.9: Load MCP-UI config from YAML file (if path set), then apply env overrides.
+	uiConfigPath := getEnvOrDefault("UI_CONFIG_PATH", "/config/ui.yaml")
+	uiConfig := UIConfigDefaults()
+	if uiConfigPath != "" {
+		if loaded, err := LoadUIConfig(uiConfigPath); err == nil {
+			uiConfig = loaded
+		}
+		// If file doesn't exist or fails to parse, fall back to defaults (same pattern as destinations/risk config)
+	}
+	uiConfig.ApplyEnvOverrides()
+
 	return &Config{
 		Port:                    port,
 		UpstreamURL:             getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
@@ -125,6 +138,8 @@ func ConfigFromEnv() *Config {
 		DestinationsConfigPath:  getEnvOrDefault("DESTINATIONS_CONFIG_PATH", "/config/destinations.yaml"),
 		RiskThresholdsPath:      getEnvOrDefault("RISK_THRESHOLDS_PATH", "/config/risk_thresholds.yaml"),
 		AllowedBasePath:         allowedBasePath,
+		UIConfigPath:            uiConfigPath,
+		UI:                      uiConfig,
 	}
 }
 
