@@ -16,11 +16,12 @@ type Gateway struct {
 	config         *Config
 	proxy          *httputil.ReverseProxy
 	auditor        *middleware.Auditor
-	opa            *middleware.OPAClient
+	opa            *middleware.OPAEngine
 	registry       *middleware.ToolRegistry
 	dlpScanner     middleware.DLPScanner
 	deepScanner    *middleware.DeepScanner
 	sessionContext *middleware.SessionContext
+	rateLimiter    *middleware.RateLimiter
 }
 
 // New creates a new gateway instance
@@ -39,7 +40,10 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auditor: %w", err)
 	}
-	opa := middleware.NewOPAClient(cfg.OPAEndpoint)
+	opa, err := middleware.NewOPAEngine(cfg.OPAPolicyDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OPA engine: %w", err)
+	}
 	registry, err := middleware.NewToolRegistry(cfg.ToolRegistryURL, cfg.ToolRegistryConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tool registry: %w", err)
@@ -47,6 +51,7 @@ func New(cfg *Config) (*Gateway, error) {
 	dlpScanner := middleware.NewBuiltInScanner()
 	deepScanner := middleware.NewDeepScanner(cfg.GroqAPIKey, time.Duration(cfg.DeepScanTimeout)*time.Second)
 	sessionContext := middleware.NewSessionContext()
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPM, cfg.RateLimitBurst)
 
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
@@ -60,6 +65,7 @@ func New(cfg *Config) (*Gateway, error) {
 		dlpScanner:     dlpScanner,
 		deepScanner:    deepScanner,
 		sessionContext: sessionContext,
+		rateLimiter:    rateLimiter,
 	}, nil
 }
 
@@ -76,7 +82,8 @@ func (g *Gateway) Handler() http.Handler {
 	// 8. Session context (RFA-qq0.15)
 	// 9. Step-up gating hook (no-op for skeleton)
 	// 10. Deep scan dispatch (async, after step-up gating)
-	// 11-12. [Reserved for future middleware]
+	// 11. Rate limiting (per-agent token bucket)
+	// 12. [Reserved for future middleware]
 	// 13. Token substitution hook (SECURITY: LAST before proxy - no middleware sees real secrets)
 	// 14. Proxy to upstream
 
@@ -84,6 +91,7 @@ func (g *Gateway) Handler() http.Handler {
 
 	// Apply middleware in reverse order (innermost first)
 	handler = middleware.TokenSubstitution(handler)                              // 13 - LAST before proxy
+	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)             // 11
 	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)              // 10
 	handler = middleware.StepUpGating(handler)                                   // 9
 	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)     // 8
@@ -114,4 +122,12 @@ func (g *Gateway) proxyHandler() http.Handler {
 func (g *Gateway) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK\n"))
+}
+
+// Close cleans up gateway resources
+func (g *Gateway) Close() error {
+	if g.opa != nil {
+		return g.opa.Close()
+	}
+	return nil
 }
