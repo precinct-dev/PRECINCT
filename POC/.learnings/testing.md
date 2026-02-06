@@ -74,3 +74,43 @@
 
 **Source stories:** RFA-pkm.1
 
+
+---
+
+## [Added from Epic RFA-hh5 retro - 2026-02-06]
+
+### Use miniredis FastForward for TTL testing
+
+**Priority:** Important
+
+**Context:** miniredis (alicebob/miniredis/v2) was used in RFA-hh5.1 for TTL testing with FastForward capability, eliminating the need for real time delays in tests.
+
+**Recommendation:** For all future Redis/KeyDB integration tests requiring TTL verification, use miniredis with FastForward instead of real time.Sleep() calls. This makes tests faster and more reliable.
+
+**Applies to:** All Redis/KeyDB-related stories, particularly those testing TTL, expiration, or time-based cleanup.
+
+**Source stories:** RFA-hh5.1
+
+### Refactoring must update ALL artifacts in same commit
+
+**Priority:** Critical
+
+**Context:** RFA-hh5.3 observed 6 pre-existing test failures where middleware was refactored to use WriteGatewayError but tests still expected the old http.Error JSON format.
+
+**Recommendation:** When refactoring error handling or response formats, update ALL artifacts in the same commit: production code, tests, AND documentation. Include "make test" as a mandatory gate before marking delivered.
+
+**Applies to:** All refactoring stories, particularly those changing API contracts or response formats.
+
+**Source stories:** RFA-hh5.3 (observed), RFA-m6j.2 (root cause)
+
+### Persistence operations require full lifecycle integration tests
+
+**Priority:** Important
+
+**Context:** RFA-hh5.3's GDPR deletion tests verified full lifecycle (create, delete, verify) with real KeyDB (no mocks), providing strong confidence in the implementation.
+
+**Recommendation:** For all data persistence operations (especially security-sensitive like GDPR deletion), integration tests MUST use real backends and verify full lifecycle: create data, perform operation, verify expected state. No mocks.
+
+**Applies to:** All persistence stories, compliance stories, data deletion/cleanup stories.
+
+**Source stories:** RFA-hh5.3

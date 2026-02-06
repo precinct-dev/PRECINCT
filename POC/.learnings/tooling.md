@@ -40,3 +40,31 @@
 
 **Source stories:** RFA-a2y.2
 
+
+---
+
+## [Added from Epic RFA-hh5 retro - 2026-02-06]
+
+### bitnami/keydb uses keydb-cli not redis-cli
+
+**Priority:** Nice-to-have
+
+**Context:** RFA-hh5.1 noted that bitnami/keydb uses "keydb-cli" (not "redis-cli") for healthcheck commands in Docker Compose.
+
+**Recommendation:** When adding Redis/KeyDB services to Docker Compose, use "keydb-cli" for bitnami/keydb healthchecks, not "redis-cli". Document this in docker-compose.yml comments to prevent confusion.
+
+**Applies to:** Docker Compose configurations for Redis/KeyDB services.
+
+**Source stories:** RFA-hh5.1
+
+### Clean up unused imports after refactoring
+
+**Priority:** Nice-to-have
+
+**Context:** RFA-hh5.2 observed that golang.org/x/time/rate is no longer used after refactoring to KeyDB-based rate limiting, but the import remains.
+
+**Recommendation:** When refactoring removes a dependency, clean up unused imports in the same commit. Use tools like `goimports -w .` or `go mod tidy` as part of delivery checklist.
+
+**Applies to:** All refactoring stories, particularly those replacing libraries or algorithms.
+
+**Source stories:** RFA-hh5.2

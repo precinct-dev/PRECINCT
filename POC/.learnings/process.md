@@ -63,3 +63,31 @@ This table provides:
 
 **Source stories:** RFA-pkm.1, RFA-pkm.2
 
+
+---
+
+## [Added from Epic RFA-hh5 retro - 2026-02-06]
+
+### Commit atomically per story
+
+**Priority:** Critical
+
+**Context:** RFA-hh5.1 observed that commit 5a25a09 bundled changes from multiple stories, making PM acceptance harder since AC verification requires examining which code belongs to which story. RFA-hh5.2 observed similar issues with auto-save hooks modifying unrelated files.
+
+**Recommendation:** Developers MUST commit atomically per story. One story = one commit (or logically grouped commits for that story only). Do NOT bundle unrelated changes, even if they're "needed for buildability". If Story B requires changes from Story A, either: (1) complete and deliver Story A first, or (2) raise a dependency blocker to Sr. PM.
+
+**Applies to:** All stories during execution phase.
+
+**Source stories:** RFA-hh5.1, RFA-hh5.2
+
+### Disable auto-instrumentation during story execution
+
+**Priority:** Important
+
+**Context:** RFA-hh5.2 mentioned a save hook from RFA-m6j.2 that auto-instruments middleware with OTel spans on every file save, modifying unrelated files and making atomic commits harder.
+
+**Recommendation:** Auto-save hooks or formatters that modify multiple unrelated files (e.g., auto-adding instrumentation) should be disabled during story execution or configured to only affect files explicitly touched by the developer. If auto-instrumentation is needed, run it as a separate post-story task, not during active development.
+
+**Applies to:** Developer tooling configuration, auto-formatters, linters with auto-fix.
+
+**Source stories:** RFA-hh5.2
