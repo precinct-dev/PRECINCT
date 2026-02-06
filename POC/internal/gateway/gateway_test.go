@@ -811,14 +811,18 @@ ui_capability_grants:
 }
 
 // TestUICapabilityGating_UIResourceRead_AllowMode_ProxiesToUpstream proves that
-// when a server is in allow mode, ui:// resource reads are proxied to the upstream.
+// when a server is in allow mode, ui:// resource reads are proxied to the upstream
+// and the response passes through the full response processing pipeline (RFA-j2d.6).
 func TestUICapabilityGating_UIResourceRead_AllowMode_ProxiesToUpstream(t *testing.T) {
+	htmlContent := []byte(`<html><body>UI resource</body></html>`)
+	contentHash := middleware.ComputeUIResourceHash(htmlContent)
+
 	upstreamCalled := false
 	upstream := func(w http.ResponseWriter, r *http.Request) {
 		upstreamCalled = true
 		w.Header().Set("Content-Type", "text/html;profile=mcp-app")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`<html><body>UI resource</body></html>`))
+		_, _ = w.Write(htmlContent)
 	}
 
 	grants := `
@@ -829,6 +833,14 @@ ui_capability_grants:
     approved_tools: []
 `
 	gw := newTestGatewayForProxyHandler(t, upstream, true, grants)
+
+	// RFA-j2d.6: Register the UI resource so it passes registry verification
+	gw.registry.RegisterUIResource(middleware.RegisteredUIResource{
+		Server:      "allowed-server",
+		ResourceURI: "ui://allowed-server/dashboard.html",
+		ContentHash: contentHash,
+	})
+
 	handler := middleware.BodyCapture(gw.proxyHandler())
 
 	body := []byte(`{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"ui://allowed-server/dashboard.html"},"id":1}`)
@@ -845,7 +857,8 @@ ui_capability_grants:
 	}
 
 	if rec.Code == http.StatusForbidden {
-		t.Errorf("ui:// resource read should NOT be blocked for allowed server, got 403")
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Errorf("ui:// resource read should NOT be blocked for allowed server, got 403: %s", string(respBody))
 	}
 
 	t.Logf("PASS: ui:// resource read proxied to upstream for allowed server (status=%d, upstream_called=%v)",
