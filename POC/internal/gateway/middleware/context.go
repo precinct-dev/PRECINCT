@@ -8,11 +8,14 @@ import (
 type contextKey string
 
 const (
-	contextKeySessionID   contextKey = "session_id"
-	contextKeyDecisionID  contextKey = "decision_id"
-	contextKeyTraceID     contextKey = "trace_id"
-	contextKeySPIFFEID    contextKey = "spiffe_id"
-	contextKeyRequestBody contextKey = "request_body"
+	contextKeySessionID       contextKey = "session_id"
+	contextKeyDecisionID      contextKey = "decision_id"
+	contextKeyTraceID         contextKey = "trace_id"
+	contextKeySPIFFEID        contextKey = "spiffe_id"
+	contextKeyRequestBody     contextKey = "request_body"
+	contextKeyToolHashVerified contextKey = "tool_hash_verified"
+	contextKeyOPADecisionID   contextKey = "opa_decision_id"
+	contextKeySecurityFlags   contextKey = "security_flags"
 )
 
 // GetSessionID retrieves session ID from context
@@ -78,4 +81,43 @@ func GetRequestBody(ctx context.Context) []byte {
 // WithRequestBody adds request body to context
 func WithRequestBody(ctx context.Context, body []byte) context.Context {
 	return context.WithValue(ctx, contextKeyRequestBody, body)
+}
+
+// GetToolHashVerified retrieves tool hash verification status from context
+func GetToolHashVerified(ctx context.Context) bool {
+	if v := ctx.Value(contextKeyToolHashVerified); v != nil {
+		return v.(bool)
+	}
+	return false
+}
+
+// WithToolHashVerified adds tool hash verification status to context
+func WithToolHashVerified(ctx context.Context, verified bool) context.Context {
+	return context.WithValue(ctx, contextKeyToolHashVerified, verified)
+}
+
+// GetOPADecisionID retrieves OPA decision ID from context
+func GetOPADecisionID(ctx context.Context) string {
+	if v := ctx.Value(contextKeyOPADecisionID); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// WithOPADecisionID adds OPA decision ID to context
+func WithOPADecisionID(ctx context.Context, decisionID string) context.Context {
+	return context.WithValue(ctx, contextKeyOPADecisionID, decisionID)
+}
+
+// GetSecurityFlags retrieves security flags from context
+func GetSecurityFlags(ctx context.Context) []string {
+	if v := ctx.Value(contextKeySecurityFlags); v != nil {
+		return v.([]string)
+	}
+	return nil
+}
+
+// WithSecurityFlags adds security flags to context
+func WithSecurityFlags(ctx context.Context, flags []string) context.Context {
+	return context.WithValue(ctx, contextKeySecurityFlags, flags)
 }

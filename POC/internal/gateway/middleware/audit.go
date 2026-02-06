@@ -28,6 +28,7 @@ type AuditEvent struct {
 	Path           string         `json:"path"`
 	StatusCode     int            `json:"status_code,omitempty"`
 	Security       *SecurityAudit `json:"security,omitempty"`
+	Authorization  *AuthzAudit    `json:"authorization,omitempty"`
 	PrevHash       string         `json:"prev_hash"`        // SHA-256 of previous event
 	BundleDigest   string         `json:"bundle_digest"`    // SHA-256 of OPA policy bundle
 	RegistryDigest string         `json:"registry_digest"`  // SHA-256 of tool registry config
@@ -35,7 +36,14 @@ type AuditEvent struct {
 
 // SecurityAudit contains security-related audit information
 type SecurityAudit struct {
-	SafeZoneFlags []string `json:"safezone_flags,omitempty"`
+	ToolHashVerified bool     `json:"tool_hash_verified"`
+	SafeZoneFlags    []string `json:"safezone_flags,omitempty"`
+}
+
+// AuthzAudit contains authorization-related audit information
+type AuthzAudit struct {
+	OPADecisionID string `json:"opa_decision_id"`
+	Allowed       bool   `json:"allowed"`
 }
 
 // Auditor handles audit logging with hash-chained integrity
@@ -222,25 +230,34 @@ func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 		// Log audit event after request completes
 		ctx := r.Context()
 
-		// Build security audit info if flags present
-		var securityAudit *SecurityAudit
-		if flags := GetSecurityFlags(ctx); len(flags) > 0 {
-			securityAudit = &SecurityAudit{
-				SafeZoneFlags: flags,
+		// Build security audit info
+		securityAudit := &SecurityAudit{
+			ToolHashVerified: GetToolHashVerified(ctx),
+			SafeZoneFlags:    GetSecurityFlags(ctx),
+		}
+
+		// Build authorization audit info
+		var authzAudit *AuthzAudit
+		opaDecisionID := GetOPADecisionID(ctx)
+		if opaDecisionID != "" {
+			authzAudit = &AuthzAudit{
+				OPADecisionID: opaDecisionID,
+				Allowed:       wrapped.statusCode < 400,
 			}
 		}
 
 		auditor.Log(AuditEvent{
-			SessionID:  GetSessionID(ctx),
-			DecisionID: GetDecisionID(ctx),
-			TraceID:    GetTraceID(ctx),
-			SPIFFEID:   GetSPIFFEID(ctx),
-			Action:     "mcp_request",
-			Result:     "completed",
-			Method:     r.Method,
-			Path:       r.URL.Path,
-			StatusCode: wrapped.statusCode,
-			Security:   securityAudit,
+			SessionID:     GetSessionID(ctx),
+			DecisionID:    GetDecisionID(ctx),
+			TraceID:       GetTraceID(ctx),
+			SPIFFEID:      GetSPIFFEID(ctx),
+			Action:        "mcp_request",
+			Result:        "completed",
+			Method:        r.Method,
+			Path:          r.URL.Path,
+			StatusCode:    wrapped.statusCode,
+			Security:      securityAudit,
+			Authorization: authzAudit,
 		})
 	})
 }

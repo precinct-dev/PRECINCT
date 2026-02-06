@@ -141,11 +141,16 @@ func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
 			return
 		}
 
+		// Store OPA decision ID in context for audit (RFA-qq0.13)
+		// Use the decision ID from context (same as request decision ID for now)
+		opaDecisionID := GetDecisionID(ctx)
+		ctx = WithOPADecisionID(ctx, opaDecisionID)
+
 		if !allowed {
 			http.Error(w, fmt.Sprintf("Policy denied: %s", reason), http.StatusForbidden)
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
