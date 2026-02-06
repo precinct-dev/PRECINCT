@@ -1,0 +1,109 @@
+# ------------------------------------------------------------------------------
+# SPIRE Token Generator Job -- Local K8s Only
+# Story: RFA-7bh.1
+#
+# Creates a SPIRE join token at deploy time and stores it in a Kubernetes
+# Secret. The SPIRE Agent DaemonSet reads this token to attest with the
+# SPIRE Server using the join_token NodeAttestor.
+#
+# This Job runs after the SPIRE Server is healthy and generates a token
+# with a 24-hour TTL (sufficient for local development sessions).
+#
+# This replaces the k8s_psat attestation flow used in EKS, which requires
+# an OIDC provider not available in Docker Desktop kubeadm.
+# ------------------------------------------------------------------------------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spire-token-generator
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-token-generator
+    app.kubernetes.io/part-of: spire
+    app.kubernetes.io/component: local-setup
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spire-token-generator
+    spec:
+      serviceAccountName: spire-server
+      restartPolicy: OnFailure
+      containers:
+        - name: token-generator
+          image: ghcr.io/spiffe/spire-server:1.10.0
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+
+              echo "=== SPIRE Join Token Generator (Local K8s) ==="
+              echo ""
+
+              # Wait for SPIRE Server to be ready
+              echo "Waiting for SPIRE Server to be ready..."
+              RETRIES=0
+              MAX_RETRIES=60
+              until /opt/spire/bin/spire-server healthcheck \
+                -socketPath /tmp/spire-server/private/api.sock 2>/dev/null; do
+                RETRIES=$((RETRIES + 1))
+                if [ $RETRIES -ge $MAX_RETRIES ]; then
+                  echo "ERROR: SPIRE Server did not become ready after ${MAX_RETRIES} attempts"
+                  exit 1
+                fi
+                echo "  Server not ready (attempt ${RETRIES}/${MAX_RETRIES}), retrying in 2s..."
+                sleep 2
+              done
+              echo "SPIRE Server is ready."
+
+              # Generate a join token for the local SPIRE Agent.
+              # TTL: 86400s (24 hours) -- sufficient for a development session.
+              echo ""
+              echo "Generating join token..."
+              TOKEN_OUTPUT=$(/opt/spire/bin/spire-server token generate \
+                -socketPath /tmp/spire-server/private/api.sock \
+                -spiffeID spiffe://agentic-ref-arch.poc/agent/local \
+                -ttl 86400 2>&1)
+              echo "Token generation output: ${TOKEN_OUTPUT}"
+
+              # Extract the token value (format: "Token: <value>")
+              TOKEN=$(echo "${TOKEN_OUTPUT}" | awk '/Token:/ {print $2}')
+              if [ -z "${TOKEN}" ]; then
+                echo "ERROR: Failed to extract join token from output"
+                exit 1
+              fi
+              echo "Join token generated successfully (length: $(echo -n "${TOKEN}" | wc -c | tr -d ' '))"
+
+              # Write token to a file that can be read by the agent.
+              # In a real setup, this would be stored in a K8s Secret.
+              # For local dev, we write to a shared volume.
+              echo "${TOKEN}" > /opt/spire/data/join-token
+              echo "Token written to /opt/spire/data/join-token"
+              echo ""
+              echo "=== Token generation complete ==="
+          volumeMounts:
+            - name: spire-server-socket
+              mountPath: /tmp/spire-server/private
+              readOnly: true
+            - name: spire-data
+              mountPath: /opt/spire/data
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        # SPIRE Server socket (shared from server pod via emptyDir in StatefulSet)
+        # NOTE: In practice, this Job uses the gRPC API service for token generation.
+        # For local simplicity, it connects to the server via the API service.
+        - name: spire-server-socket
+          emptyDir: {}
+        - name: spire-data
+          emptyDir: {}

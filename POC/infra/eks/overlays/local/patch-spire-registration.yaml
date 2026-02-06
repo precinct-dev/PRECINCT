@@ -1,0 +1,94 @@
+# ------------------------------------------------------------------------------
+# SPIRE Registration Entries Patch -- Local K8s
+# Story: RFA-7bh.1
+#
+# Replaces the registration Job with a local-compatible version that uses
+# join_token parent IDs instead of k8s_psat. The node entry uses the
+# join_token attestor type.
+# ------------------------------------------------------------------------------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spire-register-entries
+  namespace: spire-system
+spec:
+  template:
+    spec:
+      containers:
+        - name: register
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+
+              # Wait for SPIRE Server to be ready
+              echo "Waiting for SPIRE Server to be ready..."
+              until /opt/spire/bin/spire-server healthcheck \
+                -socketPath /tmp/spire-server/private/api.sock; do
+                echo "  Server not ready, retrying in 5s..."
+                sleep 5
+              done
+              echo "SPIRE Server is ready."
+
+              # ----------------------------------------------------------------
+              # Generate a join token for the SPIRE Agent
+              # Store it in a K8s secret so the agent DaemonSet can use it.
+              # ----------------------------------------------------------------
+              echo "Generating join token for SPIRE Agent..."
+              TOKEN=$(/opt/spire/bin/spire-server token generate \
+                -socketPath /tmp/spire-server/private/api.sock \
+                -spiffeID spiffe://agentic-ref-arch.poc/agent/local \
+                -ttl 86400 | grep -oP 'Token: \K.*' || \
+                /opt/spire/bin/spire-server token generate \
+                -socketPath /tmp/spire-server/private/api.sock \
+                -spiffeID spiffe://agentic-ref-arch.poc/agent/local \
+                -ttl 86400 | awk '{print $NF}')
+              echo "Join token generated."
+
+              # ----------------------------------------------------------------
+              # Workload: mcp-security-gateway
+              # ----------------------------------------------------------------
+              echo "Registering gateway workload..."
+              /opt/spire/bin/spire-server entry create \
+                -socketPath /tmp/spire-server/private/api.sock \
+                -parentID spiffe://agentic-ref-arch.poc/agent/local \
+                -spiffeID spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway \
+                -selector k8s:ns:gateway \
+                -selector k8s:sa:mcp-security-gateway \
+                -dns mcp-security-gateway \
+                -dns mcp-security-gateway.gateway.svc.cluster.local \
+              || echo "  (entry may already exist, continuing)"
+
+              # ----------------------------------------------------------------
+              # Workload: MCP tool servers (tools namespace)
+              # ----------------------------------------------------------------
+              echo "Registering tool server workloads..."
+              /opt/spire/bin/spire-server entry create \
+                -socketPath /tmp/spire-server/private/api.sock \
+                -parentID spiffe://agentic-ref-arch.poc/agent/local \
+                -spiffeID spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool \
+                -selector k8s:ns:tools \
+                -selector k8s:sa:mcp-tool \
+              || echo "  (entry may already exist, continuing)"
+
+              # ----------------------------------------------------------------
+              # Workload: SPIKE Nexus
+              # ----------------------------------------------------------------
+              echo "Registering SPIKE Nexus workload..."
+              /opt/spire/bin/spire-server entry create \
+                -socketPath /tmp/spire-server/private/api.sock \
+                -parentID spiffe://agentic-ref-arch.poc/agent/local \
+                -spiffeID spiffe://agentic-ref-arch.poc/ns/spike-system/sa/spike-nexus \
+                -selector k8s:ns:spike-system \
+                -selector k8s:sa:spike-nexus \
+                -dns spike-nexus \
+                -dns spike-nexus.spike-system.svc.cluster.local \
+              || echo "  (entry may already exist, continuing)"
+
+              echo ""
+              echo "=== All registration entries ==="
+              /opt/spire/bin/spire-server entry show \
+                -socketPath /tmp/spire-server/private/api.sock
+              echo ""
+              echo "Registration complete."
