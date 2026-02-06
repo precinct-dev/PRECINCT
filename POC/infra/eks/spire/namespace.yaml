@@ -1,0 +1,16 @@
+# ------------------------------------------------------------------------------
+# SPIRE System Namespace
+# Story: RFA-9fv.3
+#
+# Dedicated namespace for SPIRE Server and Agent components.
+# Labels enable pod security standards enforcement.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire-system
+  labels:
+    app.kubernetes.io/part-of: spire
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

@@ -1,0 +1,85 @@
+# ------------------------------------------------------------------------------
+# SPIRE Server RBAC
+# Story: RFA-9fv.3
+#
+# Permissions required by the SPIRE Server:
+#   - ServiceAccount: identity for the server pods
+#   - ClusterRole: read TokenReviews (k8s_psat attestor) and manage bundles
+#   - ClusterRoleBinding: binds the role to the service account
+#   - Role/RoleBinding: manage ConfigMaps in spire-system (k8sbundle notifier)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-server
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: spire
+---
+# ClusterRole: SPIRE Server needs cluster-wide access for:
+#   1. TokenReview API (k8s_psat node attestation)
+#   2. Reading pods/nodes for workload registration
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-server
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: spire
+rules:
+  # k8s_psat node attestor needs TokenReview access
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  # Read pods and nodes for workload identity
+  - apiGroups: [""]
+    resources: ["pods", "nodes"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-server
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: spire
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire-system
+roleRef:
+  kind: ClusterRole
+  name: spire-server
+  apiGroup: rbac.authorization.k8s.io
+---
+# Role: manage ConfigMaps in spire-system for k8sbundle notifier
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spire-server-configmap
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: spire
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spire-server-configmap
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: spire
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire-system
+roleRef:
+  kind: Role
+  name: spire-server-configmap
+  apiGroup: rbac.authorization.k8s.io

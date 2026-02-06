@@ -1,0 +1,18 @@
+# ------------------------------------------------------------------------------
+# SPIKE Nexus RBAC
+# Story: RFA-9fv.3
+#
+# SPIKE Nexus ServiceAccount: used for SPIFFE identity (k8s workload attestor
+# matches namespace + service account to issue the correct SVID).
+#
+# SPIKE Nexus does not need Kubernetes API access beyond its own identity,
+# so no ClusterRole is needed.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spike-nexus
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-nexus
+    app.kubernetes.io/part-of: spike

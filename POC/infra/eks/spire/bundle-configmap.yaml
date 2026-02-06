@@ -1,0 +1,19 @@
+# ------------------------------------------------------------------------------
+# SPIRE Trust Bundle ConfigMap (Placeholder)
+# Story: RFA-9fv.3
+#
+# This ConfigMap is created empty and populated automatically by the SPIRE
+# Server's k8sbundle notifier plugin. It contains the trust bundle (CA
+# certificates) that agents use to verify the server's identity.
+#
+# The agent mounts this at /run/spire/bundle/bundle.crt via trust_bundle_path.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-bundle
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: spire
+data: {}
