@@ -1,4 +1,4 @@
-.PHONY: help up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa
+.PHONY: help up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance
 
 # Default target
 help: ## Show this help message
@@ -174,3 +174,42 @@ test-opa: ## Run OPA policy tests
 	fi
 	@echo ""
 	@echo "OPA policy tests complete"
+
+# ==============================================================================
+# Compliance Automation (RFA-8jl)
+# ==============================================================================
+
+AUDIT_LOG ?= /tmp/audit.jsonl
+
+COMPLIANCE_VENV := tools/compliance/.venv
+COMPLIANCE_PYTHON := $(COMPLIANCE_VENV)/bin/python3
+
+$(COMPLIANCE_VENV): tools/compliance/requirements.txt
+	@echo "    Setting up compliance venv..."
+	python3 -m venv $(COMPLIANCE_VENV)
+	$(COMPLIANCE_PYTHON) -m pip install --quiet -r tools/compliance/requirements.txt
+
+compliance-report: $(COMPLIANCE_VENV) ## Generate compliance CSV report (runs E2E suite first if docker stack is up)
+	@echo "==> Compliance Report Generation (RFA-8jl)"
+	@echo ""
+	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
+		echo "    Docker stack detected. Running E2E suite to generate fresh audit logs..."; \
+		bash tests/e2e/run_all.sh 2>&1 || true; \
+		echo "    Extracting audit logs from gateway container..."; \
+		docker compose logs --no-log-prefix mcp-security-gateway 2>/dev/null | grep '{' > $(AUDIT_LOG) || true; \
+		echo ""; \
+	else \
+		echo "    Docker stack not running. Using existing audit log at $(AUDIT_LOG)"; \
+		echo "    (Run 'make up' first for fresh audit data)"; \
+		echo ""; \
+	fi
+	@echo "    Generating compliance report..."
+	$(COMPLIANCE_PYTHON) tools/compliance/generate.py --audit-log $(AUDIT_LOG) --project-root .
+	@echo ""
+	@echo "==> Compliance report generation complete"
+
+test-compliance: $(COMPLIANCE_VENV) ## Run compliance tooling tests (unit + integration)
+	@echo "==> Running compliance tooling tests..."
+	cd tools/compliance && $(CURDIR)/$(COMPLIANCE_PYTHON) -m pytest test_generate.py -v
+	@echo ""
+	@echo "Compliance tests complete"

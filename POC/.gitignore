@@ -8,6 +8,9 @@ data/
 build/sbom/
 coverage.out
 
+# Generated reports
+reports/
+
 # Python
 .venv/
 __pycache__/
