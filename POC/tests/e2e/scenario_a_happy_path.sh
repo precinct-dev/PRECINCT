@@ -42,7 +42,7 @@ if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "502" ] || [ "$RESP_CODE" = "404
     if [ "$RESP_CODE" = "502" ]; then
         log_detail "502 = upstream Docker MCP not reachable (expected when not running docker mcp gateway)"
     elif [ "$RESP_CODE" = "404" ]; then
-        log_detail "404 = upstream returned not found (SPIRE health endpoint at :8080, not Docker MCP)"
+        log_detail "404 = upstream returned not found (Docker MCP Gateway expected at :8081)"
     fi
 else
     log_fail "Tool call processing" "Expected 200, 404, or 502, got $RESP_CODE. Body: ${RESP_BODY:0:200}"

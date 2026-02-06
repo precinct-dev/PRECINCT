@@ -121,7 +121,7 @@ All 6 services running and healthy:
 
 | Gap | Architecture Intent | POC Reality | Severity |
 |-----|-------------------|-------------|----------|
-| Upstream MCP Server | Docker MCP Gateway at :8080/mcp | Not running (SPIRE health at :8080) | Low -- proxy works, 404 from wrong upstream |
+| Upstream MCP Server | Docker MCP Gateway at :8081/mcp | Not running (port conflict resolved -- was :8080, now :8081) | Low -- proxy works, upstream not started |
 | Tool registry service | Dedicated registry API | Placeholder (golang:1.23 sleep infinity) | Low -- config-file registry works |
 | SPIKE Nexus | Token-based secrets gateway | Commented out in compose | Medium -- token substitution middleware exists but has no real backend |
 | mTLS enforcement | Runtime mTLS between containers | Dev mode (X-SPIFFE-ID header) | Medium -- SPIRE infra ready, mTLS needs cert exchange |

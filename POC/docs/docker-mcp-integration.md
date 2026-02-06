@@ -84,9 +84,9 @@ Key environment variables for MCP servers:
 The MCP Gateway can be run with:
 
 - **stdio transport** (default): `docker mcp gateway run`
-- **streaming transport**: `docker mcp gateway run --port 8080 --transport streaming`
+- **streaming transport**: `docker mcp gateway run --port 8081 --transport streaming`
 
-**Typical endpoint for streaming:** `http://localhost:8080/mcp`
+**Typical endpoint for streaming:** `http://localhost:8081/mcp`
 
 ---
 
@@ -508,8 +508,8 @@ docker mcp config reset tavily
 **Tasks:**
 1. Verify Docker Desktop with MCP Toolkit installed
 2. Configure `~/.docker/mcp/` directory structure
-3. Start Gateway in streaming mode: `docker mcp gateway run --port 8080 --transport streaming`
-4. Validate Gateway is reachable: `curl http://localhost:8080/mcp`
+3. Start Gateway in streaming mode: `docker mcp gateway run --port 8081 --transport streaming`
+4. Validate Gateway is reachable: `curl http://localhost:8081/mcp`
 
 **Acceptance Criteria:**
 - Gateway responds to health checks
@@ -602,7 +602,7 @@ docker mcp config reset tavily
 
 **Tasks:**
 1. Implement JSON-RPC client in POC gateway
-2. Configure gateway to connect to `http://localhost:8080/mcp`
+2. Configure gateway to connect to `http://localhost:8081/mcp`
 3. Implement tool discovery via `tools/list`
 4. Implement tool calling via `tools/call`
 5. Add error handling for MCP error codes
@@ -612,7 +612,7 @@ docker mcp config reset tavily
 ```
 POC Gateway (Python/Go)
     ↓ HTTP/JSON-RPC
-Docker MCP Gateway (localhost:8080)
+Docker MCP Gateway (localhost:8081)
     ↓
 Docker Containers (Tavily, Filesystem)
 ```

@@ -7,24 +7,24 @@ import (
 
 // Config holds gateway configuration
 type Config struct {
-	Port                   int
-	UpstreamURL            string
-	OPAPolicyDir           string
-	ToolRegistryURL        string
-	ToolRegistryConfigPath string
-	AuditLogPath           string
-	OPAPolicyPath          string
-	MaxRequestSizeBytes    int64
-	SPIFFEMode             string // "dev" or "prod"
-	LogLevel               string
-	GroqAPIKey             string
-	DeepScanTimeout        int // in seconds
-	RateLimitRPM           int // requests per minute per agent
-	RateLimitBurst         int // burst allowance
-	CircuitFailureThreshold int // consecutive failures before opening circuit
-	CircuitResetTimeout     int // seconds in Open before trying Half-Open
-	CircuitSuccessThreshold int // consecutive successes in Half-Open before closing
-	HandleTTL               int // TTL in seconds for response firewall data handles (default 300)
+	Port                    int
+	UpstreamURL             string
+	OPAPolicyDir            string
+	ToolRegistryURL         string
+	ToolRegistryConfigPath  string
+	AuditLogPath            string
+	OPAPolicyPath           string
+	MaxRequestSizeBytes     int64
+	SPIFFEMode              string // "dev" or "prod"
+	LogLevel                string
+	GroqAPIKey              string
+	DeepScanTimeout         int    // in seconds
+	RateLimitRPM            int    // requests per minute per agent
+	RateLimitBurst          int    // burst allowance
+	CircuitFailureThreshold int    // consecutive failures before opening circuit
+	CircuitResetTimeout     int    // seconds in Open before trying Half-Open
+	CircuitSuccessThreshold int    // consecutive successes in Half-Open before closing
+	HandleTTL               int    // TTL in seconds for response firewall data handles (default 300)
 	DestinationsConfigPath  string // Path to destinations allowlist YAML
 	RiskThresholdsPath      string // Path to risk thresholds YAML
 }
@@ -95,18 +95,18 @@ func ConfigFromEnv() *Config {
 	}
 
 	return &Config{
-		Port:                   port,
-		UpstreamURL:            getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8080/mcp"),
-		OPAPolicyDir:           getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
-		ToolRegistryURL:        getEnvOrDefault("TOOL_REGISTRY_URL", "http://tool-registry:8080"),
-		ToolRegistryConfigPath: getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
-		AuditLogPath:           getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
-		OPAPolicyPath:          getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
-		MaxRequestSizeBytes:    maxRequestSize,
-		SPIFFEMode:             getEnvOrDefault("SPIFFE_MODE", "dev"),
-		LogLevel:               getEnvOrDefault("LOG_LEVEL", "info"),
-		GroqAPIKey:             getEnvOrDefault("GROQ_API_KEY", ""),
-		DeepScanTimeout:        deepScanTimeout,
+		Port:                    port,
+		UpstreamURL:             getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
+		OPAPolicyDir:            getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
+		ToolRegistryURL:         getEnvOrDefault("TOOL_REGISTRY_URL", "http://tool-registry:8080"),
+		ToolRegistryConfigPath:  getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
+		AuditLogPath:            getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
+		OPAPolicyPath:           getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
+		MaxRequestSizeBytes:     maxRequestSize,
+		SPIFFEMode:              getEnvOrDefault("SPIFFE_MODE", "dev"),
+		LogLevel:                getEnvOrDefault("LOG_LEVEL", "info"),
+		GroqAPIKey:              getEnvOrDefault("GROQ_API_KEY", ""),
+		DeepScanTimeout:         deepScanTimeout,
 		RateLimitRPM:            rateLimitRPM,
 		RateLimitBurst:          rateLimitBurst,
 		CircuitFailureThreshold: circuitFailureThreshold,

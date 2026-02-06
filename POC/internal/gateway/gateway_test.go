@@ -17,7 +17,7 @@ func TestNewGateway(t *testing.T) {
 		OPAPolicyDir:           "../../config/opa",
 		ToolRegistryURL:        "http://localhost:8082",
 		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
-		AuditLogPath:           "",                            // Empty = stdout only
+		AuditLogPath:           "", // Empty = stdout only
 		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
 		MaxRequestSizeBytes:    1024,
 		SPIFFEMode:             "dev",
@@ -78,7 +78,7 @@ func TestHealthEndpoint(t *testing.T) {
 		OPAPolicyDir:           "../../config/opa",
 		ToolRegistryURL:        "http://localhost:8082",
 		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
-		AuditLogPath:           "",                            // Empty = stdout only
+		AuditLogPath:           "", // Empty = stdout only
 		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
 		MaxRequestSizeBytes:    1024,
 		SPIFFEMode:             "dev",
@@ -130,7 +130,7 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Errorf("Expected default port 9090, got %d", cfg.Port)
 	}
 
-	if cfg.UpstreamURL != "http://host.docker.internal:8080/mcp" {
+	if cfg.UpstreamURL != "http://host.docker.internal:8081/mcp" {
 		t.Errorf("Expected default upstream URL, got %s", cfg.UpstreamURL)
 	}
 
@@ -198,7 +198,7 @@ func TestMiddlewareChainIntegration(t *testing.T) {
 		OPAPolicyDir:           "../../config/opa",
 		ToolRegistryURL:        "http://localhost:8082",
 		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
-		AuditLogPath:           "",                            // Empty = stdout only
+		AuditLogPath:           "", // Empty = stdout only
 		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
 		MaxRequestSizeBytes:    1024 * 1024,
 		SPIFFEMode:             "dev",

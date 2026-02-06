@@ -4,7 +4,7 @@ This guide explains how to configure and run the Docker MCP server to provide to
 
 ## Overview
 
-The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and runs **outside** of docker-compose. The POC gateway connects to it via JSON-RPC at `http://localhost:8080/mcp`.
+The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and runs **outside** of docker-compose. The POC gateway connects to it via JSON-RPC at `http://localhost:8081/mcp`.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and 
 ┌─────────────────────────────────────┐
 │  Docker MCP Gateway                 │
 │  (Docker Desktop managed)           │
-│  http://localhost:8080/mcp          │
+│  http://localhost:8081/mcp          │
 └────────────┬────────────────────────┘
              │
     ┌────────┴────────┬───────┬───────┐
@@ -101,15 +101,15 @@ export TAVILY_API_KEY="your-api-key-here"
 Start the gateway in streaming mode (HTTP/JSON-RPC):
 
 ```bash
-docker mcp gateway run --port 8080 --transport streaming
+docker mcp gateway run --port 8081 --transport streaming
 ```
 
-This starts the gateway at `http://localhost:8080/mcp`.
+This starts the gateway at `http://localhost:8081/mcp`.
 
 **Verify it's running:**
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8081/health
 # Expected: HTTP 200 OK
 ```
 
@@ -233,7 +233,7 @@ Requests with mismatched hashes are rejected with HTTP 403.
 cd /Users/ramirosalas/workspace/agentic_reference_architecture/POC
 
 # Ensure both gateways are running:
-# 1. Docker MCP Gateway at http://localhost:8080/mcp
+# 1. Docker MCP Gateway at http://localhost:8081/mcp
 # 2. POC Gateway at http://localhost:9090
 
 # Run Docker MCP integration tests
@@ -255,7 +255,7 @@ go test -tags=integration ./tests/integration -v -run TestDockerMCP
 docker ps | grep mcp
 
 # Restart Docker MCP Gateway
-docker mcp gateway run --port 8080 --transport streaming
+docker mcp gateway run --port 8081 --transport streaming
 ```
 
 ### Tavily Returns 401
