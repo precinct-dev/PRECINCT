@@ -1,7 +1,6 @@
 package middleware
 
 import (
-	"context"
 	"net/http"
 	"regexp"
 	"strings"
@@ -186,22 +185,6 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
 		// Continue with updated context
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
-}
-
-// Security flags context key
-const contextKeySecurityFlags contextKey = "security_flags"
-
-// WithSecurityFlags adds security flags to context
-func WithSecurityFlags(ctx context.Context, flags []string) context.Context {
-	return context.WithValue(ctx, contextKeySecurityFlags, flags)
-}
-
-// GetSecurityFlags retrieves security flags from context
-func GetSecurityFlags(ctx context.Context) []string {
-	if v := ctx.Value(contextKeySecurityFlags); v != nil {
-		return v.([]string)
-	}
-	return nil
 }
 
 // FormatSecurityFlags formats security flags for logging

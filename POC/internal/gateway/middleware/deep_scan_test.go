@@ -144,9 +144,9 @@ func TestDeepScanResult(t *testing.T) {
 		RequestID:       "test-req-123",
 		TraceID:         "test-trace-456",
 		Timestamp:       time.Now(),
-		InjectionScore:  0.85,
-		JailbreakScore:  0.12,
-		ModelUsed:       "meta-llama/Prompt-Guard-86M",
+		InjectionScore:  0.9995,
+		JailbreakScore:  0.9995, // Unified score from Prompt Guard 2
+		ModelUsed:       "meta-llama/llama-prompt-guard-2-86m",
 		LatencyMs:       150,
 		Error:           nil,
 	}
@@ -155,16 +155,16 @@ func TestDeepScanResult(t *testing.T) {
 		t.Errorf("Expected request ID test-req-123, got %s", result.RequestID)
 	}
 
-	if result.InjectionScore != 0.85 {
-		t.Errorf("Expected injection score 0.85, got %f", result.InjectionScore)
+	if result.InjectionScore != 0.9995 {
+		t.Errorf("Expected injection score 0.9995, got %f", result.InjectionScore)
 	}
 
-	if result.JailbreakScore != 0.12 {
-		t.Errorf("Expected jailbreak score 0.12, got %f", result.JailbreakScore)
+	if result.JailbreakScore != 0.9995 {
+		t.Errorf("Expected jailbreak score 0.9995, got %f", result.JailbreakScore)
 	}
 
-	if result.ModelUsed != "meta-llama/Prompt-Guard-86M" {
-		t.Errorf("Expected model Prompt-Guard-86M, got %s", result.ModelUsed)
+	if result.ModelUsed != "meta-llama/llama-prompt-guard-2-86m" {
+		t.Errorf("Expected model llama-prompt-guard-2-86m, got %s", result.ModelUsed)
 	}
 }
 
