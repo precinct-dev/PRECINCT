@@ -1,8 +1,10 @@
-// Tool Registry Implementation - RFA-qq0.5, RFA-qq0.19
+// Tool Registry Implementation - RFA-qq0.5, RFA-qq0.19, RFA-j2d.5
 // Implements hash-based verification of MCP tools to detect poisoning attacks.
 // Loads tool definitions from config/tool-registry.yaml and verifies SHA-256 hashes.
 // RFA-qq0.19: Adds poisoning pattern detection using regex patterns to identify
 // malicious instructions embedded in tool descriptions.
+// RFA-j2d.5: Extends with UI resource registration and hash verification for ui:// content.
+// Hash mismatches on UI resources are treated as rug-pull attacks (critical severity).
 package middleware
 
 import (
@@ -13,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -70,20 +73,77 @@ type ToolDefinition struct {
 	RequiresStepUp      bool                   `yaml:"requires_step_up"`
 }
 
+// UIResourceCSP represents the approved Content Security Policy declaration for a UI resource.
+// This captures the CSP that was reviewed and approved during the onboarding workflow (Section 7.9.6).
+type UIResourceCSP struct {
+	DefaultSrc []string `json:"default_src" yaml:"default_src"`
+	ScriptSrc  []string `json:"script_src" yaml:"script_src"`
+	StyleSrc   []string `json:"style_src" yaml:"style_src"`
+	ConnectSrc []string `json:"connect_src" yaml:"connect_src"`
+	ImgSrc     []string `json:"img_src" yaml:"img_src"`
+}
+
+// UIPermissions represents the approved browser permissions for a UI resource.
+// These are reviewed during onboarding and enforced by the gateway on every resource read.
+type UIPermissions struct {
+	Camera         bool `json:"camera" yaml:"camera"`
+	Microphone     bool `json:"microphone" yaml:"microphone"`
+	Geolocation    bool `json:"geolocation" yaml:"geolocation"`
+	ClipboardWrite bool `json:"clipboard_write" yaml:"clipboard_write"`
+}
+
+// UIScanResult captures the static analysis results at approval time.
+// Used for audit trail and to compare against future scans.
+type UIScanResult struct {
+	ScannedAt        time.Time `json:"scanned_at" yaml:"scanned_at"`
+	DangerousPattern bool      `json:"dangerous_pattern" yaml:"dangerous_pattern"`
+	ScriptCount      int       `json:"script_count" yaml:"script_count"`
+	ExternalRefs     int       `json:"external_refs" yaml:"external_refs"`
+}
+
+// RegisteredUIResource represents a UI resource registered in the tool registry.
+// Every ui:// resource must be registered with a content hash baseline. On each read,
+// the gateway verifies the content hash matches the registered baseline.
+// Hash mismatches are treated as rug-pull attacks (critical severity).
+// Implements Reference Architecture Section 7.9.6.
+type RegisteredUIResource struct {
+	Server        string         `json:"server" yaml:"server"`
+	ResourceURI   string         `json:"resource_uri" yaml:"resource_uri"` // e.g., "ui://dashboard/analytics.html"
+	ContentHash   string         `json:"content_hash" yaml:"content_hash"` // SHA-256 of HTML content
+	Version       string         `json:"version" yaml:"version"`
+	ApprovedAt    time.Time      `json:"approved_at" yaml:"approved_at"`
+	ApprovedBy    string         `json:"approved_by" yaml:"approved_by"`
+	MaxSizeBytes  int64          `json:"max_size_bytes" yaml:"max_size_bytes"`
+	DeclaredCSP   *UIResourceCSP `json:"declared_csp" yaml:"declared_csp"`     // Approved CSP declaration
+	DeclaredPerms *UIPermissions `json:"declared_perms" yaml:"declared_perms"` // Approved permissions
+	ScanResult    *UIScanResult  `json:"scan_result" yaml:"scan_result"`       // Static analysis at approval time
+}
+
+// uiResourceKey returns the map key for a UI resource: "server|resourceURI".
+// This composite key ensures uniqueness across servers.
+func uiResourceKey(server, resourceURI string) string {
+	return server + "|" + resourceURI
+}
+
 // ToolRegistryConfig represents the tool registry configuration file
 type ToolRegistryConfig struct {
-	Tools []ToolDefinition `yaml:"tools"`
+	Tools       []ToolDefinition       `yaml:"tools"`
+	UIResources []RegisteredUIResource `yaml:"ui_resources"`
 }
 
-// ToolRegistry manages tool verification with hash checking
+// ToolRegistry manages tool verification with hash checking and UI resource verification.
+// RFA-j2d.5: Extended with uiResources map for UI resource hash verification.
 type ToolRegistry struct {
-	tools map[string]ToolDefinition // tool_name -> definition
+	tools       map[string]ToolDefinition       // tool_name -> definition
+	uiResources map[string]RegisteredUIResource // "server|resourceURI" -> registration
 }
 
-// NewToolRegistry creates a new tool registry from a config file
+// NewToolRegistry creates a new tool registry from a config file.
+// The config file contains both tool definitions and UI resource registrations.
 func NewToolRegistry(configPath string) (*ToolRegistry, error) {
 	registry := &ToolRegistry{
-		tools: make(map[string]ToolDefinition),
+		tools:       make(map[string]ToolDefinition),
+		uiResources: make(map[string]RegisteredUIResource),
 	}
 
 	// Load configuration from file
@@ -96,7 +156,8 @@ func NewToolRegistry(configPath string) (*ToolRegistry, error) {
 	return registry, nil
 }
 
-// loadConfig loads tool definitions from YAML config file
+// loadConfig loads tool definitions and UI resource registrations from YAML config file.
+// RFA-j2d.5: Extended to load ui_resources section alongside tools.
 func (tr *ToolRegistry) loadConfig(configPath string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -111,6 +172,12 @@ func (tr *ToolRegistry) loadConfig(configPath string) error {
 	// Load tools into map
 	for _, tool := range config.Tools {
 		tr.tools[tool.Name] = tool
+	}
+
+	// RFA-j2d.5: Load UI resources into map, keyed by "server|resourceURI"
+	for _, res := range config.UIResources {
+		key := uiResourceKey(res.Server, res.ResourceURI)
+		tr.uiResources[key] = res
 	}
 
 	return nil
@@ -199,6 +266,86 @@ func containsPoisoningPattern(text string) string {
 func (tr *ToolRegistry) GetToolDefinition(toolName string) (ToolDefinition, bool) {
 	toolDef, exists := tr.tools[toolName]
 	return toolDef, exists
+}
+
+// GetUIResource returns the registered UI resource for a given server and resource URI.
+// RFA-j2d.5: Used for lookup during verification and by downstream middleware.
+func (tr *ToolRegistry) GetUIResource(server, resourceURI string) (RegisteredUIResource, bool) {
+	key := uiResourceKey(server, resourceURI)
+	res, exists := tr.uiResources[key]
+	return res, exists
+}
+
+// UIResourceCount returns the number of registered UI resources.
+// Useful for diagnostics and testing.
+func (tr *ToolRegistry) UIResourceCount() int {
+	return len(tr.uiResources)
+}
+
+// VerifyUIResource checks if a UI resource is registered and its content hash matches.
+// This implements Reference Architecture Section 7.9.6:
+//   - Not registered: block with reason "ui resource not in registry"
+//   - Hash mismatch: block with reason "ui resource content hash mismatch - possible rug pull"
+//     (critical alert - rug-pull detection)
+//   - Content exceeds max_size_bytes: block with reason "ui resource exceeds approved size limit"
+//   - Otherwise: allow
+//
+// The content parameter is the raw HTML/resource content read from the MCP server.
+// SHA-256 hash is computed over the content and compared against the registered baseline.
+func (tr *ToolRegistry) VerifyUIResource(server, resourceURI string, content []byte) VerifyResult {
+	key := uiResourceKey(server, resourceURI)
+	registration, exists := tr.uiResources[key]
+
+	// Check 1: Resource must be registered
+	if !exists {
+		return VerifyResult{
+			Allowed:    false,
+			Reason:     "ui resource not in registry",
+			Action:     ActionBlock,
+			AlertLevel: AlertWarning,
+		}
+	}
+
+	// Check 2: Content size must not exceed registered max_size_bytes
+	// Only enforced when max_size_bytes > 0 (0 means no limit)
+	if registration.MaxSizeBytes > 0 && int64(len(content)) > registration.MaxSizeBytes {
+		return VerifyResult{
+			Allowed:    false,
+			Reason:     fmt.Sprintf("ui resource exceeds approved size limit (size=%d, max=%d)", len(content), registration.MaxSizeBytes),
+			Action:     ActionBlock,
+			AlertLevel: AlertWarning,
+		}
+	}
+
+	// Check 3: Compute SHA-256 hash of content and compare with registered hash
+	hash := sha256.Sum256(content)
+	computedHash := hex.EncodeToString(hash[:])
+
+	if computedHash != registration.ContentHash {
+		return VerifyResult{
+			Allowed:    false,
+			Reason:     "ui resource content hash mismatch - possible rug pull",
+			Action:     ActionBlock,
+			AlertLevel: AlertCritical,
+		}
+	}
+
+	// All checks passed
+	return VerifyResult{
+		Allowed:    true,
+		Reason:     "ui resource verified",
+		Action:     ActionAllow,
+		AlertLevel: AlertInfo,
+	}
+}
+
+// ComputeUIResourceHash computes the SHA-256 hash of UI resource content.
+// This is the canonical hash computation for UI resource registration.
+// Used during the onboarding workflow (Section 7.9.6 Step 4) to compute
+// the baseline hash that gets stored in the registry.
+func ComputeUIResourceHash(content []byte) string {
+	hash := sha256.Sum256(content)
+	return hex.EncodeToString(hash[:])
 }
 
 // ComputeHash computes SHA-256 hash of tool description + input schema

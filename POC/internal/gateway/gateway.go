@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -28,6 +29,7 @@ type Gateway struct {
 	groqGuardClient      middleware.GroqGuardClient       // RFA-qq0.17: guard model client for step-up gating
 	destinationAllowlist *middleware.DestinationAllowlist // RFA-qq0.17: destination allowlist
 	riskConfig           *middleware.RiskConfig           // RFA-qq0.17: risk scoring thresholds
+	uiCapabilityGating   *UICapabilityGating              // RFA-j2d.1: MCP-UI capability gating
 }
 
 // New creates a new gateway instance
@@ -107,6 +109,9 @@ func New(cfg *Config) (*Gateway, error) {
 		riskConfig = middleware.DefaultRiskConfig()
 	}
 
+	// RFA-j2d.1: Create UI capability gating
+	uiCapabilityGating := NewUICapabilityGating(cfg.UI, cfg.UICapabilityGrantsPath)
+
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
 
@@ -125,6 +130,7 @@ func New(cfg *Config) (*Gateway, error) {
 		groqGuardClient:      groqGuardClient,
 		destinationAllowlist: destinationAllowlist,
 		riskConfig:           riskConfig,
+		uiCapabilityGating:   uiCapabilityGating,
 	}, nil
 }
 
@@ -277,6 +283,53 @@ func (g *Gateway) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(health)
+}
+
+// applyUICapabilityGating processes a tools/list response through UI capability gating.
+// RFA-j2d.1: Called from the response processing path for tools/list responses.
+// This method delegates to UICapabilityGating.ApplyUICapabilityGating and emits
+// audit events for any gating decisions made.
+//
+// Parameters:
+//   - responseBody: the raw JSON-RPC response body from upstream
+//   - server: the MCP server name
+//   - tenant: the tenant identifier
+//
+// Returns the processed response body with _meta.ui stripped as appropriate.
+func (g *Gateway) applyUICapabilityGating(responseBody []byte, server, tenant string) []byte {
+	processed, events, err := g.uiCapabilityGating.ApplyUICapabilityGating(responseBody, server, tenant)
+	if err != nil {
+		log.Printf("[ERROR] UI capability gating failed: %v", err)
+		return responseBody
+	}
+
+	// Emit audit events for gating decisions
+	for _, evt := range events {
+		g.auditor.Log(middleware.AuditEvent{
+			Action: evt.EventType,
+			Result: fmt.Sprintf("server=%s tenant=%s tool=%s mode=%s reason=%s",
+				evt.Server, evt.Tenant, evt.ToolName, evt.Mode, evt.Reason),
+		})
+	}
+
+	return processed
+}
+
+// checkUIResourceReadAllowed checks whether a ui:// resource read is permitted.
+// RFA-j2d.1: Called from the response processing path for resources/read of ui:// URIs.
+// Returns true if the read should proceed, false if it should be blocked with 403.
+func (g *Gateway) checkUIResourceReadAllowed(server, tenant, resourceURI string) bool {
+	allowed, event := g.uiCapabilityGating.CheckUIResourceReadAllowed(server, tenant, resourceURI)
+
+	if event != nil {
+		g.auditor.Log(middleware.AuditEvent{
+			Action: event.EventType,
+			Result: fmt.Sprintf("server=%s tenant=%s mode=%s reason=%s uri=%s",
+				event.Server, event.Tenant, event.Mode, event.Reason, resourceURI),
+		})
+	}
+
+	return allowed
 }
 
 // Close cleans up gateway resources
