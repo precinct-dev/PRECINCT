@@ -69,6 +69,15 @@ type CircuitBreaker struct {
 	now func() time.Time
 }
 
+// setNow replaces the clock function in a thread-safe manner.
+// This is used by tests to inject deterministic time without racing
+// against goroutines that read cb.now under the mutex.
+func (cb *CircuitBreaker) setNow(fn func() time.Time) {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.now = fn
+}
+
 // CircuitBreakerConfig holds configuration for the circuit breaker
 type CircuitBreakerConfig struct {
 	FailureThreshold int
