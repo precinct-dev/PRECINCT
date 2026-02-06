@@ -24,14 +24,15 @@ func NewOPAClient(endpoint string) *OPAClient {
 
 // OPAInput represents input to OPA policy evaluation
 type OPAInput struct {
-	SPIFFEID     string                 `json:"spiffe_id"`
-	Tool         string                 `json:"tool"`
-	Action       string                 `json:"action"`
-	Method       string                 `json:"method"`
-	Path         string                 `json:"path"`
-	Params       map[string]interface{} `json:"params"`
-	StepUpToken  string                 `json:"step_up_token"`
-	Session      SessionInput           `json:"session"`
+	SPIFFEID    string                 `json:"spiffe_id"`
+	Tool        string                 `json:"tool"`
+	Action      string                 `json:"action"`
+	Method      string                 `json:"method"`
+	Path        string                 `json:"path"`
+	Params      map[string]interface{} `json:"params"`
+	StepUpToken string                 `json:"step_up_token"`
+	Session     SessionInput           `json:"session"`
+	UI          *UIInput               `json:"ui,omitempty"` // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
 }
 
 // SessionInput represents session data for OPA evaluation
@@ -185,6 +186,22 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 			Params:      params,
 			StepUpToken: stepUpToken,
 			Session:     sessionInput,
+		}
+
+		// RFA-j2d.7: Populate UI section from request context when MCP-UI is relevant.
+		// The UI context values are set by upstream middleware or the gateway handler
+		// (e.g., from X-UI-Call-Origin header, session state, or gateway config).
+		if GetUIEnabled(ctx) {
+			uiInput := BuildUIInput(
+				true,
+				GetUIResourceURI(ctx),
+				"", // content hash populated by resource controls (RFA-j2d.2)
+				GetUICallOrigin(ctx),
+				GetUIAppToolCalls(ctx),
+				false, // resource registered status from registry (RFA-j2d.5)
+				GetToolHashVerified(ctx),
+			)
+			input.UI = &uiInput
 		}
 
 		// Evaluate policy

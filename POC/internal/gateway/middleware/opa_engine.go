@@ -27,13 +27,23 @@ type OPAEngineConfig struct {
 
 // OPAEngine handles embedded OPA policy evaluation
 type OPAEngine struct {
-	policyDir    string
-	runtimeCfg   OPAEngineConfig
-	query        *rego.PreparedEvalQuery
-	contextQuery *rego.PreparedEvalQuery // RFA-xwc: query for mcp.context policy
-	mu           sync.RWMutex
-	watcher      *fsnotify.Watcher
-	stopChan     chan struct{}
+	policyDir       string
+	runtimeCfg      OPAEngineConfig
+	query           *rego.PreparedEvalQuery
+	contextQuery    *rego.PreparedEvalQuery  // RFA-xwc: query for mcp.context policy
+	uiPolicyQueries *uiPolicyPreparedQueries // RFA-j2d.7: queries for mcp.ui.policy rules
+	mu              sync.RWMutex
+	watcher         *fsnotify.Watcher
+	stopChan        chan struct{}
+}
+
+// uiPolicyPreparedQueries holds the compiled queries for each rule in the
+// mcp.ui.policy Rego package. Each query evaluates a single boolean rule.
+type uiPolicyPreparedQueries struct {
+	denyUIResource    rego.PreparedEvalQuery
+	denyAppToolCall   rego.PreparedEvalQuery
+	requiresStepUp    rego.PreparedEvalQuery
+	excessiveAppCalls rego.PreparedEvalQuery
 }
 
 // NewOPAEngine creates a new embedded OPA engine.
@@ -181,10 +191,48 @@ func (e *OPAEngine) loadPolicies() error {
 		contextQueryPtr = &contextPrepared
 	}
 
+	// RFA-j2d.7: Compile mcp.ui.policy rules (deny_ui_resource, deny_app_tool_call,
+	// requires_step_up, excessive_app_calls). UI policy is optional -- if the
+	// policy file is not present, EvaluateUIPolicy returns a safe default (all false).
+	var uiQueries *uiPolicyPreparedQueries
+	uiRuleNames := []struct {
+		name  string
+		query string
+	}{
+		{"deny_ui_resource", "data.mcp.ui.policy.deny_ui_resource"},
+		{"deny_app_tool_call", "data.mcp.ui.policy.deny_app_tool_call"},
+		{"requires_step_up", "data.mcp.ui.policy.requires_step_up"},
+		{"excessive_app_calls", "data.mcp.ui.policy.excessive_app_calls"},
+	}
+
+	compiledUIQueries := make([]rego.PreparedEvalQuery, len(uiRuleNames))
+	uiCompileOK := true
+	for i, rule := range uiRuleNames {
+		ruleOpts := append(regoOpts, rego.Query(rule.query))
+		r := rego.New(ruleOpts...)
+		p, compileErr := r.PrepareForEval(ctx)
+		if compileErr != nil {
+			log.Printf("Warning: failed to compile UI policy rule %s: %v (UI policy evaluation will use defaults)", rule.name, compileErr)
+			uiCompileOK = false
+			break
+		}
+		compiledUIQueries[i] = p
+	}
+
+	if uiCompileOK {
+		uiQueries = &uiPolicyPreparedQueries{
+			denyUIResource:    compiledUIQueries[0],
+			denyAppToolCall:   compiledUIQueries[1],
+			requiresStepUp:    compiledUIQueries[2],
+			excessiveAppCalls: compiledUIQueries[3],
+		}
+	}
+
 	// Atomically update queries
 	e.mu.Lock()
 	e.query = &prepared
 	e.contextQuery = contextQueryPtr
+	e.uiPolicyQueries = uiQueries
 	e.mu.Unlock()
 
 	log.Printf("OPA policies loaded successfully from %s", e.policyDir)
@@ -292,6 +340,73 @@ func (e *OPAEngine) getContextDenyReason(input ContextPolicyInput) string {
 	// The context_policy.rego provides deny_reason rules, but since we only have
 	// the allow_context prepared query, we return a meaningful default.
 	return "context_injection_denied"
+}
+
+// EvaluateUIPolicy evaluates the mcp.ui.policy Rego rules against the given input.
+// RFA-j2d.7: Returns a UIPolicyResult with each rule's boolean result.
+// If the UI policy was not compiled (e.g., no ui_policy.rego file), returns
+// a safe default (all false = no denials, no step-up, no excessive calls).
+func (e *OPAEngine) EvaluateUIPolicy(input UIPolicyInput) (UIPolicyResult, error) {
+	e.mu.RLock()
+	queries := e.uiPolicyQueries
+	e.mu.RUnlock()
+
+	result := UIPolicyResult{}
+
+	if queries == nil {
+		// UI policy not loaded -- safe default (no denials)
+		return result, nil
+	}
+
+	ctx := context.Background()
+	evalInput := rego.EvalInput(input)
+
+	// Evaluate each rule independently
+	var err error
+	result.DenyUIResource, err = evalBoolRule(ctx, &queries.denyUIResource, evalInput)
+	if err != nil {
+		log.Printf("OPA UI policy evaluation error (deny_ui_resource): %v", err)
+	}
+
+	result.DenyAppToolCall, err = evalBoolRule(ctx, &queries.denyAppToolCall, evalInput)
+	if err != nil {
+		log.Printf("OPA UI policy evaluation error (deny_app_tool_call): %v", err)
+	}
+
+	result.RequiresStepUp, err = evalBoolRule(ctx, &queries.requiresStepUp, evalInput)
+	if err != nil {
+		log.Printf("OPA UI policy evaluation error (requires_step_up): %v", err)
+	}
+
+	result.ExcessiveAppCalls, err = evalBoolRule(ctx, &queries.excessiveAppCalls, evalInput)
+	if err != nil {
+		log.Printf("OPA UI policy evaluation error (excessive_app_calls): %v", err)
+	}
+
+	return result, nil
+}
+
+// evalBoolRule evaluates a single boolean Rego rule. Returns false on error or
+// if the result is undefined (fail-closed for denial rules, safe for flag rules).
+func evalBoolRule(ctx context.Context, query *rego.PreparedEvalQuery, opts ...rego.EvalOption) (bool, error) {
+	results, err := query.Eval(ctx, opts...)
+	if err != nil {
+		return false, err
+	}
+	if len(results) == 0 || len(results[0].Expressions) == 0 {
+		return false, nil
+	}
+	val, ok := results[0].Expressions[0].Value.(bool)
+	if !ok {
+		return false, nil
+	}
+	return val, nil
+}
+
+// UIPolicyEvaluator interface for UI policy evaluation.
+// Satisfied by OPAEngine.
+type UIPolicyEvaluator interface {
+	EvaluateUIPolicy(input UIPolicyInput) (UIPolicyResult, error)
 }
 
 // startWatcher starts file system watcher for hot-reload
