@@ -237,6 +237,81 @@ func TestConfigFromEnv(t *testing.T) {
 	if cfg.SessionTTL != 7200 {
 		t.Errorf("Expected SessionTTL=7200, got %d", cfg.SessionTTL)
 	}
+
+	// RFA-8z8.1: Test SPIFFE trust domain defaults
+	t.Setenv("SPIFFE_TRUST_DOMAIN", "")
+	t.Setenv("SPIFFE_LISTEN_PORT", "")
+	cfg = ConfigFromEnv()
+	if cfg.SPIFFETrustDomain != "poc.local" {
+		t.Errorf("Expected default SPIFFETrustDomain=poc.local, got %s", cfg.SPIFFETrustDomain)
+	}
+	if cfg.SPIFFEListenPort != 9443 {
+		t.Errorf("Expected default SPIFFEListenPort=9443, got %d", cfg.SPIFFEListenPort)
+	}
+
+	// RFA-8z8.1: Test SPIFFE trust domain custom values
+	t.Setenv("SPIFFE_TRUST_DOMAIN", "production.example.com")
+	t.Setenv("SPIFFE_LISTEN_PORT", "8443")
+	cfg = ConfigFromEnv()
+	if cfg.SPIFFETrustDomain != "production.example.com" {
+		t.Errorf("Expected SPIFFETrustDomain=production.example.com, got %s", cfg.SPIFFETrustDomain)
+	}
+	if cfg.SPIFFEListenPort != 8443 {
+		t.Errorf("Expected SPIFFEListenPort=8443, got %d", cfg.SPIFFEListenPort)
+	}
+}
+
+// TestGatewayDevModePreservesPhase1Behavior verifies AC4: In SPIFFE_MODE=dev,
+// all Phase 1 behavior is preserved (HTTP, header injection). No TLS is configured.
+func TestGatewayDevModePreservesPhase1Behavior(t *testing.T) {
+	cfg := &Config{
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           "../../config/opa",
+		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
+		AuditLogPath:           "",
+		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	defer gw.Close()
+
+	// In dev mode, SPIFFE TLS should NOT be enabled
+	if gw.SPIFFETLSEnabled() {
+		t.Error("SPIFFE TLS should NOT be enabled in dev mode")
+	}
+
+	// ServerTLSConfig should return nil in dev mode
+	if gw.ServerTLSConfig() != nil {
+		t.Error("ServerTLSConfig should be nil in dev mode")
+	}
+}
+
+// TestSPIFFEModeLogging verifies AC5: Gateway logs which mode is active at startup.
+// We verify this indirectly by confirming the config is set correctly.
+func TestSPIFFEModeLogging(t *testing.T) {
+	tests := []struct {
+		name     string
+		mode     string
+		expected string
+	}{
+		{name: "dev_mode", mode: "dev", expected: "dev"},
+		{name: "prod_mode", mode: "prod", expected: "prod"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("SPIFFE_MODE", tc.mode)
+			cfg := ConfigFromEnv()
+			if cfg.SPIFFEMode != tc.expected {
+				t.Errorf("Expected SPIFFE mode %q, got %q", tc.expected, cfg.SPIFFEMode)
+			}
+		})
+	}
 }
 
 // TestMiddlewareChainIntegration verifies full middleware chain integration

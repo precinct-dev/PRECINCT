@@ -2,12 +2,21 @@ package middleware
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
+	"time"
 )
 
 // TestMiddlewareChainOrder verifies middleware executes in correct order
@@ -195,6 +204,251 @@ func TestSPIFFEAuthDev(t *testing.T) {
 			t.Errorf("Expected 401, got %d", rec.Code)
 		}
 	})
+}
+
+// TestSPIFFEAuthProd verifies SPIFFE auth in prod mode extracts SPIFFE ID from TLS client cert.
+// RFA-8z8.1 AC2: In prod mode, gateway validates client certificates via SPIRE trust bundle.
+func TestSPIFFEAuthProd(t *testing.T) {
+	var capturedSPIFFEID string
+	handler := SPIFFEAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedSPIFFEID = GetSPIFFEID(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}), "prod")
+
+	t.Run("ValidClientCertWithSPIFFEID", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		spiffeURI, _ := url.Parse("spiffe://poc.local/agents/test-agent/dev")
+
+		// Create a self-signed cert with SPIFFE ID as URI SAN
+		cert := createTestCertWithSPIFFEID(t, spiffeURI)
+
+		req := httptest.NewRequest("POST", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", rec.Code)
+		}
+		if capturedSPIFFEID != "spiffe://poc.local/agents/test-agent/dev" {
+			t.Errorf("Expected SPIFFE ID spiffe://poc.local/agents/test-agent/dev, got %q", capturedSPIFFEID)
+		}
+	})
+
+	t.Run("NoTLSConnectionReturns401", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		req := httptest.NewRequest("POST", "/", nil)
+		// No TLS at all
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401 for no TLS connection, got %d", rec.Code)
+		}
+	})
+
+	t.Run("TLSWithNoPeerCertsReturns401", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		req := httptest.NewRequest("POST", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{},
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401 for TLS with no peer certs, got %d", rec.Code)
+		}
+	})
+
+	t.Run("TLSCertWithNoSPIFFEURIReturns401", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		// Create a cert with no URI SANs
+		cert := createTestCertNoSPIFFE(t)
+
+		req := httptest.NewRequest("POST", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401 for cert without SPIFFE URI, got %d", rec.Code)
+		}
+	})
+
+	t.Run("TLSCertWithNonSPIFFEURIReturns401", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		nonSPIFFEURI, _ := url.Parse("https://example.com/not-spiffe")
+		cert := createTestCertWithURI(t, nonSPIFFEURI)
+
+		req := httptest.NewRequest("POST", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401 for cert with non-SPIFFE URI, got %d", rec.Code)
+		}
+	})
+}
+
+// TestExtractSPIFFEIDFromTLS verifies the SPIFFE ID extraction from TLS state.
+func TestExtractSPIFFEIDFromTLS(t *testing.T) {
+	t.Run("NoTLS", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		got := ExtractSPIFFEIDFromTLS(req)
+		if got != "" {
+			t.Errorf("Expected empty string for no TLS, got %q", got)
+		}
+	})
+
+	t.Run("NoPeerCerts", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.TLS = &tls.ConnectionState{}
+		got := ExtractSPIFFEIDFromTLS(req)
+		if got != "" {
+			t.Errorf("Expected empty string for no peer certs, got %q", got)
+		}
+	})
+
+	t.Run("ValidSPIFFEURI", func(t *testing.T) {
+		spiffeURI, _ := url.Parse("spiffe://poc.local/gateway")
+		cert := createTestCertWithSPIFFEID(t, spiffeURI)
+
+		req := httptest.NewRequest("GET", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		got := ExtractSPIFFEIDFromTLS(req)
+		if got != "spiffe://poc.local/gateway" {
+			t.Errorf("Expected spiffe://poc.local/gateway, got %q", got)
+		}
+	})
+
+	t.Run("MultipleSANsFirstSPIFFEWins", func(t *testing.T) {
+		spiffeURI, _ := url.Parse("spiffe://poc.local/first")
+		cert := createTestCertWithSPIFFEID(t, spiffeURI)
+
+		req := httptest.NewRequest("GET", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		got := ExtractSPIFFEIDFromTLS(req)
+		if got != "spiffe://poc.local/first" {
+			t.Errorf("Expected spiffe://poc.local/first, got %q", got)
+		}
+	})
+}
+
+// TestParseSPIFFEIDFromURI verifies SPIFFE ID URI parsing
+func TestParseSPIFFEIDFromURI(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      string
+		wantNil  bool
+		wantHost string
+	}{
+		{name: "valid", raw: "spiffe://poc.local/gateway", wantNil: false, wantHost: "poc.local"},
+		{name: "empty", raw: "", wantNil: true},
+		{name: "http_scheme", raw: "http://example.com", wantNil: true},
+		{name: "no_prefix", raw: "poc.local/gateway", wantNil: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			u := ParseSPIFFEIDFromURI(tc.raw)
+			if tc.wantNil && u != nil {
+				t.Errorf("Expected nil for %q, got %v", tc.raw, u)
+			}
+			if !tc.wantNil && u == nil {
+				t.Errorf("Expected non-nil for %q", tc.raw)
+			}
+			if !tc.wantNil && u != nil && u.Host != tc.wantHost {
+				t.Errorf("Expected host %q, got %q", tc.wantHost, u.Host)
+			}
+		})
+	}
+}
+
+// --- Test helpers for creating X.509 certificates with SPIFFE IDs ---
+
+// createTestCertWithSPIFFEID creates a self-signed X.509 certificate with
+// the given SPIFFE ID as a URI SAN.
+func createTestCertWithSPIFFEID(t *testing.T, spiffeURI *url.URL) *x509.Certificate {
+	t.Helper()
+	return createTestCertWithURI(t, spiffeURI)
+}
+
+// createTestCertWithURI creates a self-signed X.509 certificate with the
+// given URI as a SAN.
+func createTestCertWithURI(t *testing.T, uri *url.URL) *x509.Certificate {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "test-cert",
+		},
+		NotBefore: time.Now().Add(-1 * time.Hour),
+		NotAfter:  time.Now().Add(1 * time.Hour),
+		URIs:      []*url.URL{uri},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("Failed to create certificate: %v", err)
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("Failed to parse certificate: %v", err)
+	}
+
+	return cert
+}
+
+// createTestCertNoSPIFFE creates a self-signed X.509 certificate without
+// any URI SANs.
+func createTestCertNoSPIFFE(t *testing.T) *x509.Certificate {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "test-cert-no-spiffe",
+		},
+		NotBefore: time.Now().Add(-1 * time.Hour),
+		NotAfter:  time.Now().Add(1 * time.Hour),
+		// No URIs
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("Failed to create certificate: %v", err)
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("Failed to parse certificate: %v", err)
+	}
+
+	return cert
 }
 
 // TestAuditLog verifies audit logging functionality

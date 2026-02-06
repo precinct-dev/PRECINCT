@@ -3,8 +3,10 @@ package gateway
 import (
 	"bytes"
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -34,6 +36,7 @@ type Gateway struct {
 	uiResponseProcessor  *UIResponseProcessor             // RFA-j2d.6: UI response processing pipeline
 	spikeRedeemer        middleware.SecretRedeemer        // RFA-a2y.1: SPIKE Nexus or POC secret redeemer
 	sessionStore         middleware.SessionStore          // RFA-hh5.1: session persistence store (InMemory or KeyDB)
+	spiffeTLS            *SPIFFETLSConfig                 // RFA-8z8.1: SPIFFE mTLS config (nil in dev mode)
 }
 
 // New creates a new gateway instance
@@ -162,6 +165,9 @@ func New(cfg *Config) (*Gateway, error) {
 		// Fallback to POC redeemer (Phase 1 behavior with deterministic mock secrets)
 		spikeRedeemer = middleware.NewPOCSecretRedeemer()
 	}
+
+	// RFA-8z8.1: Log which SPIFFE mode is active at startup (AC5)
+	log.Printf("SPIFFE mode: %s", cfg.SPIFFEMode)
 
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
@@ -553,8 +559,52 @@ func (g *Gateway) Close() error {
 	if closer, ok := g.sessionStore.(interface{ Close() error }); ok {
 		_ = closer.Close()
 	}
+	// RFA-8z8.1: Close SPIFFE TLS config (releases X509Source)
+	if g.spiffeTLS != nil {
+		_ = g.spiffeTLS.Close()
+	}
 	if g.opa != nil {
 		return g.opa.Close()
+	}
+	return nil
+}
+
+// EnableSPIFFETLS initializes SPIFFE-based mTLS for the gateway (RFA-8z8.1).
+// In prod mode, this connects to the SPIRE Agent, obtains an X.509 SVID, and
+// configures both the server's TLS listener and the reverse proxy's upstream
+// transport for mutual TLS.
+//
+// This method must be called AFTER New() and BEFORE starting the HTTP server.
+// It is separated from New() because SPIRE connectivity is an infrastructure
+// dependency that should fail loudly at startup, not silently during config.
+func (g *Gateway) EnableSPIFFETLS(ctx context.Context) error {
+	spiffeTLS, err := NewSPIFFETLSConfig(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to initialize SPIFFE TLS: %w", err)
+	}
+
+	g.spiffeTLS = spiffeTLS
+
+	// RFA-8z8.1 AC3: Configure the reverse proxy transport for mTLS to upstream.
+	// This replaces the default HTTP transport with one that presents the
+	// gateway's SVID and validates the upstream's certificate.
+	g.proxy.Transport = spiffeTLS.UpstreamTransport
+
+	log.Printf("SPIFFE mTLS: server TLS configured, upstream proxy transport set to mTLS")
+
+	return nil
+}
+
+// SPIFFETLSEnabled returns true if the gateway is configured for SPIFFE mTLS.
+func (g *Gateway) SPIFFETLSEnabled() bool {
+	return g.spiffeTLS != nil
+}
+
+// ServerTLSConfig returns the TLS configuration for the HTTPS listener.
+// Returns nil when in dev mode (HTTP only).
+func (g *Gateway) ServerTLSConfig() *tls.Config {
+	if g.spiffeTLS != nil {
+		return g.spiffeTLS.ServerTLS
 	}
 	return nil
 }

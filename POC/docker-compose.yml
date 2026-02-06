@@ -208,7 +208,8 @@ services:
       - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
       - ./config:/config:ro  # Mount config directory for OPA policies and tool registry
     ports:
-      - "9090:9090"  # MCP JSON-RPC API
+      - "9090:9090"   # MCP JSON-RPC API (HTTP, dev mode)
+      - "9443:9443"   # MCP JSON-RPC API (HTTPS/mTLS, prod mode) (RFA-8z8.1)
     environment:
       - PORT=9090
       - UPSTREAM_URL=http://host.docker.internal:8081/mcp
@@ -216,6 +217,9 @@ services:
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760
       - SPIFFE_MODE=dev
+      - SPIFFE_TRUST_DOMAIN=poc.local
+      - SPIFFE_LISTEN_PORT=9443
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - LOG_LEVEL=info
       - SPIRE_AGENT_SOCKET=/tmp/spire-agent/public/api.sock
       - AUDIT_LOG_PATH=/tmp/audit.jsonl
