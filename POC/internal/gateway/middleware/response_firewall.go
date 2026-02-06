@@ -17,6 +17,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // ResponseClassification represents the data sensitivity level of a tool
@@ -121,13 +124,25 @@ func ClassifyTool(registry *ToolRegistry, toolName string) ResponseClassificatio
 // It sits between the middleware chain and the actual proxy to upstream.
 func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleStore, ttlSeconds int) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		// RFA-m6j.2: Create OTel span for response firewall
+		ctx, span := tracer.Start(r.Context(), "gateway.response_firewall",
+			trace.WithAttributes(
+				attribute.String("mcp.gateway.middleware", "response_firewall"),
+			),
+		)
+		defer span.End()
 
 		// Extract tool name from request body (already captured by BodyCapture)
 		toolName := extractToolName(ctx)
 		if toolName == "" {
 			// No tool name found - pass through unchanged
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Int("handles_created", 0),
+				attribute.Bool("data_handleized", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no tool name"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -137,21 +152,38 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 		switch classification {
 		case ClassificationPublic:
 			// Pass through unchanged
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Int("handles_created", 0),
+				attribute.Bool("data_handleized", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "public classification"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 
 		case ClassificationInternal:
 			// Pass through, audit logging happens in the audit middleware
-			// The classification is noted for potential OPA policy use
 			fmt.Printf("[AUDIT] Internal tool response: tool=%s\n", toolName)
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Int("handles_created", 0),
+				attribute.Bool("data_handleized", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "internal classification"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 
 		case ClassificationSensitive:
 			// Capture the response
 			capture := newResponseCapture(w)
-			next.ServeHTTP(capture, r)
+			next.ServeHTTP(capture, r.WithContext(ctx))
 
 			// If the upstream returned an error, pass it through as-is
 			if capture.statusCode >= 400 {
+				span.SetAttributes(
+					attribute.Int("handles_created", 0),
+					attribute.Bool("data_handleized", false),
+					attribute.String("mcp.result", "allowed"),
+					attribute.String("mcp.reason", "upstream error passthrough"),
+				)
 				capture.flushTo(w)
 				return
 			}
@@ -163,8 +195,12 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 			ref, err := store.Store(capture.body.Bytes(), spiffeID, toolName)
 			if err != nil {
 				fmt.Printf("[ERROR] Failed to store handle: %v\n", err)
-				// On store failure, pass through original response
-				// (fail-open for availability in POC; fail-closed in production)
+				span.SetAttributes(
+					attribute.Int("handles_created", 0),
+					attribute.Bool("data_handleized", false),
+					attribute.String("mcp.result", "allowed"),
+					attribute.String("mcp.reason", "handle store error - fail open"),
+				)
 				capture.flushTo(w)
 				return
 			}
@@ -180,13 +216,24 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 			respJSON, err := json.Marshal(handleResp)
 			if err != nil {
 				fmt.Printf("[ERROR] Failed to marshal handle response: %v\n", err)
+				span.SetAttributes(
+					attribute.Int("handles_created", 0),
+					attribute.Bool("data_handleized", false),
+					attribute.String("mcp.result", "allowed"),
+					attribute.String("mcp.reason", "marshal error"),
+				)
 				capture.flushTo(w)
 				return
 			}
 
+			span.SetAttributes(
+				attribute.Int("handles_created", 1),
+				attribute.Bool("data_handleized", true),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "data handleized"),
+			)
+
 			// Send handle-ized response instead of raw data.
-			// Delete Content-Length set by the upstream proxy (via captured Header())
-			// because the handle-ized response has a different body size.
 			w.Header().Del("Content-Length")
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("X-Response-Classification", "sensitive")
@@ -196,7 +243,13 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 
 		default:
 			// Unknown classification - pass through
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Int("handles_created", 0),
+				attribute.Bool("data_handleized", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "unknown classification"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 		}
 	})
 }

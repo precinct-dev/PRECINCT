@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // CircuitState represents the current state of the circuit breaker
@@ -268,9 +271,27 @@ func (w *circuitBreakerResponseWriter) Write(b []byte) (int, error) {
 // Position: Step 12 in the middleware chain (after rate limiting, before token substitution)
 func CircuitBreakerMiddleware(next http.Handler, cb *CircuitBreaker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.2: Create OTel span for step 12
+		ctx, span := tracer.Start(r.Context(), "gateway.circuit_breaker",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 12),
+				attribute.String("mcp.gateway.middleware", "circuit_breaker"),
+			),
+		)
+		defer span.End()
+
+		// Record circuit state on span
+		currentState := cb.State()
+		span.SetAttributes(attribute.String("state", currentState.String()))
+
 		// Check if request is allowed
 		if !cb.AllowRequest() {
 			retryAfter := cb.RetryAfterSeconds()
+
+			span.SetAttributes(
+				attribute.String("mcp.result", "denied"),
+				attribute.String("mcp.reason", "circuit breaker open"),
+			)
 
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Retry-After", fmt.Sprintf("%d", retryAfter))
@@ -287,6 +308,11 @@ func CircuitBreakerMiddleware(next http.Handler, cb *CircuitBreaker) http.Handle
 			return
 		}
 
+		span.SetAttributes(
+			attribute.String("mcp.result", "allowed"),
+			attribute.String("mcp.reason", ""),
+		)
+
 		// Wrap response writer to capture status code
 		wrapped := &circuitBreakerResponseWriter{
 			ResponseWriter: w,
@@ -294,7 +320,7 @@ func CircuitBreakerMiddleware(next http.Handler, cb *CircuitBreaker) http.Handle
 		}
 
 		// Pass request to next handler
-		next.ServeHTTP(wrapped, r)
+		next.ServeHTTP(wrapped, r.WithContext(ctx))
 
 		// Determine if the response indicates a failure (5xx)
 		if wrapped.statusCode >= 500 {

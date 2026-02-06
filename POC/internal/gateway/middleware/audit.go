@@ -13,6 +13,9 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // AuditEvent represents a structured audit log event with hash chain
@@ -225,14 +228,20 @@ func (rw *responseWriter) WriteHeader(code int) {
 // AuditLog middleware logs all requests with structured JSON
 func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.2: Create OTel span for step 4
+		ctx, span := tracer.Start(r.Context(), "gateway.audit_log",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 4),
+				attribute.String("mcp.gateway.middleware", "audit_log"),
+			),
+		)
+		defer span.End()
+
 		// Wrap response writer to capture status code
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		// Call next handler
-		next.ServeHTTP(wrapped, r)
-
-		// Log audit event after request completes
-		ctx := r.Context()
+		next.ServeHTTP(wrapped, r.WithContext(ctx))
 
 		// Build security audit info
 		securityAudit := &SecurityAudit{
@@ -250,9 +259,20 @@ func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 			}
 		}
 
+		// RFA-m6j.2: Set per-middleware span attributes
+		sessionID := GetSessionID(ctx)
+		decisionID := GetDecisionID(ctx)
+		span.SetAttributes(
+			attribute.String("mcp.session_id", sessionID),
+			attribute.String("mcp.decision_id", decisionID),
+			attribute.String("prev_hash", auditor.lastHash),
+			attribute.String("mcp.result", "allowed"),
+			attribute.String("mcp.reason", "audit logged"),
+		)
+
 		auditor.Log(AuditEvent{
-			SessionID:     GetSessionID(ctx),
-			DecisionID:    GetDecisionID(ctx),
+			SessionID:     sessionID,
+			DecisionID:    decisionID,
 			TraceID:       GetTraceID(ctx),
 			SPIFFEID:      GetSPIFFEID(ctx),
 			Action:        "mcp_request",

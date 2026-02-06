@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -393,11 +395,24 @@ func ComputeHash(description string, inputSchema map[string]interface{}) string 
 // ToolRegistryVerify middleware verifies tool authorization with hash checking and poisoning detection (RFA-qq0.19)
 func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.2: Create OTel span for step 5
+		ctx, span := tracer.Start(r.Context(), "gateway.tool_registry_verify",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 5),
+				attribute.String("mcp.gateway.middleware", "tool_registry_verify"),
+			),
+		)
+		defer span.End()
+
 		// Get request body from context
-		body := GetRequestBody(r.Context())
+		body := GetRequestBody(ctx)
 		if len(body) == 0 {
 			// No body to verify, pass through
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no body"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -405,7 +420,11 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 		var mcpReq MCPRequest
 		if err := json.Unmarshal(body, &mcpReq); err != nil {
 			// Not a valid MCP request, pass through
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "not MCP request"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -423,14 +442,20 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 		// RFA-rqj: MCP protocol methods pass through without tool registry verification.
 		// These are part of the MCP protocol itself, not user-defined tools.
 		if mcpProtocolMethods[toolName] || strings.HasPrefix(toolName, "notifications/") {
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.String("tool_name", toolName),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "protocol method passthrough"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
 		// Verify tool if we extracted a name
-		ctx := r.Context()
 		toolHashVerified := false
 		if toolName != "" {
+			span.SetAttributes(attribute.String("tool_name", toolName))
+
 			// Extract provided hash from params if present
 			providedHash := ""
 			if hash, ok := mcpReq.Params["tool_hash"]; ok {
@@ -448,10 +473,21 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 					// For now, log to stdout (audit logging is middleware step 4)
 					fmt.Printf("[CRITICAL] Poisoning pattern detected in tool %s: %s\n", toolName, result.Reason)
 				}
+				span.SetAttributes(
+					attribute.Bool("hash_verified", false),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", result.Reason),
+				)
 				http.Error(w, fmt.Sprintf("Tool not authorized: %s", result.Reason), http.StatusForbidden)
 				return
 			}
 			toolHashVerified = true
+			span.SetAttributes(
+				attribute.Bool("hash_verified", true),
+				attribute.String("registry_digest", "verified"),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "tool verified"),
+			)
 		}
 
 		// Store verification status in context for audit (RFA-qq0.13)

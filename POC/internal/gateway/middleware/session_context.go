@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // GenerateID generates a unique identifier
@@ -247,7 +249,14 @@ func isExternalTarget(tool string, params map[string]interface{}) (bool, string)
 // Position: Step 8 (after DLP step 7, before step-up step 9)
 func SessionContextMiddleware(next http.Handler, sessionCtx *SessionContext) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		// RFA-m6j.2: Create OTel span for step 8
+		ctx, span := tracer.Start(r.Context(), "gateway.session_context",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 8),
+				attribute.String("mcp.gateway.middleware", "session_context"),
+			),
+		)
+		defer span.End()
 
 		// Get SPIFFE ID and session ID
 		spiffeID := GetSPIFFEID(ctx)
@@ -305,6 +314,13 @@ func SessionContextMiddleware(next http.Handler, sessionCtx *SessionContext) htt
 		// Record action
 		sessionCtx.RecordAction(session, action)
 
+		// RFA-m6j.2: Set per-middleware span attributes
+		span.SetAttributes(
+			attribute.String("session_id", session.ID),
+			attribute.Float64("risk_score", session.RiskScore),
+			attribute.Int("action_count", len(session.Actions)),
+		)
+
 		// Detect exfiltration pattern
 		if sessionCtx.DetectsExfiltrationPattern(session) {
 			// Add flag to session
@@ -316,12 +332,21 @@ func SessionContextMiddleware(next http.Handler, sessionCtx *SessionContext) htt
 				existingFlags = make([]string, 0)
 			}
 			existingFlags = append(existingFlags, "exfiltration_detected")
-			r = r.WithContext(WithSecurityFlags(ctx, existingFlags))
+			ctx = WithSecurityFlags(ctx, existingFlags)
 
+			span.SetAttributes(
+				attribute.String("mcp.result", "denied"),
+				attribute.String("mcp.reason", "exfiltration pattern detected"),
+			)
 			// Block with 403
 			http.Error(w, "Forbidden: Exfiltration pattern detected", http.StatusForbidden)
 			return
 		}
+
+		span.SetAttributes(
+			attribute.String("mcp.result", "allowed"),
+			attribute.String("mcp.reason", "session tracked"),
+		)
 
 		// Store session in context for OPA
 		ctx = WithSessionContextData(ctx, session)

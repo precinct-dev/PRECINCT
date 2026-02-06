@@ -13,6 +13,9 @@ import (
 	"time"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Gateway represents the MCP security gateway
@@ -73,16 +76,21 @@ func New(cfg *Config) (*Gateway, error) {
 		Auditor:      auditor,
 	})
 	// RFA-hh5.1: Select session store based on KeyDB availability.
-	// When KEYDB_URL is set, use KeyDB for cross-request session persistence.
-	// Otherwise, fall back to in-memory store (Phase 1 behavior).
+	// RFA-hh5.2: Also select rate limit store. Both share the same redis client
+	// when KeyDB is available, enabling distributed session persistence and
+	// distributed rate limiting from a single connection pool.
 	var sessionStore middleware.SessionStore
+	var rateLimitStore middleware.RateLimitStore
 	if cfg.KeyDBURL != "" {
-		sessionStore = middleware.NewKeyDBStore(cfg.KeyDBURL, cfg.KeyDBPoolMin, cfg.KeyDBPoolMax, cfg.SessionTTL)
+		redisClient := middleware.NewKeyDBClient(cfg.KeyDBURL, cfg.KeyDBPoolMin, cfg.KeyDBPoolMax)
+		sessionStore = middleware.NewKeyDBStoreFromClient(redisClient, cfg.SessionTTL)
+		rateLimitStore = middleware.NewKeyDBRateLimitStore(redisClient)
 	} else {
 		sessionStore = middleware.NewInMemoryStore()
+		rateLimitStore = middleware.NewInMemoryRateLimitStore()
 	}
 	sessionContext := middleware.NewSessionContext(sessionStore)
-	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPM, cfg.RateLimitBurst)
+	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPM, cfg.RateLimitBurst, rateLimitStore)
 
 	// Create circuit breaker with audit logging for state transitions
 	circuitBreaker := middleware.NewCircuitBreaker(middleware.CircuitBreakerConfig{
@@ -268,9 +276,21 @@ func (g *Gateway) Handler() http.Handler {
 // Server and tenant are identified via X-MCP-Server and X-Tenant request headers.
 // If not set, "default" is used for both (fail-closed: no grant match = deny mode).
 func (g *Gateway) proxyHandler() http.Handler {
+	// RFA-m6j.2: Create tracer for proxy span (gateway package)
+	proxyTracer := otel.Tracer("mcp-security-gateway", trace.WithInstrumentationVersion("2.0.0"))
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.2: Create OTel span for proxy
+		ctx, span := proxyTracer.Start(r.Context(), "gateway.proxy",
+			trace.WithAttributes(
+				attribute.String("mcp.gateway.middleware", "proxy"),
+				attribute.String("upstream_url", g.config.UpstreamURL),
+			),
+		)
+		defer span.End()
+
 		// Extract MCP method from request body (already captured by BodyCapture middleware)
-		mcpMethod, mcpParams := g.extractMCPMethodAndParams(r.Context())
+		mcpMethod, mcpParams := g.extractMCPMethodAndParams(ctx)
 		reqInfo := NewMCPRequestInfo(mcpMethod, mcpParams)
 
 		server := r.Header.Get("X-MCP-Server")
@@ -282,9 +302,41 @@ func (g *Gateway) proxyHandler() http.Handler {
 			tenant = "default"
 		}
 
+		// Wrap response writer to capture status code for span
+		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
 		// RFA-j2d.6: Route through processUpstreamResponse based on request type
-		g.processUpstreamResponse(w, r, reqInfo, server, tenant)
+		g.processUpstreamResponse(proxyRW, r.WithContext(ctx), reqInfo, server, tenant)
+
+		span.SetAttributes(
+			attribute.Int("status_code", proxyRW.statusCode),
+			attribute.String("mcp.result", "allowed"),
+			attribute.String("mcp.reason", "proxied"),
+		)
 	})
+}
+
+// proxyResponseWriter wraps http.ResponseWriter to capture status code for proxy span
+type proxyResponseWriter struct {
+	http.ResponseWriter
+	statusCode int
+	written    bool
+}
+
+func (prw *proxyResponseWriter) WriteHeader(code int) {
+	if !prw.written {
+		prw.statusCode = code
+		prw.written = true
+	}
+	prw.ResponseWriter.WriteHeader(code)
+}
+
+func (prw *proxyResponseWriter) Write(b []byte) (int, error) {
+	if !prw.written {
+		prw.statusCode = http.StatusOK
+		prw.written = true
+	}
+	return prw.ResponseWriter.Write(b)
 }
 
 // processUpstreamResponse routes MCP responses through the appropriate UI

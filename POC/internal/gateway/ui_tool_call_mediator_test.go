@@ -162,7 +162,7 @@ func TestAppDrivenRateLimiter_EnforcesLimits(t *testing.T) {
 }
 
 func TestAppDrivenRateLimiter_SeparateFromAgentBucket(t *testing.T) {
-	agentLimiter := middleware.NewRateLimiter(60, 1)
+	agentLimiter := middleware.NewRateLimiter(60, 1, middleware.NewInMemoryRateLimitStore())
 	appLimiter := middleware.NewAppDrivenRateLimiter(20, 1)
 
 	spiffe := "spiffe://example.org/agent/test"

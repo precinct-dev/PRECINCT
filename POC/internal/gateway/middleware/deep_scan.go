@@ -11,6 +11,9 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // DeepScanFallbackMode defines behavior when the Groq API is unavailable
@@ -493,7 +496,14 @@ func (d *DeepScanner) classifyChunksParallel(ctx context.Context, chunks []strin
 // Position: Step 10, after step-up gating
 func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		// RFA-m6j.2: Create OTel span for step 10
+		ctx, span := tracer.Start(r.Context(), "gateway.deep_scan_dispatch",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 10),
+				attribute.String("mcp.gateway.middleware", "deep_scan_dispatch"),
+			),
+		)
+		defer span.End()
 
 		// Get security flags from context (set by DLP middleware)
 		flags := GetSecurityFlags(ctx)
@@ -501,13 +511,25 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 		// Determine if deep scan should be dispatched
 		if !shouldDispatchDeepScan(flags) {
 			// No injection concern, fast path
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Bool("dispatched", false),
+				attribute.Bool("async", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no injection flags"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
 		// If no API key, pass-through (AC4)
 		if !scanner.HasAPIKey() {
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Bool("dispatched", false),
+				attribute.Bool("async", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no API key"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -516,11 +538,21 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 		traceID := GetTraceID(ctx)
 
 		if body == nil {
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Bool("dispatched", false),
+				attribute.Bool("async", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no body"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
 		// Perform synchronous deep scan
+		span.SetAttributes(
+			attribute.Bool("dispatched", true),
+			attribute.Bool("async", false),
+		)
 		result := scanner.Scan(ctx, string(body), traceID)
 
 		// Handle scan errors with fallback logic (AC5, AC6)
@@ -529,16 +561,29 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 
 			if scanner.fallbackMode == FailClosed {
 				// AC5: Block the request
+				span.SetAttributes(
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "guard model unavailable - fail closed"),
+				)
 				http.Error(w, "deepscan_unavailable_fail_closed", http.StatusServiceUnavailable)
 				return
 			}
 			// AC6: fail_open -- allow the request, audit event already emitted
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "guard model unavailable - fail open"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
 		// Emit audit event with guard model decision (AC7)
 		scanner.emitAuditEvent(ctx, result, "guard_model_classified")
+
+		span.SetAttributes(
+			attribute.String("mcp.result", "allowed"),
+			attribute.String("mcp.reason", "deep scan completed"),
+		)
 
 		// Store result in context for step-up gating to consume (AC3)
 		ctx = WithDeepScanResult(ctx, result)
