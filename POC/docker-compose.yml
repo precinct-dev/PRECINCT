@@ -32,22 +32,42 @@ services:
     networks:
       - agentic-net
 
+  # SPIRE Token Generator - One-shot init service to generate fresh join tokens
+  spire-token-generator:
+    build:
+      context: .
+      dockerfile: build/docker/Dockerfile.token-generator
+    image: spire-token-generator:latest
+    container_name: spire-token-generator
+    depends_on:
+      spire-server:
+        condition: service_healthy
+    volumes:
+      - spire-server-socket:/tmp/spire-server:ro
+      - spire-join-token:/token
+    networks:
+      - agentic-net
+    restart: "no"  # Run once and exit
+
   # SPIRE Agent - Workload attestation agent with Docker attestor
   spire-agent:
-    image: ghcr.io/spiffe/spire-agent:1.10.0
+    build:
+      context: .
+      dockerfile: build/docker/Dockerfile.spire-agent
+    image: spire-agent-wrapper:latest
     container_name: spire-agent
     hostname: spire-agent
     depends_on:
       spire-server:
         condition: service_healthy
+      spire-token-generator:
+        condition: service_completed_successfully
     volumes:
       - ./config/spire/agent.conf:/opt/spire/conf/agent/agent.conf:ro
       - ./data/spire-agent:/opt/spire/data/agent
       - spire-agent-socket:/tmp/spire-agent/public
+      - spire-join-token:/token:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Required for Docker workload attestor
-    environment:
-      - SPIRE_TOKEN=0fa40bcb-bbe3-4b58-b018-9a88c4d8c025
-    command: ["-config", "/opt/spire/conf/agent/agent.conf", "-joinToken", "0fa40bcb-bbe3-4b58-b018-9a88c4d8c025"]
     healthcheck:
       test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck"]
       interval: 10s
@@ -214,3 +234,7 @@ volumes:
   # SPIRE Agent socket - SHARED with gateway for workload attestation
   spire-agent-socket:
     name: spire-agent-socket
+
+  # SPIRE Join Token - Temporary volume for passing fresh join tokens from generator to agent
+  spire-join-token:
+    name: spire-join-token
