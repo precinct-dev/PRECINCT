@@ -104,3 +104,43 @@
 **Applies to:** Stories testing TLS connections where no TLS-capable mock exists
 
 **Source stories:** RFA-8z8.2
+
+---
+
+## [Added from Epic RFA-8jl retro - 2026-02-06]
+
+### PyYAML is not in Python stdlib
+
+**Priority:** Important
+
+**Context:** RFA-8jl.1 story description said "No additional pip dependencies" but YAML parsing requires PyYAML. Always verify stdlib claims for specific formats.
+
+**Recommendation:** When scoping Python stories, remember that YAML, TOML (pre-3.11), and other common formats may require pip packages. Create requirements.txt and use Makefile venv auto-provisioning: `$(VENV): requirements.txt` ensures dependencies are always current.
+
+**Applies to:** All Python stories that process structured data formats
+
+**Source stories:** RFA-8jl.1
+
+### fpdf2 API differs from legacy fpdf documentation
+
+**Priority:** Nice-to-have
+
+**Context:** fpdf2 (maintained fork) uses `new_x`/`new_y` parameters for cell positioning instead of the deprecated `ln` parameter from legacy fpdf.
+
+**Recommendation:** When using fpdf2, use `new_x=XPos.LEFT, new_y=YPos.NEXT` instead of `ln=True`. Reference fpdf2 docs, not legacy fpdf docs.
+
+**Applies to:** All stories generating PDF reports with fpdf2
+
+**Source stories:** RFA-8jl.2
+
+### Docker-compose log lines have container prefix before JSON
+
+**Priority:** Important
+
+**Context:** Docker-compose audit log lines have container name + timestamp prefix before the JSON payload. The parser must strip everything up to the first `{` character.
+
+**Recommendation:** When processing log files from containerized services, always account for container runtime prefixes. Test with real docker-compose output, not just the expected JSON format.
+
+**Applies to:** All stories parsing logs from docker-compose services
+
+**Source stories:** RFA-8jl.1

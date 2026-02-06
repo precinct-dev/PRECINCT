@@ -139,3 +139,19 @@ This table provides:
 **Applies to:** All stories when multiple developer agents are active or sessions overlap
 
 **Source stories:** RFA-8z8.2
+
+---
+
+## [Added from Epic RFA-8jl retro - 2026-02-06]
+
+### Parallel developer agents can cause commit interleaving
+
+**Priority:** Important
+
+**Context:** RFA-8jl.1 was committed alongside RFA-8z8.1 changes due to parallel agent commit timing. Content was correct but commit attribution was unclear.
+
+**Recommendation:** When running parallel developer agents, ensure each agent stages only its own files. Use specific `git add <files>` instead of `git add .` to prevent cross-contamination. Each story's commit should contain only that story's changes.
+
+**Applies to:** All stories when multiple developer agents run concurrently
+
+**Source stories:** RFA-8jl.1
