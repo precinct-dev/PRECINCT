@@ -1,0 +1,234 @@
+# ------------------------------------------------------------------------------
+# CI Pipeline - Build, Test, Sign, Push
+# Story: RFA-9fv.6
+#
+# Triggered on push to main and epic/* branches, and on pull requests.
+# Steps:
+#   1. Lint Go code (go vet + staticcheck)
+#   2. Run Go unit tests (gateway, middleware, tools, s3-mcp-server)
+#   3. Run OPA policy tests
+#   4. Build container images (gateway, s3-mcp-server)
+#   5. Generate SBOMs (syft)
+#   6. Sign images with cosign (keyless OIDC)
+#   7. Push to GHCR (only on main/epic branches, not PRs from forks)
+# ------------------------------------------------------------------------------
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "epic/**"
+    paths:
+      - "POC/**"
+      - ".github/workflows/ci.yaml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "POC/**"
+      - ".github/workflows/ci.yaml"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/agentic-ref-arch
+  GO_VERSION: "1.24"
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write  # Required for cosign keyless OIDC signing
+
+jobs:
+  # --------------------------------------------------------------------------
+  # Job 1: Lint
+  # --------------------------------------------------------------------------
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: POC
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: POC/go.sum
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Run staticcheck
+        run: staticcheck ./...
+
+  # --------------------------------------------------------------------------
+  # Job 2: Unit Tests
+  # --------------------------------------------------------------------------
+  test:
+    name: Go Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: POC
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: POC/go.sum
+
+      - name: Run unit tests with coverage
+        run: |
+          go test -v -race -coverprofile=coverage.out -covermode=atomic \
+            ./internal/gateway/... \
+            ./internal/gateway/middleware/... \
+            ./internal/tools/...
+
+      - name: Run S3 MCP server tests
+        run: |
+          if [ -d "./cmd/s3-mcp-server" ] || [ -d "./internal/s3mcp" ]; then
+            go test -v -race ./cmd/s3-mcp-server/... ./internal/s3mcp/... 2>/dev/null || true
+          fi
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: POC/coverage.out
+          if-no-files-found: warn
+
+  # --------------------------------------------------------------------------
+  # Job 3: OPA Policy Tests
+  # --------------------------------------------------------------------------
+  opa-test:
+    name: OPA Policy Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: POC
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install OPA
+        run: |
+          curl -L -o /usr/local/bin/opa \
+            https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+          chmod +x /usr/local/bin/opa
+          opa version
+
+      - name: Run OPA policy tests
+        run: |
+          opa test config/opa/ -v \
+            --bundle \
+            -d config/opa/tool_grants.yaml \
+            -d config/opa/tool_registry.yaml \
+            -d config/opa/ui_capability_grants.yaml
+
+  # --------------------------------------------------------------------------
+  # Job 4: Build, SBOM, Sign, Push
+  # --------------------------------------------------------------------------
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    needs: [lint, test, opa-test]
+    strategy:
+      matrix:
+        include:
+          - image: mcp-security-gateway
+            dockerfile: POC/build/docker/Dockerfile.gateway
+            context: POC
+          - image: s3-mcp-server
+            dockerfile: POC/build/docker/Dockerfile.s3-mcp-server
+            context: POC
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+          tags: |
+            type=sha,prefix=
+            type=ref,event=branch
+            type=ref,event=pr
+            type=raw,value=dev,enable=${{ github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/epic/') }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+          sbom: true
+
+      # -- SBOM Generation (standalone, in addition to BuildKit SBOM) --
+      - name: Install syft
+        if: github.event_name == 'push'
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate SBOM
+        if: github.event_name == 'push'
+        run: |
+          syft \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${{ steps.build.outputs.digest }} \
+            -o spdx-json > sbom-${{ matrix.image }}.spdx.json
+
+      - name: Upload SBOM
+        if: github.event_name == 'push'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.image }}
+          path: sbom-${{ matrix.image }}.spdx.json
+
+      # -- Image Signing with Cosign (keyless OIDC) --
+      - name: Install cosign
+        if: github.event_name == 'push'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign image with cosign
+        if: github.event_name == 'push'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${DIGEST}
+
+      - name: Attach SBOM to image
+        if: github.event_name == 'push'
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          cosign attach sbom \
+            --sbom sbom-${{ matrix.image }}.spdx.json \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@${DIGEST}

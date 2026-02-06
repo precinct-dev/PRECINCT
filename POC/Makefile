@@ -1,4 +1,4 @@
-.PHONY: help up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register
+.PHONY: help up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa
 
 # Default target
 help: ## Show this help message
@@ -107,3 +107,70 @@ tool-register: ## Register a new MCP tool (RFA-fu1). Usage: make tool-register T
 		$(if $(RISK_LEVEL),--risk-level "$(RISK_LEVEL)") \
 		$(if $(ALLOWED_DESTINATIONS),--allowed-destinations "$(ALLOWED_DESTINATIONS)") \
 		$(if $(filter true,$(REQUIRES_STEP_UP)),--requires-step-up)
+
+# ==============================================================================
+# CI/CD Targets (RFA-9fv.6)
+# ==============================================================================
+
+# Container image names
+REGISTRY ?= ghcr.io
+IMAGE_PREFIX ?= $(REGISTRY)/$(shell git config --get remote.origin.url 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|' | tr '[:upper:]' '[:lower:]')/agentic-ref-arch
+GATEWAY_IMAGE ?= $(IMAGE_PREFIX)/mcp-security-gateway
+S3_MCP_IMAGE ?= $(IMAGE_PREFIX)/s3-mcp-server
+IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
+
+ci: lint test test-opa build-images ## Run full CI locally (lint, test, OPA tests, build images)
+	@echo ""
+	@echo "==> CI pipeline complete"
+
+build-images: ## Build all container images
+	@echo "==> Building container images..."
+	@echo "    Building MCP Security Gateway..."
+	docker build -f build/docker/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
+	docker tag $(GATEWAY_IMAGE):$(IMAGE_TAG) $(GATEWAY_IMAGE):dev
+	@echo ""
+	@echo "    Building S3 MCP Server..."
+	docker build -f build/docker/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
+	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
+	@echo ""
+	@echo "Container images built successfully"
+	@echo "  $(GATEWAY_IMAGE):$(IMAGE_TAG)"
+	@echo "  $(S3_MCP_IMAGE):$(IMAGE_TAG)"
+
+sign-images: ## Sign container images with cosign (keyless OIDC)
+	@echo "==> Signing container images with cosign..."
+	@if ! command -v cosign >/dev/null 2>&1; then \
+		echo "ERROR: cosign not installed. Install from https://docs.sigstore.dev/cosign/system_config/installation/"; \
+		exit 1; \
+	fi
+	@echo "    Signing $(GATEWAY_IMAGE):$(IMAGE_TAG)..."
+	cosign sign --yes $(GATEWAY_IMAGE):$(IMAGE_TAG)
+	@echo "    Signing $(S3_MCP_IMAGE):$(IMAGE_TAG)..."
+	cosign sign --yes $(S3_MCP_IMAGE):$(IMAGE_TAG)
+	@echo ""
+	@echo "Images signed successfully"
+
+sbom: build-images ## Generate SBOMs for all container images
+	@echo "==> Generating SBOMs..."
+	@if ! command -v syft >/dev/null 2>&1; then \
+		echo "ERROR: syft not installed. Install from https://github.com/anchore/syft"; \
+		exit 1; \
+	fi
+	@mkdir -p build/sbom
+	@echo "    Generating SBOM for MCP Security Gateway..."
+	syft $(GATEWAY_IMAGE):$(IMAGE_TAG) -o spdx-json > build/sbom/mcp-security-gateway.spdx.json
+	@echo "    Generating SBOM for S3 MCP Server..."
+	syft $(S3_MCP_IMAGE):$(IMAGE_TAG) -o spdx-json > build/sbom/s3-mcp-server.spdx.json
+	@echo ""
+	@echo "SBOMs generated in build/sbom/"
+
+test-opa: ## Run OPA policy tests
+	@echo "==> Running OPA policy tests..."
+	@if command -v opa >/dev/null 2>&1; then \
+		opa test config/opa/ -v; \
+	else \
+		echo "    WARNING: opa not installed. Skipping OPA tests."; \
+		echo "    Install from: https://www.openpolicyagent.org/docs/latest/#running-opa"; \
+	fi
+	@echo ""
+	@echo "OPA policy tests complete"

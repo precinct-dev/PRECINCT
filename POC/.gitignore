@@ -4,6 +4,10 @@ data/
 *.exe
 *.out
 
+# Build artifacts
+build/sbom/
+coverage.out
+
 # Python
 .venv/
 __pycache__/
