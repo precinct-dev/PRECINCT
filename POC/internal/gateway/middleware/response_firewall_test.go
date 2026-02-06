@@ -55,15 +55,15 @@ func TestClassifyTool(t *testing.T) {
 		t.Fatalf("Failed to write config: %v", err)
 	}
 
-	registry, err := NewToolRegistry("http://localhost:8080", configPath)
+	registry, err := NewToolRegistry(configPath)
 	if err != nil {
 		t.Fatalf("Failed to create registry: %v", err)
 	}
 
 	tests := []struct {
-		toolName       string
-		expected       ResponseClassification
-		description    string
+		toolName    string
+		expected    ResponseClassification
+		description string
 	}{
 		{"public_tool", ClassificationPublic, "low risk -> public"},
 		{"internal_tool", ClassificationInternal, "medium risk -> internal"},
@@ -387,7 +387,7 @@ func setupTestRegistry(t *testing.T, riskLevel string) *ToolRegistry {
 		t.Fatalf("Failed to write config: %v", err)
 	}
 
-	registry, err := NewToolRegistry("http://localhost:8080", configPath)
+	registry, err := NewToolRegistry(configPath)
 	if err != nil {
 		t.Fatalf("Failed to create registry: %v", err)
 	}

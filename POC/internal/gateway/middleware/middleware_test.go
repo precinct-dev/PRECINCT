@@ -30,16 +30,16 @@ func TestMiddlewareChainOrder(t *testing.T) {
 	})
 
 	// Apply in reverse order (innermost first) - token_sub MUST be last before handler
-	handler = track("token_sub")(handler)    // 13 - LAST before proxy
-	handler = track("deep_scan")(handler)    // 10
-	handler = track("step_up")(handler)      // 9
-	handler = track("dlp")(handler)          // 7
-	handler = track("opa")(handler)          // 6
-	handler = track("registry")(handler)     // 5
-	handler = track("audit")(handler)        // 4
-	handler = track("spiffe")(handler)       // 3
-	handler = track("body")(handler)         // 2
-	handler = track("size")(handler)         // 1
+	handler = track("token_sub")(handler) // 13 - LAST before proxy
+	handler = track("deep_scan")(handler) // 10
+	handler = track("step_up")(handler)   // 9
+	handler = track("dlp")(handler)       // 7
+	handler = track("opa")(handler)       // 6
+	handler = track("registry")(handler)  // 5
+	handler = track("audit")(handler)     // 4
+	handler = track("spiffe")(handler)    // 3
+	handler = track("body")(handler)      // 2
+	handler = track("size")(handler)      // 1
 
 	// Execute request
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString("test"))
@@ -250,7 +250,7 @@ func TestToolRegistryVerify(t *testing.T) {
 `
 	os.WriteFile(configPath, []byte(config), 0644)
 
-	registry, err := NewToolRegistry("http://localhost:8080", configPath)
+	registry, err := NewToolRegistry(configPath)
 	if err != nil {
 		t.Fatalf("Failed to create registry: %v", err)
 	}

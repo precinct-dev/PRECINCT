@@ -77,15 +77,13 @@ type ToolRegistryConfig struct {
 
 // ToolRegistry manages tool verification with hash checking
 type ToolRegistry struct {
-	endpoint string
-	tools    map[string]ToolDefinition // tool_name -> definition
+	tools map[string]ToolDefinition // tool_name -> definition
 }
 
-// NewToolRegistry creates a new tool registry client
-func NewToolRegistry(endpoint string, configPath string) (*ToolRegistry, error) {
+// NewToolRegistry creates a new tool registry from a config file
+func NewToolRegistry(configPath string) (*ToolRegistry, error) {
 	registry := &ToolRegistry{
-		endpoint: endpoint,
-		tools:    make(map[string]ToolDefinition),
+		tools: make(map[string]ToolDefinition),
 	}
 
 	// Load configuration from file

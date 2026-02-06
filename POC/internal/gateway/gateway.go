@@ -52,7 +52,7 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OPA engine: %w", err)
 	}
-	registry, err := middleware.NewToolRegistry(cfg.ToolRegistryURL, cfg.ToolRegistryConfigPath)
+	registry, err := middleware.NewToolRegistry(cfg.ToolRegistryConfigPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tool registry: %w", err)
 	}
