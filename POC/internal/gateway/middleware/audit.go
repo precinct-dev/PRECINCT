@@ -18,6 +18,8 @@ import (
 // AuditEvent represents a structured audit log event with hash chain
 type AuditEvent struct {
 	Timestamp      string         `json:"timestamp"`
+	EventType      string         `json:"event_type,omitempty"` // RFA-j2d.8: UI event type (e.g., "ui.resource.read")
+	Severity       string         `json:"severity,omitempty"`   // RFA-j2d.8: Info, Warning, High, Critical
 	SessionID      string         `json:"session_id"`
 	DecisionID     string         `json:"decision_id"`
 	TraceID        string         `json:"trace_id"`
@@ -29,9 +31,11 @@ type AuditEvent struct {
 	StatusCode     int            `json:"status_code,omitempty"`
 	Security       *SecurityAudit `json:"security,omitempty"`
 	Authorization  *AuthzAudit    `json:"authorization,omitempty"`
-	PrevHash       string         `json:"prev_hash"`        // SHA-256 of previous event
-	BundleDigest   string         `json:"bundle_digest"`    // SHA-256 of OPA policy bundle
-	RegistryDigest string         `json:"registry_digest"`  // SHA-256 of tool registry config
+	UI             *UIAuditData   `json:"ui,omitempty"`          // RFA-j2d.8: UI-specific audit data
+	AppDriven      *AppDrivenData `json:"app_driven,omitempty"`  // RFA-j2d.8: app-driven tool invocation data
+	PrevHash       string         `json:"prev_hash"`             // SHA-256 of previous event
+	BundleDigest   string         `json:"bundle_digest"`         // SHA-256 of OPA policy bundle
+	RegistryDigest string         `json:"registry_digest"`       // SHA-256 of tool registry config
 }
 
 // SecurityAudit contains security-related audit information
