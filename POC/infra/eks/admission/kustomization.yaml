@@ -1,0 +1,44 @@
+# ------------------------------------------------------------------------------
+# Kustomize: Admission Control Policies
+# Story: RFA-9fv.9
+#
+# Manages OPA Gatekeeper admission policies for supply-chain security.
+# Deploys ConstraintTemplates and Constraints that enforce:
+#   1. Image signature verification (cosign)
+#   2. Image digest pinning (no floating tags)
+#
+# Usage:
+#   kustomize build POC/infra/eks/admission/
+#   kubectl apply -k POC/infra/eks/admission/
+#
+# Deployment order matters:
+#   1. gatekeeper-system.yaml  (namespace + config)
+#   2. constraint-templates/   (CRD-like definitions)
+#   3. constraints/            (enforcement rules)
+#
+# Gatekeeper CRDs and controller must be installed separately:
+#   kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.16/deploy/gatekeeper.yaml
+#
+# Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: admission-control
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: mcp-admission-control
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+
+resources:
+  # 1. Gatekeeper system namespace and configuration
+  - gatekeeper-system.yaml
+  # 2. ConstraintTemplates (define policy logic)
+  - constraint-templates/require-image-signature.yaml
+  - constraint-templates/require-image-digest.yaml
+  # 3. Constraints (apply policies to namespaces)
+  - constraints/enforce-image-signature.yaml
+  - constraints/enforce-image-digest.yaml

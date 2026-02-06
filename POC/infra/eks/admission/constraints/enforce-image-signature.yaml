@@ -1,0 +1,58 @@
+# ------------------------------------------------------------------------------
+# Constraint: enforce-image-signature
+# Story: RFA-9fv.9
+#
+# Applies the RequireImageSignature ConstraintTemplate to enforcement-critical
+# namespaces. All container images deployed to these namespaces must have
+# valid cosign signatures from the CI pipeline.
+#
+# Enforcement namespaces (from Reference Architecture):
+#   - mcp-gateway:    MCP Security Gateway
+#   - mcp-servers:    MCP Tool Servers (S3, etc.)
+#   - spike-system:   SPIKE/SPIFFE identity system
+#   - spire-system:   SPIRE server and agents
+#   - policy-system:  OPA bundle server and policy engine
+#
+# Rejection behavior:
+#   - Pod/Deployment admission is DENIED with a clear error message
+#   - Rejection events are created and visible via kubectl get events
+#   - Audit mode can be enabled by setting enforcementAction: dryrun
+#
+# Reference Architecture Section 10.5.1: Signature verification
+# ------------------------------------------------------------------------------
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: RequireImageSignature
+metadata:
+  name: enforce-image-signature
+  labels:
+    app.kubernetes.io/part-of: mcp-admission-control
+    app.kubernetes.io/component: supply-chain-security
+  annotations:
+    description: >-
+      Enforces cosign signature verification for all container images in
+      security-critical namespaces. Unsigned images are rejected.
+spec:
+  # deny = reject admission; dryrun = log but allow (for rollout)
+  enforcementAction: deny
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+      - apiGroups: ["apps"]
+        kinds: ["Deployment", "ReplicaSet", "StatefulSet", "DaemonSet"]
+      - apiGroups: ["batch"]
+        kinds: ["Job", "CronJob"]
+    namespaces:
+      - mcp-gateway
+      - mcp-servers
+      - spike-system
+      - spire-system
+      - policy-system
+  parameters:
+    allowedRegistries:
+      # GHCR registry used by CI pipeline (see .github/workflows/ci.yaml)
+      - "ghcr.io/"
+    exemptImages:
+      # Kubernetes pause container (injected by kubelet, not user-controlled)
+      - "registry.k8s.io/pause*"
+      - "602401143452.dkr.ecr.*.amazonaws.com/eks/pause*"
