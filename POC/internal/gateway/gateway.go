@@ -14,17 +14,20 @@ import (
 
 // Gateway represents the MCP security gateway
 type Gateway struct {
-	config         *Config
-	proxy          *httputil.ReverseProxy
-	auditor        *middleware.Auditor
-	opa            *middleware.OPAEngine
-	registry       *middleware.ToolRegistry
-	dlpScanner     middleware.DLPScanner
-	deepScanner    *middleware.DeepScanner
-	sessionContext *middleware.SessionContext
-	rateLimiter    *middleware.RateLimiter
-	circuitBreaker *middleware.CircuitBreaker
-	handleStore    *HandleStore // RFA-qq0.16: response firewall data handle cache
+	config               *Config
+	proxy                *httputil.ReverseProxy
+	auditor              *middleware.Auditor
+	opa                  *middleware.OPAEngine
+	registry             *middleware.ToolRegistry
+	dlpScanner           middleware.DLPScanner
+	deepScanner          *middleware.DeepScanner
+	sessionContext       *middleware.SessionContext
+	rateLimiter          *middleware.RateLimiter
+	circuitBreaker       *middleware.CircuitBreaker
+	handleStore          *HandleStore                  // RFA-qq0.16: response firewall data handle cache
+	groqGuardClient      middleware.GroqGuardClient    // RFA-qq0.17: guard model client for step-up gating
+	destinationAllowlist *middleware.DestinationAllowlist // RFA-qq0.17: destination allowlist
+	riskConfig           *middleware.RiskConfig         // RFA-qq0.17: risk scoring thresholds
 }
 
 // New creates a new gateway instance
@@ -71,6 +74,37 @@ func New(cfg *Config) (*Gateway, error) {
 	// RFA-qq0.16: Create handle store for response firewall
 	handleStore := NewHandleStore(time.Duration(cfg.HandleTTL) * time.Second)
 
+	// RFA-qq0.17: Create step-up gating components
+	groqGuardClient := middleware.NewGroqGuardClient(cfg.GroqAPIKey, time.Duration(cfg.DeepScanTimeout)*time.Second)
+
+	// Load destination allowlist (fall back to defaults if file not found)
+	var destinationAllowlist *middleware.DestinationAllowlist
+	if cfg.DestinationsConfigPath != "" {
+		dal, err := middleware.LoadDestinationAllowlist(cfg.DestinationsConfigPath)
+		if err != nil {
+			// Fall back to defaults if config file not found
+			destinationAllowlist = middleware.DefaultDestinationAllowlist()
+		} else {
+			destinationAllowlist = dal
+		}
+	} else {
+		destinationAllowlist = middleware.DefaultDestinationAllowlist()
+	}
+
+	// Load risk thresholds (fall back to defaults if file not found)
+	var riskConfig *middleware.RiskConfig
+	if cfg.RiskThresholdsPath != "" {
+		rc, err := middleware.LoadRiskConfig(cfg.RiskThresholdsPath)
+		if err != nil {
+			// Fall back to defaults if config file not found
+			riskConfig = middleware.DefaultRiskConfig()
+		} else {
+			riskConfig = rc
+		}
+	} else {
+		riskConfig = middleware.DefaultRiskConfig()
+	}
+
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
 
@@ -84,8 +118,11 @@ func New(cfg *Config) (*Gateway, error) {
 		deepScanner:    deepScanner,
 		sessionContext: sessionContext,
 		rateLimiter:    rateLimiter,
-		circuitBreaker: circuitBreaker,
-		handleStore:    handleStore,
+		circuitBreaker:       circuitBreaker,
+		handleStore:          handleStore,
+		groqGuardClient:      groqGuardClient,
+		destinationAllowlist: destinationAllowlist,
+		riskConfig:           riskConfig,
 	}, nil
 }
 
@@ -100,7 +137,7 @@ func (g *Gateway) Handler() http.Handler {
 	// 6. OPA policy
 	// 7. DLP scanning
 	// 8. Session context (RFA-qq0.15)
-	// 9. Step-up gating hook (no-op for skeleton)
+	// 9. Step-up gating (RFA-qq0.17: risk scoring + destination check + guard model)
 	// 10. Deep scan dispatch (async, after step-up gating)
 	// 11. Rate limiting (per-agent token bucket)
 	// 12. Circuit breaker (protect upstream from cascading failures)
@@ -125,7 +162,7 @@ func (g *Gateway) Handler() http.Handler {
 	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)     // 12
 	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)             // 11
 	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)              // 10
-	handler = middleware.StepUpGating(handler)                                   // 9
+	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor) // 9
 	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)     // 8
 	handler = middleware.DLPMiddleware(handler, g.dlpScanner)                    // 7
 	handler = middleware.OPAPolicy(handler, g.opa)                               // 6

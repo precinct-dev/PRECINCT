@@ -1,0 +1,27 @@
+# Risk Thresholds Configuration - RFA-qq0.17 (Step-Up Gating)
+# Configurable thresholds for the 4-dimensional risk scoring rubric.
+# Total risk score ranges from 0 to 12 (4 dimensions x 0-3 each).
+
+# Gating thresholds determine which gate applies:
+#   fast_path_max:  scores <= this value bypass step-up entirely (fast path)
+#   step_up_max:    scores <= this value go through step-up gating (destination + guard model)
+#   approval_max:   scores <= this value require human approval (HTTP 403 stub for POC)
+#   scores > approval_max are denied by default (HTTP 403)
+thresholds:
+  fast_path_max: 3     # 0-3: no friction
+  step_up_max: 6       # 4-6: step-up gating
+  approval_max: 9      # 7-9: approval required (stub)
+  # 10-12: deny by default
+
+# Guard model thresholds for Prompt Guard 2
+guard:
+  injection_threshold: 0.30    # InjectionProbability above this -> block
+  jailbreak_threshold: 0.30    # JailbreakProbability above this -> block
+
+# Risk dimension defaults for unknown tools
+# When a tool is not in the registry, these defaults apply
+unknown_tool_defaults:
+  impact: 2
+  reversibility: 2
+  exposure: 2
+  novelty: 3        # Unknown tools get max novelty score

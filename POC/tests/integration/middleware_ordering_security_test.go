@@ -74,7 +74,7 @@ func TestTokenSubstitutionIsLastMiddleware(t *testing.T) {
 	var handler http.Handler = proxyHandler
 	handler = middleware.TokenSubstitution(handler)    // 13 - LAST before proxy
 	handler = mockDeepScan(handler)                    // 10
-	handler = middleware.StepUpGating(handler)         // 9
+	handler = middleware.StepUpGating(handler, nil, nil, nil, nil, nil) // 9
 	handler = mockDLP(handler)                         // 7
 	handler = middleware.SPIFFEAuth(handler, "dev")    // 3
 	handler = middleware.BodyCapture(handler)          // 2
