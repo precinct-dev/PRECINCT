@@ -27,6 +27,7 @@ default allow := {
 # 3. Path restrictions are satisfied (for read/grep)
 # 4. Destination restrictions are satisfied (for external egress)
 # 5. Step-up requirements are met (for high-risk tools)
+# 6. Session risk is acceptable (RFA-qq0.15)
 allow := {
     "allow": true,
     "reason": "allowed"
@@ -37,6 +38,18 @@ allow := {
     path_allowed(input.tool, input.params)
     destination_allowed(input.tool, input.params)
     step_up_satisfied(input.tool, input.step_up_token)
+    session_risk_acceptable
+}
+
+# RFA-qq0.15: Session risk check
+# Risk score must be below 0.7 threshold
+session_risk_acceptable if {
+    input.session.risk_score < 0.7
+}
+
+session_risk_acceptable if {
+    # No session data present - allow (backward compatible)
+    not input.session
 }
 
 # Check if SPIFFE ID matches pattern
@@ -211,6 +224,19 @@ allow := {
     path_allowed(input.tool, input.params)
     destination_allowed(input.tool, input.params)
     not step_up_satisfied(input.tool, input.step_up_token)
+}
+
+allow := {
+    "allow": false,
+    "reason": "session_risk_too_high"
+} if {
+    some grant in tool_grants
+    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
+    tool_authorized(input.tool, grant.allowed_tools)
+    path_allowed(input.tool, input.params)
+    destination_allowed(input.tool, input.params)
+    step_up_satisfied(input.tool, input.step_up_token)
+    not session_risk_acceptable
 }
 
 # RFA-qq0.19: Poisoning pattern detection

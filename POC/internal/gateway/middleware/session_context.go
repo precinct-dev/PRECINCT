@@ -42,9 +42,6 @@ type ToolAction struct {
 	DestinationDomain  string
 }
 
-// contextKeySessionContext is the key for storing session context in request context
-const contextKeySessionContext contextKey = "session_context_engine"
-
 // NewSessionContext creates a new session context manager
 func NewSessionContext() *SessionContext {
 	return &SessionContext{
