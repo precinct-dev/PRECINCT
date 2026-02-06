@@ -31,6 +31,13 @@ type OPAInput struct {
 	Path         string                 `json:"path"`
 	Params       map[string]interface{} `json:"params"`
 	StepUpToken  string                 `json:"step_up_token"`
+	Session      SessionInput           `json:"session"`
+}
+
+// SessionInput represents session data for OPA evaluation
+type SessionInput struct {
+	RiskScore       float64      `json:"risk_score"`
+	PreviousActions []ToolAction `json:"previous_actions"`
 }
 
 // OPARequest represents OPA API request
@@ -96,8 +103,14 @@ func (oc *OPAClient) Evaluate(input OPAInput) (bool, string, error) {
 	return allow, reason, nil
 }
 
+// OPAEvaluator interface for OPA policy evaluation
+// Satisfied by both OPAClient (HTTP-based) and OPAEngine (embedded)
+type OPAEvaluator interface {
+	Evaluate(input OPAInput) (bool, string, error)
+}
+
 // OPAPolicy middleware enforces OPA authorization
-func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
+func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 
@@ -123,6 +136,17 @@ func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
 		// Extract step-up token from headers
 		stepUpToken := r.Header.Get("X-Step-Up-Token")
 
+		// Get session data if available
+		sessionData := GetSessionContextData(ctx)
+		sessionInput := SessionInput{
+			RiskScore:       0.0,
+			PreviousActions: make([]ToolAction, 0),
+		}
+		if sessionData != nil {
+			sessionInput.RiskScore = sessionData.RiskScore
+			sessionInput.PreviousActions = sessionData.Actions
+		}
+
 		// Build OPA input
 		input := OPAInput{
 			SPIFFEID:    GetSPIFFEID(ctx),
@@ -132,6 +156,7 @@ func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
 			Path:        r.URL.Path,
 			Params:      params,
 			StepUpToken: stepUpToken,
+			Session:     sessionInput,
 		}
 
 		// Evaluate policy

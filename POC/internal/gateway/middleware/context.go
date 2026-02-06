@@ -8,14 +8,15 @@ import (
 type contextKey string
 
 const (
-	contextKeySessionID       contextKey = "session_id"
-	contextKeyDecisionID      contextKey = "decision_id"
-	contextKeyTraceID         contextKey = "trace_id"
-	contextKeySPIFFEID        contextKey = "spiffe_id"
-	contextKeyRequestBody     contextKey = "request_body"
-	contextKeyToolHashVerified contextKey = "tool_hash_verified"
-	contextKeyOPADecisionID   contextKey = "opa_decision_id"
-	contextKeySecurityFlags   contextKey = "security_flags"
+	contextKeySessionID         contextKey = "session_id"
+	contextKeyDecisionID        contextKey = "decision_id"
+	contextKeyTraceID           contextKey = "trace_id"
+	contextKeySPIFFEID          contextKey = "spiffe_id"
+	contextKeyRequestBody       contextKey = "request_body"
+	contextKeyToolHashVerified  contextKey = "tool_hash_verified"
+	contextKeyOPADecisionID     contextKey = "opa_decision_id"
+	contextKeySecurityFlags     contextKey = "security_flags"
+	contextKeySessionContext    contextKey = "session_context_engine"
 )
 
 // GetSessionID retrieves session ID from context
