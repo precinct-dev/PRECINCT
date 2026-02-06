@@ -7,6 +7,9 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // TokenSubstitution is the middleware that substitutes SPIKE tokens with actual secrets.
@@ -15,18 +18,33 @@ import (
 // - POCSecretRedeemer: returns deterministic mock secrets (dev/test)
 func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.2: Create OTel span for step 13
+		ctx, span := tracer.Start(r.Context(), "gateway.token_substitution",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 13),
+				attribute.String("mcp.gateway.middleware", "token_substitution"),
+			),
+		)
+		defer span.End()
+
 		// Get SPIFFE ID from context
-		spiffeID := GetSPIFFEID(r.Context())
+		spiffeID := GetSPIFFEID(ctx)
 		if spiffeID == "" {
 			http.Error(w, "Missing SPIFFE ID for token substitution", http.StatusUnauthorized)
 			return
 		}
 
 		// Get request body from context (already captured by BodyCapture middleware)
-		bodyBytes := GetRequestBody(r.Context())
+		bodyBytes := GetRequestBody(ctx)
 		if bodyBytes == nil {
 			// No body, nothing to substitute
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Int("tokens_substituted", 0),
+				attribute.Int("spike_ref_count", 0),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no body"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -36,9 +54,17 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 		tokenStrings := FindSPIKETokens(bodyStr)
 		if len(tokenStrings) == 0 {
 			// No tokens found, proceed without substitution
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Int("tokens_substituted", 0),
+				attribute.Int("spike_ref_count", 0),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no tokens found"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
+
+		span.SetAttributes(attribute.Int("spike_ref_count", len(tokenStrings)))
 
 		// Process each token
 		tokenMap := make(map[string]string)
@@ -49,6 +75,11 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			if err != nil {
 				// Log to stdout for POC (audit logging happens at higher middleware layer)
 				fmt.Printf("Token substitution failed: ref=%s, spiffe=%s, error=%v\n", tokenStr, spiffeID, err)
+				span.SetAttributes(
+					attribute.Int("tokens_substituted", len(tokenMap)),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "invalid SPIKE token"),
+				)
 				http.Error(w, fmt.Sprintf("Invalid SPIKE token: %v", err), http.StatusBadRequest)
 				return
 			}
@@ -56,6 +87,11 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			// Validate token ownership
 			if err := ValidateTokenOwnership(token, spiffeID); err != nil {
 				fmt.Printf("Token ownership validation failed: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
+				span.SetAttributes(
+					attribute.Int("tokens_substituted", len(tokenMap)),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "token ownership failed"),
+				)
 				http.Error(w, fmt.Sprintf("Token ownership validation failed: %v", err), http.StatusForbidden)
 				return
 			}
@@ -63,6 +99,11 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			// Validate token expiry
 			if err := ValidateTokenExpiry(token); err != nil {
 				fmt.Printf("Token expired: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
+				span.SetAttributes(
+					attribute.Int("tokens_substituted", len(tokenMap)),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "token expired"),
+				)
 				http.Error(w, fmt.Sprintf("Token expired: %v", err), http.StatusUnauthorized)
 				return
 			}
@@ -71,14 +112,24 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			// In production, scope would come from the request context or tool registry
 			if err := ValidateTokenScope(token, "tools", "docker", "read"); err != nil {
 				fmt.Printf("Token scope validation failed: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
+				span.SetAttributes(
+					attribute.Int("tokens_substituted", len(tokenMap)),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "token scope failed"),
+				)
 				http.Error(w, fmt.Sprintf("Token scope validation failed: %v", err), http.StatusForbidden)
 				return
 			}
 
 			// Redeem token for actual secret
-			secret, err := redeemer.RedeemSecret(r.Context(), token)
+			secret, err := redeemer.RedeemSecret(ctx, token)
 			if err != nil {
 				fmt.Printf("Token redemption failed: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
+				span.SetAttributes(
+					attribute.Int("tokens_substituted", len(tokenMap)),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "token redemption failed"),
+				)
 				http.Error(w, fmt.Sprintf("Token redemption failed: %v", err), http.StatusInternalServerError)
 				return
 			}
@@ -90,6 +141,12 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			fmt.Printf("Token substitution succeeded: ref=%s, spiffe=%s\n", token.Ref, spiffeID)
 		}
 
+		span.SetAttributes(
+			attribute.Int("tokens_substituted", len(tokenMap)),
+			attribute.String("mcp.result", "allowed"),
+			attribute.String("mcp.reason", "tokens substituted"),
+		)
+
 		// Perform substitution
 		substitutedBody := SubstituteTokens(bodyStr, tokenMap)
 
@@ -98,7 +155,7 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 		r.ContentLength = int64(len(substitutedBody))
 
 		// Continue to next handler
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

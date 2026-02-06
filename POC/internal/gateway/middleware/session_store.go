@@ -110,9 +110,11 @@ type KeyDBStore struct {
 	sessionTTL time.Duration
 }
 
-// NewKeyDBStore creates a new KeyDBStore connecting to the given KeyDB/Redis URL.
-// poolMin and poolMax configure the connection pool. sessionTTL is in seconds.
-func NewKeyDBStore(url string, poolMin, poolMax, sessionTTLSeconds int) *KeyDBStore {
+// NewKeyDBClient creates a shared redis.Client for KeyDB/Redis connections.
+// This client can be passed to both NewKeyDBStoreFromClient (sessions) and
+// NewKeyDBRateLimitStore (rate limiting) to share a single connection pool.
+// RFA-hh5.2: Extracted from NewKeyDBStore to enable connection pool sharing.
+func NewKeyDBClient(url string, poolMin, poolMax int) *redis.Client {
 	opts, err := redis.ParseURL(url)
 	if err != nil {
 		// Fall back to simple address parsing for non-URL formats like "localhost:6379"
@@ -122,9 +124,14 @@ func NewKeyDBStore(url string, poolMin, poolMax, sessionTTLSeconds int) *KeyDBSt
 	}
 	opts.MinIdleConns = poolMin
 	opts.PoolSize = poolMax
+	return redis.NewClient(opts)
+}
 
+// NewKeyDBStore creates a new KeyDBStore connecting to the given KeyDB/Redis URL.
+// poolMin and poolMax configure the connection pool. sessionTTL is in seconds.
+func NewKeyDBStore(url string, poolMin, poolMax, sessionTTLSeconds int) *KeyDBStore {
 	return &KeyDBStore{
-		client:     redis.NewClient(opts),
+		client:     NewKeyDBClient(url, poolMin, poolMax),
 		sessionTTL: time.Duration(sessionTTLSeconds) * time.Second,
 	}
 }

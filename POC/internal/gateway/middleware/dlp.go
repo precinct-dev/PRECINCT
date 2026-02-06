@@ -5,6 +5,9 @@ import (
 	"regexp"
 	"strings"
 	"unicode"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // DLPScanner defines the interface for data loss prevention scanning
@@ -239,13 +242,27 @@ func contains(slice []string, item string) bool {
 // Position: After OPA policy, before session context
 func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.2: Create OTel span for step 7
+		ctx, span := tracer.Start(r.Context(), "gateway.dlp_scan",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 7),
+				attribute.String("mcp.gateway.middleware", "dlp_scan"),
+			),
+		)
+		defer span.End()
+
 		// Get captured request body from context
-		ctx := r.Context()
 		body := GetRequestBody(ctx)
 
 		if body == nil {
 			// No body to scan, continue
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Bool("has_credentials", false),
+				attribute.Bool("has_pii", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no body"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -255,18 +272,47 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
 		// Handle scanner errors - fail open
 		if result.Error != nil {
 			// Log error but allow request to continue
-			// In production, this might be logged to a monitoring system
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Bool("has_credentials", false),
+				attribute.Bool("has_pii", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "scanner error - fail open"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
+
+		// RFA-m6j.2: Set DLP scan span attributes
+		span.SetAttributes(
+			attribute.Bool("has_credentials", result.HasCredentials),
+			attribute.Bool("has_pii", result.HasPII),
+			attribute.StringSlice("flags", result.Flags),
+		)
 
 		// FAIL CLOSED: Block requests with credentials
 		if result.HasCredentials {
 			// Add flags to context for audit logging
 			ctx = WithSecurityFlags(ctx, result.Flags)
 
+			span.SetAttributes(
+				attribute.String("mcp.result", "denied"),
+				attribute.String("mcp.reason", "credentials detected"),
+			)
 			http.Error(w, "Forbidden: Request contains sensitive credentials", http.StatusForbidden)
 			return
+		}
+
+		// Determine result for span
+		if result.HasPII || result.HasSuspicious {
+			span.SetAttributes(
+				attribute.String("mcp.result", "flagged"),
+				attribute.String("mcp.reason", strings.Join(result.Flags, ",")),
+			)
+		} else {
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "clean"),
+			)
 		}
 
 		// Add security flags to context for audit logging

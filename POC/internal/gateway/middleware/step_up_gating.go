@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v3"
 )
 
@@ -460,20 +462,35 @@ func StepUpGating(
 	auditor *Auditor,
 ) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		// RFA-m6j.2: Create OTel span for step 9
+		ctx, span := tracer.Start(r.Context(), "gateway.step_up_gating",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 9),
+				attribute.String("mcp.gateway.middleware", "step_up_gating"),
+			),
+		)
+		defer span.End()
 
 		// Parse tool call from request body
 		body := GetRequestBody(ctx)
 		if len(body) == 0 {
 			// No body, pass through (fast path)
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no body"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
 		var mcpReq MCPRequest
 		if err := json.Unmarshal(body, &mcpReq); err != nil {
 			// Not a valid MCP request, pass through
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "not MCP request"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -489,7 +506,11 @@ func StepUpGating(
 
 		if toolName == "" {
 			// No tool identified, pass through
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no tool identified"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -549,6 +570,38 @@ func StepUpGating(
 			// Deny by default
 			result.Allowed = false
 			result.Reason = "risk score exceeds maximum threshold - denied by default"
+		}
+
+		// RFA-m6j.2: Set per-middleware span attributes
+		guardResultStr := ""
+		if result.GuardResult != nil {
+			if result.GuardResult.Error != "" {
+				guardResultStr = "error: " + result.GuardResult.Error
+			} else if result.GuardResult.Blocked {
+				guardResultStr = "blocked"
+			} else {
+				guardResultStr = "passed"
+			}
+		}
+		span.SetAttributes(
+			attribute.String("gate", gate),
+			attribute.Int("total_score", totalScore),
+			attribute.Int("impact", riskScore.Impact),
+			attribute.Int("reversibility", riskScore.Reversibility),
+			attribute.Int("exposure", riskScore.Exposure),
+			attribute.Int("novelty", riskScore.Novelty),
+			attribute.String("guard_result", guardResultStr),
+		)
+		if result.Allowed {
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", result.Reason),
+			)
+		} else {
+			span.SetAttributes(
+				attribute.String("mcp.result", "denied"),
+				attribute.String("mcp.reason", result.Reason),
+			)
 		}
 
 		// Store result in context for audit
