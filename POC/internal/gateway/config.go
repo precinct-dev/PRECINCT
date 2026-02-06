@@ -21,6 +21,9 @@ type Config struct {
 	DeepScanTimeout        int // in seconds
 	RateLimitRPM           int // requests per minute per agent
 	RateLimitBurst         int // burst allowance
+	CircuitFailureThreshold int // consecutive failures before opening circuit
+	CircuitResetTimeout     int // seconds in Open before trying Half-Open
+	CircuitSuccessThreshold int // consecutive successes in Half-Open before closing
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -60,6 +63,27 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	circuitFailureThreshold := 5 // 5 consecutive failures default
+	if ft := os.Getenv("CIRCUIT_FAILURE_THRESHOLD"); ft != "" {
+		if parsed, err := strconv.Atoi(ft); err == nil {
+			circuitFailureThreshold = parsed
+		}
+	}
+
+	circuitResetTimeout := 30 // 30 seconds default
+	if rt := os.Getenv("CIRCUIT_RESET_TIMEOUT"); rt != "" {
+		if parsed, err := strconv.Atoi(rt); err == nil {
+			circuitResetTimeout = parsed
+		}
+	}
+
+	circuitSuccessThreshold := 2 // 2 consecutive successes default
+	if st := os.Getenv("CIRCUIT_SUCCESS_THRESHOLD"); st != "" {
+		if parsed, err := strconv.Atoi(st); err == nil {
+			circuitSuccessThreshold = parsed
+		}
+	}
+
 	return &Config{
 		Port:                   port,
 		UpstreamURL:            getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8080/mcp"),
@@ -73,8 +97,11 @@ func ConfigFromEnv() *Config {
 		LogLevel:               getEnvOrDefault("LOG_LEVEL", "info"),
 		GroqAPIKey:             getEnvOrDefault("GROQ_API_KEY", ""),
 		DeepScanTimeout:        deepScanTimeout,
-		RateLimitRPM:           rateLimitRPM,
-		RateLimitBurst:         rateLimitBurst,
+		RateLimitRPM:            rateLimitRPM,
+		RateLimitBurst:          rateLimitBurst,
+		CircuitFailureThreshold: circuitFailureThreshold,
+		CircuitResetTimeout:     circuitResetTimeout,
+		CircuitSuccessThreshold: circuitSuccessThreshold,
 	}
 }
 

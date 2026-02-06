@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"bytes"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -52,6 +53,10 @@ func TestNewGateway(t *testing.T) {
 	if gw.registry == nil {
 		t.Error("Tool registry not initialized")
 	}
+
+	if gw.circuitBreaker == nil {
+		t.Error("Circuit breaker not initialized")
+	}
 }
 
 // TestNewGatewayInvalidURL verifies error handling for invalid upstream URL
@@ -95,8 +100,22 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Errorf("Expected 200, got %d", rec.Code)
 	}
 
-	if rec.Body.String() != "OK\n" {
-		t.Errorf("Expected 'OK\\n', got %s", rec.Body.String())
+	// Health endpoint now returns JSON with circuit breaker state
+	var health map[string]interface{}
+	if err := json.NewDecoder(rec.Body).Decode(&health); err != nil {
+		t.Fatalf("Failed to decode health response: %v", err)
+	}
+
+	if health["status"] != "ok" {
+		t.Errorf("Expected status=ok, got %v", health["status"])
+	}
+
+	cbState, ok := health["circuit_breaker"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected circuit_breaker in health response")
+	}
+	if cbState["state"] != "closed" {
+		t.Errorf("Expected circuit_breaker.state=closed, got %v", cbState["state"])
 	}
 }
 
@@ -119,6 +138,17 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Errorf("Expected default SPIFFE mode 'dev', got %s", cfg.SPIFFEMode)
 	}
 
+	// Verify circuit breaker defaults
+	if cfg.CircuitFailureThreshold != 5 {
+		t.Errorf("Expected default CircuitFailureThreshold=5, got %d", cfg.CircuitFailureThreshold)
+	}
+	if cfg.CircuitResetTimeout != 30 {
+		t.Errorf("Expected default CircuitResetTimeout=30, got %d", cfg.CircuitResetTimeout)
+	}
+	if cfg.CircuitSuccessThreshold != 2 {
+		t.Errorf("Expected default CircuitSuccessThreshold=2, got %d", cfg.CircuitSuccessThreshold)
+	}
+
 	// Test custom values
 	t.Setenv("PORT", "8888")
 	t.Setenv("UPSTREAM_URL", "http://custom:9999")
@@ -135,6 +165,22 @@ func TestConfigFromEnv(t *testing.T) {
 
 	if cfg.SPIFFEMode != "prod" {
 		t.Errorf("Expected SPIFFE mode 'prod', got %s", cfg.SPIFFEMode)
+	}
+
+	// Test circuit breaker custom values
+	t.Setenv("CIRCUIT_FAILURE_THRESHOLD", "10")
+	t.Setenv("CIRCUIT_RESET_TIMEOUT", "60")
+	t.Setenv("CIRCUIT_SUCCESS_THRESHOLD", "3")
+	cfg = ConfigFromEnv()
+
+	if cfg.CircuitFailureThreshold != 10 {
+		t.Errorf("Expected CircuitFailureThreshold=10, got %d", cfg.CircuitFailureThreshold)
+	}
+	if cfg.CircuitResetTimeout != 60 {
+		t.Errorf("Expected CircuitResetTimeout=60, got %d", cfg.CircuitResetTimeout)
+	}
+	if cfg.CircuitSuccessThreshold != 3 {
+		t.Errorf("Expected CircuitSuccessThreshold=3, got %d", cfg.CircuitSuccessThreshold)
 	}
 }
 
