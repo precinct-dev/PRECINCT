@@ -114,3 +114,76 @@
 **Applies to:** All persistence stories, compliance stories, data deletion/cleanup stories.
 
 **Source stories:** RFA-hh5.3
+
+
+---
+
+## [Added from Epic RFA-8z8 retro - 2026-02-06]
+
+### Integration tests for TLS must use real handshakes, not mocks
+
+**Priority:** Critical
+
+**Context:** Both stories in RFA-8z8 proved that integration tests with real TLS handshakes (no mocks) catch real security issues. miniredis doesn't support TLS, requiring a TLS proxy pattern to test Redis/KeyDB TLS. The TLS proxy pattern is now proven in this codebase.
+
+**Recommendation:** For all future TLS/mTLS integration tests:
+1. Use real TLS handshakes via go-spiffe SDK or standard crypto/tls
+2. For services with non-TLS-aware mocks (like miniredis), use the TLS listener → plaintext proxy → mock pattern established in keydb_tls_test.go
+3. Verify negative cases: untrusted certs, plain HTTP rejection, missing client certs
+4. Never mock tls.Config or skip TLS verification with InsecureSkipVerify in tests
+
+**Applies to:** All stories involving TLS, mTLS, certificate validation, or SPIRE integration
+
+**Source stories:** RFA-8z8.1, RFA-8z8.2
+
+---
+
+## [Added from Epic RFA-m6j retro - 2026-02-06]
+
+### Use resource.NewSchemaless() to avoid OTel semconv version conflicts
+
+**Priority:** Important
+
+**Context:** OTel SDK semconv v1.24.0 conflicts with SDK v1.40.0 due to schema URL mismatch when creating resources with both resource.Default() and semantic convention attributes.
+
+**Recommendation:** When instrumenting with OpenTelemetry in Go, use `resource.NewSchemaless()` instead of `resource.New()` when combining resource.Default() with custom attributes. This avoids schema URL conflicts between different versions of semconv packages.
+
+**Applies to:** All OTel instrumentation stories
+
+**Source stories:** RFA-m6j.1
+
+### OTel exporters use lazy connection - design tests accordingly
+
+**Priority:** Nice-to-have
+
+**Context:** The OTel gRPC exporter uses lazy connection and doesn't fail at creation time even if the endpoint is unreachable.
+
+**Recommendation:** When testing OTel instrumentation, design tests for async connection behavior. Don't expect immediate failures if the collector is unreachable. Use in-memory span exporters (tracetest.InMemoryExporter with sdktrace.WithSyncer()) for deterministic tests.
+
+**Applies to:** All OTel integration tests
+
+**Source stories:** RFA-m6j.1
+
+### Package-level OTel tracers must be reassigned in tests
+
+**Priority:** Important
+
+**Context:** Package-level tracer variables must be reassigned in tests to pick up the test TracerProvider.
+
+**Recommendation:** When testing code that uses package-level OTel tracer variables, explicitly reassign the tracer in test setup: `tracer = tp.Tracer("service-name")`. Without this, tests will use the global tracer instead of the test TracerProvider.
+
+**Applies to:** All OTel unit tests using package-level tracers
+
+**Source stories:** RFA-m6j.1
+
+### Reuse mock implementations from sibling test files
+
+**Priority:** Nice-to-have
+
+**Context:** mockHandleStore and mockGuardClient from sibling test files were reusable in the same package without duplication.
+
+**Recommendation:** Before creating mock implementations in test files, check if sibling test files in the same package already define equivalent mocks. Reuse them to reduce duplication.
+
+**Applies to:** All test stories
+
+**Source stories:** RFA-m6j.2
