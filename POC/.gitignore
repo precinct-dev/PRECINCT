@@ -1,4 +1,4 @@
 data/
-gateway
+/gateway
 *.exe
 *.out

@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httputil"
@@ -22,6 +23,7 @@ type Gateway struct {
 	deepScanner    *middleware.DeepScanner
 	sessionContext *middleware.SessionContext
 	rateLimiter    *middleware.RateLimiter
+	circuitBreaker *middleware.CircuitBreaker
 }
 
 // New creates a new gateway instance
@@ -53,6 +55,18 @@ func New(cfg *Config) (*Gateway, error) {
 	sessionContext := middleware.NewSessionContext()
 	rateLimiter := middleware.NewRateLimiter(cfg.RateLimitRPM, cfg.RateLimitBurst)
 
+	// Create circuit breaker with audit logging for state transitions
+	circuitBreaker := middleware.NewCircuitBreaker(middleware.CircuitBreakerConfig{
+		FailureThreshold: cfg.CircuitFailureThreshold,
+		ResetTimeout:     time.Duration(cfg.CircuitResetTimeout) * time.Second,
+		SuccessThreshold: cfg.CircuitSuccessThreshold,
+	}, func(from, to middleware.CircuitState) {
+		auditor.Log(middleware.AuditEvent{
+			Action: "circuit_breaker_transition",
+			Result: fmt.Sprintf("%s->%s", from, to),
+		})
+	})
+
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
 
@@ -66,6 +80,7 @@ func New(cfg *Config) (*Gateway, error) {
 		deepScanner:    deepScanner,
 		sessionContext: sessionContext,
 		rateLimiter:    rateLimiter,
+		circuitBreaker: circuitBreaker,
 	}, nil
 }
 
@@ -83,7 +98,7 @@ func (g *Gateway) Handler() http.Handler {
 	// 9. Step-up gating hook (no-op for skeleton)
 	// 10. Deep scan dispatch (async, after step-up gating)
 	// 11. Rate limiting (per-agent token bucket)
-	// 12. [Reserved for future middleware]
+	// 12. Circuit breaker (protect upstream from cascading failures)
 	// 13. Token substitution hook (SECURITY: LAST before proxy - no middleware sees real secrets)
 	// 14. Proxy to upstream
 
@@ -91,6 +106,7 @@ func (g *Gateway) Handler() http.Handler {
 
 	// Apply middleware in reverse order (innermost first)
 	handler = middleware.TokenSubstitution(handler)                              // 13 - LAST before proxy
+	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)     // 12
 	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)             // 11
 	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)              // 10
 	handler = middleware.StepUpGating(handler)                                   // 9
@@ -118,10 +134,18 @@ func (g *Gateway) proxyHandler() http.Handler {
 	})
 }
 
-// healthHandler returns gateway health status
+// healthHandler returns gateway health status including circuit breaker state
 func (g *Gateway) healthHandler(w http.ResponseWriter, r *http.Request) {
+	health := map[string]interface{}{
+		"status": "ok",
+		"circuit_breaker": map[string]interface{}{
+			"state": g.circuitBreaker.State().String(),
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("OK\n"))
+	_ = json.NewEncoder(w).Encode(health)
 }
 
 // Close cleans up gateway resources
