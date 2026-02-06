@@ -18,6 +18,8 @@ WORKDIR /build
 COPY go.mod go.sum ./
 
 # Download dependencies
+# Set GOTOOLCHAIN=auto to allow automatic Go version download if needed
+ENV GOTOOLCHAIN=auto
 RUN go mod download && go mod verify
 
 # Copy source code
@@ -27,7 +29,8 @@ COPY . .
 # CGO_ENABLED=0: Creates statically linked binary (required for distroless)
 # -ldflags="-s -w": Strip debug info and symbol table (smaller binary)
 # -trimpath: Remove file system paths from binary (reproducible builds)
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+# GOTOOLCHAIN=auto: Allow Go to download required toolchain version if needed
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build \
     -ldflags="-s -w" \
     -trimpath \
     -o /build/gateway \
