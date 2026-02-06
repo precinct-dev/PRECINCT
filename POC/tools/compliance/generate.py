@@ -113,6 +113,11 @@ CSV_COLUMNS = [
     "recommendation",
 ]
 
+# Cross-reference: GDPR Article 30 ROPA document location.
+# The compliance report generator references this document for any controls
+# mapped to GDPR Art. 30 (Records of Processing Activities).
+GDPR_ART30_ROPA_PATH = "docs/compliance/gdpr-article-30-ropa.md"
+
 # Middleware -> implementation status mapping.
 # Controls whose middleware exists in the codebase are "Implemented";
 # those without middleware (supply chain) are "Documented Only".
@@ -500,6 +505,10 @@ def generate_rows(
                 req_desc = FRAMEWORK_REQUIREMENTS.get(framework_name, {}).get(
                     req_id, req_id
                 )
+                impl_notes = build_implementation_notes(control)
+                # Cross-reference ROPA document for GDPR Art. 30 mappings
+                if req_id == "Art. 30":
+                    impl_notes += f"; ROPA: {GDPR_ART30_ROPA_PATH}"
                 row = {
                     "control_id": control["id"],
                     "control_name": control["name"],
@@ -515,7 +524,7 @@ def generate_rows(
                         control, audit_count
                     ),
                     "test_result": "PASS" if status == "Implemented" else "N/A",
-                    "implementation_notes": build_implementation_notes(control),
+                    "implementation_notes": impl_notes,
                     "limitations": build_limitations(control, status),
                     "recommendation": build_recommendation(control, status),
                 }
