@@ -1,4 +1,4 @@
-.PHONY: help up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete
+.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete
 
 # Default target
 help: ## Show this help message
@@ -6,6 +6,9 @@ help: ## Show this help message
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
 	@echo ""
+
+setup: ## Interactive setup wizard with prerequisite checks and security posture summary (RFA-tj9.2)
+	@bash scripts/setup.sh
 
 up: ## Start all services with docker compose and register SPIRE entries
 	@echo "Starting services with docker compose..."
