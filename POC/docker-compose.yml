@@ -1,11 +1,11 @@
 # Docker MCP Server Integration:
 # The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit.
 # It is NOT defined in this compose file. Configuration lives in ~/.docker/mcp/
-# and is accessed by the gateway via JSON-RPC at http://localhost:8080/mcp
+# and is accessed by the gateway via JSON-RPC at http://localhost:8081/mcp
 # when the Docker MCP Gateway is running in streaming mode.
 #
 # To start Docker MCP Gateway:
-#   docker mcp gateway run --port 8080 --transport streaming
+#   docker mcp gateway run --port 8081 --transport streaming
 #
 # For details, see: POC/docs/docker-mcp-integration.md
 
@@ -157,7 +157,7 @@ services:
       - "9090:9090"  # MCP JSON-RPC API
     environment:
       - PORT=9090
-      - UPSTREAM_URL=http://host.docker.internal:8080/mcp
+      - UPSTREAM_URL=http://host.docker.internal:8081/mcp
       - OPA_POLICY_DIR=/config/opa
       - TOOL_REGISTRY_URL=http://tool-registry:8080
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml

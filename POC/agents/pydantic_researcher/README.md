@@ -10,7 +10,7 @@ answer with citations and confidence scores.
 All tool calls are routed through the MCP Security Gateway -- no direct tool access.
 
 ```
-Agent -> Gateway (9090) -> [13-step middleware chain] -> Docker MCP Server (8080)
+Agent -> Gateway (9090) -> [13-step middleware chain] -> Docker MCP Server (8081)
          |                                                  |
          +-- X-SPIFFE-ID header                            +-- Tavily API
          +-- Audit logging                                 +-- File system
@@ -54,7 +54,7 @@ The `GroundedAnswer` model includes:
 
 2. Docker MCP Gateway running:
    ```bash
-   docker mcp gateway run --port 8080 --transport streaming
+   docker mcp gateway run --port 8081 --transport streaming
    ```
 
 3. Python virtual environment:

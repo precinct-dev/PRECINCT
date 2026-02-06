@@ -6,7 +6,7 @@
 // the gateway and that workspace scope restrictions are enforced.
 //
 // Prerequisites:
-// - Docker MCP Gateway running at http://localhost:8080/mcp
+// - Docker MCP Gateway running at http://localhost:8081/mcp
 // - docker-compose stack running (gateway, OPA, SPIRE)
 // - Tavily API key configured in Docker Desktop
 // - Filesystem tools configured with POC workspace mount
