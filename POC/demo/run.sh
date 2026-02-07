@@ -163,8 +163,13 @@ run_demo_cycle() {
         url="http://mcp-security-gateway:9090"
         network="$COMPOSE_NETWORK"
         if [ "$SKIP_SETUP" = false ]; then
-            start_compose
+            start_compose || true  # spike-nexus may fail; gateway still works
         fi
+        # Restart gateway to reset circuit breaker and in-memory rate limits
+        # from any previous run. Without this, accumulated 502s keep the
+        # circuit breaker open and subsequent demo runs fail with 503.
+        log "Restarting gateway to reset circuit breaker state"
+        docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         # Health check via localhost (host-side port mapping)
         wait_for_health "http://localhost:9090" || exit 1
     elif [ "$mode" = "k8s" ]; then
@@ -174,6 +179,9 @@ run_demo_cycle() {
         if [ "$SKIP_SETUP" = false ]; then
             start_k8s
         fi
+        # Restart gateway to reset circuit breaker state
+        log "Restarting gateway to reset circuit breaker state"
+        kubectl -n gateway rollout restart deploy/mcp-security-gateway >/dev/null 2>&1 || true
         wait_for_health "http://localhost:30090" || exit 1
     else
         err "Unknown mode: $mode (expected compose|k8s|both)"
