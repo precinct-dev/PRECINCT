@@ -65,19 +65,28 @@ HTTP traffic against the full Docker Compose stack:
 > **Reference hardware**: Apple M3 Max, Go 1.24.6, macOS Darwin 25.3.0.
 > Measured 2026-02-06.
 
+#### After RFA-lz1: Async Audit Logging
+
+| Configuration   | P50        | P95        | P99        | Mean       |
+|-----------------|------------|------------|------------|------------|
+| Full (13 MW)    | ~75us      | ~141us     | ~2.5ms     | ~137us     |
+| Minimal (1 MW)  | ~3us       | ~6us       | ~29us      | ~5us       |
+
+**RFA-lz1 reduced per-request latency by 99%.** Async audit logging offloads
+file I/O and stdout writes to a background goroutine while keeping hash chain
+computation synchronous. The P99 tail latency (~2.5ms) is from occasional
+I/O contention when the background writer and the request handler compete
+for CPU.
+
+#### Before RFA-lz1: Synchronous Audit Logging (Historical Baseline)
+
 | Configuration   | P50        | P95        | P99        | Mean       |
 |-----------------|------------|------------|------------|------------|
 | Full (13 MW)    | ~8.9ms     | ~10.8ms    | ~14.0ms    | ~9.1ms     |
 | Minimal (1 MW)  | ~3us       | ~6us       | ~29us      | ~5us       |
 
-The full-chain latency is dominated by audit log I/O (JSON serialization +
-file write on every request) and OPA policy evaluation. The Go benchmark
-framework (`testing.B`) confirms ~8.6ms/op at 40KB/454 allocs per operation.
-
-> **Note**: These numbers include audit log disk I/O in the critical path.
-> In production, async audit logging would reduce per-request latency
-> significantly. The relative comparison (full vs minimal) shows the security
-> middleware overhead.
+The full-chain latency was dominated by synchronous audit log I/O (JSON
+serialization + file write + fsync on every request).
 
 ### Per-Middleware Latency Breakdown (OTel Span Timing)
 
@@ -118,18 +127,24 @@ Measured inclusive durations (P50, 1000 iterations, Apple M3 Max):
 
 ### Security Overhead
 
-The full 13-middleware chain adds approximately **~9ms** per request compared
-to a minimal (size-limit-only) configuration. This is dominated by:
+With async audit logging (RFA-lz1), the full 13-middleware chain adds
+approximately **~170us** per request compared to a minimal (size-limit-only)
+configuration. The overhead is now dominated by:
 
-- **Audit logging I/O**: ~4ms (synchronous file write; async would reduce to ~0us)
-- **Step-up gating + audit**: ~4.5ms (includes its own audit log call)
-- **OPA + DLP + other middleware**: ~0.5ms
-
-In a production configuration with async audit logging, the per-request overhead
-would drop to approximately **~0.5-1ms** -- dominated by OPA policy evaluation.
+- **OPA policy evaluation**: ~100-170us
+- **DLP scanning**: ~85-170us
+- **All other middleware**: <30us each (negligible)
+- **Audit logging**: near-zero (async I/O, hash computation ~1us)
 
 For a request with a ~10ms upstream response time, the security chain adds
-~50-90% total latency overhead (or ~5-10% with async audit logging).
+only **~1-2% total latency overhead** -- negligible in practice.
+
+#### Historical (Pre-RFA-lz1, Synchronous Audit)
+
+Before async audit logging, the overhead was ~9ms per request, dominated by:
+- Audit logging I/O: ~4ms (synchronous file write + fsync)
+- Step-up gating + audit: ~4.5ms (includes its own audit log call)
+- OPA + DLP + other: ~0.5ms
 
 ### Load Test Results (Docker Compose Stack)
 
@@ -152,20 +167,26 @@ overhead, upstream MCP server):
 
 ### What the Numbers Mean for Evaluators
 
-1. **Sub-millisecond in-process overhead**: The security chain itself is not a
-   bottleneck. The ~150-200us overhead is negligible compared to typical
-   application latencies.
+1. **Sub-millisecond in-process overhead**: With async audit logging (RFA-lz1),
+   the full 13-middleware chain adds ~75us (P50) per request. This is negligible
+   compared to typical application latencies.
 
 2. **OPA is the dominant cost**: If you need lower latency, optimize your Rego
    policies first. Simple allow/deny rules are fast; complex cross-referencing
    policies are slower.
 
 3. **Network dominates in production**: In the Docker Compose stack, network
-   latency (~5-50ms) dwarfs the middleware chain (~0.15ms). The security
+   latency (~5-50ms) dwarfs the middleware chain (~0.075ms). The security
    overhead is <1% of total request latency.
 
 4. **Linear scaling**: Each middleware adds constant overhead. Adding or removing
    middleware layers has predictable impact.
+
+5. **Audit durability trade-off**: Async audit logging introduces a small window
+   where events are queued in memory. On clean shutdown (Close()/Flush()), all
+   events are written. On crash, up to 4096 buffered events could be lost. For
+   most deployments, this is acceptable; for strict regulatory environments,
+   the `Flush()` method can be called after critical operations.
 
 ### When Performance Might Matter
 
