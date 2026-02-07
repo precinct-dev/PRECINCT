@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"os"
 	"time"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
@@ -179,6 +180,22 @@ func New(cfg *Config) (*Gateway, error) {
 	} else {
 		// Fallback to POC redeemer (Phase 1 behavior with deterministic mock secrets)
 		spikeRedeemer = middleware.NewPOCSecretRedeemer()
+	}
+
+	// RFA-lo1.4: Configure cosign-blob attestation for registry hot-reload.
+	// When TOOL_REGISTRY_PUBLIC_KEY is set, it should be a path to a PEM file
+	// containing an Ed25519 public key. Registry updates will require a valid
+	// companion .sig file. When empty (default for dev), updates are accepted
+	// without signature verification.
+	if cfg.ToolRegistryPublicKey != "" {
+		pemData, err := os.ReadFile(cfg.ToolRegistryPublicKey)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read registry public key from %s: %w", cfg.ToolRegistryPublicKey, err)
+		}
+		if err := registry.SetPublicKey(pemData); err != nil {
+			return nil, fmt.Errorf("failed to set registry public key: %w", err)
+		}
+		log.Printf("[tool-registry] attestation configured with public key from %s", cfg.ToolRegistryPublicKey)
 	}
 
 	// RFA-dh9: Start fsnotify watcher on tool registry YAML for hot-reload.
