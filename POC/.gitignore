@@ -1,6 +1,12 @@
 data/
+
+# Compiled Go binaries (platform-specific, never commit)
 /gateway
+/service
+/gdpr-delete
+/tool_register
 /s3-mcp-server
+/spike-cli
 *.exe
 *.out
 
