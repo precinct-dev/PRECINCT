@@ -49,19 +49,15 @@ spec:
     spec:
       terminationGracePeriodSeconds: 10
       securityContext:
-        # KeyDB image runs as UID 1001 in the bitnami image
-        fsGroup: 1001
+        # KeyDB image runs as UID 999 in the eqalpha image
+        fsGroup: 999
       containers:
         - name: keydb
-          image: bitnami/keydb:latest
+          image: eqalpha/keydb:6.3.4
           ports:
             - name: redis
               containerPort: 6379
               protocol: TCP
-          env:
-            # Allow passwordless access for local development
-            - name: ALLOW_EMPTY_PASSWORD
-              value: "yes"
           livenessProbe:
             exec:
               command:
@@ -89,11 +85,11 @@ spec:
               memory: 64Mi
           volumeMounts:
             - name: keydb-data
-              mountPath: /bitnami/keydb/data
+              mountPath: /data
           securityContext:
             runAsNonRoot: true
-            runAsUser: 1001
-            runAsGroup: 1001
+            runAsUser: 999
+            runAsGroup: 999
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: false
             capabilities:
