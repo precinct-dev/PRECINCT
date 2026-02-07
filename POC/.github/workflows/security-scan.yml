@@ -65,6 +65,7 @@ jobs:
           output: 'trivy-fs-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM'
           exit-code: '0'
+          skip-dirs: '.beads'
 
       - name: Upload Trivy fs results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v3

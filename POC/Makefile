@@ -1,4 +1,4 @@
-.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate validate-setup-time benchmark security-scan
+.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean clean-logs register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate validate-setup-time benchmark security-scan
 
 # Default target
 help: ## Show this help message
@@ -84,7 +84,17 @@ logs: ## Tail gateway audit logs
 	@echo ""
 	docker compose logs -f mcp-security-gateway
 
-clean: ## Remove built artifacts and Docker volumes
+clean-logs: ## Truncate .beads/daemon.log to prevent unbounded growth
+	@if [ -f .beads/daemon.log ]; then \
+		SIZE=$$(wc -c < .beads/daemon.log | tr -d ' '); \
+		echo "==> Truncating .beads/daemon.log ($${SIZE} bytes -> 0)"; \
+		: > .beads/daemon.log; \
+		echo "    Done."; \
+	else \
+		echo "==> .beads/daemon.log not found (nothing to clean)"; \
+	fi
+
+clean: clean-logs ## Remove built artifacts, Docker volumes, and daemon logs
 	@echo "==> Cleaning Docker volumes..."
 	docker compose down -v
 	@echo ""
@@ -390,7 +400,7 @@ security-scan: ## Run security scans (gosec, trivy image, trivy fs)
 	@echo ""
 	@echo "    Scanning filesystem for dependency vulnerabilities with trivy..."
 	@if command -v trivy >/dev/null 2>&1; then \
-		trivy fs .; \
+		trivy fs --skip-dirs .beads .; \
 	else \
 		echo "    WARNING: trivy not installed. Skipping filesystem scan."; \
 		echo "    Install from: https://aquasecurity.github.io/trivy/latest/getting-started/installation/"; \
