@@ -1,4 +1,4 @@
-.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate
+.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate validate-setup-time
 
 # Default target
 help: ## Show this help message
@@ -301,3 +301,54 @@ k8s-local-validate: ## Validate local K8s Kustomize overlay (offline, no cluster
 	kustomize build infra/eks/overlays/local/ | kubeconform -summary -strict -ignore-missing-schemas
 	@echo ""
 	@echo "==> Validation complete."
+
+# ==============================================================================
+# Setup Time Validation (RFA-t07)
+# ==============================================================================
+
+validate-setup-time: ## Validate 30-minute git-clone-to-running claim. Usage: make validate-setup-time MODE=compose|k8s
+	@if [ -z "$(MODE)" ]; then \
+		echo "ERROR: MODE is required"; \
+		echo "Usage: make validate-setup-time MODE=compose"; \
+		echo "       make validate-setup-time MODE=k8s"; \
+		exit 1; \
+	fi
+	@bash tests/e2e/validate_setup_time.sh $(MODE)
+
+# ==============================================================================
+# Security Scanning (RFA-lo1.1)
+# ==============================================================================
+
+security-scan: ## Run security scans (gosec, trivy image, trivy fs)
+	@echo "==> Security Scanning"
+	@echo ""
+	@echo "    Scanning Go source code with gosec..."
+	@if command -v gosec >/dev/null 2>&1; then \
+		gosec ./...; \
+	else \
+		echo "    WARNING: gosec not installed. Skipping Go security scan."; \
+		echo "    Install from: https://github.com/securego/gosec#install"; \
+	fi
+	@echo ""
+	@echo "    Scanning container image with trivy..."
+	@if command -v trivy >/dev/null 2>&1; then \
+		if docker images -q $(GATEWAY_IMAGE):$(IMAGE_TAG) 2>/dev/null | grep -q .; then \
+			trivy image $(GATEWAY_IMAGE):$(IMAGE_TAG); \
+		else \
+			echo "    WARNING: Container image $(GATEWAY_IMAGE):$(IMAGE_TAG) not found."; \
+			echo "    Run 'make build-images' first."; \
+		fi; \
+	else \
+		echo "    WARNING: trivy not installed. Skipping container image scan."; \
+		echo "    Install from: https://aquasecurity.github.io/trivy/latest/getting-started/installation/"; \
+	fi
+	@echo ""
+	@echo "    Scanning filesystem for dependency vulnerabilities with trivy..."
+	@if command -v trivy >/dev/null 2>&1; then \
+		trivy fs .; \
+	else \
+		echo "    WARNING: trivy not installed. Skipping filesystem scan."; \
+		echo "    Install from: https://aquasecurity.github.io/trivy/latest/getting-started/installation/"; \
+	fi
+	@echo ""
+	@echo "==> Security scanning complete"
