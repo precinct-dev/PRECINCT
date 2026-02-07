@@ -41,6 +41,7 @@ type Config struct {
 	KeyDBPoolMax            int       // Maximum connections in KeyDB pool (default 20)
 	SessionTTL              int       // Session TTL in seconds (default 3600)
 	ToolRegistryPublicKey   string    // RFA-lo1.4: Path to PEM public key for registry attestation (empty = dev mode)
+	MCPTransportMode       string    // RFA-9ol: "mcp" (default) or "proxy" (backward compat reverse proxy)
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -199,6 +200,7 @@ func ConfigFromEnv() *Config {
 		KeyDBPoolMax:            keyDBPoolMax,
 		SessionTTL:              sessionTTL,
 		ToolRegistryPublicKey:   getEnvOrDefault("TOOL_REGISTRY_PUBLIC_KEY", ""),
+		MCPTransportMode:       getEnvOrDefault("MCP_TRANSPORT_MODE", "mcp"),
 	}
 }
 
