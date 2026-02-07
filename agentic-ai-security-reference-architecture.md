@@ -2,7 +2,7 @@
 
 ## Authentication, Authorization, and Secrets Management for MCP-Based Agent Systems
 
-**Version 2.1 — Consolidated Reference Architecture**
+**Version 2.2 — Consolidated Reference Architecture (MCP-UI Security)**
 
 *Ramiro | February 2026*
 
@@ -39,6 +39,8 @@ The architecture specifically addresses **single-purpose, recyclable agents with
 
 4. **Session Context Engine**: Detects cross-tool manipulation and exfiltration patterns by maintaining stateful session tracking.
 
+5. **MCP-UI Extension Governance**: Treats `ui://` resources as executable payloads with opt-in capability gating, content scanning, CSP/permissions mediation, and app-driven tool call controls--preventing active content delivery from bypassing existing gateway protections.
+
 ---
 
 ## Table of Contents
@@ -50,6 +52,7 @@ The architecture specifically addresses **single-purpose, recyclable agents with
 5. [SPIKE for Secrets Management](#5-spike-for-secrets-management)
 6. [OPA for Authorization](#6-opa-for-authorization)
 7. [MCP Security Gateway](#7-mcp-security-gateway)
+   - 7.9 [MCP-UI (Apps Extension) Security](#79-mcp-ui-apps-extension-security)
 8. [Production Reference Architecture](#8-production-reference-architecture)
 9. [Go Implementation Guide](#9-go-implementation-guide)
 10. [Operational Considerations](#10-operational-considerations)
@@ -157,6 +160,20 @@ Once a secret is in LLM memory, it can be exfiltrated through multiple bypass te
 
 A compromised tool or injected instructions cause the agent to query sensitive data and send it via an authorized external communication tool.
 
+#### 2.2.6 Active Content Delivery via MCP-UI (Apps Extension)
+
+The MCP Apps extension introduces `ui://` resources that deliver executable HTML+JavaScript payloads to the host for rendering in sandboxed iframes. This transforms MCP from a purely inert data channel into a vector for active content delivery:
+
+| Attack | Description | Impact |
+|--------|-------------|--------|
+| XSS via UI Resource | Malicious script in `ui://` resource escapes sandbox or exploits host rendering | Host compromise, session hijacking |
+| Clickjacking via Embedded UI | UI overlay tricks user into approving high-risk tool calls | Unauthorized actions on behalf of user |
+| CSP Bypass / Exfiltration | UI declares broad `connectDomains` to exfiltrate data to attacker-controlled origins | Data leakage through active content |
+| Permission Escalation | UI requests camera/microphone/geolocation access unnecessarily | Privacy violation, surveillance |
+| App-Driven Tool Abuse | UI buttons create low-friction paths to invoke high-risk tools via `postMessage` | Unauthorized actions, social engineering |
+| UI Resource Rug-Pull | UI resource content changes after initial approval (same URI, different payload) | Delayed malicious activation |
+| Nested Frame Attacks | UI declares `frameDomains` to embed third-party content within the app | Escape from intended sandbox boundaries |
+
 ### 2.3 Threat Model Summary
 
 | Threat Category | Attack Examples | Severity |
@@ -167,6 +184,7 @@ A compromised tool or injected instructions cause the agent to query sensitive d
 | Data Exfiltration | Sensitive query → external send | High |
 | Injection Attacks | Prompt injection, jailbreaking | High |
 | Authorization Bypass | Scope escalation, confused deputy | High |
+| Active Content (MCP-UI) | XSS, clickjacking, CSP bypass, app-driven tool abuse | High |
 | Supply Chain | Compromised MCP servers, libraries | Medium |
 
 ---
@@ -208,7 +226,19 @@ The paper "Securing the Model Context Protocol (MCP): Risks, Controls, and Gover
 | Inline Policy Enforcement | Real-time traffic inspection and filtering | MCP Security Gateway |
 | Centralized Governance | Single control point for policies and audit | OPA bundles + OTEL |
 
-### 3.4 ITU Standardization Efforts
+### 3.4 MCP Apps Extension (SEP-1865)
+
+The MCP Apps extension introduces interactive UI capabilities into MCP by allowing tools to declare `ui://` resources rendered in sandboxed iframes. Key security-relevant aspects of the specification:
+
+- **`_meta.ui.resourceUri`**: Tools declare a `ui://` URI pointing to an HTML resource the host renders.
+- **`_meta.ui.csp`**: Content Security Policy declaration with `connectDomains`, `resourceDomains`, `frameDomains`, and `baseUriDomains` fields. Hosts MUST enforce these and MUST NOT allow undeclared domains.
+- **`_meta.ui.permissions`**: Capability requests for `camera`, `microphone`, `geolocation`, and `clipboardWrite`. Hosts MAY deny any of these.
+- **Tool visibility**: `["model"]`, `["app"]`, or `["model", "app"]` controls whether the agent, the UI app, or both can invoke a tool.
+- **Communication**: JSON-RPC over `postMessage` between iframe and host. Apps can call tools, send messages, and update model context through this channel.
+
+**Security implication for this architecture**: The specification assumes the host enforces sandboxing, but the gateway sits upstream of the host and must independently validate, constrain, and audit UI metadata and resources. See Section 7.9 for the gateway's MCP-UI security controls.
+
+### 3.5 ITU Standardization Efforts
 
 ITU-T Study Group 17 is developing standards for secure, accountable AI agent identities. The scope is compared to the OSI model development—a multi-year effort to establish foundational interoperability standards.
 
@@ -731,6 +761,7 @@ The MCP Security Gateway is the enforcement point for all security controls. It 
 7. **Response firewall** (transform/handle-ize sensitive tool responses)
 8. **Session tracking** (cross-tool correlation)
 9. **Audit logging** (comprehensive telemetry)
+10. **MCP-UI governance** (extension capability gating, CSP/permissions mediation, UI resource scanning)
 
 ### 7.2 Tiered Scanning Architecture
 
@@ -887,6 +918,8 @@ func (r *ToolRegistry) VerifyTool(ctx context.Context, req *MCPRequest) (*Verify
     }, nil
 }
 ```
+
+**UI Resource Verification**: For tools that declare `_meta.ui.resourceUri`, the Tool Registry also verifies the associated UI resource content hash and CSP/permissions declarations. See Section 7.9.6 for the UI Resource Registry extension.
 
 **Poisoning Pattern Detection**:
 
@@ -1129,6 +1162,591 @@ Late-binding secrets prevents credential exfiltration, but sensitive *tool respo
 
 **Policy coupling**: OPA decisions should consider *response classification* before allowing subsequent egress tools. Example pattern: “sensitive read → external send” is denied unless explicitly approved (you already model this in `mcp.exfiltration`; extend it to cover response classifications, not only request resources).
 
+### 7.9 MCP-UI (Apps Extension) Security
+
+#### 7.9.1 Context and Threat Surface
+
+The MCP Apps extension (SEP-1865) allows MCP tools to declare interactive UI components via `tool._meta.ui.resourceUri`, pointing to `ui://` resources that the host fetches and renders in sandboxed iframes. The UI communicates with the host through a JSON-RPC dialect over `postMessage`, enabling apps to trigger tool calls, send messages, update model context, and request browser capabilities (camera, microphone, geolocation, clipboard).
+
+This fundamentally changes the security posture of the MCP channel. Prior to Apps, all MCP traffic was inert structured data (JSON-RPC requests/responses, text, images). With Apps, the channel now carries **executable payloads** (HTML+JavaScript) that run in the user's browser context. From a gateway perspective, `ui://` resources are executable content and must be governed with stricter controls than JSON/text responses.
+
+**Key invariant**: The MCP Apps specification relies on host-side iframe sandboxing as the primary isolation mechanism. The gateway MUST NOT depend on that alone. Defense-in-depth requires the gateway to independently validate, constrain, and audit UI resources and app-driven tool calls before they reach the host.
+
+**The gateway's position** (between host and server, terminating TLS, proxying JSON-RPC and resources) gives it the ability to inspect, mutate, strip, or block `_meta.ui` metadata on tool listings and `ui://` resource content on resource reads. This section defines how.
+
+#### 7.9.2 Extension Capability Gating (Opt-In Control)
+
+MCP-UI MUST be treated as an explicitly enabled capability per upstream server, per tenant, and optionally per tool. If a server or tenant has not been approved for UI capabilities, the gateway strips all UI metadata before it reaches the host. The host never sees `_meta.ui` and therefore never attempts to render active content.
+
+**Policy model**: Three enforcement modes per server/tenant:
+
+| Mode | Behavior | Use Case |
+|------|----------|----------|
+| `deny` (default) | Strip `_meta.ui` from all tool listings; block `ui://` resource reads with HTTP 403 | Servers not approved for UI |
+| `allow` | Permit `_meta.ui` and `ui://` reads, subject to per-resource controls below | Approved servers |
+| `audit-only` | Permit but flag all UI activity for review; emit high-priority audit events | Evaluation/onboarding period |
+
+**OPA policy data extension**:
+
+```yaml
+# ui_capability_grants.yaml (loaded as OPA data)
+ui_capability_grants:
+  - server: "mcp-dashboard-server"
+    tenant: "acme-corp"
+    mode: "allow"
+    approved_tools:
+      - "render-analytics"
+      - "show-chart"
+    max_resource_size_bytes: 2097152    # 2 MB
+    allowed_csp_connect_domains:
+      - "https://api.acme.corp"
+    allowed_permissions: []              # No camera/mic/geo/clipboard
+    approved_at: "2026-02-01T00:00:00Z"
+    approved_by: "security-review@acme.corp"
+
+  - server: "mcp-file-browser"
+    tenant: "*"
+    mode: "deny"
+```
+
+**Gateway behavior for `tools/list` responses** (server to host):
+
+```
+1. Parse tool listing from upstream server
+2. For each tool with `_meta.ui`:
+   a. Look up ui_capability_grants for (server, tenant)
+   b. If mode == "deny":
+      - Delete `_meta.ui` from the tool schema
+      - Log: event_type=ui.capability.stripped, reason=server_not_approved
+   c. If mode == "audit-only":
+      - Keep `_meta.ui` but emit: event_type=ui.capability.audit_passthrough
+   d. If mode == "allow":
+      - Validate tool name against approved_tools list (if list is non-empty)
+      - If tool not in approved list: strip `_meta.ui`, log as above
+      - Otherwise: proceed to per-resource controls (7.9.3)
+3. Return (possibly modified) tool listing to host
+```
+
+**Gateway behavior for `resources/read` of `ui://` URIs** (host to server):
+
+```
+1. If ui_capability_grants mode != "allow": respond 403 Forbidden
+2. If mode == "allow": proceed to resource controls (7.9.3)
+```
+
+This ensures that hosts running older clients, or hosts in environments where UI is not desired, never encounter active content. The gateway downgrades gracefully: stripping `_meta.ui` makes the tool appear as a standard non-UI tool.
+
+#### 7.9.3 Resource Controls for `ui://`
+
+When a `ui://` resource read is permitted by capability gating, the gateway applies content-level controls before forwarding the resource to the host.
+
+**Content-type validation**:
+- The MCP Apps specification requires MIME type `text/html;profile=mcp-app`. The gateway MUST reject resources with any other content type.
+- Binary content (`blob` field, base64-encoded) MUST be decoded and validated as HTML before forwarding.
+
+**Size limits**:
+- Configurable per server/tenant via `max_resource_size_bytes` in the capability grant.
+- Default: 2 MB. UI resources that exceed this are blocked.
+- Rationale: UI resources should be self-contained HTML+JS bundles. Large resources may indicate embedded data exfiltration payloads or resource abuse.
+
+**Timeout limits**:
+- The gateway enforces a fetch timeout when proxying the `resources/read` call to the upstream server.
+- Default: 10 seconds. Configurable per server.
+- Prevents slow-drip attacks or resource exhaustion.
+
+**Caching and integrity**:
+- The gateway SHOULD cache `ui://` resource content keyed by `(server, resourceUri, content_hash)`.
+- On subsequent reads, if the content hash has changed from the approved baseline, the gateway MUST:
+  - Block the resource (if hash verification is enabled for this server).
+  - Emit a `ui.resource.hash_mismatch` alert (severity: critical), analogous to tool description rug-pull detection.
+- This extends the existing Tool Registry hash verification pattern (Section 7.3) to UI resources.
+
+**Content scanning**:
+
+The gateway performs static analysis on HTML content before forwarding:
+
+```go
+type UIResourceScanner struct {
+    // Patterns that indicate potentially dangerous content
+    dangerousPatterns []*regexp.Regexp
+
+    // Allowed external origins (from capability grant)
+    allowedConnectDomains []string
+    allowedResourceDomains []string
+}
+
+var uiDangerousPatterns = []*regexp.Regexp{
+    // Script injection via event handlers
+    regexp.MustCompile(`(?i)on(error|load|click|mouse|key|focus|blur)\s*=`),
+    // Attempts to access parent/top frames
+    regexp.MustCompile(`(?i)(parent|top|opener)\.(location|document|postMessage)`),
+    // Dynamic script creation
+    regexp.MustCompile(`(?i)document\.write|eval\s*\(|Function\s*\(`),
+    // Attempts to break out of sandbox
+    regexp.MustCompile(`(?i)window\.(open|location)|document\.cookie`),
+    // External resource loading not declared in CSP
+    regexp.MustCompile(`(?i)<(script|link|iframe)\s+[^>]*src\s*=\s*["']https?://`),
+    // WebRTC (potential data channel exfiltration)
+    regexp.MustCompile(`(?i)RTCPeerConnection|RTCDataChannel`),
+    // Service workers (persistence mechanism)
+    regexp.MustCompile(`(?i)serviceWorker\.register|navigator\.serviceWorker`),
+}
+
+func (s *UIResourceScanner) Scan(content string) *UIScanResult {
+    result := &UIScanResult{Flags: []string{}}
+
+    for _, pattern := range uiDangerousPatterns {
+        if pattern.MatchString(content) {
+            result.Flags = append(result.Flags, "ui_dangerous_pattern")
+            result.MatchedPatterns = append(result.MatchedPatterns, pattern.String())
+        }
+    }
+
+    // Verify declared CSP origins against allowlist
+    // (parsed from _meta.ui.csp in the tool schema)
+    if !s.cspOriginsWithinAllowlist(content) {
+        result.Flags = append(result.Flags, "ui_csp_violation")
+    }
+
+    return result
+}
+```
+
+**Action on scan findings**:
+
+| Finding | Action | Rationale |
+|---------|--------|-----------|
+| `ui_dangerous_pattern` | Block resource, emit alert | Active exploit indicators |
+| `ui_csp_violation` | Block resource | Server declared broader CSP than policy allows |
+| Size exceeded | Block resource | Resource abuse |
+| Content-type mismatch | Block resource | Spec violation |
+| Hash mismatch (rug-pull) | Block resource, critical alert | Content changed after approval |
+
+#### 7.9.4 CSP and Permissions Mediation
+
+The MCP Apps specification defines `_meta.ui.csp` (with fields `connectDomains`, `resourceDomains`, `frameDomains`, `baseUriDomains`) and `_meta.ui.permissions` (with fields `camera`, `microphone`, `geolocation`, `clipboardWrite`). These are advisory declarations from the server to the host. The gateway enforces organizational policy over these declarations.
+
+**CSP mediation** -- the gateway rewrites `_meta.ui.csp` in tool schemas before forwarding to the host:
+
+```
+For each CSP field (connectDomains, resourceDomains, frameDomains, baseUriDomains):
+  1. Intersect server-declared domains with the capability grant's allowed domains
+  2. If intersection is empty and server declared non-empty: strip the field (revert to restrictive default)
+  3. If intersection is non-empty: replace with the intersection
+  4. Log any domains that were removed (event_type=ui.csp.domain_stripped)
+```
+
+**Restrictive defaults enforced by gateway**:
+- `connectDomains`: Empty by default (no external network requests). Only origins explicitly in the capability grant's `allowed_csp_connect_domains` are permitted.
+- `resourceDomains`: Empty by default. External scripts, stylesheets, and images are blocked unless explicitly approved.
+- `frameDomains`: Always empty. Nested iframes within MCP Apps are denied by gateway policy. This is a hard constraint -- the specification itself notes that `frameDomains` triggers "higher scrutiny" and apps using it "are likely to be rejected." The gateway enforces this as a blanket deny.
+- `baseUriDomains`: Always empty (same-origin only). No override permitted.
+
+**Permissions mediation** -- the gateway rewrites `_meta.ui.permissions`:
+
+```
+For each permission (camera, microphone, geolocation, clipboardWrite):
+  1. If capability grant's allowed_permissions includes this permission: keep
+  2. Otherwise: set to false/remove
+  3. Log any permissions removed (event_type=ui.permission.denied)
+```
+
+**Default stance**: All permissions denied unless the capability grant explicitly allows them AND the user has provided consent (consent is the host's responsibility; the gateway ensures the permission is never even declared unless policy approves it).
+
+**OPA policy for CSP/permissions enforcement**:
+
+```rego
+package mcp.ui.csp
+
+import rego.v1
+
+# Deny connect domains not in the organizational allowlist
+denied_connect_domains[domain] if {
+    some domain in input.ui_meta.csp.connectDomains
+    not domain_allowed(domain, data.ui_capability_grants[input.server].allowed_csp_connect_domains)
+}
+
+# Deny all frame domains (hard policy)
+denied_frame_domains[domain] if {
+    some domain in input.ui_meta.csp.frameDomains
+    domain != ""
+}
+
+# Deny permissions not in the approved set
+denied_permissions[perm] if {
+    some perm in object.keys(input.ui_meta.permissions)
+    input.ui_meta.permissions[perm] == true
+    not perm in data.ui_capability_grants[input.server].allowed_permissions
+}
+
+domain_allowed(domain, allowlist) if {
+    some allowed in allowlist
+    glob.match(allowed, [], domain)
+}
+```
+
+#### 7.9.5 Tool-Call Mediation for App-Driven Calls
+
+When a UI app triggers a tool call via `postMessage`, the host forwards that call through the standard MCP channel, which means it transits the gateway. However, app-driven tool calls have different risk characteristics than agent-driven (LLM-driven) tool calls:
+
+| Characteristic | Agent-Driven | App-Driven |
+|---------------|-------------|------------|
+| Decision maker | LLM reasoning | User clicking a button (or script automation) |
+| Friction | Natural (LLM deliberation) | Low (single click) |
+| Rate | Limited by LLM inference speed | Limited only by click speed / script timing |
+| Visibility | Full prompt chain visible | UI interaction may not be in model context |
+| Auditability | Part of conversation flow | Requires explicit UI-to-action correlation |
+
+**Gateway enforcement for app-driven tool calls**:
+
+1. **Identification**: The gateway identifies app-driven calls by the presence of UI context in the request (the host should annotate app-originated calls, or the gateway infers from the tool's `visibility` field including `"app"`). If the host does not annotate origin, the gateway treats all calls to app-visible tools during an active UI session as potentially app-driven.
+
+2. **Stricter rate limits**: App-driven tool calls receive a separate, tighter rate limit bucket:
+   ```yaml
+   rate_limits:
+     agent_driven:
+       requests_per_minute: 60
+       burst: 10
+     app_driven:
+       requests_per_minute: 20
+       burst: 5
+   ```
+
+3. **Tool allowlisting**: The capability grant's `approved_tools` list constrains which tools the app can invoke. The gateway blocks app-driven calls to tools not in the approved set, even if the agent is authorized for those tools. This prevents a compromised UI from calling arbitrary tools through the user's session.
+
+4. **Visibility enforcement**: The MCP Apps specification defines `visibility` as `["model"]`, `["app"]`, or `["model", "app"]`. The gateway enforces:
+   - Tools with `visibility: ["app"]` (app-only) MUST NOT be included in the agent's tool list.
+   - Tools with `visibility: ["model"]` (model-only) MUST NOT be callable from the app via `postMessage`.
+   - Cross-server tool calls from apps are always blocked (spec requirement, gateway enforced).
+
+5. **Step-up gating**: App-driven calls to high-risk tools (risk_level `high` or `critical` in the Tool Registry) always trigger step-up gating, regardless of session risk score. The rationale: buttons create dangerously low-friction paths to high-impact actions.
+
+6. **Correlation and auditing**: Every app-driven tool call is logged with:
+   ```json
+   {
+     "event_type": "tool.invocation.app_driven",
+     "ui_context": {
+       "resource_uri": "ui://dashboard-server/analytics.html",
+       "resource_content_hash": "sha256:ab12...",
+       "originating_tool": "render-analytics",
+       "session_id": "sess-abc123"
+     },
+     "tool": {
+       "name": "refresh-data",
+       "server": "mcp-dashboard-server",
+       "visibility": ["model", "app"]
+     },
+     "correlation": {
+       "ui_session_start": "2026-02-04T14:30:00Z",
+       "tool_calls_in_ui_session": 7,
+       "user_interaction_inferred": true
+     }
+   }
+   ```
+
+This audit trail enables forensic reconstruction of "what UI was shown, what did the user click, what tool calls resulted, and what data flowed."
+
+#### 7.9.6 UI Resource Registry (Extension of Tool Registry)
+
+The existing Tool Registry (Section 7.3) verifies tool descriptions and input schemas by hash. MCP-UI extends this pattern to UI resources:
+
+```go
+type RegisteredUIResource struct {
+    Server           string    `json:"server"`
+    ResourceURI      string    `json:"resource_uri"`       // e.g., "ui://dashboard/analytics.html"
+    ContentHash      string    `json:"content_hash"`       // SHA256 of HTML content
+    Version          string    `json:"version"`
+    ApprovedAt       time.Time `json:"approved_at"`
+    ApprovedBy       string    `json:"approved_by"`
+    MaxSizeBytes     int64     `json:"max_size_bytes"`
+    DeclaredCSP      *UIResourceCSP `json:"declared_csp"`  // Approved CSP declaration
+    DeclaredPerms    *UIPermissions `json:"declared_perms"` // Approved permissions
+    ScanResult       *UIScanResult  `json:"scan_result"`    // Static analysis at approval time
+}
+
+// Verify UI resource content against registered baseline
+func (r *ToolRegistry) VerifyUIResource(
+    ctx context.Context,
+    server string,
+    resourceURI string,
+    content []byte,
+) (*VerifyResult, error) {
+    r.mu.RLock()
+    registered, exists := r.uiResources[uiResourceKey(server, resourceURI)]
+    r.mu.RUnlock()
+
+    if !exists {
+        return &VerifyResult{
+            Allowed: false,
+            Reason:  "ui resource not in registry",
+            Action:  ActionBlock,
+        }, nil
+    }
+
+    currentHash := sha256HexBytes(content)
+    if currentHash != registered.ContentHash {
+        return &VerifyResult{
+            Allowed:    false,
+            Reason:     "ui resource content hash mismatch - possible rug pull",
+            Action:     ActionBlock,
+            AlertLevel: AlertCritical,
+        }, nil
+    }
+
+    if int64(len(content)) > registered.MaxSizeBytes {
+        return &VerifyResult{
+            Allowed: false,
+            Reason:  "ui resource exceeds approved size limit",
+            Action:  ActionBlock,
+        }, nil
+    }
+
+    return &VerifyResult{Allowed: true}, nil
+}
+```
+
+**UI resource onboarding workflow** (extends tool onboarding from Section 10.7.3):
+
+1. Server declares a tool with `_meta.ui.resourceUri`.
+2. The gateway (in `audit-only` mode) logs the resource content and metadata.
+3. Security review: static analysis of HTML content, CSP declaration review, permissions review.
+4. Upon approval: register `(server, resourceUri, contentHash, approvedCSP, approvedPerms)` in the UI Resource Registry.
+5. Switch server to `allow` mode for this tool.
+6. Ongoing: gateway verifies content hash on every resource read.
+
+#### 7.9.7 Middleware Chain Integration
+
+UI scanning integrates into the existing middleware chain (Section 9.2) at two points:
+
+**On `tools/list` responses** (response path, server to host):
+- After the proxy handler returns the response, the gateway's response processing pipeline applies UI capability gating (strip `_meta.ui` for denied servers) and CSP/permissions mediation (rewrite `_meta.ui.csp` and `_meta.ui.permissions` for allowed servers).
+
+**On `resources/read` for `ui://` URIs** (request path, host to server, and response path):
+- Request path: capability gating check (is this server allowed for UI?).
+- Response path: content-type validation, size limit, content scanning, hash verification.
+
+The middleware chain from Section 9.2 does not need restructuring for standard tool calls. UI-specific processing is triggered conditionally based on the request type:
+
+```go
+func (g *Gateway) buildMiddlewareChain() http.Handler {
+    chain := alice.New(
+        // 1-13: Existing middleware chain (unchanged)
+        g.sizeLimitMiddleware(g.config.MaxRequestSize),
+        g.bodyCaptureMiddleware(),
+        g.spiffeAuthMiddleware(),
+        g.auditMiddleware(),
+        g.toolRegistryMiddleware(),
+        g.opaPolicyMiddleware(),
+        g.safeZoneScanMiddleware(),
+        g.sessionContextMiddleware(),
+        g.stepUpGatingMiddleware(),
+        g.deepScanDispatchMiddleware(),
+        g.rateLimitMiddleware(),        // Uses app-driven bucket when applicable
+        g.circuitBreakerMiddleware(),
+        g.tokenSubstitutionMiddleware(),
+    )
+
+    return chain.Then(g.proxyHandlerWithResponseProcessing())
+}
+
+// Response processing (applied after upstream response is received)
+func (g *Gateway) processUpstreamResponse(resp *http.Response, req *MCPRequest) (*http.Response, error) {
+    switch {
+    case req.IsToolsList():
+        return g.applyUICapabilityGating(resp, req)
+    case req.IsResourceRead() && req.IsUIResource():
+        return g.applyUIResourceControls(resp, req)
+    default:
+        return resp, nil // Standard response firewall (Section 7.8) applies
+    }
+}
+```
+
+#### 7.9.8 OPA Policy Schema Extensions
+
+The following input fields are added to the OPA evaluation context for UI-related decisions:
+
+```rego
+# Extended input structure for UI-aware policy evaluation
+# {
+#   ...existing fields (spiffe_id, tool, resource, safezone_flags, session)...
+#   "ui": {
+#     "enabled": true,
+#     "resource_uri": "ui://dashboard/analytics.html",
+#     "resource_content_hash": "sha256:ab12...",
+#     "declared_csp": {
+#       "connectDomains": ["https://api.acme.corp"],
+#       "resourceDomains": [],
+#       "frameDomains": [],
+#       "baseUriDomains": []
+#     },
+#     "declared_permissions": {
+#       "camera": false,
+#       "microphone": false,
+#       "geolocation": false,
+#       "clipboardWrite": false
+#     },
+#     "tool_visibility": ["model", "app"],
+#     "call_origin": "app",        // "agent" or "app"
+#     "app_session_tool_calls": 7,
+#     "resource_registered": true,
+#     "resource_hash_verified": true
+#   }
+# }
+
+package mcp.ui.policy
+
+import rego.v1
+
+# Block UI resources from unapproved servers
+deny_ui_resource if {
+    input.ui.enabled
+    not ui_server_approved
+}
+
+ui_server_approved if {
+    some grant in data.ui_capability_grants
+    grant.server == input.tool_server
+    grant.mode == "allow"
+}
+
+# Block app-driven calls to tools not in the approved set
+deny_app_tool_call if {
+    input.ui.call_origin == "app"
+    some grant in data.ui_capability_grants
+    grant.server == input.tool_server
+    count(grant.approved_tools) > 0
+    not input.tool in grant.approved_tools
+}
+
+# Force step-up for app-driven calls to high-risk tools
+requires_step_up if {
+    input.ui.call_origin == "app"
+    input.tool_risk_level in {"high", "critical"}
+}
+
+# Rate limit escalation for excessive app-driven calls
+excessive_app_calls if {
+    input.ui.call_origin == "app"
+    input.ui.app_session_tool_calls > 50
+}
+```
+
+#### 7.9.9 Audit Event Extensions
+
+UI-related audit events extend the schema from Section 10.4:
+
+```json
+{
+  "timestamp": "2026-02-04T14:30:15.123456Z",
+  "event_type": "ui.resource.read",
+  "agent": {
+    "spiffe_id": "spiffe://acme.corp/agents/mcp-client/dashboard-viewer/prod",
+    "session_id": "sess-abc123"
+  },
+  "ui": {
+    "resource_uri": "ui://dashboard-server/analytics.html",
+    "resource_content_hash": "sha256:ab12...",
+    "resource_size_bytes": 145000,
+    "content_type": "text/html;profile=mcp-app",
+    "hash_verified": true,
+    "scan_result": {
+      "dangerous_patterns_found": 0,
+      "csp_violations_found": 0
+    },
+    "csp_mediation": {
+      "domains_stripped": ["https://cdn.untrusted.com"],
+      "domains_allowed": ["https://api.acme.corp"]
+    },
+    "permissions_mediation": {
+      "permissions_denied": ["camera", "microphone"],
+      "permissions_allowed": []
+    },
+    "capability_grant_mode": "allow"
+  },
+  "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736"
+}
+```
+
+Additional event types:
+
+| Event Type | Trigger | Severity |
+|-----------|---------|----------|
+| `ui.capability.stripped` | `_meta.ui` removed from tool listing (server not approved) | Info |
+| `ui.capability.audit_passthrough` | UI metadata passed in audit-only mode | Warning |
+| `ui.resource.read` | `ui://` resource successfully served | Info |
+| `ui.resource.blocked` | Resource blocked by content scan, hash mismatch, size, or type | High |
+| `ui.resource.hash_mismatch` | Content changed from registered baseline | Critical |
+| `ui.csp.domain_stripped` | CSP domains removed by mediation | Warning |
+| `ui.permission.denied` | Permission removed by mediation | Warning |
+| `tool.invocation.app_driven` | Tool call originated from UI app | Info |
+| `tool.invocation.app_driven.blocked` | App-driven tool call blocked by policy | High |
+| `tool.invocation.app_driven.rate_limited` | App-driven call exceeded rate limit | Warning |
+
+#### 7.9.10 Configuration Reference
+
+```yaml
+# Gateway configuration for MCP-UI controls
+ui:
+  # Global kill switch: if false, all UI is stripped regardless of grants
+  enabled: false
+
+  # Default mode for servers without explicit grants
+  default_mode: "deny"   # deny | audit-only | allow
+
+  # Global resource limits
+  max_resource_size_bytes: 2097152      # 2 MB
+  resource_fetch_timeout_seconds: 10
+  resource_cache_ttl_seconds: 300
+
+  # Content scanning
+  scan_enabled: true
+  block_on_dangerous_patterns: true
+
+  # Hash verification (extends tool registry pattern)
+  hash_verification_enabled: true
+
+  # CSP hard constraints (cannot be overridden by grants)
+  csp_hard_constraints:
+    frame_domains_allowed: false         # Nested iframes always denied
+    base_uri_domains_allowed: false      # Always same-origin
+    max_connect_domains: 5               # Maximum external origins per app
+    max_resource_domains: 10             # Maximum static resource origins
+
+  # Permissions hard constraints
+  permissions_hard_constraints:
+    camera_allowed: false                # Deny by default
+    microphone_allowed: false
+    geolocation_allowed: false
+    clipboard_write_allowed: false
+
+  # App-driven tool call controls
+  app_tool_calls:
+    separate_rate_limit: true
+    requests_per_minute: 20
+    burst: 5
+    force_step_up_for_high_risk: true
+
+  # Host compatibility
+  strip_ui_for_incompatible_hosts: true  # Downgrade for older clients
+```
+
+**Configuration hierarchy**: Hard constraints (set by security team, checked into policy) cannot be overridden by capability grants. Capability grants can only enable capabilities within the boundaries of hard constraints. This prevents a permissive grant from accidentally enabling camera access when the organization's hard constraint denies it.
+
+#### 7.9.11 Threat Model Summary for MCP-UI
+
+| Threat | Gateway Control | Residual Risk |
+|--------|----------------|---------------|
+| **XSS via UI resource** | Content scanning (dangerous pattern detection), hash verification, CSP mediation | Novel XSS vectors that evade static patterns. Mitigated by host sandbox. |
+| **Clickjacking** | CSP `frameDomains` always denied, step-up gating for high-risk app-driven calls | Social engineering within the sandboxed app itself. |
+| **Data exfiltration via CSP bypass** | CSP `connectDomains` intersected with organizational allowlist, WebRTC pattern blocked | Timing-based or storage-based covert channels within the sandbox. |
+| **Permission escalation** | Permissions denied by default, only enabled via explicit capability grant | Host bugs that honor permissions despite gateway stripping them. |
+| **App-driven tool abuse** | Separate rate limits, tool allowlisting, mandatory step-up for high-risk tools | User tricked into rapid legitimate-looking clicks. |
+| **UI resource rug-pull** | Content hash verification in UI Resource Registry | First-ever resource (no baseline). Mitigated by `audit-only` onboarding period. |
+| **Nested frame attacks** | `frameDomains` always blocked by hard constraint | None (hard deny). |
+| **Service worker persistence** | Blocked by content scanning pattern | Obfuscated service worker registration. Mitigated by host sandbox restrictions. |
+| **WebRTC data channel exfiltration** | Blocked by content scanning pattern | Obfuscated WebRTC usage. Mitigated by host CSP enforcement. |
+
 ---
 
 ## 8. Production Reference Architecture
@@ -1220,6 +1838,8 @@ Late-binding secrets prevents credential exfiltration, but sensitive *tool respo
 | Prompt Guard 2 | Local ONNX or Groq | ~10-20ms local, ~50-150ms Groq |
 | Llama Guard 4 | Groq only | ~150-400ms |
 | Tool Registry | ConfigMap + hot reload | 60s refresh |
+| UI Resource Registry | ConfigMap + hot reload | Extends Tool Registry with `ui://` content hashes |
+| UI Capability Grants | OPA policy data | Per-server/tenant UI permission model |
 
 ### 8.3 Key Management Hierarchy
 
@@ -1516,6 +2136,11 @@ spec:
 | Token redemption | ~5-10ms | SPIKE network call (cacheable) |
 | **Total Fast Path** | **<5ms** | Without token substitution |
 | **Total with Tokens** | **<15ms** | With token substitution |
+| UI capability gating | ~100μs | In-memory policy lookup |
+| UI CSP/permissions mediation | ~200μs | JSON rewrite |
+| UI content scanning | ~1-5ms | Regex pattern matching on HTML |
+| UI hash verification | ~100μs | In-memory hash comparison |
+| **Total UI resource read** | **<10ms** | On top of standard fast path |
 
 ### 10.2 Failure Modes
 
@@ -1528,6 +2153,9 @@ spec:
 | Deep scan unavailable | Degrade to fast path | Async scanning is optional |
 | Step-up guard unavailable | Fail closed (high-risk only) | High-impact actions require deterministic gating |
 | Tool Registry stale | Use cached (warn) | Eventual consistency acceptable |
+| UI capability grant missing | Fail closed (strip `_meta.ui`) | Unknown servers do not get UI capabilities |
+| UI content scan error | Fail closed (block resource) | Active content requires verified safety |
+| UI Resource Registry stale | Use cached hash (warn) | Same as Tool Registry; eventual consistency |
 
 ### 10.3 Monitoring and Alerting
 
@@ -1568,6 +2196,30 @@ groups:
           severity: high
         annotations:
           summary: "Potential data exfiltration pattern"
+
+      - alert: UIResourceHashMismatch
+        expr: increase(mcp_ui_resource_hash_mismatch_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: critical
+        annotations:
+          summary: "UI resource content changed - possible rug pull"
+
+      - alert: UIResourceDangerousPattern
+        expr: increase(mcp_ui_resource_dangerous_pattern_total[5m]) > 0
+        for: 0s
+        labels:
+          severity: high
+        annotations:
+          summary: "Dangerous pattern detected in UI resource content"
+
+      - alert: AppDrivenToolCallRateLimited
+        expr: rate(mcp_app_driven_rate_limited_total[5m]) > 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Excessive app-driven tool calls being rate limited"
 ```
 
 ### 10.4 Audit Trail
@@ -1791,6 +2443,11 @@ Most friction appears when teams add tools. Provide a single workflow:
 3. “Run tool security lint” (poisoning patterns, argument schema constraints, egress destinations)
 4. “Open PR” to the registry + policy bundle repo
 
+For tools with `_meta.ui.resourceUri` (MCP Apps), the workflow extends to:
+5. "Review UI resource" (static analysis of HTML content, CSP declaration audit, permissions review)
+6. "Register UI resource hash" in the UI Resource Registry
+7. "Set capability grant mode" from `audit-only` to `allow` after review passes
+
 This keeps tool onboarding consistent and reviewable.
 
 #### 10.7.4 Human Approvals Without User Fatigue
@@ -1813,6 +2470,7 @@ All gateway decisions should be emitted as **structured JSON events** with stabl
 - `authorization.opa_decision_id`, `authorization.bundle_digest`, `registry.digest`
 - `security.safezone_flags`, `security.step_up_applied`, `security.deep_scan_triggered`
 - `egress.destination`, `egress.is_external`, `data.classification`
+- `ui.enabled`, `ui.resource_uri`, `ui.resource_content_hash`, `ui.call_origin`, `ui.capability_grant_mode`
 
 Design goal: an operator can answer “why was this blocked?” or “how did this data leave?” with a single query.
 
@@ -1830,7 +2488,10 @@ Build default dashboards around operator questions:
 - Step-up gating rate and reason codes
 - Deep scan backlog and false-positive rates
 - Tool hash mismatch events (potential rug-pulls)
-- “Sensitive read → external send” near-misses
+- "Sensitive read → external send" near-misses
+- UI capability strips and CSP mediation events (servers requesting UI without approval)
+- UI resource hash mismatches (potential UI rug-pulls)
+- App-driven tool call rates and rate-limit events
 
 Each alert should link to:
 - A pre-built trace query
@@ -2286,6 +2947,11 @@ This section makes adoption explicit and minimizes friction: developers should o
 **D5. Preserve correlation context**
 - Propagate `session_id`/`request_id`/`trace_id` from the gateway into app logs (SDKs can do this automatically).
 
+**D6. Onboard UI-enabled tools through the UI Resource Registry workflow**
+- Tools with `_meta.ui.resourceUri` must be registered with content hashes, CSP declarations, and permission requests.
+- UI resources start in `audit-only` mode and require security review before promotion to `allow`.
+- Declare only the minimum CSP domains and permissions required. Avoid requesting camera/microphone/geolocation unless the tool's core function requires it.
+
 **What developers should NOT have to do**
 - Manage certs, tokens, secret rotation, or policy engines directly.
 - Implement prompt-injection defenses in prompts as the primary control surface.
@@ -2327,6 +2993,7 @@ This section makes adoption explicit and minimizes friction: developers should o
 - The gateway enforcement point (except break-glass, explicitly audited)
 - Artifact verification for enforcement-critical components
 - Default-deny external egress for high-risk tools without explicit allowlists
+- UI capability gating (MCP-UI is deny-by-default; requires explicit approval per server/tenant)
 
 ### 10.15 External Context Ingestion and Self-Updating Agents
 
@@ -2445,6 +3112,7 @@ For sensitive content:
 | Data exfiltration | | | ✅ | ✅ | **High** (with response firewall + step-up) |
 | Authorization bypass | ✅ | ✅ | ✅ | | **Full** |
 | Model artifact compromise | | | | ✅ | **Medium** (digest/signature verification) |
+| Active content (MCP-UI) | | | ✅ | ✅ | **High** (capability gating + CSP mediation + content scan) |
 
 ### 11.2 What This Architecture Protects Against
 
@@ -2459,6 +3127,12 @@ For sensitive content:
 | High-risk prompt injection | ✅ High | Step-up gating + guard models + approval/capabilities |
 | Cross-tool manipulation | ✅ High | Session context |
 | Sensitive read → external send | ✅ High | Response firewall + exfiltration pattern detection |
+| XSS via MCP-UI resource | ✅ High | Content scanning + hash verification + host sandbox |
+| App-driven tool abuse | ✅ High | Separate rate limits + tool allowlisting + mandatory step-up |
+| CSP bypass / data exfiltration via UI | ✅ High | CSP mediation (domain intersection with allowlist) |
+| UI resource rug-pull | ✅ Full | UI Resource Registry hash verification |
+| Permission escalation via UI | ✅ Full | Permissions denied by default, stripped by gateway |
+| Nested frame attacks via UI | ✅ Full | frameDomains hard-denied at gateway |
 
 ### 11.3 Residual Risks
 
@@ -2468,7 +3142,10 @@ For sensitive content:
 | Legitimate API misuse | Agent authorized for action | Behavioral analysis |
 | Gateway compromise | Single trust point | HSM, minimal surface |
 | Novel obfuscation | Pattern-based detection | LLM-based deep scan |
-| Compromised model weights | Models are supply-chain artifacts | Digest pinning + signatures + admission policy + redundancy for “block” |
+| Compromised model weights | Models are supply-chain artifacts | Digest pinning + signatures + admission policy + redundancy for "block" |
+| Novel UI XSS vectors | Static pattern scanning has limits | Host sandbox isolation + CSP enforcement + periodic security review |
+| Social engineering via UI | App can present misleading interfaces | Step-up gating for high-risk actions + user education |
+| Covert channels in sandbox | Timing/storage-based exfiltration | Monitor anomalous app behavior patterns + short session TTLs |
 
 ---
 
@@ -2495,6 +3172,18 @@ For sensitive content:
 | Tiered LLM scanning | Groq account or ONNX setup |
 | Step-up gating (sync, high-risk tools) | Prompt Guard setup |
 | Response firewall + transformation | Session context + OPA data model |
+
+### Phase 2b: MCP-UI (Apps Extension) Security
+
+| Milestone | Dependencies / Notes |
+|----------|----------------------|
+| UI capability gating (strip `_meta.ui` for denied servers) | Phase 1 (OPA + Tool Registry) |
+| UI Resource Registry (hash verification for `ui://` content) | Tool Registry infrastructure |
+| CSP and permissions mediation (rewrite `_meta.ui.csp`/perms) | OPA policy data model |
+| UI content scanning (dangerous pattern detection) | None (static analysis) |
+| App-driven tool call rate limiting (separate buckets) | Rate limit middleware |
+| App-driven tool call audit events (UI correlation) | Audit logging infrastructure |
+| UI resource onboarding workflow (`audit-only` to `allow`) | UI Resource Registry |
 
 ### Phase 3: Operational Maturity
 
@@ -2572,6 +3261,12 @@ This is **not required for v1**, but may become compelling if constrained decodi
 - [Docker MCP Gateway](https://docs.docker.com/ai/mcp-catalog-and-toolkit/mcp-gateway/)
 - [OWASP Agentic AI Security](https://owasp.org/www-project-agentic-ai/)
 
+### MCP Apps (UI Extension)
+- [MCP Apps Extension Specification](https://modelcontextprotocol.io/docs/extensions/apps)
+- [MCP Apps GitHub Repository (ext-apps)](https://github.com/modelcontextprotocol/ext-apps)
+- [MCP Apps Stable Specification (2026-01-26)](https://github.com/modelcontextprotocol/ext-apps/blob/main/specification/2026-01-26/apps.mdx)
+- [SEP-1865: MCP Apps Pull Request](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1865)
+
 ### Implementation
 - [SafeZone DLP Library](https://github.com/thyrisAI/safe-zone)
 - [Groq Guard Models](https://console.groq.com/docs/content-moderation)
@@ -2579,6 +3274,6 @@ This is **not required for v1**, but may become compelling if constrained decodi
 
 ---
 
-*Document Version: 2.1*
+*Document Version: 2.2*
 *Last Updated: February 2026*
 *Classification: Internal - Technical Reference Architecture*

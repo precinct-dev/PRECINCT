@@ -256,8 +256,10 @@ allow if {
 			StatusCode: scenario.status,
 		})
 
-		// Verify chain integrity after each event
+		// Verify chain integrity after each event.
+		// RFA-lz1: Flush() ensures async writes are complete before verification.
 		if i >= 1 { // Need at least 2 events to verify chain
+			auditor.Flush()
 			result, err := VerifyAuditChain(auditPath)
 			if err != nil {
 				t.Fatalf("Chain verification failed after event %d: %v", i+1, err)
@@ -267,6 +269,9 @@ allow if {
 			}
 		}
 	}
+
+	// RFA-lz1: Flush to ensure all async writes are complete before final verification
+	auditor.Flush()
 
 	// Final verification
 	result, err := VerifyAuditChain(auditPath)

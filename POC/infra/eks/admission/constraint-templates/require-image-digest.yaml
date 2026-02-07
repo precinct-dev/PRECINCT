@@ -1,0 +1,93 @@
+# ------------------------------------------------------------------------------
+# ConstraintTemplate: RequireImageDigest
+# Story: RFA-9fv.9
+#
+# Rejects container images that use floating tags (e.g., :latest, :dev, :stable)
+# instead of digest-pinned references.
+#
+# Digest pinning ensures:
+#   1. Immutability -- the exact image binary is deterministic
+#   2. Auditability -- what was deployed can be verified forensically
+#   3. Signature verification -- cosign signatures bind to a specific digest
+#   4. Supply chain integrity -- no tag mutation attacks possible
+#
+# Valid image references:
+#   ghcr.io/org/image@sha256:abc123...   (digest-pinned)
+#
+# Invalid image references:
+#   ghcr.io/org/image:latest             (floating tag)
+#   ghcr.io/org/image:v1.0               (mutable tag)
+#   ghcr.io/org/image                    (implicit :latest)
+#   nginx                                (no registry, no digest)
+#
+# Reference Architecture Section 10.5.1: Pinned artifacts
+# ------------------------------------------------------------------------------
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: requireimagedigest
+  labels:
+    app.kubernetes.io/part-of: mcp-admission-control
+    app.kubernetes.io/component: supply-chain-security
+  annotations:
+    description: >-
+      Requires all container images to use digest-pinned references
+      (image@sha256:...) instead of floating tags (:latest, :v1.0, etc.).
+      Prevents tag mutation attacks and ensures deployment immutability.
+spec:
+  crd:
+    spec:
+      names:
+        kind: RequireImageDigest
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            exemptImages:
+              type: array
+              description: >-
+                List of image patterns exempt from digest pinning.
+                Supports glob patterns (e.g., "k8s.gcr.io/pause*").
+                Use sparingly -- only for system images managed by the platform.
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package requireimagedigest
+
+        import future.keywords.in
+        import future.keywords.contains
+        import future.keywords.if
+
+        # Violation: image uses a floating tag or implicit :latest
+        violation contains {"msg": msg} if {
+          some container in input_containers
+          image := container.image
+          not is_exempt(image)
+          not image_has_digest(image)
+          msg := sprintf(
+            "Container '%s' uses image '%s' which is not pinned by digest. Images in enforcement namespaces must use digest references (e.g., image@sha256:abc123...). Floating tags like :latest are not allowed.",
+            [container.name, image]
+          )
+        }
+
+        # Collect all containers (init + regular + ephemeral)
+        input_containers := array.concat(
+          array.concat(
+            object.get(input.review.object.spec, "initContainers", []),
+            object.get(input.review.object.spec, "containers", [])
+          ),
+          object.get(input.review.object.spec, "ephemeralContainers", [])
+        )
+
+        # Check if image reference contains a digest (sha256)
+        image_has_digest(image) if {
+          contains(image, "@sha256:")
+        }
+
+        # Check if image is exempt from digest pinning
+        is_exempt(image) if {
+          some pattern in object.get(input.parameters, "exemptImages", [])
+          glob.match(pattern, ["/"], image)
+        }

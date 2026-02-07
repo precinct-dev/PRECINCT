@@ -1,0 +1,26 @@
+# ------------------------------------------------------------------------------
+# Tools Namespace
+# Story: RFA-9fv.4
+#
+# Dedicated namespace for MCP tool servers. In the POC, this hosts the Docker
+# MCP server (or a placeholder/mock MCP server for testing).
+#
+# Future tool servers (S3 MCP tool from RFA-9fv.5, etc.) also deploy here.
+#
+# The "name: tools" label is required by NetworkPolicy namespaceSelector rules
+# that control which namespaces can receive traffic from the gateway.
+#
+# SPIFFE ID for workloads: spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool
+# (Registered in RFA-9fv.3 spire/registration-entries.yaml)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    # Label used by NetworkPolicy namespaceSelector for ingress rules
+    name: tools
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

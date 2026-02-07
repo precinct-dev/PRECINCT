@@ -1,0 +1,16 @@
+# Custom SPIRE Agent with shell support for dynamic token reading
+FROM ghcr.io/spiffe/spire-agent:1.10.0 as spire
+FROM busybox:1.36
+
+# Copy SPIRE agent binaries from official image
+COPY --from=spire /opt/spire/bin/spire-agent /opt/spire/bin/spire-agent
+
+# Copy the entrypoint wrapper script
+COPY scripts/spire-agent-wrapper.sh /entrypoint-wrapper.sh
+RUN chmod +x /entrypoint-wrapper.sh
+
+# Set working directory
+WORKDIR /opt/spire
+
+# Use our wrapper as entrypoint
+ENTRYPOINT ["/entrypoint-wrapper.sh"]

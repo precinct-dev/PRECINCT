@@ -4,7 +4,7 @@ This guide explains how to configure and run the Docker MCP server to provide to
 
 ## Overview
 
-The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and runs **outside** of docker-compose. The POC gateway connects to it via JSON-RPC at `http://localhost:8080/mcp`.
+The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and runs **outside** of docker-compose. The POC gateway connects to it via JSON-RPC at `http://localhost:8081/mcp`.
 
 ## Architecture
 
@@ -19,7 +19,7 @@ The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and 
 ┌─────────────────────────────────────┐
 │  Docker MCP Gateway                 │
 │  (Docker Desktop managed)           │
-│  http://localhost:8080/mcp          │
+│  http://localhost:8081/mcp          │
 └────────────┬────────────────────────┘
              │
     ┌────────┴────────┬───────┬───────┐
@@ -34,7 +34,7 @@ The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and 
 
 1. **Docker Desktop 4.30+** with MCP Toolkit enabled
 2. **Tavily API Key** - Get from https://tavily.com
-3. **POC Workspace** - Full path: `/Users/ramirosalas/workspace/agentic_reference_architecture/POC`
+3. **POC Workspace** - Set `$POC_DIR` to the absolute path of the POC directory (e.g., `export POC_DIR=$(pwd)`)
 
 ## Step 1: Configure Docker MCP Server
 
@@ -69,7 +69,7 @@ filesystem:
     - -i
     - --rm
     - -v
-    - /Users/ramirosalas/workspace/agentic_reference_architecture/POC:/workspace
+    - $POC_DIR:/workspace
     - mcp/filesystem
     - /workspace
   env: {}
@@ -101,15 +101,15 @@ export TAVILY_API_KEY="your-api-key-here"
 Start the gateway in streaming mode (HTTP/JSON-RPC):
 
 ```bash
-docker mcp gateway run --port 8080 --transport streaming
+docker mcp gateway run --port 8081 --transport streaming
 ```
 
-This starts the gateway at `http://localhost:8080/mcp`.
+This starts the gateway at `http://localhost:8081/mcp`.
 
 **Verify it's running:**
 
 ```bash
-curl http://localhost:8080/health
+curl http://localhost:8081/health
 # Expected: HTTP 200 OK
 ```
 
@@ -118,7 +118,7 @@ curl http://localhost:8080/health
 Start the POC docker-compose stack:
 
 ```bash
-cd /Users/ramirosalas/workspace/agentic_reference_architecture/POC
+cd $POC_DIR
 docker-compose up -d
 ```
 
@@ -158,7 +158,7 @@ curl -X POST http://localhost:9090 \
     "jsonrpc": "2.0",
     "method": "read",
     "params": {
-      "file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md"
+      "file_path": "$POC_DIR/README.md"
     },
     "id": "test-002"
   }'
@@ -175,7 +175,7 @@ curl -X POST http://localhost:9090 \
     "method": "grep",
     "params": {
       "pattern": "TODO",
-      "path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC"
+      "path": "$POC_DIR"
     },
     "id": "test-003"
   }'
@@ -192,7 +192,7 @@ curl -X POST http://localhost:9090 \
     "jsonrpc": "2.0",
     "method": "bash",
     "params": {
-      "command": "ls /Users/ramirosalas/workspace/agentic_reference_architecture/POC"
+      "command": "ls $POC_DIR"
     },
     "id": "test-004"
   }'
@@ -204,8 +204,8 @@ curl -X POST http://localhost:9090 \
 
 The following tools are **restricted to POC workspace only**:
 
-- `read` - Can only read files in `/Users/ramirosalas/workspace/agentic_reference_architecture/POC/**`
-- `grep` - Can only search in `/Users/ramirosalas/workspace/agentic_reference_architecture/POC/**`
+- `read` - Can only read files in `$POC_DIR/**`
+- `grep` - Can only search in `$POC_DIR/**`
 - `bash` - Commands restricted by policy (enforcement varies)
 
 **Attempts to access files outside the workspace will be denied with HTTP 403.**
@@ -230,10 +230,10 @@ Requests with mismatched hashes are rejected with HTTP 403.
 ## Running Integration Tests
 
 ```bash
-cd /Users/ramirosalas/workspace/agentic_reference_architecture/POC
+cd $POC_DIR
 
 # Ensure both gateways are running:
-# 1. Docker MCP Gateway at http://localhost:8080/mcp
+# 1. Docker MCP Gateway at http://localhost:8081/mcp
 # 2. POC Gateway at http://localhost:9090
 
 # Run Docker MCP integration tests
@@ -255,7 +255,7 @@ go test -tags=integration ./tests/integration -v -run TestDockerMCP
 docker ps | grep mcp
 
 # Restart Docker MCP Gateway
-docker mcp gateway run --port 8080 --transport streaming
+docker mcp gateway run --port 8081 --transport streaming
 ```
 
 ### Tavily Returns 401
@@ -275,7 +275,7 @@ docker mcp config write tavily TAVILY_API_KEY "your-key-here"
 cat ~/.docker/mcp/docker-mcp.yaml | grep -A2 filesystem
 
 # Ensure path matches:
-# -v /Users/ramirosalas/workspace/agentic_reference_architecture/POC:/workspace
+# -v $POC_DIR:/workspace
 ```
 
 ### Tool Not Found

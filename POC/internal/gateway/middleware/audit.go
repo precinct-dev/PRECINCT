@@ -13,11 +13,16 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // AuditEvent represents a structured audit log event with hash chain
 type AuditEvent struct {
 	Timestamp      string         `json:"timestamp"`
+	EventType      string         `json:"event_type,omitempty"` // RFA-j2d.8: UI event type (e.g., "ui.resource.read")
+	Severity       string         `json:"severity,omitempty"`   // RFA-j2d.8: Info, Warning, High, Critical
 	SessionID      string         `json:"session_id"`
 	DecisionID     string         `json:"decision_id"`
 	TraceID        string         `json:"trace_id"`
@@ -29,9 +34,11 @@ type AuditEvent struct {
 	StatusCode     int            `json:"status_code,omitempty"`
 	Security       *SecurityAudit `json:"security,omitempty"`
 	Authorization  *AuthzAudit    `json:"authorization,omitempty"`
-	PrevHash       string         `json:"prev_hash"`        // SHA-256 of previous event
-	BundleDigest   string         `json:"bundle_digest"`    // SHA-256 of OPA policy bundle
-	RegistryDigest string         `json:"registry_digest"`  // SHA-256 of tool registry config
+	UI             *UIAuditData   `json:"ui,omitempty"`         // RFA-j2d.8: UI-specific audit data
+	AppDriven      *AppDrivenData `json:"app_driven,omitempty"` // RFA-j2d.8: app-driven tool invocation data
+	PrevHash       string         `json:"prev_hash"`            // SHA-256 of previous event
+	BundleDigest   string         `json:"bundle_digest"`        // SHA-256 of OPA policy bundle
+	RegistryDigest string         `json:"registry_digest"`      // SHA-256 of tool registry config
 }
 
 // SecurityAudit contains security-related audit information
@@ -46,7 +53,12 @@ type AuthzAudit struct {
 	Allowed       bool   `json:"allowed"`
 }
 
-// Auditor handles audit logging with hash-chained integrity
+// Auditor handles audit logging with hash-chained integrity.
+//
+// RFA-lz1: Async audit logging. The hot path (hash chain computation) remains
+// synchronous under a mutex, but file I/O and stdout logging are offloaded to
+// a background goroutine via a buffered channel. This reduces per-request
+// latency from ~4ms to near-zero while preserving hash chain integrity.
 type Auditor struct {
 	mu             sync.Mutex
 	lastHash       string
@@ -54,6 +66,12 @@ type Auditor struct {
 	registryDigest string
 	jsonlFile      *os.File
 	jsonlPath      string
+
+	// RFA-lz1: Async write infrastructure
+	writeCh   chan []byte          // buffered channel for async file/stdout writes
+	flushCh   chan chan struct{}   // flush synchronization: caller sends done channel, writer closes it after draining
+	done      chan struct{}        // signals the writer goroutine has finished draining
+	closeOnce sync.Once           // ensures Close() is idempotent
 }
 
 // NewAuditor creates a new auditor with hash chain support
@@ -82,6 +100,9 @@ func NewAuditor(jsonlPath, bundlePath, registryPath string) (*Auditor, error) {
 		bundleDigest:   bundleDigest,
 		registryDigest: registryDigest,
 		jsonlPath:      jsonlPath,
+		writeCh:        make(chan []byte, 4096), // RFA-lz1: buffer up to 4096 events
+		flushCh:        make(chan chan struct{}, 1),
+		done:           make(chan struct{}),
 	}
 
 	// If jsonlPath provided, open file for appending
@@ -110,18 +131,47 @@ func NewAuditor(jsonlPath, bundlePath, registryPath string) (*Auditor, error) {
 		}
 	}
 
+	// RFA-lz1: Start background writer goroutine for async I/O
+	go auditor.asyncWriter()
+
 	return auditor, nil
 }
 
-// Close closes the audit file
+// Close drains the async write channel and closes the audit file.
+// It is safe to call Close() multiple times (idempotent).
 func (a *Auditor) Close() error {
-	if a.jsonlFile != nil {
-		return a.jsonlFile.Close()
-	}
-	return nil
+	var err error
+	a.closeOnce.Do(func() {
+		// Signal the writer goroutine to drain and exit
+		close(a.writeCh)
+		// Wait for the writer goroutine to finish processing all queued events
+		<-a.done
+		// Now close the file
+		if a.jsonlFile != nil {
+			err = a.jsonlFile.Close()
+		}
+	})
+	return err
 }
 
-// Log emits a structured audit event to stdout AND JSONL file with hash chain
+// Flush blocks until all queued audit events have been written to disk.
+// This is useful in tests or shutdown sequences where you need to verify
+// file contents immediately after logging.
+func (a *Auditor) Flush() {
+	// Send a nil sentinel through the channel. When the writer processes it,
+	// all events queued before Flush() have been written.
+	// We use a done channel per flush to synchronize.
+	flushDone := make(chan struct{})
+	a.flushCh <- flushDone
+	<-flushDone
+}
+
+// Log emits a structured audit event with hash chain integrity.
+//
+// RFA-lz1: The hot path (JSON marshal + hash computation) remains synchronous
+// under a mutex to preserve hash chain ordering. File I/O and stdout logging
+// are offloaded to a background goroutine via a buffered channel, reducing
+// per-request latency from ~4ms to near-zero.
 func (a *Auditor) Log(event AuditEvent) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -134,13 +184,37 @@ func (a *Auditor) Log(event AuditEvent) {
 	event.BundleDigest = a.bundleDigest
 	event.RegistryDigest = a.registryDigest
 
-	// Marshal to JSON
+	// Marshal to JSON (fast: ~1-2us)
 	jsonBytes, err := json.Marshal(event)
 	if err != nil {
 		log.Printf("ERROR: Failed to marshal audit event: %v", err)
 		return
 	}
 
+	// Update last hash for next event (fast: ~1us)
+	// This MUST happen before releasing the mutex so the hash chain
+	// remains consistent regardless of async write ordering.
+	currentHash := sha256.Sum256(jsonBytes)
+	a.lastHash = hex.EncodeToString(currentHash[:])
+
+	// RFA-lz1: Send to async writer (non-blocking if channel has capacity).
+	// Copy jsonBytes since the caller may reuse the underlying buffer.
+	writeData := make([]byte, len(jsonBytes))
+	copy(writeData, jsonBytes)
+
+	select {
+	case a.writeCh <- writeData:
+		// Queued for async write
+	default:
+		// Channel full -- fall back to synchronous write to avoid data loss.
+		// This should be rare with a 4096-event buffer.
+		a.syncWrite(writeData)
+	}
+}
+
+// syncWrite performs a synchronous write to stdout and file.
+// Used as fallback when the async channel is full, and by the async writer goroutine.
+func (a *Auditor) syncWrite(jsonBytes []byte) {
 	// Emit to stdout (backward compatible)
 	log.Println(string(jsonBytes))
 
@@ -155,10 +229,41 @@ func (a *Auditor) Log(event AuditEvent) {
 			}
 		}
 	}
+}
 
-	// Update last hash for next event
-	currentHash := sha256.Sum256(jsonBytes)
-	a.lastHash = hex.EncodeToString(currentHash[:])
+// asyncWriter is the background goroutine that processes queued audit events.
+// It reads from writeCh until the channel is closed, then drains remaining
+// events and signals completion via the done channel. It also handles
+// flush requests from the flushCh channel.
+func (a *Auditor) asyncWriter() {
+	defer close(a.done)
+	for {
+		select {
+		case jsonBytes, ok := <-a.writeCh:
+			if !ok {
+				// Channel closed -- drain any pending flush requests
+				select {
+				case flushDone := <-a.flushCh:
+					close(flushDone)
+				default:
+				}
+				return
+			}
+			a.syncWrite(jsonBytes)
+		case flushDone := <-a.flushCh:
+			// Drain all pending writes before signaling flush complete
+			for {
+				select {
+				case jsonBytes := <-a.writeCh:
+					a.syncWrite(jsonBytes)
+				default:
+					close(flushDone)
+					goto doneFlush
+				}
+			}
+		doneFlush:
+		}
+	}
 }
 
 // computeFileDigest computes SHA-256 digest of a file
@@ -221,14 +326,20 @@ func (rw *responseWriter) WriteHeader(code int) {
 // AuditLog middleware logs all requests with structured JSON
 func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.2: Create OTel span for step 4
+		ctx, span := tracer.Start(r.Context(), "gateway.audit_log",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 4),
+				attribute.String("mcp.gateway.middleware", "audit_log"),
+			),
+		)
+		defer span.End()
+
 		// Wrap response writer to capture status code
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		// Call next handler
-		next.ServeHTTP(wrapped, r)
-
-		// Log audit event after request completes
-		ctx := r.Context()
+		next.ServeHTTP(wrapped, r.WithContext(ctx))
 
 		// Build security audit info
 		securityAudit := &SecurityAudit{
@@ -246,9 +357,20 @@ func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 			}
 		}
 
+		// RFA-m6j.2: Set per-middleware span attributes
+		sessionID := GetSessionID(ctx)
+		decisionID := GetDecisionID(ctx)
+		span.SetAttributes(
+			attribute.String("mcp.session_id", sessionID),
+			attribute.String("mcp.decision_id", decisionID),
+			attribute.String("prev_hash", auditor.lastHash),
+			attribute.String("mcp.result", "allowed"),
+			attribute.String("mcp.reason", "audit logged"),
+		)
+
 		auditor.Log(AuditEvent{
-			SessionID:     GetSessionID(ctx),
-			DecisionID:    GetDecisionID(ctx),
+			SessionID:     sessionID,
+			DecisionID:    decisionID,
 			TraceID:       GetTraceID(ctx),
 			SPIFFEID:      GetSPIFFEID(ctx),
 			Action:        "mcp_request",

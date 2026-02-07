@@ -1,0 +1,93 @@
+# ------------------------------------------------------------------------------
+# Kustomize Dev Overlay
+# Stories: RFA-9fv.6, RFA-tv9
+#
+# Development environment configuration:
+#   - 1 replica for gateway, 1 for MCP server
+#   - Debug logging enabled
+#   - Dev image tags
+#   - Lower resource limits
+#   - Admission control with cert-manager TLS for policy-controller
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+  # Admission control (OPA Gatekeeper + sigstore/policy-controller)
+  - ../../admission
+  # cert-manager TLS auto-generation for policy-controller webhook (RFA-tv9)
+  - ../../admission/policy-controller/cert-manager
+
+# Namespace override is NOT used here because base manifests have explicit
+# namespaces (gateway, tools). Cross-namespace resources require explicit names.
+
+images:
+  - name: mcp-security-gateway
+    newName: ghcr.io/OWNER/agentic-ref-arch/mcp-security-gateway
+    newTag: dev  # mcp-security-gateway
+  - name: python  # placeholder MCP server image
+    newName: python
+    newTag: "3.12-slim"
+
+patches:
+  # --------------------------------------------------------------------------
+  # cert-manager CA injection for policy-controller webhook TLS (RFA-tv9)
+  # cert-manager's CA injector reads this annotation and populates caBundle
+  # with the CA that signed the Certificate in cosign-system.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ValidatingWebhookConfiguration
+      name: policy-controller-validating
+    patch: |
+      apiVersion: admissionregistration.k8s.io/v1
+      kind: ValidatingWebhookConfiguration
+      metadata:
+        name: policy-controller-validating
+        annotations:
+          cert-manager.io/inject-ca-from: cosign-system/policy-controller-webhook-cert
+
+  # Gateway: 1 replica, debug logging
+  - target:
+      kind: Deployment
+      name: mcp-security-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-security-gateway
+        namespace: gateway
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: mcp-security-gateway
+                env:
+                  - name: LOG_LEVEL
+                    value: "debug"
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 200m
+                    memory: 128Mi
+
+  # MCP Server: 1 replica
+  - target:
+      kind: Deployment
+      name: mcp-server
+      namespace: tools
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-server
+        namespace: tools
+      spec:
+        replicas: 1
+
+commonAnnotations:
+  app.kubernetes.io/environment: dev

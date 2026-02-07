@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // OPAClient handles OPA policy evaluation
@@ -24,13 +27,21 @@ func NewOPAClient(endpoint string) *OPAClient {
 
 // OPAInput represents input to OPA policy evaluation
 type OPAInput struct {
-	SPIFFEID     string                 `json:"spiffe_id"`
-	Tool         string                 `json:"tool"`
-	Action       string                 `json:"action"`
-	Method       string                 `json:"method"`
-	Path         string                 `json:"path"`
-	Params       map[string]interface{} `json:"params"`
-	StepUpToken  string                 `json:"step_up_token"`
+	SPIFFEID    string                 `json:"spiffe_id"`
+	Tool        string                 `json:"tool"`
+	Action      string                 `json:"action"`
+	Method      string                 `json:"method"`
+	Path        string                 `json:"path"`
+	Params      map[string]interface{} `json:"params"`
+	StepUpToken string                 `json:"step_up_token"`
+	Session     SessionInput           `json:"session"`
+	UI          *UIInput               `json:"ui,omitempty"` // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
+}
+
+// SessionInput represents session data for OPA evaluation
+type SessionInput struct {
+	RiskScore       float64      `json:"risk_score"`
+	PreviousActions []ToolAction `json:"previous_actions"`
 }
 
 // OPARequest represents OPA API request
@@ -96,10 +107,51 @@ func (oc *OPAClient) Evaluate(input OPAInput) (bool, string, error) {
 	return allow, reason, nil
 }
 
+// OPAEvaluator interface for OPA policy evaluation
+// Satisfied by both OPAClient (HTTP-based) and OPAEngine (embedded)
+type OPAEvaluator interface {
+	Evaluate(input OPAInput) (bool, string, error)
+}
+
+// ContextPolicyInput represents input to the OPA context injection policy (mcp.context)
+// RFA-xwc: Step 7 of the mandatory validation pipeline (Section 10.15.1)
+type ContextPolicyInput struct {
+	Context     ContextInput        `json:"context"`
+	Session     ContextSessionInput `json:"session"`
+	StepUpToken string              `json:"step_up_token"` // Non-empty when step-up approval was obtained for sensitive content
+}
+
+// ContextInput represents the external context metadata for policy evaluation
+type ContextInput struct {
+	Source         string `json:"source"`         // "external" for fetched content
+	Validated      bool   `json:"validated"`      // true if steps 1-6 passed
+	Classification string `json:"classification"` // DLP classification result (e.g., "clean", "sensitive", "pii")
+	Handle         string `json:"handle"`         // UUID content_ref handle
+}
+
+// ContextSessionInput represents session data for context policy evaluation
+// Uses a map for flags so OPA can check input.session.flags["high_risk"]
+type ContextSessionInput struct {
+	Flags map[string]bool `json:"flags"`
+}
+
+// ContextPolicyEvaluator interface for context injection policy evaluation
+// RFA-xwc: Separated from OPAEvaluator because input shape is different
+type ContextPolicyEvaluator interface {
+	EvaluateContextPolicy(input ContextPolicyInput) (bool, string, error)
+}
+
 // OPAPolicy middleware enforces OPA authorization
-func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
+func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ctx := r.Context()
+		// RFA-m6j.1: Create OTel span for step 6
+		ctx, span := tracer.Start(r.Context(), "gateway.opa_policy",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 6),
+				attribute.String("mcp.gateway.middleware", "opa_policy"),
+			),
+		)
+		defer span.End()
 
 		// Extract tool name and params from request body
 		body := GetRequestBody(ctx)
@@ -123,6 +175,17 @@ func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
 		// Extract step-up token from headers
 		stepUpToken := r.Header.Get("X-Step-Up-Token")
 
+		// Get session data if available
+		sessionData := GetSessionContextData(ctx)
+		sessionInput := SessionInput{
+			RiskScore:       0.0,
+			PreviousActions: make([]ToolAction, 0),
+		}
+		if sessionData != nil {
+			sessionInput.RiskScore = sessionData.RiskScore
+			sessionInput.PreviousActions = sessionData.Actions
+		}
+
 		// Build OPA input
 		input := OPAInput{
 			SPIFFEID:    GetSPIFFEID(ctx),
@@ -132,14 +195,48 @@ func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
 			Path:        r.URL.Path,
 			Params:      params,
 			StepUpToken: stepUpToken,
+			Session:     sessionInput,
+		}
+
+		// RFA-j2d.7: Populate UI section from request context when MCP-UI is relevant.
+		// The UI context values are set by upstream middleware or the gateway handler
+		// (e.g., from X-UI-Call-Origin header, session state, or gateway config).
+		if GetUIEnabled(ctx) {
+			uiInput := BuildUIInput(
+				true,
+				GetUIResourceURI(ctx),
+				"", // content hash populated by resource controls (RFA-j2d.2)
+				GetUICallOrigin(ctx),
+				GetUIAppToolCalls(ctx),
+				false, // resource registered status from registry (RFA-j2d.5)
+				GetToolHashVerified(ctx),
+			)
+			input.UI = &uiInput
 		}
 
 		// Evaluate policy
 		allowed, reason, err := opa.Evaluate(input)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Policy evaluation failed: %v", err), http.StatusInternalServerError)
+			span.SetAttributes(
+				attribute.String("mcp.result", "error"),
+				attribute.String("mcp.reason", err.Error()),
+			)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusInternalServerError, GatewayError{
+				Code:           "authz_evaluation_error",
+				Message:        fmt.Sprintf("Policy evaluation failed: %v", err),
+				Middleware:     "opa_policy",
+				MiddlewareStep: 6,
+			})
 			return
 		}
+
+		// RFA-m6j.1: Record decision outcome on the span
+		if allowed {
+			span.SetAttributes(attribute.String("mcp.result", "allowed"))
+		} else {
+			span.SetAttributes(attribute.String("mcp.result", "denied"))
+		}
+		span.SetAttributes(attribute.String("mcp.reason", reason))
 
 		// Store OPA decision ID in context for audit (RFA-qq0.13)
 		// Use the decision ID from context (same as request decision ID for now)
@@ -147,7 +244,14 @@ func OPAPolicy(next http.Handler, opa *OPAClient) http.Handler {
 		ctx = WithOPADecisionID(ctx, opaDecisionID)
 
 		if !allowed {
-			http.Error(w, fmt.Sprintf("Policy denied: %s", reason), http.StatusForbidden)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+				Code:           ErrAuthzPolicyDenied,
+				Message:        fmt.Sprintf("Policy denied: %s", reason),
+				Middleware:     "opa_policy",
+				MiddlewareStep: 6,
+				Details:        map[string]any{"reason": reason},
+				Remediation:    "Check that the SPIFFE ID has a grant for the requested tool and path.",
+			})
 			return
 		}
 

@@ -1,0 +1,30 @@
+# ------------------------------------------------------------------------------
+# MCP Security Gateway Service
+# Story: RFA-9fv.4
+#
+# ClusterIP service exposing the MCP Security Gateway on port 9090.
+# Other workloads (agents, tools, operators) connect to this service to:
+#   - Submit MCP JSON-RPC requests through the security middleware chain
+#   - Perform health checks
+#
+# For external access, add an Ingress or LoadBalancer in front of this service.
+# The gateway handles its own TLS via SPIFFE/mTLS when SPIFFE_MODE=prod.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-security-gateway
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: mcp-security-gateway
+    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mcp-security-gateway
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+      protocol: TCP

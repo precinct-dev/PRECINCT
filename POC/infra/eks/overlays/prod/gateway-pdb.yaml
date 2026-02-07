@@ -1,0 +1,20 @@
+# ------------------------------------------------------------------------------
+# Gateway Pod Disruption Budget (Production)
+# Story: RFA-9fv.6
+#
+# Ensures at least 2 gateway replicas are available during voluntary
+# disruptions (node drains, upgrades, etc.).
+# ------------------------------------------------------------------------------
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mcp-security-gateway
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: mcp-security-gateway
+    app.kubernetes.io/part-of: mcp-security-gateway
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-security-gateway

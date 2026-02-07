@@ -1,0 +1,110 @@
+# ------------------------------------------------------------------------------
+# SPIRE Server StatefulSet (HA: 2 replicas)
+# Story: RFA-9fv.3
+#
+# Runs the SPIRE Server as a StatefulSet for stable identity and persistent
+# storage. 2 replicas provide high availability for the POC.
+#
+# Key design decisions:
+#   - StatefulSet (not Deployment): each replica gets a stable hostname and
+#     its own PVC, preventing SQLite lock contention.
+#   - SQLite per replica: acceptable for POC. Production should use PostgreSQL
+#     with a shared database for true HA.
+#   - Security context: non-root, read-only root filesystem, drop all caps.
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: spire-server
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: spire
+spec:
+  replicas: 2
+  serviceName: spire-server
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spire-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spire-server
+        app.kubernetes.io/part-of: spire
+    spec:
+      serviceAccountName: spire-server
+      shareProcessNamespace: true
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: spire-server
+          image: ghcr.io/spiffe/spire-server:1.10.0
+          args:
+            - "-config"
+            - "/opt/spire/conf/server/server.conf"
+          ports:
+            - name: grpc
+              containerPort: 8081
+              protocol: TCP
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: spire-server-config
+              mountPath: /opt/spire/conf/server
+              readOnly: true
+            - name: spire-server-data
+              mountPath: /opt/spire/data
+            - name: spire-server-socket
+              mountPath: /tmp/spire-server/private
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: spire-server-config
+          configMap:
+            name: spire-server-config
+        - name: spire-server-socket
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: spire-server-data
+        labels:
+          app.kubernetes.io/name: spire-server
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+        storageClassName: gp2

@@ -1,0 +1,185 @@
+# ------------------------------------------------------------------------------
+# Promotion Pipeline - dev -> staging -> prod
+# Story: RFA-9fv.6
+#
+# Manual trigger (workflow_dispatch) to promote container images between
+# environments. Verifies image signatures before promotion and updates
+# Kustomize overlay image tags.
+#
+# Flow:
+#   1. Verify source image signature with cosign
+#   2. Re-tag image for target environment
+#   3. Sign the promoted image
+#   4. Update Kustomize overlay with new image digest
+#   5. Commit overlay change (optional, controlled by input)
+# ------------------------------------------------------------------------------
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_env:
+        description: "Source environment"
+        required: true
+        type: choice
+        options:
+          - dev
+          - staging
+      target_env:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - prod
+      image:
+        description: "Image to promote"
+        required: true
+        type: choice
+        options:
+          - mcp-security-gateway
+          - s3-mcp-server
+      source_tag:
+        description: "Source image tag or digest (e.g., sha-abc1234 or sha256:...)"
+        required: true
+        type: string
+      commit_overlay:
+        description: "Commit Kustomize overlay update"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/agentic-ref-arch
+
+permissions:
+  contents: write   # For committing overlay updates
+  packages: write   # For pushing re-tagged images
+  id-token: write   # For cosign keyless signing
+
+jobs:
+  validate-promotion:
+    name: Validate Promotion Path
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate promotion path
+        run: |
+          SOURCE="${{ inputs.source_env }}"
+          TARGET="${{ inputs.target_env }}"
+
+          # Enforce promotion order: dev -> staging -> prod
+          if [ "$SOURCE" = "dev" ] && [ "$TARGET" = "prod" ]; then
+            echo "ERROR: Cannot promote directly from dev to prod. Must go through staging."
+            exit 1
+          fi
+          if [ "$SOURCE" = "staging" ] && [ "$TARGET" = "dev" ]; then
+            echo "ERROR: Cannot demote from staging to dev."
+            exit 1
+          fi
+          if [ "$SOURCE" = "$TARGET" ]; then
+            echo "ERROR: Source and target environments must be different."
+            exit 1
+          fi
+
+          echo "Promotion path validated: $SOURCE -> $TARGET"
+
+  promote:
+    name: Promote Image
+    runs-on: ubuntu-latest
+    needs: [validate-promotion]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref }}
+          # Fetch full history for committing overlay changes
+          fetch-depth: 0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install crane
+        uses: imjasonh/setup-crane@v0.4
+
+      - name: Verify source image signature
+        env:
+          SOURCE_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}:${{ inputs.source_tag }}
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          echo "Verifying signature on source image: ${SOURCE_IMAGE}"
+          cosign verify \
+            --certificate-identity-regexp=".*" \
+            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            "${SOURCE_IMAGE}"
+          echo "Signature verification PASSED"
+
+      - name: Copy image to target tag
+        env:
+          SOURCE_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}:${{ inputs.source_tag }}
+          TARGET_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}:${{ inputs.target_env }}
+        run: |
+          echo "Copying ${SOURCE_IMAGE} -> ${TARGET_IMAGE}"
+          crane copy "${SOURCE_IMAGE}" "${TARGET_IMAGE}"
+
+          # Get the digest of the promoted image
+          DIGEST=$(crane digest "${TARGET_IMAGE}")
+          echo "Promoted image digest: ${DIGEST}"
+          echo "PROMOTED_DIGEST=${DIGEST}" >> "$GITHUB_ENV"
+
+      - name: Sign promoted image
+        env:
+          TARGET_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}:${{ inputs.target_env }}
+          COSIGN_EXPERIMENTAL: "1"
+        run: |
+          cosign sign --yes \
+            "${TARGET_IMAGE}@${PROMOTED_DIGEST}"
+          echo "Promoted image signed successfully"
+
+      - name: Update Kustomize overlay
+        env:
+          TARGET_ENV: ${{ inputs.target_env }}
+          IMAGE_NAME: ${{ inputs.image }}
+          FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}
+        run: |
+          OVERLAY_DIR="POC/infra/eks/overlays/${TARGET_ENV}"
+          if [ ! -d "${OVERLAY_DIR}" ]; then
+            echo "WARNING: Overlay directory ${OVERLAY_DIR} does not exist. Skipping overlay update."
+            exit 0
+          fi
+
+          # Update the image tag in the kustomization.yaml
+          # Uses sed to update the newTag or digest field
+          KUSTOMIZATION="${OVERLAY_DIR}/kustomization.yaml"
+          if [ -f "${KUSTOMIZATION}" ]; then
+            # Update newTag to the promoted digest
+            sed -i "s|newTag:.*# ${IMAGE_NAME}|newTag: \"${PROMOTED_DIGEST}\" # ${IMAGE_NAME}|" "${KUSTOMIZATION}"
+            echo "Updated ${KUSTOMIZATION} with digest ${PROMOTED_DIGEST}"
+            cat "${KUSTOMIZATION}"
+          fi
+
+      - name: Commit overlay update
+        if: inputs.commit_overlay
+        env:
+          TARGET_ENV: ${{ inputs.target_env }}
+          IMAGE_NAME: ${{ inputs.image }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          OVERLAY_DIR="POC/infra/eks/overlays/${TARGET_ENV}"
+          if git diff --quiet "${OVERLAY_DIR}"; then
+            echo "No changes to commit"
+            exit 0
+          fi
+
+          git add "${OVERLAY_DIR}/"
+          git commit -m "chore(promote): ${IMAGE_NAME} -> ${TARGET_ENV} (${PROMOTED_DIGEST})"
+          git push

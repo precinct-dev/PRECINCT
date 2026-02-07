@@ -48,6 +48,7 @@ type ProvenanceMetadata struct {
 // ContextFetcher handles external content ingestion with validation
 type ContextFetcher struct {
 	scanner    middleware.DLPScanner
+	policyEval middleware.ContextPolicyEvaluator // RFA-xwc: OPA policy gate (step 7)
 	storageDir string
 	httpClient *http.Client
 }
@@ -64,9 +65,48 @@ func NewContextFetcher(scanner middleware.DLPScanner, storageDir string) *Contex
 	}
 }
 
+// NewContextFetcherWithPolicy creates a context fetcher with OPA policy evaluation
+// RFA-xwc: Step 7 of the mandatory validation pipeline (Section 10.15.1)
+func NewContextFetcherWithPolicy(scanner middleware.DLPScanner, storageDir string, policyEval middleware.ContextPolicyEvaluator) *ContextFetcher {
+	cf := NewContextFetcher(scanner, storageDir)
+	cf.policyEval = policyEval
+	return cf
+}
+
+// SessionFlags carries session-level flags for policy evaluation
+// RFA-xwc: Used to pass session context into the policy gate
+type SessionFlags struct {
+	Flags       map[string]bool
+	StepUpToken string // Non-empty when step-up approval was obtained for sensitive content
+}
+
+// ContextPolicyDeniedError represents a denial from the OPA context injection policy
+// RFA-xwc: HTTP handlers can type-assert this to return 403
+type ContextPolicyDeniedError struct {
+	Reason string
+}
+
+func (e *ContextPolicyDeniedError) Error() string {
+	return fmt.Sprintf("context injection denied by policy: %s", e.Reason)
+}
+
 // FetchAndValidate fetches external content, validates it, and returns a content reference
-// This runs in a sandboxed context with no access to environment secrets
+// This runs in a sandboxed context with no access to environment secrets.
+// For policy-gated context injection, use FetchAndValidateWithPolicy instead.
 func (cf *ContextFetcher) FetchAndValidate(ctx context.Context, sourceURL string) (*ContentRef, error) {
+	return cf.fetchAndValidateInternal(ctx, sourceURL, nil)
+}
+
+// FetchAndValidateWithPolicy fetches external content, validates it through the 7-stage
+// validation pipeline including the OPA policy gate (step 7), and returns a content reference.
+// RFA-xwc: Step 7 of the mandatory validation pipeline (Section 10.15.1)
+// If the policy denies injection, returns a *ContextPolicyDeniedError.
+func (cf *ContextFetcher) FetchAndValidateWithPolicy(ctx context.Context, sourceURL string, sessionFlags *SessionFlags) (*ContentRef, error) {
+	return cf.fetchAndValidateInternal(ctx, sourceURL, sessionFlags)
+}
+
+// fetchAndValidateInternal is the shared implementation for FetchAndValidate and FetchAndValidateWithPolicy
+func (cf *ContextFetcher) fetchAndValidateInternal(ctx context.Context, sourceURL string, sessionFlags *SessionFlags) (*ContentRef, error) {
 	// Validate URL format
 	if !isValidURL(sourceURL) {
 		return nil, fmt.Errorf("invalid URL format: %s", sourceURL)
@@ -105,9 +145,49 @@ func (cf *ContextFetcher) FetchAndValidate(ctx context.Context, sourceURL string
 	hash := sha256.Sum256([]byte(normalized))
 	contentHash := hex.EncodeToString(hash[:])
 
-	// Store chunks and metadata
+	// Store chunks and metadata (step 6: Storage as handle)
 	if err := cf.storeContent(contentID, chunks); err != nil {
 		return nil, fmt.Errorf("failed to store content: %w", err)
+	}
+
+	// RFA-xwc: Step 7 -- OPA policy gate for context injection
+	// Evaluate AFTER storing content as handle but BEFORE returning the handle.
+	// This ensures the policy decision happens on validated, stored content.
+	if cf.policyEval != nil {
+		classification := classifyDLPResult(dlpResult)
+
+		// Build session flags for policy input
+		flags := make(map[string]bool)
+		stepUpToken := ""
+		if sessionFlags != nil {
+			if sessionFlags.Flags != nil {
+				flags = sessionFlags.Flags
+			}
+			stepUpToken = sessionFlags.StepUpToken
+		}
+
+		policyInput := middleware.ContextPolicyInput{
+			Context: middleware.ContextInput{
+				Source:         "external",
+				Validated:      true, // steps 1-6 all passed if we reached here
+				Classification: classification,
+				Handle:         contentID,
+			},
+			Session: middleware.ContextSessionInput{
+				Flags: flags,
+			},
+			StepUpToken: stepUpToken,
+		}
+
+		allowed, reason, err := cf.policyEval.EvaluateContextPolicy(policyInput)
+		if err != nil {
+			// Fail closed on policy evaluation error
+			return nil, fmt.Errorf("context policy evaluation failed: %w", err)
+		}
+
+		if !allowed {
+			return nil, &ContextPolicyDeniedError{Reason: reason}
+		}
 	}
 
 	// Build provenance metadata
@@ -129,6 +209,21 @@ func (cf *ContextFetcher) FetchAndValidate(ctx context.Context, sourceURL string
 	}
 
 	return ref, nil
+}
+
+// classifyDLPResult maps DLP scan results to a classification string for policy evaluation.
+// RFA-xwc: The policy uses classification to decide if content is too sensitive for injection.
+func classifyDLPResult(result middleware.ScanResult) string {
+	if result.HasCredentials {
+		return "sensitive" // credentials are always sensitive
+	}
+	if result.HasPII {
+		return "sensitive" // PII is classified as sensitive for policy purposes
+	}
+	if result.HasSuspicious {
+		return "suspicious"
+	}
+	return "clean"
 }
 
 // fetchContent fetches content from the given URL

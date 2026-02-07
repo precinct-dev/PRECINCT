@@ -142,13 +142,29 @@ main() {
 
     echo ""
 
-    # 5. SPIKE Nexus Secrets Server
+    # 5. SPIKE Nexus Secrets Server (RFA-a2y.1)
     create_entry \
-        "spiffe://${TRUST_DOMAIN}/infrastructure/spike-nexus/dev" \
+        "spiffe://${TRUST_DOMAIN}/spike/nexus" \
         "${parent_id}" \
-        "docker:label:spiffe-id:spike-nexus" \
-        "docker:label:component:secrets" \
-        "docker:label:service:spike"
+        "docker:label:spiffe-id:spike-nexus"
+
+    echo ""
+
+    # 6. SPIKE Bootstrap Init Container (RFA-a2y.1)
+    create_entry \
+        "spiffe://${TRUST_DOMAIN}/spike/bootstrap" \
+        "${parent_id}" \
+        "docker:label:spiffe-id:spike-bootstrap"
+
+    echo ""
+
+    # 7. KeyDB Session Store (RFA-8z8.2)
+    # KeyDB uses filesystem-based certs (cannot use Workload API directly).
+    # The keydb-svid-init container fetches the SVID and writes PEM files.
+    create_entry \
+        "spiffe://${TRUST_DOMAIN}/keydb" \
+        "${parent_id}" \
+        "docker:label:spiffe-id:keydb"
 
     echo ""
     log_info "Registration complete!"

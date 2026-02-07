@@ -1,0 +1,102 @@
+# ------------------------------------------------------------------------------
+# SPIKE Nexus Deployment
+# Story: RFA-9fv.3
+#
+# Single-replica deployment of SPIKE Nexus in token mode.
+# Nexus authenticates via its SPIFFE SVID (obtained from the SPIRE Agent
+# Workload API socket mounted from the host).
+#
+# Key design decisions:
+#   - Single replica for POC (HA can be added with Keepers later)
+#   - hostPath mount for SPIRE agent socket (matches DaemonSet socket path)
+#   - Non-root, read-only root filesystem, restricted security context
+#   - HTTPS on port 8443 (TLS material from SVID)
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spike-nexus
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-nexus
+    app.kubernetes.io/part-of: spike
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spike-nexus
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spike-nexus
+        app.kubernetes.io/part-of: spike
+    spec:
+      serviceAccountName: spike-nexus
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: spike-nexus
+          # SPIKE is part of the SPIFFE ecosystem.
+          # Use the official vsecm/spike-nexus image.
+          # Pin to a specific version for reproducibility.
+          image: vsecm/spike-nexus:0.3.0
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: spike-nexus-config
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            # SPIRE Agent Workload API socket (from host via DaemonSet)
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            # Writable tmp directory for SPIKE runtime data
+            - name: spike-tmp
+              mountPath: /tmp
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        # SPIRE Agent socket from the host (populated by SPIRE Agent DaemonSet)
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: Directory
+        # Writable tmp for SPIKE runtime
+        - name: spike-tmp
+          emptyDir:
+            sizeLimit: 10Mi

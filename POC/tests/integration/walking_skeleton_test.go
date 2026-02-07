@@ -33,7 +33,7 @@ func TestWalkingSkeleton(t *testing.T) {
 		"jsonrpc": "2.0",
 		"method":  "read",
 		"params": map[string]interface{}{
-			"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md",
+			"file_path": pocDir() + "/README.md",
 		},
 		"id": 1,
 	}
@@ -158,7 +158,7 @@ func TestWalkingSkeletonNegative(t *testing.T) {
 		"jsonrpc": "2.0",
 		"method":  "read",
 		"params": map[string]interface{}{
-			"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md",
+			"file_path": pocDir() + "/README.md",
 			"tool_hash": "0000000000000000000000000000000000000000000000000000000000000000", // Wrong hash
 		},
 		"id": 1,
