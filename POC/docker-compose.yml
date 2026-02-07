@@ -139,16 +139,14 @@ services:
   # connects via rediss://keydb:6380 with mTLS.
   # In SPIFFE_MODE=dev (default), only port 6379 is used (no TLS).
   keydb:
-    image: bitnami/keydb:latest
+    image: eqalpha/keydb:6.3.4
     container_name: keydb
     hostname: keydb
     ports:
       - "6379:6379"    # Plain Redis protocol (dev mode)
       - "6380:6380"    # TLS Redis protocol (prod mode, RFA-8z8.2)
-    environment:
-      - ALLOW_EMPTY_PASSWORD=yes  # Dev mode only -- production uses mTLS (RFA-8z8.2)
     volumes:
-      - keydb-data:/bitnami/keydb/data
+      - keydb-data:/data
       - keydb-certs:/certs:ro      # RFA-8z8.2: SVID PEM files from keydb-svid-init
     networks:
       - agentic-net
