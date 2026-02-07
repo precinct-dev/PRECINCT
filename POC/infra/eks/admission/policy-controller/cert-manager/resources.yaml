@@ -1,0 +1,112 @@
+# ------------------------------------------------------------------------------
+# cert-manager: Self-Signed CA + Certificate for policy-controller TLS
+# Story: RFA-tv9
+#
+# Provides automatic TLS certificate generation and rotation for the
+# policy-controller admission webhook. Uses a self-signed CA issuer scoped
+# to the cosign-system namespace.
+#
+# How it works:
+#   1. SelfSigned ClusterIssuer bootstraps the CA keypair
+#   2. CA Certificate creates a self-signed root CA in cosign-system
+#   3. CA Issuer uses that root CA to sign leaf certificates
+#   4. Leaf Certificate generates the webhook TLS cert, stored in
+#      the policy-controller-webhook-tls Secret (overrides the placeholder)
+#
+# The ValidatingWebhookConfiguration must be annotated with:
+#   cert-manager.io/inject-ca-from: cosign-system/policy-controller-webhook-cert
+# so that cert-manager automatically injects the CA bundle into caBundle.
+#
+# Prerequisites:
+#   - cert-manager must be installed in the cluster
+#   - cert-manager CRDs (Certificate, Issuer, ClusterIssuer) must exist
+#
+# Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
+# K8s Webhook TLS: https://kubernetes.io/docs/reference/access-authn-authz/extensible-admission-controllers/#authenticate-apiservers
+# ------------------------------------------------------------------------------
+
+# Step 1: Bootstrap ClusterIssuer (self-signed, used only to create the CA cert)
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: policy-controller-selfsigned-bootstrap
+  labels:
+    app.kubernetes.io/name: policy-controller
+    app.kubernetes.io/part-of: sigstore-policy-controller
+    app.kubernetes.io/component: tls
+spec:
+  selfSigned: {}
+---
+# Step 2: CA Certificate (self-signed root CA for the policy-controller namespace)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: policy-controller-ca
+  namespace: cosign-system
+  labels:
+    app.kubernetes.io/name: policy-controller
+    app.kubernetes.io/part-of: sigstore-policy-controller
+    app.kubernetes.io/component: tls
+spec:
+  isCA: true
+  commonName: policy-controller-ca
+  secretName: policy-controller-ca-keypair
+  duration: 8760h    # 1 year
+  renewBefore: 720h  # 30 days before expiry
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  issuerRef:
+    name: policy-controller-selfsigned-bootstrap
+    kind: ClusterIssuer
+    group: cert-manager.io
+---
+# Step 3: Namespace-scoped Issuer backed by the CA certificate
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: policy-controller-ca-issuer
+  namespace: cosign-system
+  labels:
+    app.kubernetes.io/name: policy-controller
+    app.kubernetes.io/part-of: sigstore-policy-controller
+    app.kubernetes.io/component: tls
+spec:
+  ca:
+    secretName: policy-controller-ca-keypair
+---
+# Step 4: Leaf Certificate for the webhook TLS endpoint
+# This populates the policy-controller-webhook-tls Secret with valid
+# TLS cert/key, replacing the empty placeholder from the base manifest.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: policy-controller-webhook-cert
+  namespace: cosign-system
+  labels:
+    app.kubernetes.io/name: policy-controller
+    app.kubernetes.io/part-of: sigstore-policy-controller
+    app.kubernetes.io/component: tls
+spec:
+  # Secret name matches the volume mount in the Deployment and the
+  # placeholder tls-secret.yaml -- cert-manager will own this Secret.
+  secretName: policy-controller-webhook-tls
+  duration: 2160h    # 90 days
+  renewBefore: 360h  # 15 days before expiry
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+  usages:
+    - server auth
+    - digital signature
+    - key encipherment
+  dnsNames:
+    # Service DNS names that the K8s API server uses to reach the webhook
+    - policy-controller-webhook
+    - policy-controller-webhook.cosign-system
+    - policy-controller-webhook.cosign-system.svc
+    - policy-controller-webhook.cosign-system.svc.cluster.local
+  issuerRef:
+    name: policy-controller-ca-issuer
+    kind: Issuer
+    group: cert-manager.io

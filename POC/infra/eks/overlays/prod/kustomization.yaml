@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------------------
 # Kustomize Production Overlay
-# Story: RFA-9fv.6
+# Stories: RFA-9fv.6, RFA-tv9
 #
 # Production environment configuration:
 #   - 3 replicas for gateway (HA)
@@ -9,6 +9,7 @@
 #   - Production image tags (promoted from staging via promote.yaml)
 #   - Increased resource limits
 #   - Pod disruption budgets for availability
+#   - Admission control with cert-manager TLS for policy-controller
 # ------------------------------------------------------------------------------
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
@@ -18,6 +19,10 @@ resources:
   # Production-only resources
   - gateway-pdb.yaml
   - mcp-server-pdb.yaml
+  # Admission control (OPA Gatekeeper + sigstore/policy-controller)
+  - ../../admission
+  # cert-manager TLS auto-generation for policy-controller webhook (RFA-tv9)
+  - ../../admission/policy-controller/cert-manager
 
 images:
   - name: mcp-security-gateway
@@ -28,6 +33,22 @@ images:
     newTag: "3.12-slim"
 
 patches:
+  # --------------------------------------------------------------------------
+  # cert-manager CA injection for policy-controller webhook TLS (RFA-tv9)
+  # cert-manager's CA injector reads this annotation and populates caBundle
+  # with the CA that signed the Certificate in cosign-system.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ValidatingWebhookConfiguration
+      name: policy-controller-validating
+    patch: |
+      apiVersion: admissionregistration.k8s.io/v1
+      kind: ValidatingWebhookConfiguration
+      metadata:
+        name: policy-controller-validating
+        annotations:
+          cert-manager.io/inject-ca-from: cosign-system/policy-controller-webhook-cert
+
   # Gateway: 3 replicas, structured logging, audit, higher resources
   - target:
       kind: Deployment
