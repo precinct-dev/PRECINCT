@@ -1,4 +1,4 @@
-.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean clean-logs register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate k8s-register-spire validate-setup-time benchmark security-scan
+.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean clean-logs register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate k8s-register-spire validate-setup-time benchmark security-scan demo demo-compose demo-k8s
 
 # Default target
 help: ## Show this help message
@@ -451,3 +451,15 @@ security-scan: ## Run security scans (gosec, trivy image, trivy fs)
 	fi
 	@echo ""
 	@echo "==> Security scanning complete"
+
+# --------------------------------------------------------------------------
+# E2E Demo (Go + Python SDKs exercising all 13 middleware layers)
+# --------------------------------------------------------------------------
+
+demo: demo-compose demo-k8s ## Run E2E demo against both Docker Compose and K8s
+
+demo-compose: ## Run E2E demo against Docker Compose (localhost:9090)
+	@bash demo/run.sh compose
+
+demo-k8s: ## Run E2E demo against Docker Desktop K8s (localhost:30090)
+	@bash demo/run.sh k8s
