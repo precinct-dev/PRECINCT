@@ -16,6 +16,8 @@ reports/
 __pycache__/
 *.pyc
 .pytest_cache/
+*.egg-info/
+uv.lock
 
 # OpenTofu / Terraform
 .terraform/
