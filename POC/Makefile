@@ -1,4 +1,4 @@
-.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean clean-logs register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate validate-setup-time benchmark security-scan
+.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean clean-logs register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate k8s-register-spire validate-setup-time benchmark security-scan
 
 # Default target
 help: ## Show this help message
@@ -311,6 +311,50 @@ k8s-local-validate: ## Validate local K8s Kustomize overlay (offline, no cluster
 	kustomize build infra/eks/overlays/local/ | kubeconform -summary -strict -ignore-missing-schemas
 	@echo ""
 	@echo "==> Validation complete."
+
+k8s-register-spire: ## Register SPIRE workload entries via kubectl exec into server pod (RFA-38s)
+	@echo "==> Registering SPIRE workload entries (kubectl exec)..."
+	@if ! kubectl -n spire-system get pod spire-server-0 -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Running; then \
+		echo "ERROR: spire-server-0 is not running in spire-system namespace."; \
+		echo "Deploy SPIRE first: make k8s-local-up"; \
+		exit 1; \
+	fi
+	@echo "    SPIRE Server pod is running. Executing registration..."
+	kubectl -n spire-system exec spire-server-0 -- sh -c '\
+		SOCK="/tmp/spire-server/private/api.sock" && \
+		echo "=== Waiting for SPIRE Server ===" && \
+		until /opt/spire/bin/spire-server healthcheck -socketPath $$SOCK 2>/dev/null; do \
+			echo "  Server not ready, retrying in 5s..."; \
+			sleep 5; \
+		done && \
+		echo "SPIRE Server is ready." && \
+		echo "" && \
+		echo "=== Registering entries ===" && \
+		/opt/spire/bin/spire-server entry create -socketPath $$SOCK -node \
+			-spiffeID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
+			-selector k8s_psat:cluster:agentic-ref-arch-poc \
+			-selector k8s_psat:agent_ns:spire-system \
+			-selector k8s_psat:agent_sa:spire-agent 2>/dev/null || true && \
+		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
+			-parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
+			-spiffeID spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway \
+			-selector k8s:ns:gateway -selector k8s:sa:mcp-security-gateway \
+			-dns mcp-security-gateway \
+			-dns mcp-security-gateway.gateway.svc.cluster.local 2>/dev/null || true && \
+		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
+			-parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
+			-spiffeID spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool \
+			-selector k8s:ns:tools -selector k8s:sa:mcp-tool 2>/dev/null || true && \
+		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
+			-parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
+			-spiffeID spiffe://agentic-ref-arch.poc/ns/spike-system/sa/spike-nexus \
+			-selector k8s:ns:spike-system -selector k8s:sa:spike-nexus \
+			-dns spike-nexus \
+			-dns spike-nexus.spike-system.svc.cluster.local 2>/dev/null || true && \
+		echo "" && echo "=== Current entries ===" && \
+		/opt/spire/bin/spire-server entry show -socketPath $$SOCK'
+	@echo ""
+	@echo "==> SPIRE registration complete."
 
 # ==============================================================================
 # Setup Time Validation (RFA-t07)
