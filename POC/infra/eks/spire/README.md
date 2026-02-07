@@ -94,7 +94,7 @@ make undeploy
 | `agent-rbac.yaml` | ServiceAccount, ClusterRole for agent |
 | `agent-daemonset.yaml` | DaemonSet with hostPath socket + projected token |
 | `bundle-configmap.yaml` | Trust bundle placeholder (auto-populated by server) |
-| `registration-entries.yaml` | Job + ConfigMap for workload registration |
+| `registration-entries.yaml` | ConfigMap with registration script (kubectl exec approach) |
 | `Makefile` | Deployment, verification, and cleanup targets |
 
 ## Key Design Decisions
@@ -104,6 +104,7 @@ make undeploy
 3. **SQLite per replica**: Acceptable for POC. Production should use PostgreSQL for true HA consensus.
 4. **hostPath for agent socket**: Standard SPIRE pattern. Workload pods mount `/run/spire/sockets/` to access the Workload API.
 5. **k8sbundle notifier**: Automatically distributes trust bundle to agents via ConfigMap.
+6. **kubectl exec for registration (RFA-38s)**: The SPIRE server CLI only supports Unix socket communication (`-socketPath`), not TCP/gRPC addresses. A standalone Kubernetes Job cannot share the server pod's socket filesystem. Therefore, registration entries are created via `kubectl exec` into the server pod. Production deployments should use [spire-controller-manager](https://github.com/spiffe/spire-controller-manager) for CRD-based automatic registration.
 
 ## Migrating Workloads from Docker Compose
 

@@ -247,11 +247,11 @@ patches:
                     memory: 64Mi
 
   # --------------------------------------------------------------------------
-  # Registration entries: replace k8s_psat selectors with join_token
+  # Registration entries: replace k8s_psat selectors with join_token (RFA-38s)
   # --------------------------------------------------------------------------
   - target:
-      kind: Job
-      name: spire-register-entries
+      kind: ConfigMap
+      name: spire-registration-script
       namespace: spire-system
     path: patch-spire-registration.yaml
 
