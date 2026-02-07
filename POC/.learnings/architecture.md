@@ -155,3 +155,56 @@
 **Applies to:** All privacy/GDPR stories involving machine identifiers
 
 **Source stories:** RFA-w4m
+
+
+---
+
+## [Added from Epic RFA-7bh retro - 2026-02-06]
+
+### SPIRE agent requires privileged PodSecurity Standard
+
+**Priority:** Important
+
+**Context:** SPIRE agent DaemonSet uses hostPID: true and hostNetwork: true for node-level identity attestation. This conflicts with "restricted" PodSecurity Standard and requires the spire-system namespace to use "privileged" PSS.
+
+**Recommendation:** When deploying SPIRE to K8s, always set the spire-system namespace to "privileged" PSS. Document this as a known security boundary, not a workaround. SPIRE agent inherently requires privileged access for attestation.
+
+**Applies to:** All K8s deployments with SPIRE agent
+
+**Source stories:** RFA-7bh.1
+
+### Docker Desktop kubeadm does not support k8s_psat attestation
+
+**Priority:** Important
+
+**Context:** Docker Desktop lacks an OIDC provider, so k8s_psat (Projected Service Account Token) attestation doesn't work. join_token is the correct alternative for local development SPIRE.
+
+**Recommendation:** Use join_token attestation for local K8s dev environments. Reserve k8s_psat for managed K8s clusters (EKS, GKE) that have OIDC providers configured. Document attestation strategy per environment in ARCHITECTURE.md.
+
+**Applies to:** Local K8s development environments with SPIRE
+
+**Source stories:** RFA-7bh.1
+
+### IaC validation via kustomize build + kubeconform is appropriate for K8s manifest stories
+
+**Priority:** Important
+
+**Context:** Both RFA-7bh stories were accepted using offline validation (kustomize build + kubeconform) without requiring a live cluster. This established a clear precedent consistent with EKS IaC stories.
+
+**Recommendation:** For K8s Infrastructure-as-Code stories, kustomize build + kubeconform is the appropriate validation tier. Manifest correctness is deterministic. Reserve live cluster testing for E2E integration stories.
+
+**Applies to:** All K8s IaC stories (overlays, admission webhooks, resource manifests)
+
+**Source stories:** RFA-7bh.1, RFA-7bh.2
+
+### sigstore/policy-controller and OPA Gatekeeper coexist independently
+
+**Priority:** Nice-to-have
+
+**Context:** RFA-7bh.2 deployed both admission webhooks. K8s API server calls them in parallel with no ordering dependency. They use different namespace targeting: sigstore uses opt-in (policy.sigstore.dev/include=true), Gatekeeper uses opt-out (config exclusion list).
+
+**Recommendation:** When running multiple admission webhooks, document their namespace targeting strategies and ensure they don't conflict. Both must return "allow" for admission to succeed.
+
+**Applies to:** K8s clusters with multiple admission controllers
+
+**Source stories:** RFA-7bh.2
