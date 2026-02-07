@@ -20,8 +20,8 @@ services:
       - ./data/spire-server:/opt/spire/data
       - spire-server-socket:/tmp/spire-server
     ports:
-      - "8081:8081"  # gRPC API for agent registration
-      - "8080:8080"  # Health check endpoint
+      - "18081:8081"  # gRPC API for agent registration (host 18081 -> container 8081)
+      - "18080:8080"  # Health check endpoint (host 18080 -> container 8080)
     command: ["-config", "/opt/spire/conf/server/server.conf"]
     healthcheck:
       test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck"]
