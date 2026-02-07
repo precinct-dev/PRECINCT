@@ -178,7 +178,10 @@ func New(cfg *Config) (*Gateway, error) {
 		// InsecureSkipVerify (acceptable for POC per ADR-001).
 		spikeRedeemer = middleware.NewSPIKENexusRedeemer(cfg.SPIKENexusURL, nil)
 	} else {
-		// Fallback to POC redeemer (Phase 1 behavior with deterministic mock secrets)
+		// Fallback to POC redeemer (Phase 1 behavior with deterministic mock secrets).
+		// NOTE (RFA-7ct): Without SPIKE Nexus, the POC redeemer does not populate
+		// OwnerID, so ValidateTokenOwnership will reject tokens with empty OwnerID.
+		// This is intentional - production deployments MUST configure SPIKE_NEXUS_URL.
 		spikeRedeemer = middleware.NewPOCSecretRedeemer()
 	}
 

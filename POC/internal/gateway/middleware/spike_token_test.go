@@ -134,6 +134,77 @@ func TestValidateTokenOwnership(t *testing.T) {
 	}
 }
 
+func TestValidateTokenOwnership_EmptyOwnerID(t *testing.T) {
+	// RFA-7ct: Tokens with empty OwnerID must be rejected.
+	// Previously, the POC auto-assigned OwnerID to the caller, allowing
+	// any agent to claim ownership of an unclaimed token.
+	tests := []struct {
+		name      string
+		token     *SPIKEToken
+		spiffeID  string
+		wantError error
+	}{
+		{
+			name: "reject empty OwnerID - prevents unauthorized claiming",
+			token: &SPIKEToken{
+				Ref:      "abc123",
+				Exp:      3600,
+				Scope:    "read",
+				OwnerID:  "", // Empty: simulates token without SPIKE Nexus pre-population
+				IssuedAt: time.Now().Unix(),
+			},
+			spiffeID:  "spiffe://poc.local/agent/attacker",
+			wantError: ErrEmptyOwnerID,
+		},
+		{
+			name: "reject empty OwnerID - even for legitimate agent",
+			token: &SPIKEToken{
+				Ref:      "def456",
+				Exp:      7200,
+				Scope:    "tools.docker.read",
+				OwnerID:  "", // Empty: must be rejected regardless of who calls
+				IssuedAt: time.Now().Unix(),
+			},
+			spiffeID:  "spiffe://poc.local/agent/legitimate-agent",
+			wantError: ErrEmptyOwnerID,
+		},
+		{
+			name: "accept token with pre-populated OwnerID matching caller",
+			token: &SPIKEToken{
+				Ref:      "abc123",
+				Exp:      3600,
+				Scope:    "read",
+				OwnerID:  "spiffe://poc.local/agent/legitimate-agent",
+				IssuedAt: time.Now().Unix(),
+			},
+			spiffeID:  "spiffe://poc.local/agent/legitimate-agent",
+			wantError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateTokenOwnership(tt.token, tt.spiffeID)
+			if tt.wantError != nil {
+				if err == nil {
+					t.Fatalf("ValidateTokenOwnership() = nil, want error %v", tt.wantError)
+				}
+				if !errors.Is(err, tt.wantError) {
+					t.Errorf("ValidateTokenOwnership() error = %v, want %v", err, tt.wantError)
+				}
+				// Verify OwnerID was NOT mutated (the old bug would set it)
+				if tt.token.OwnerID != "" {
+					t.Errorf("Token OwnerID was mutated to %q, should remain empty", tt.token.OwnerID)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ValidateTokenOwnership() error = %v, want nil", err)
+				}
+			}
+		})
+	}
+}
+
 func TestValidateTokenExpiry(t *testing.T) {
 	now := time.Now().Unix()
 

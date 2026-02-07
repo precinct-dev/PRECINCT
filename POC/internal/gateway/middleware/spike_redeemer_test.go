@@ -287,11 +287,12 @@ func TestNewSPIKENexusRedeemer_NilX509Source(t *testing.T) {
 // with a SPIKENexusRedeemer backed by a mock Nexus server. Proves the redeemer
 // is correctly wired into the middleware chain.
 func TestTokenSubstitutionWithSPIKERedeemer(t *testing.T) {
-	// Create mock SPIKE Nexus
+	// Create mock SPIKE Nexus that returns owner metadata (RFA-7ct)
 	nexusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		resp := spikeSecretResponse{
 			Data: map[string]string{
 				"value": "real-secret-from-nexus",
+				"owner": "spiffe://poc.local/agent/test-agent", // Nexus pre-assigns owner
 			},
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -343,7 +344,7 @@ func TestTokenSubstitutionWithSPIKERedeemer(t *testing.T) {
 // TestTokenSubstitutionFallbackToPOC verifies AC8: when SPIKE_NEXUS_URL is empty,
 // the POCSecretRedeemer is used (Phase 1 behavior preserved).
 func TestTokenSubstitutionFallbackToPOC(t *testing.T) {
-	pocRedeemer := NewPOCSecretRedeemer()
+	pocRedeemer := NewPOCSecretRedeemerWithOwner("spiffe://poc.local/agent/test-agent")
 
 	var upstreamBody string
 	echoHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
