@@ -314,7 +314,7 @@ func TestTokenSubstitutionWithSPIKERedeemer(t *testing.T) {
 	// Build middleware chain: BodyCapture -> SPIFFEAuth -> TokenSubstitution -> echo
 	chain := BodyCapture(
 		SPIFFEAuth(
-			TokenSubstitution(echoHandler, redeemer),
+			TokenSubstitution(echoHandler, redeemer, nil),
 			"dev",
 		),
 	)
@@ -355,7 +355,7 @@ func TestTokenSubstitutionFallbackToPOC(t *testing.T) {
 
 	chain := BodyCapture(
 		SPIFFEAuth(
-			TokenSubstitution(echoHandler, pocRedeemer),
+			TokenSubstitution(echoHandler, pocRedeemer, nil),
 			"dev",
 		),
 	)

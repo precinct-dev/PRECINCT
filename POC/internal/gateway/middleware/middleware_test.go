@@ -869,7 +869,7 @@ func TestTokenSubstitution(t *testing.T) {
 	handler := TokenSubstitution(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
-	}), NewPOCSecretRedeemer())
+	}), NewPOCSecretRedeemer(), nil)
 
 	req := httptest.NewRequest("POST", "/", nil)
 	// Add SPIFFE ID to context (required by TokenSubstitution middleware)

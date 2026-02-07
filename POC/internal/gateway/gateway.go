@@ -278,7 +278,7 @@ func (g *Gateway) Handler() http.Handler {
 	handler := http.Handler(proxyWithResponseFirewall)
 
 	// Apply middleware in reverse order (innermost first)
-	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer)                                                           // 13 - LAST before proxy
+	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor)                                               // 13 - LAST before proxy
 	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                   // 12
 	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                           // 11
 	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)                                                            // 10

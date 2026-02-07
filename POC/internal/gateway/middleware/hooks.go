@@ -12,11 +12,32 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+// logTokenEvent emits a structured audit event for token substitution.
+// If auditor is nil, the call is a no-op (safe for tests that don't
+// need audit infrastructure).
+func logTokenEvent(auditor *Auditor, ctx context.Context, r *http.Request, action, result string) {
+	if auditor == nil {
+		return
+	}
+	auditor.Log(AuditEvent{
+		SessionID:  GetSessionID(ctx),
+		DecisionID: GetDecisionID(ctx),
+		TraceID:    GetTraceID(ctx),
+		SPIFFEID:   GetSPIFFEID(ctx),
+		Action:     action,
+		Result:     result,
+		Method:     r.Method,
+		Path:       r.URL.Path,
+	})
+}
+
 // TokenSubstitution is the middleware that substitutes SPIKE tokens with actual secrets.
 // The redeemer parameter controls how tokens are resolved to secret values:
 // - SPIKENexusRedeemer: calls SPIKE Nexus via mTLS (production)
 // - POCSecretRedeemer: returns deterministic mock secrets (dev/test)
-func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler {
+// The auditor parameter enables structured audit logging; pass nil to disable
+// (safe for unit tests that don't need audit infrastructure).
+func TokenSubstitution(next http.Handler, redeemer SecretRedeemer, auditor *Auditor) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// RFA-m6j.2: Create OTel span for step 13
 		ctx, span := tracer.Start(r.Context(), "gateway.token_substitution",
@@ -78,8 +99,8 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			// Parse token
 			token, err := ParseSPIKEToken(tokenStr)
 			if err != nil {
-				// Log to stdout for POC (audit logging happens at higher middleware layer)
-				fmt.Printf("Token substitution failed: ref=%s, spiffe=%s, error=%v\n", tokenStr, spiffeID, err)
+				logTokenEvent(auditor, ctx, r, "token_substitution",
+					fmt.Sprintf("parse_failed ref=%s spiffe=%s error=%v", tokenStr, spiffeID, err))
 				span.SetAttributes(
 					attribute.Int("tokens_substituted", len(tokenMap)),
 					attribute.String("mcp.result", "denied"),
@@ -96,7 +117,8 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 
 			// Validate token expiry
 			if err := ValidateTokenExpiry(token); err != nil {
-				fmt.Printf("Token expired: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
+				logTokenEvent(auditor, ctx, r, "token_substitution",
+					fmt.Sprintf("token_expired ref=%s spiffe=%s error=%v", token.Ref, spiffeID, err))
 				span.SetAttributes(
 					attribute.Int("tokens_substituted", len(tokenMap)),
 					attribute.String("mcp.result", "denied"),
@@ -114,7 +136,8 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			// Validate token scope (for POC, we use a default scope)
 			// In production, scope would come from the request context or tool registry
 			if err := ValidateTokenScope(token, "tools", "docker", "read"); err != nil {
-				fmt.Printf("Token scope validation failed: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
+				logTokenEvent(auditor, ctx, r, "token_substitution",
+					fmt.Sprintf("scope_failed ref=%s spiffe=%s error=%v", token.Ref, spiffeID, err))
 				span.SetAttributes(
 					attribute.Int("tokens_substituted", len(tokenMap)),
 					attribute.String("mcp.result", "denied"),
@@ -136,7 +159,8 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			// server-assigned owner. See RFA-7ct.
 			secret, err := redeemer.RedeemSecret(ctx, token)
 			if err != nil {
-				fmt.Printf("Token redemption failed: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
+				logTokenEvent(auditor, ctx, r, "token_substitution",
+					fmt.Sprintf("redemption_failed ref=%s spiffe=%s error=%v", token.Ref, spiffeID, err))
 				span.SetAttributes(
 					attribute.Int("tokens_substituted", len(tokenMap)),
 					attribute.String("mcp.result", "denied"),
@@ -156,7 +180,8 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			// Reject if OwnerID is empty (SPIKE Nexus must pre-set it) or
 			// if it doesn't match the requesting agent's SPIFFE ID. See RFA-7ct.
 			if err := ValidateTokenOwnership(token, spiffeID); err != nil {
-				fmt.Printf("Token ownership validation failed: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
+				logTokenEvent(auditor, ctx, r, "token_substitution",
+					fmt.Sprintf("ownership_failed ref=%s spiffe=%s error=%v", token.Ref, spiffeID, err))
 				span.SetAttributes(
 					attribute.Int("tokens_substituted", len(tokenMap)),
 					attribute.String("mcp.result", "denied"),
@@ -175,7 +200,8 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 			tokenMap[tokenStr] = secret.Value
 
 			// Log successful substitution (without the secret value)
-			fmt.Printf("Token substitution succeeded: ref=%s, spiffe=%s\n", token.Ref, spiffeID)
+			logTokenEvent(auditor, ctx, r, "token_substitution",
+				fmt.Sprintf("substituted ref=%s spiffe=%s", token.Ref, spiffeID))
 		}
 
 		span.SetAttributes(
