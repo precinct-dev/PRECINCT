@@ -94,23 +94,6 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 				return
 			}
 
-			// Validate token ownership
-			if err := ValidateTokenOwnership(token, spiffeID); err != nil {
-				fmt.Printf("Token ownership validation failed: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
-				span.SetAttributes(
-					attribute.Int("tokens_substituted", len(tokenMap)),
-					attribute.String("mcp.result", "denied"),
-					attribute.String("mcp.reason", "token ownership failed"),
-				)
-				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
-					Code:           "token_ownership_failed",
-					Message:        fmt.Sprintf("Token ownership validation failed: %v", err),
-					Middleware:     "token_substitution",
-					MiddlewareStep: 13,
-				})
-				return
-			}
-
 			// Validate token expiry
 			if err := ValidateTokenExpiry(token); err != nil {
 				fmt.Printf("Token expired: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
@@ -146,7 +129,11 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 				return
 			}
 
-			// Redeem token for actual secret
+			// Redeem token for actual secret.
+			// The redeemer populates token.OwnerID from SPIKE Nexus metadata
+			// (or from POC simulation). This must happen BEFORE ownership
+			// validation so the gateway can verify the caller matches the
+			// server-assigned owner. See RFA-7ct.
 			secret, err := redeemer.RedeemSecret(ctx, token)
 			if err != nil {
 				fmt.Printf("Token redemption failed: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
@@ -158,6 +145,26 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 				WriteGatewayError(w, r.WithContext(ctx), http.StatusInternalServerError, GatewayError{
 					Code:           "token_redemption_failed",
 					Message:        fmt.Sprintf("Token redemption failed: %v", err),
+					Middleware:     "token_substitution",
+					MiddlewareStep: 13,
+				})
+				return
+			}
+
+			// Validate token ownership (defense-in-depth).
+			// After redemption, token.OwnerID is populated by the redeemer.
+			// Reject if OwnerID is empty (SPIKE Nexus must pre-set it) or
+			// if it doesn't match the requesting agent's SPIFFE ID. See RFA-7ct.
+			if err := ValidateTokenOwnership(token, spiffeID); err != nil {
+				fmt.Printf("Token ownership validation failed: ref=%s, spiffe=%s, error=%v\n", token.Ref, spiffeID, err)
+				span.SetAttributes(
+					attribute.Int("tokens_substituted", len(tokenMap)),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "token ownership failed"),
+				)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           "token_ownership_failed",
+					Message:        fmt.Sprintf("Token ownership validation failed: %v", err),
 					Middleware:     "token_substitution",
 					MiddlewareStep: 13,
 				})
@@ -189,17 +196,34 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer) http.Handler 
 	})
 }
 
-// POCSecretRedeemer is a POC implementation of SecretRedeemer
-// In production, this would make mTLS calls to SPIKE Nexus
-type POCSecretRedeemer struct{}
+// POCSecretRedeemer is a POC implementation of SecretRedeemer.
+// In production, this would make mTLS calls to SPIKE Nexus.
+// The POC redeemer simulates Nexus behavior by setting OwnerID
+// on the token from a configured owner SPIFFE ID (see RFA-7ct).
+type POCSecretRedeemer struct {
+	// ownerSPIFFEID is the SPIFFE ID that owns all tokens in POC mode.
+	// Simulates SPIKE Nexus returning the owner metadata at redemption.
+	// If empty, OwnerID is NOT set (reproducing the pre-RFA-7ct bug for testing).
+	ownerSPIFFEID string
+}
 
-// NewPOCSecretRedeemer creates a new POC secret redeemer
+// NewPOCSecretRedeemer creates a new POC secret redeemer that simulates
+// SPIKE Nexus returning owner metadata. The ownerSPIFFEID is set on
+// every redeemed token, matching production behavior where Nexus
+// populates OwnerID from its token issuance records.
 func NewPOCSecretRedeemer() *POCSecretRedeemer {
 	return &POCSecretRedeemer{}
 }
 
-// RedeemSecret redeems a SPIKE token for the actual secret value
-// POC implementation: returns a mock secret
+// NewPOCSecretRedeemerWithOwner creates a POC redeemer with a configured
+// owner SPIFFE ID. This simulates SPIKE Nexus behavior where every
+// token has a pre-assigned owner from issuance time.
+func NewPOCSecretRedeemerWithOwner(ownerSPIFFEID string) *POCSecretRedeemer {
+	return &POCSecretRedeemer{ownerSPIFFEID: ownerSPIFFEID}
+}
+
+// RedeemSecret redeems a SPIKE token for the actual secret value.
+// POC implementation: returns a mock secret and populates OwnerID.
 // Production: would make mTLS call to SPIKE Nexus at https://spike-nexus:8443/api/v1/redeem
 func (p *POCSecretRedeemer) RedeemSecret(ctx context.Context, token *SPIKEToken) (*SPIKESecret, error) {
 	// For POC, return a deterministic mock secret based on token ref
@@ -207,11 +231,17 @@ func (p *POCSecretRedeemer) RedeemSecret(ctx context.Context, token *SPIKEToken)
 	// 1. Make mTLS connection to SPIKE Nexus
 	// 2. POST to /api/v1/redeem with token ref
 	// 3. Verify mTLS certificate chain
-	// 4. Parse response and return secret
+	// 4. Parse response and return secret + owner metadata
 
 	// Set IssuedAt if not already set (for validation)
 	if token.IssuedAt == 0 {
 		token.IssuedAt = time.Now().Unix()
+	}
+
+	// Populate OwnerID from configured owner, simulating SPIKE Nexus
+	// returning the owner SPIFFE ID as part of token metadata (RFA-7ct).
+	if p.ownerSPIFFEID != "" {
+		token.OwnerID = p.ownerSPIFFEID
 	}
 
 	// Return mock secret

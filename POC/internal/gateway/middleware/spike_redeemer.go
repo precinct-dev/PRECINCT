@@ -149,6 +149,14 @@ func (s *SPIKENexusRedeemer) RedeemSecret(ctx context.Context, token *SPIKEToken
 		return nil, fmt.Errorf("SPIKE Nexus response missing 'value' in data")
 	}
 
+	// Populate token.OwnerID from Nexus response metadata (RFA-7ct).
+	// In production, SPIKE Nexus returns the owner SPIFFE ID that was
+	// assigned at token issuance time. The gateway uses this for
+	// defense-in-depth ownership validation after redemption.
+	if owner, ok := spikeResp.Data["owner"]; ok {
+		token.OwnerID = owner
+	}
+
 	return &SPIKESecret{
 		Value:     secretValue,
 		ExpiresAt: time.Now().Unix() + 3600, // Default 1 hour TTL
