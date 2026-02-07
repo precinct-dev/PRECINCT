@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/example/agentic-security-poc/internal/testutil"
 )
 
 // TestNewGateway verifies gateway initialization
@@ -19,10 +20,10 @@ func TestNewGateway(t *testing.T) {
 	cfg := &Config{
 		Port:                   9090,
 		UpstreamURL:            "http://localhost:8080",
-		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
 		AuditLogPath:           "", // Empty = stdout only
-		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024,
 		SPIFFEMode:             "dev",
 		LogLevel:               "info",
@@ -79,10 +80,10 @@ func TestNewGatewayInvalidURL(t *testing.T) {
 func TestHealthEndpoint(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            "http://localhost:8080",
-		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
 		AuditLogPath:           "", // Empty = stdout only
-		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024,
 		SPIFFEMode:             "dev",
 	}
@@ -266,10 +267,10 @@ func TestConfigFromEnv(t *testing.T) {
 func TestGatewayDevModePreservesPhase1Behavior(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            "http://localhost:8080",
-		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
 		AuditLogPath:           "",
-		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024,
 		SPIFFEMode:             "dev",
 	}
@@ -325,10 +326,10 @@ func TestMiddlewareChainIntegration(t *testing.T) {
 
 	cfg := &Config{
 		UpstreamURL:            upstream.URL,
-		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
 		AuditLogPath:           "", // Empty = stdout only
-		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
 		SPIFFEMode:             "dev",
 	}
@@ -376,10 +377,10 @@ func TestTokenSubstitutionOrderingInRealHandler(t *testing.T) {
 
 	cfg := &Config{
 		UpstreamURL:            upstream.URL,
-		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
 		AuditLogPath:           "",
-		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
 		SPIFFEMode:             "dev",
 	}
@@ -451,10 +452,10 @@ func newTestGatewayForProxyHandler(t *testing.T, upstreamHandler http.HandlerFun
 
 	cfg := &Config{
 		UpstreamURL:            upstream.URL,
-		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
 		AuditLogPath:           "",
-		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
 		SPIFFEMode:             "dev",
 		UI:                     uiConfig,
@@ -491,10 +492,10 @@ func newTestGatewayWithUIGating(t *testing.T, upstreamHandler http.HandlerFunc, 
 
 	cfg := &Config{
 		UpstreamURL:            upstream.URL,
-		OPAPolicyDir:           "../../config/opa",
-		ToolRegistryConfigPath: "../../config/tool-registry.yaml",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
 		AuditLogPath:           "",
-		OPAPolicyPath:          "../../config/opa/mcp_policy.rego",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
 		SPIFFEMode:             "dev",
 		UI:                     uiConfig,

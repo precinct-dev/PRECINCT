@@ -4,29 +4,17 @@
 package integration
 
 import (
-	"path/filepath"
 	"testing"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/example/agentic-security-poc/internal/testutil"
 )
-
-// pocBaseDir returns the absolute path to the POC directory by resolving the
-// relative path from the integration test directory. This makes the tests
-// portable across machines (RFA-2jl).
-func pocBaseDir(t *testing.T) string {
-	t.Helper()
-	absPath, err := filepath.Abs("../../")
-	if err != nil {
-		t.Fatalf("Failed to resolve POC base directory: %v", err)
-	}
-	return absPath
-}
 
 // TestEmbeddedOPAWithRealPolicies tests OPA engine with actual policy files
 func TestEmbeddedOPAWithRealPolicies(t *testing.T) {
 	// Use real policy directory
-	policyDir := "../../config/opa"
-	basePath := pocBaseDir(t)
+	policyDir := testutil.OPAPolicyDir()
+	basePath := testutil.ProjectRoot()
 
 	engine, err := middleware.NewOPAEngine(policyDir, middleware.OPAEngineConfig{
 		AllowedBasePath: basePath,
@@ -139,8 +127,8 @@ func TestEmbeddedOPAWithRealPolicies(t *testing.T) {
 
 // TestEmbeddedOPAPerformance tests performance with real policies
 func TestEmbeddedOPAPerformance(t *testing.T) {
-	policyDir := "../../config/opa"
-	basePath := pocBaseDir(t)
+	policyDir := testutil.OPAPolicyDir()
+	basePath := testutil.ProjectRoot()
 
 	engine, err := middleware.NewOPAEngine(policyDir, middleware.OPAEngineConfig{
 		AllowedBasePath: basePath,
