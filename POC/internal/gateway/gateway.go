@@ -40,6 +40,7 @@ type Gateway struct {
 	spikeRedeemer        middleware.SecretRedeemer        // RFA-a2y.1: SPIKE Nexus or POC secret redeemer
 	sessionStore         middleware.SessionStore          // RFA-hh5.1: session persistence store (InMemory or KeyDB)
 	spiffeTLS            *SPIFFETLSConfig                 // RFA-8z8.1: SPIFFE mTLS config (nil in dev mode)
+	registryStop         func()                           // RFA-dh9: stop function for registry fsnotify watcher
 }
 
 // New creates a new gateway instance
@@ -180,6 +181,14 @@ func New(cfg *Config) (*Gateway, error) {
 		spikeRedeemer = middleware.NewPOCSecretRedeemer()
 	}
 
+	// RFA-dh9: Start fsnotify watcher on tool registry YAML for hot-reload.
+	// The watcher runs in a background goroutine and reloads the registry
+	// atomically when the file changes. Stop function is stored for Close().
+	registryStop, err := registry.Watch()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start tool registry watcher: %w", err)
+	}
+
 	// RFA-m6j.3: Wrap the reverse proxy transport with trace context propagation.
 	// This injects traceparent/tracestate headers into every outbound request
 	// to the MCP server, enabling cross-service distributed tracing.
@@ -213,6 +222,7 @@ func New(cfg *Config) (*Gateway, error) {
 		uiResponseProcessor:  uiResponseProcessor,
 		spikeRedeemer:        spikeRedeemer,
 		sessionStore:         sessionStore,
+		registryStop:         registryStop,
 	}, nil
 }
 
@@ -613,6 +623,10 @@ func (g *Gateway) checkUIResourceReadAllowed(server, tenant, resourceURI string)
 
 // Close cleans up gateway resources
 func (g *Gateway) Close() error {
+	// RFA-dh9: Stop the registry file watcher
+	if g.registryStop != nil {
+		g.registryStop()
+	}
 	if g.handleStore != nil {
 		g.handleStore.Close()
 	}

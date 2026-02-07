@@ -1,10 +1,12 @@
-// Tool Registry Implementation - RFA-qq0.5, RFA-qq0.19, RFA-j2d.5
+// Tool Registry Implementation - RFA-qq0.5, RFA-qq0.19, RFA-j2d.5, RFA-dh9
 // Implements hash-based verification of MCP tools to detect poisoning attacks.
 // Loads tool definitions from config/tool-registry.yaml and verifies SHA-256 hashes.
 // RFA-qq0.19: Adds poisoning pattern detection using regex patterns to identify
 // malicious instructions embedded in tool descriptions.
 // RFA-j2d.5: Extends with UI resource registration and hash verification for ui:// content.
 // Hash mismatches on UI resources are treated as rug-pull attacks (critical severity).
+// RFA-dh9: Adds fsnotify-based hot-reload. Watch() starts a file watcher that
+// automatically reloads the registry YAML on file change without gateway restart.
 package middleware
 
 import (
@@ -12,12 +14,16 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/fsnotify/fsnotify"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"gopkg.in/yaml.v3"
@@ -154,9 +160,12 @@ type ToolRegistryConfig struct {
 
 // ToolRegistry manages tool verification with hash checking and UI resource verification.
 // RFA-j2d.5: Extended with uiResources map for UI resource hash verification.
+// RFA-dh9: Protected by sync.RWMutex for concurrent-safe reads during hot-reload.
 type ToolRegistry struct {
+	mu          sync.RWMutex
 	tools       map[string]ToolDefinition       // tool_name -> definition
 	uiResources map[string]RegisteredUIResource // "server|resourceURI" -> registration
+	configPath  string                          // path to YAML config file (for Watch)
 }
 
 // NewToolRegistry creates a new tool registry from a config file.
@@ -165,6 +174,7 @@ func NewToolRegistry(configPath string) (*ToolRegistry, error) {
 	registry := &ToolRegistry{
 		tools:       make(map[string]ToolDefinition),
 		uiResources: make(map[string]RegisteredUIResource),
+		configPath:  configPath,
 	}
 
 	// Load configuration from file
@@ -179,6 +189,8 @@ func NewToolRegistry(configPath string) (*ToolRegistry, error) {
 
 // loadConfig loads tool definitions and UI resource registrations from YAML config file.
 // RFA-j2d.5: Extended to load ui_resources section alongside tools.
+// RFA-dh9: Now performs atomic swap under write lock for hot-reload safety.
+// Caller must NOT hold tr.mu when calling this method.
 func (tr *ToolRegistry) loadConfig(configPath string) error {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
@@ -190,24 +202,127 @@ func (tr *ToolRegistry) loadConfig(configPath string) error {
 		return fmt.Errorf("failed to parse config file: %w", err)
 	}
 
-	// Load tools into map
+	// Build new maps outside the lock
+	newTools := make(map[string]ToolDefinition, len(config.Tools))
 	for _, tool := range config.Tools {
-		tr.tools[tool.Name] = tool
+		newTools[tool.Name] = tool
 	}
-
-	// RFA-j2d.5: Load UI resources into map, keyed by "server|resourceURI"
+	newUIResources := make(map[string]RegisteredUIResource, len(config.UIResources))
 	for _, res := range config.UIResources {
 		key := uiResourceKey(res.Server, res.ResourceURI)
-		tr.uiResources[key] = res
+		newUIResources[key] = res
 	}
 
+	// Atomic swap under write lock
+	tr.mu.Lock()
+	tr.tools = newTools
+	tr.uiResources = newUIResources
+	tr.mu.Unlock()
+
 	return nil
+}
+
+// ToolCount returns the number of registered tools. Useful for diagnostics and testing.
+func (tr *ToolRegistry) ToolCount() int {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
+	return len(tr.tools)
+}
+
+// Watch starts an fsnotify watcher on the registry YAML file. When the file
+// changes on disk, the registry is automatically reloaded (atomic swap via
+// sync.RWMutex). Returns a stop function that must be called for graceful
+// shutdown. If configPath is empty, Watch is a no-op and returns a no-op stop.
+//
+// RFA-dh9: Walking skeleton for registry hot-reload. No signature verification
+// is performed here (that is RFA-lo1.4).
+//
+// Debounce: editors often fire multiple fsnotify events for a single save
+// (write + chmod, rename + create). We debounce by waiting 100ms after the
+// last event before reloading.
+func (tr *ToolRegistry) Watch() (stop func(), err error) {
+	noop := func() {}
+
+	if tr.configPath == "" {
+		return noop, nil
+	}
+
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return noop, fmt.Errorf("failed to create fsnotify watcher: %w", err)
+	}
+
+	// Watch the directory containing the config file rather than the file itself.
+	// Many editors (vim, emacs, VS Code) use atomic save (rename + create) which
+	// removes the original inode. Watching the directory ensures we catch these
+	// rename-based writes. We filter events by filename inside the loop.
+	configDir := filepath.Dir(tr.configPath)
+	configBase := filepath.Base(tr.configPath)
+
+	if err := watcher.Add(configDir); err != nil {
+		_ = watcher.Close()
+		return noop, fmt.Errorf("failed to watch directory %s: %w", configDir, err)
+	}
+
+	log.Printf("[tool-registry] watching %s for changes", tr.configPath)
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var debounceTimer *time.Timer
+		for {
+			select {
+			case event, ok := <-watcher.Events:
+				if !ok {
+					return
+				}
+				// Filter: only react to the config file itself
+				if filepath.Base(event.Name) != configBase {
+					continue
+				}
+				// React to write and create events (create covers atomic-save via rename)
+				if event.Op&(fsnotify.Write|fsnotify.Create) == 0 {
+					continue
+				}
+				// Debounce: reset timer on each event, reload after 100ms of quiet
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				debounceTimer = time.AfterFunc(100*time.Millisecond, func() {
+					log.Printf("[tool-registry] file change detected: %s (op=%s), reloading", event.Name, event.Op)
+					if loadErr := tr.loadConfig(tr.configPath); loadErr != nil {
+						log.Printf("[tool-registry] reload failed, keeping old registry: %v", loadErr)
+					} else {
+						tr.mu.RLock()
+						toolCount := len(tr.tools)
+						uiCount := len(tr.uiResources)
+						tr.mu.RUnlock()
+						log.Printf("[tool-registry] reload successful: %d tools, %d ui_resources", toolCount, uiCount)
+					}
+				})
+			case watchErr, ok := <-watcher.Errors:
+				if !ok {
+					return
+				}
+				log.Printf("[tool-registry] watcher error: %v", watchErr)
+			}
+		}
+	}()
+
+	stopFn := func() {
+		_ = watcher.Close()
+		<-done // wait for goroutine to exit
+	}
+
+	return stopFn, nil
 }
 
 // VerifyTool checks if a tool is allowed and matches expected hash
 // Returns (allowed, reason/hash)
 func (tr *ToolRegistry) VerifyTool(toolName string, providedHash string) (bool, string) {
+	tr.mu.RLock()
 	toolDef, exists := tr.tools[toolName]
+	tr.mu.RUnlock()
 	if !exists {
 		return false, "tool_not_found"
 	}
@@ -223,8 +338,10 @@ func (tr *ToolRegistry) VerifyTool(toolName string, providedHash string) (bool, 
 // VerifyToolWithPoisoningCheck checks tool authorization, hash, and poisoning patterns (RFA-qq0.19)
 // Returns VerifyResult with action and alert level
 func (tr *ToolRegistry) VerifyToolWithPoisoningCheck(toolName string, providedHash string) VerifyResult {
-	// Check if tool exists
+	tr.mu.RLock()
 	toolDef, exists := tr.tools[toolName]
+	tr.mu.RUnlock()
+	// Check if tool exists
 	if !exists {
 		return VerifyResult{
 			Allowed:    false,
@@ -285,6 +402,8 @@ func containsPoisoningPattern(text string) string {
 
 // GetToolDefinition returns the tool definition for a given tool name
 func (tr *ToolRegistry) GetToolDefinition(toolName string) (ToolDefinition, bool) {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
 	toolDef, exists := tr.tools[toolName]
 	return toolDef, exists
 }
@@ -292,6 +411,8 @@ func (tr *ToolRegistry) GetToolDefinition(toolName string) (ToolDefinition, bool
 // GetUIResource returns the registered UI resource for a given server and resource URI.
 // RFA-j2d.5: Used for lookup during verification and by downstream middleware.
 func (tr *ToolRegistry) GetUIResource(server, resourceURI string) (RegisteredUIResource, bool) {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
 	key := uiResourceKey(server, resourceURI)
 	res, exists := tr.uiResources[key]
 	return res, exists
@@ -300,12 +421,16 @@ func (tr *ToolRegistry) GetUIResource(server, resourceURI string) (RegisteredUIR
 // UIResourceCount returns the number of registered UI resources.
 // Useful for diagnostics and testing.
 func (tr *ToolRegistry) UIResourceCount() int {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
 	return len(tr.uiResources)
 }
 
 // RegisterUIResource adds or updates a UI resource registration programmatically.
 // RFA-j2d.6: Used for test injection and dynamic registration workflows.
 func (tr *ToolRegistry) RegisterUIResource(res RegisteredUIResource) {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
 	key := uiResourceKey(res.Server, res.ResourceURI)
 	tr.uiResources[key] = res
 }
@@ -321,8 +446,10 @@ func (tr *ToolRegistry) RegisterUIResource(res RegisteredUIResource) {
 // The content parameter is the raw HTML/resource content read from the MCP server.
 // SHA-256 hash is computed over the content and compared against the registered baseline.
 func (tr *ToolRegistry) VerifyUIResource(server, resourceURI string, content []byte) VerifyResult {
+	tr.mu.RLock()
 	key := uiResourceKey(server, resourceURI)
 	registration, exists := tr.uiResources[key]
+	tr.mu.RUnlock()
 
 	// Check 1: Resource must be registered
 	if !exists {
