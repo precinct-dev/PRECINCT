@@ -1,14 +1,14 @@
 """
 Integration tests for PydanticAI Research Agent - RFA-qq0.8
+Updated for mcp-gateway-sdk refactoring (RFA-tj9.3)
 
 Tests verify:
 1. Agent produces a structured Pydantic model answer (GroundedAnswer)
 2. All tool calls go through gateway (audit events present)
 3. PydanticAI agent with structured Pydantic output models (not raw text)
-4. Gateway denial handling: HTTP 403 (policy denial) is handled gracefully
-5. Gateway denial handling: HTTP 503 (guard unavailable) is handled gracefully
-6. SPIFFE ID authentication works
-7. Pydantic model validation on output
+4. Gateway denial handling: denials are handled gracefully via GatewayError
+5. SPIFFE ID authentication works
+6. Pydantic model validation on output
 
 These tests run against the compose stack for integration tests, or
 against a mock gateway for unit tests.
@@ -27,11 +27,11 @@ import httpx
 import pytest
 from pydantic import ValidationError
 
-# Import the agent module
+# Import SDK types (replaces inline GatewayClient)
+from mcp_gateway_sdk import GatewayClient, GatewayError
+
+# Import agent-specific types
 from agent import (
-    GatewayClient,
-    GatewayDenial,
-    ToolCallResult,
     Citation,
     GroundedAnswer,
     AgentDeps,
@@ -53,7 +53,6 @@ PHOENIX_URL = os.environ.get("PHOENIX_URL", "http://localhost:6006")
 SPIFFE_ID_PYDANTIC = "spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev"
 
 # POC directory for file reads.
-# Defaults to the directory two levels above this test file (agents/pydantic_researcher/).
 POC_DIR = os.environ.get(
     "POC_DIR",
     str(pathlib.Path(__file__).resolve().parent.parent.parent),
@@ -69,7 +68,7 @@ POC_DIR = os.environ.get(
 def gateway_client():
     """Create a GatewayClient connected to the running gateway."""
     client = GatewayClient(
-        gateway_url=GATEWAY_URL,
+        url=GATEWAY_URL,
         spiffe_id=SPIFFE_ID_PYDANTIC,
     )
     yield client
@@ -123,8 +122,13 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({
-                "error": "policy_denied",
-                "reason": "tool_not_authorized",
+                "code": "authz_policy_denied",
+                "message": "OPA policy denied access to tool",
+                "middleware": "opa_authz",
+                "middleware_step": 3,
+                "decision_id": "dec-test-001",
+                "trace_id": "trace-test-001",
+                "remediation": "Request access via admin portal",
             }).encode())
             return
 
@@ -133,8 +137,12 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({
-                "error": "service_unavailable",
-                "reason": "guard_model_unavailable",
+                "code": "circuit_open",
+                "message": "Circuit breaker is open -- service unavailable",
+                "middleware": "circuit_breaker",
+                "middleware_step": 7,
+                "decision_id": "dec-test-002",
+                "trace_id": "trace-test-002",
             }).encode())
             return
 
@@ -316,71 +324,63 @@ class TestPydanticOutputModels:
 
 
 # ---------------------------------------------------------------------------
-# Unit tests: GatewayClient (same patterns as DSPy agent)
+# Unit tests: GatewayClient (using SDK)
 # ---------------------------------------------------------------------------
 
 
 class TestGatewayClient:
-    """Tests for the GatewayClient HTTP/denial handling logic."""
+    """Tests for the SDK GatewayClient HTTP/denial handling logic."""
 
-    def test_call_tool_success(self, mock_gateway):
+    def test_call_success(self, mock_gateway):
         """Verify successful tool call returns data."""
         url, handler = mock_gateway
         handler.response_mode = "normal"
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
-        result = client.call_tool("tavily_search", {"query": "test"})
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
+        result = client.call("tavily_search", query="test")
 
-        assert result.success is True
-        assert result.data is not None
-        assert "results" in result.data
-        assert result.denial is None
-        assert result.raw_status == 200
+        assert result is not None
+        assert "results" in result
         client.close()
 
-    def test_call_tool_403_denial(self, mock_gateway):
-        """Verify HTTP 403 (policy denial) is handled gracefully -- no crash,
-        no retry, clear error message."""
+    def test_call_403_denial(self, mock_gateway):
+        """Verify HTTP 403 (policy denial) raises GatewayError -- no crash,
+        no retry, clear error info."""
         url, handler = mock_gateway
         handler.response_mode = "deny_403"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
-        result = client.call_tool("tavily_search", {"query": "test"})
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
+        with pytest.raises(GatewayError) as exc_info:
+            client.call("tavily_search", query="test")
 
-        assert result.success is False
-        assert result.denial is not None
-        assert result.denial.status_code == 403
-        assert result.denial.retryable is False
-        assert "tool_not_authorized" in result.denial.reason
+        err = exc_info.value
+        assert err.http_status == 403
+        assert err.code == "authz_policy_denied"
+        assert err.middleware == "opa_authz"
         # 403 should NOT be retried -- only 1 call
         assert len(handler.call_log) == 1
         client.close()
 
-    def test_call_tool_503_denial_with_retry(self, mock_gateway):
+    def test_call_503_denial_with_retry(self, mock_gateway):
         """Verify HTTP 503 (guard unavailable) triggers retry with backoff."""
         url, handler = mock_gateway
         handler.response_mode = "deny_503"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
-        # Override retry config for faster test
-        import agent
-        original_retries = agent.MAX_503_RETRIES
-        original_backoff = agent.RETRY_BACKOFF_BASE
-        agent.MAX_503_RETRIES = 2
-        agent.RETRY_BACKOFF_BASE = 0.01  # Very fast for testing
+        client = GatewayClient(
+            url=url,
+            spiffe_id=SPIFFE_ID_PYDANTIC,
+            max_retries=2,
+            backoff_base=0.01,  # fast for testing
+        )
 
-        try:
-            result = client.call_tool("tavily_search", {"query": "test"})
-        finally:
-            agent.MAX_503_RETRIES = original_retries
-            agent.RETRY_BACKOFF_BASE = original_backoff
+        with pytest.raises(GatewayError) as exc_info:
+            client.call("tavily_search", query="test")
 
-        assert result.success is False
-        assert result.denial is not None
-        assert result.denial.status_code == 503
-        assert result.denial.retryable is True
+        err = exc_info.value
+        assert err.http_status == 503
+        assert err.code == "circuit_open"
         # Should have retried: 1 initial + 2 retries = 3 calls
         assert len(handler.call_log) == 3
         client.close()
@@ -391,24 +391,24 @@ class TestGatewayClient:
         handler.response_mode = "normal"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
-        client.call_tool("read", {"file_path": "/some/file"})
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
+        client.call("read", file_path="/some/file")
 
         assert len(handler.call_log) == 1
         assert handler.call_log[0]["spiffe_id"] == SPIFFE_ID_PYDANTIC
         client.close()
 
     def test_connection_error_handled(self):
-        """Verify connection errors don't crash the client."""
+        """Verify connection errors propagate as httpx.ConnectError."""
         client = GatewayClient(
-            gateway_url="http://127.0.0.1:1",  # Nothing listening
+            url="http://127.0.0.1:1",  # Nothing listening
             spiffe_id=SPIFFE_ID_PYDANTIC,
         )
-        result = client.call_tool("read", {"file_path": "/some/file"})
+        with pytest.raises(Exception) as exc_info:
+            client.call("read", file_path="/some/file")
 
-        assert result.success is False
-        assert "Connection" in result.error or "connect" in result.error.lower()
-        assert result.denial is None
+        # Should be a connection error (httpx.ConnectError)
+        assert "connect" in str(exc_info.value).lower() or "Connection" in str(exc_info.value)
         client.close()
 
 
@@ -422,18 +422,10 @@ class TestPydanticAIAgentStructure:
 
     def test_agent_has_structured_output_type(self):
         """Agent output_type is GroundedAnswer (not raw text)."""
-        # PydanticAI stores the output type; verify it is GroundedAnswer
-        # The agent's output type is set at construction time
         assert qa_agent is not None
-        # The agent was constructed with output_type=GroundedAnswer
-        # We verify this by checking the agent attributes
-        # PydanticAI agent stores output validators
-        # The key assertion: running the agent returns GroundedAnswer instances
 
     def test_agent_has_tools_registered(self):
         """Agent has tavily_search, file_read, list_reference_files tools."""
-        # PydanticAI agents store tool definitions
-        # We verify by checking the function references exist
         assert tavily_search is not None
         assert file_read is not None
         assert list_reference_files is not None
@@ -442,7 +434,7 @@ class TestPydanticAIAgentStructure:
         """Agent uses AgentDeps for dependency injection."""
         deps = AgentDeps(
             gateway=GatewayClient(
-                gateway_url="http://localhost:1", spiffe_id="test"
+                url="http://localhost:1", spiffe_id="test"
             ),
             question="test question",
             poc_dir="/test",
@@ -470,8 +462,8 @@ class TestMCPProtocol:
         handler.response_mode = "normal"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
-        client.call_tool("tavily_search", {"query": "test", "max_results": 3})
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
+        client.call("tavily_search", query="test", max_results=3)
 
         assert len(handler.call_log) == 1
         call = handler.call_log[0]
@@ -487,13 +479,13 @@ class TestMCPProtocol:
         handler.response_mode = "normal"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
 
         # Make multiple tool calls
-        client.call_tool("tavily_search", {"query": "test1"})
-        client.call_tool("read", {"file_path": "/test/file1.md"})
-        client.call_tool("tavily_search", {"query": "test2"})
-        client.call_tool("read", {"file_path": "/test/file2.md"})
+        client.call("tavily_search", query="test1")
+        client.call("read", file_path="/test/file1.md")
+        client.call("tavily_search", query="test2")
+        client.call("read", file_path="/test/file2.md")
 
         # All 4 calls should be logged at the gateway
         assert len(handler.call_log) == 4
@@ -517,24 +509,21 @@ class TestDenialGracefulDegradation:
     """Test that the agent degrades gracefully when tools are denied."""
 
     def test_gateway_client_handles_mixed_denials(self, mock_gateway):
-        """When tools are denied, client returns structured failure info
-        instead of crashing."""
+        """When tools are denied, client raises GatewayError instead of crashing."""
         url, handler = mock_gateway
         handler.response_mode = "deny_403"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
 
-        # Both tool types should fail gracefully
-        search_result = client.call_tool("tavily_search", {"query": "test"})
-        assert search_result.success is False
-        assert search_result.denial is not None
-        assert search_result.denial.status_code == 403
+        # Both tool types should raise GatewayError
+        with pytest.raises(GatewayError) as exc_info:
+            client.call("tavily_search", query="test")
+        assert exc_info.value.http_status == 403
 
-        read_result = client.call_tool("read", {"file_path": "/test.md"})
-        assert read_result.success is False
-        assert read_result.denial is not None
-        assert read_result.denial.status_code == 403
+        with pytest.raises(GatewayError) as exc_info:
+            client.call("read", file_path="/test.md")
+        assert exc_info.value.http_status == 403
 
         # All calls should have been logged with SPIFFE ID
         for call in handler.call_log:
@@ -542,32 +531,26 @@ class TestDenialGracefulDegradation:
 
         client.close()
 
-    def test_503_retry_exhaustion_returns_failure(self, mock_gateway):
-        """After exhausting 503 retries, client returns structured failure."""
+    def test_503_retry_exhaustion_raises_error(self, mock_gateway):
+        """After exhausting 503 retries, client raises GatewayError."""
         url, handler = mock_gateway
         handler.response_mode = "deny_503"
         handler.call_log = []
 
-        import agent
-        original_retries = agent.MAX_503_RETRIES
-        original_backoff = agent.RETRY_BACKOFF_BASE
-        agent.MAX_503_RETRIES = 1
-        agent.RETRY_BACKOFF_BASE = 0.01
+        client = GatewayClient(
+            url=url,
+            spiffe_id=SPIFFE_ID_PYDANTIC,
+            max_retries=1,
+            backoff_base=0.01,
+        )
 
-        try:
-            client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_PYDANTIC)
-            result = client.call_tool("read", {"file_path": "/test.md"})
+        with pytest.raises(GatewayError) as exc_info:
+            client.call("read", file_path="/test.md")
 
-            assert result.success is False
-            assert result.denial is not None
-            assert result.denial.status_code == 503
-            assert result.denial.retryable is True
-            # 1 initial + 1 retry = 2
-            assert len(handler.call_log) == 2
-            client.close()
-        finally:
-            agent.MAX_503_RETRIES = original_retries
-            agent.RETRY_BACKOFF_BASE = original_backoff
+        assert exc_info.value.http_status == 503
+        # 1 initial + 1 retry = 2
+        assert len(handler.call_log) == 2
+        client.close()
 
 
 # ---------------------------------------------------------------------------
@@ -618,14 +601,7 @@ class TestFormatAnswer:
 
 @pytest.mark.integration
 class TestGatewayIntegration:
-    """Integration tests that run against the actual compose stack.
-
-    These verify:
-    - Real tool calls through the gateway
-    - Audit events logged
-    - SPIFFE ID verification
-    - Denial handling with real OPA policy
-    """
+    """Integration tests that run against the actual compose stack."""
 
     def test_gateway_health(self, check_gateway_health):
         """Gateway health endpoint responds."""
@@ -634,115 +610,54 @@ class TestGatewayIntegration:
 
     def test_file_read_through_gateway(self, check_gateway_health):
         """Read a local file through the gateway successfully."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_PYDANTIC,
-        )
-        result = client.call_tool(
-            "read",
-            {"file_path": f"{POC_DIR}/docker-compose.yml"},
-        )
-        client.close()
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_PYDANTIC) as client:
+            result = client.call("read", file_path=f"{POC_DIR}/docker-compose.yml")
 
-        assert result.success is True, f"Failed: {result.error}"
-        assert result.data is not None
-        assert result.raw_status == 200
+        assert result is not None
 
     def test_tavily_search_through_gateway(self, check_gateway_health):
         """Execute a Tavily web search through the gateway."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_PYDANTIC,
-        )
-        result = client.call_tool(
-            "tavily_search",
-            {"query": "SPIFFE vs OAuth agent identity", "max_results": 2},
-        )
-        client.close()
-
-        # Tavily may or may not be configured -- we accept either success
-        # or a clean error (not a crash)
-        assert result.raw_status in (200, 403, 500, 502), (
-            f"Unexpected status: {result.raw_status}, error: {result.error}"
-        )
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_PYDANTIC) as client:
+            try:
+                result = client.call(
+                    "tavily_search",
+                    query="SPIFFE vs OAuth agent identity",
+                    max_results=2,
+                )
+                assert result is not None
+            except GatewayError:
+                # Tavily not configured -- acceptable
+                pass
 
     def test_denied_tool_through_gateway(self, check_gateway_health):
         """Verify that a tool the agent is NOT authorized for gets denied."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_PYDANTIC,
-        )
-        # bash requires step-up auth which the agent does not have
-        result = client.call_tool(
-            "bash",
-            {"command": "echo hello"},
-        )
-        client.close()
-
-        # Should be denied (403) because bash requires step-up
-        assert result.success is False, (
-            "bash should be denied for pydantic-researcher"
-        )
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_PYDANTIC) as client:
+            with pytest.raises(GatewayError):
+                client.call("bash", command="echo hello")
 
     def test_invalid_spiffe_id_rejected(self, check_gateway_health):
         """Verify that an invalid SPIFFE ID gets rejected."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id="not-a-valid-spiffe-id",
-        )
-        result = client.call_tool(
-            "read",
-            {"file_path": f"{POC_DIR}/docker-compose.yml"},
-        )
-        client.close()
-
-        assert result.success is False
-        assert result.raw_status == 401
+        with GatewayClient(url=GATEWAY_URL, spiffe_id="not-a-valid-spiffe-id") as client:
+            with pytest.raises(GatewayError) as exc_info:
+                client.call("read", file_path=f"{POC_DIR}/docker-compose.yml")
+        assert exc_info.value.http_status == 401
 
     def test_path_denied_outside_poc(self, check_gateway_health):
         """Verify reading files outside POC directory is denied."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_PYDANTIC,
-        )
-        result = client.call_tool(
-            "read",
-            {"file_path": "/etc/passwd"},
-        )
-        client.close()
-
-        # Should be denied by OPA path policy
-        assert result.success is False
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_PYDANTIC) as client:
+            with pytest.raises(GatewayError):
+                client.call("read", file_path="/etc/passwd")
 
     def test_audit_events_logged(self, check_gateway_health):
-        """Verify gateway logs audit events for tool calls.
-
-        After making a tool call, check that the gateway container logs
-        show an audit event with the correct SPIFFE ID.
-        """
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_PYDANTIC,
-        )
-        client.call_tool(
-            "read",
-            {"file_path": f"{POC_DIR}/Makefile"},
-        )
-        client.close()
-
-        # The audit log verification would check gateway logs.
-        # For this test we verify the call completed without errors.
-        # (audit log verification is done externally by examining
-        # docker compose logs mcp-security-gateway)
+        """Verify gateway logs audit events for tool calls."""
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_PYDANTIC) as client:
+            client.call("read", file_path=f"{POC_DIR}/Makefile")
         assert True  # If we got here, the call went through the gateway
 
 
 @pytest.mark.integration
 class TestPhoenixTracing:
-    """Integration tests for Phoenix observability.
-
-    Requires Phoenix running at http://localhost:6006.
-    """
+    """Integration tests for Phoenix observability."""
 
     def test_phoenix_health(self, check_gateway_health):
         """Phoenix UI is reachable."""

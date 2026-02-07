@@ -1,13 +1,13 @@
 """
 Integration tests for DSPy Research Agent - RFA-qq0.7
+Updated for mcp-gateway-sdk refactoring (RFA-tj9.3)
 
 Tests verify:
 1. Agent produces a research report (end-to-end via compose stack)
 2. All tool calls go through gateway (audit events present)
-3. Gateway denial handling: HTTP 403 (policy denial) is handled gracefully
-4. Gateway denial handling: HTTP 503 (guard unavailable) is handled gracefully
-5. SPIFFE ID authentication works
-6. DSPy Signatures and Modules are used (not raw LLM calls)
+3. Gateway denial handling: denials are handled gracefully via GatewayError
+4. SPIFFE ID authentication works
+5. DSPy Signatures and Modules are used (not raw LLM calls)
 
 These tests run against the compose stack. They require:
 - docker compose stack running (make up)
@@ -22,18 +22,17 @@ import json
 import logging
 import os
 import pathlib
-import re
-import time
-from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
 import httpx
 import pytest
 
-# Import the agent module
+# Import SDK types (replaces inline GatewayClient)
+from mcp_gateway_sdk import GatewayClient, GatewayError
+
+# Import agent-specific types
 from agent import (
-    GatewayClient,
-    GatewayDenial,
     GatewayWebSearch,
     GatewayFileRead,
     ResearchAgent,
@@ -41,7 +40,6 @@ from agent import (
     SearchSynthesis,
     FileSynthesis,
     ReportSynthesis,
-    ToolCallResult,
     format_report,
     run_research,
     SPIFFE_ID,
@@ -57,7 +55,6 @@ PHOENIX_URL = os.environ.get("PHOENIX_URL", "http://localhost:6006")
 SPIFFE_ID_DSPY = "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 
 # POC directory for file reads.
-# Defaults to the directory two levels above this test file (agents/dspy_researcher/).
 POC_DIR = os.environ.get(
     "POC_DIR",
     str(pathlib.Path(__file__).resolve().parent.parent.parent),
@@ -73,7 +70,7 @@ POC_DIR = os.environ.get(
 def gateway_client():
     """Create a GatewayClient connected to the running gateway."""
     client = GatewayClient(
-        gateway_url=GATEWAY_URL,
+        url=GATEWAY_URL,
         spiffe_id=SPIFFE_ID_DSPY,
     )
     yield client
@@ -127,8 +124,13 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({
-                "error": "policy_denied",
-                "reason": "tool_not_authorized",
+                "code": "authz_policy_denied",
+                "message": "OPA policy denied access to tool",
+                "middleware": "opa_authz",
+                "middleware_step": 3,
+                "decision_id": "dec-test-001",
+                "trace_id": "trace-test-001",
+                "remediation": "Request access via admin portal",
             }).encode())
             return
 
@@ -137,8 +139,12 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps({
-                "error": "service_unavailable",
-                "reason": "guard_model_unavailable",
+                "code": "circuit_open",
+                "message": "Circuit breaker is open -- service unavailable",
+                "middleware": "circuit_breaker",
+                "middleware_step": 7,
+                "decision_id": "dec-test-002",
+                "trace_id": "trace-test-002",
             }).encode())
             return
 
@@ -205,66 +211,57 @@ def mock_gateway():
 
 
 class TestGatewayClient:
-    """Tests for the GatewayClient HTTP/denial handling logic."""
+    """Tests for the SDK GatewayClient HTTP/denial handling logic."""
 
-    def test_call_tool_success(self, mock_gateway):
+    def test_call_success(self, mock_gateway):
         """Verify successful tool call returns data."""
         url, handler = mock_gateway
         handler.response_mode = "normal"
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
-        result = client.call_tool("tavily_search", {"query": "test"})
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
+        result = client.call("tavily_search", query="test")
 
-        assert result.success is True
-        assert result.data is not None
-        assert "results" in result.data
-        assert result.denial is None
-        assert result.raw_status == 200
+        assert result is not None
+        assert "results" in result
         client.close()
 
-    def test_call_tool_403_denial(self, mock_gateway):
-        """Verify HTTP 403 (policy denial) is handled gracefully -- no crash,
-        no retry, clear error message."""
+    def test_call_403_denial(self, mock_gateway):
+        """Verify HTTP 403 (policy denial) raises GatewayError -- no crash,
+        no retry, clear error info."""
         url, handler = mock_gateway
         handler.response_mode = "deny_403"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
-        result = client.call_tool("tavily_search", {"query": "test"})
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
+        with pytest.raises(GatewayError) as exc_info:
+            client.call("tavily_search", query="test")
 
-        assert result.success is False
-        assert result.denial is not None
-        assert result.denial.status_code == 403
-        assert result.denial.retryable is False
-        assert "tool_not_authorized" in result.denial.reason
+        err = exc_info.value
+        assert err.http_status == 403
+        assert err.code == "authz_policy_denied"
         # 403 should NOT be retried -- only 1 call
         assert len(handler.call_log) == 1
         client.close()
 
-    def test_call_tool_503_denial_with_retry(self, mock_gateway):
+    def test_call_503_denial_with_retry(self, mock_gateway):
         """Verify HTTP 503 (guard unavailable) triggers retry with backoff."""
         url, handler = mock_gateway
         handler.response_mode = "deny_503"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
-        # Override retry config for faster test
-        import agent
-        original_retries = agent.MAX_503_RETRIES
-        original_backoff = agent.RETRY_BACKOFF_BASE
-        agent.MAX_503_RETRIES = 2
-        agent.RETRY_BACKOFF_BASE = 0.01  # Very fast for testing
+        client = GatewayClient(
+            url=url,
+            spiffe_id=SPIFFE_ID_DSPY,
+            max_retries=2,
+            backoff_base=0.01,  # fast for testing
+        )
 
-        try:
-            result = client.call_tool("tavily_search", {"query": "test"})
-        finally:
-            agent.MAX_503_RETRIES = original_retries
-            agent.RETRY_BACKOFF_BASE = original_backoff
+        with pytest.raises(GatewayError) as exc_info:
+            client.call("tavily_search", query="test")
 
-        assert result.success is False
-        assert result.denial is not None
-        assert result.denial.status_code == 503
-        assert result.denial.retryable is True
+        err = exc_info.value
+        assert err.http_status == 503
+        assert err.code == "circuit_open"
         # Should have retried: 1 initial + 2 retries = 3 calls
         assert len(handler.call_log) == 3
         client.close()
@@ -275,24 +272,23 @@ class TestGatewayClient:
         handler.response_mode = "normal"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
-        client.call_tool("read", {"file_path": "/some/file"})
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client.call("read", file_path="/some/file")
 
         assert len(handler.call_log) == 1
         assert handler.call_log[0]["spiffe_id"] == SPIFFE_ID_DSPY
         client.close()
 
     def test_connection_error_handled(self):
-        """Verify connection errors don't crash the client."""
+        """Verify connection errors propagate as httpx.ConnectError."""
         client = GatewayClient(
-            gateway_url="http://127.0.0.1:1",  # Nothing listening
+            url="http://127.0.0.1:1",  # Nothing listening
             spiffe_id=SPIFFE_ID_DSPY,
         )
-        result = client.call_tool("read", {"file_path": "/some/file"})
+        with pytest.raises(Exception) as exc_info:
+            client.call("read", file_path="/some/file")
 
-        assert result.success is False
-        assert "Connection" in result.error or "connect" in result.error.lower()
-        assert result.denial is None
+        assert "connect" in str(exc_info.value).lower() or "Connection" in str(exc_info.value)
         client.close()
 
 
@@ -303,7 +299,7 @@ class TestGatewayWebSearch:
         url, handler = mock_gateway
         handler.response_mode = "normal"
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
         search_module = GatewayWebSearch(client)
         result = search_module(query="prompt injection")
 
@@ -316,12 +312,13 @@ class TestGatewayWebSearch:
         url, handler = mock_gateway
         handler.response_mode = "deny_403"
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
         search_module = GatewayWebSearch(client)
         result = search_module(query="prompt injection")
 
         assert result.success is False
-        assert "Denial" in result.error or "denied" in result.error.lower()
+        assert result.error is not None
+        assert "authz_policy_denied" in result.error
         client.close()
 
 
@@ -332,7 +329,7 @@ class TestGatewayFileRead:
         url, handler = mock_gateway
         handler.response_mode = "normal"
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
         file_module = GatewayFileRead(client)
         result = file_module(file_path="/some/file.md")
 
@@ -345,12 +342,13 @@ class TestGatewayFileRead:
         url, handler = mock_gateway
         handler.response_mode = "deny_403"
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
         file_module = GatewayFileRead(client)
         result = file_module(file_path="/some/file.md")
 
         assert result.success is False
-        assert "Denial" in result.error or "denied" in result.error.lower()
+        assert result.error is not None
+        assert "authz_policy_denied" in result.error
         client.close()
 
 
@@ -360,9 +358,7 @@ class TestDSPySignatures:
     def test_research_plan_signature(self):
         """ResearchPlan has correct input/output fields."""
         sig = ResearchPlan
-        # Check input fields
         assert "topic" in sig.input_fields
-        # Check output fields
         assert "search_queries" in sig.output_fields
         assert "local_files" in sig.output_fields
         assert "rationale" in sig.output_fields
@@ -397,10 +393,9 @@ class TestResearchAgentStructure:
     def test_agent_uses_dspy_modules(self, mock_gateway):
         """ResearchAgent uses ChainOfThought modules, not raw calls."""
         url, _ = mock_gateway
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
         agent = ResearchAgent(client)
 
-        # Verify all sub-modules are DSPy modules
         assert isinstance(agent.planner, dspy.ChainOfThought)
         assert isinstance(agent.search_synth, dspy.ChainOfThought)
         assert isinstance(agent.file_synth, dspy.ChainOfThought)
@@ -412,7 +407,7 @@ class TestResearchAgentStructure:
     def test_agent_is_dspy_module(self, mock_gateway):
         """ResearchAgent itself is a dspy.Module."""
         url, _ = mock_gateway
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
         agent = ResearchAgent(client)
         assert isinstance(agent, dspy.Module)
         client.close()
@@ -422,19 +417,13 @@ class TestDenialGracefulDegradation:
     """Test that the agent degrades gracefully when tools are denied."""
 
     def test_agent_handles_mixed_denials(self, mock_gateway):
-        """When some tools are denied, agent still produces output.
-
-        This test uses the mock gateway that starts in 'normal' mode for
-        the planning LLM calls, then switches to 'deny_403' mid-flow.
-        Since tool calls go to the mock gateway, we test the data flow.
-        """
+        """When tools are denied, DSPy modules return failure prediction."""
         url, handler = mock_gateway
         handler.response_mode = "deny_403"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
 
-        # Test individual tool modules handle denials
         search = GatewayWebSearch(client)
         result = search(query="test query")
         assert result.success is False
@@ -461,15 +450,15 @@ class TestMCPProtocol:
         handler.response_mode = "normal"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
-        client.call_tool("tavily_search", {"query": "test", "max_results": 3})
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client.call("tavily_search", query="test", max_results=3)
 
         assert len(handler.call_log) == 1
         call = handler.call_log[0]
         assert call["method"] == "tavily_search"
         assert call["params"]["query"] == "test"
         assert call["params"]["max_results"] == 3
-        assert call["id"] is not None  # JSON-RPC id present
+        assert call["id"] is not None
         client.close()
 
     def test_tool_calls_all_go_through_gateway(self, mock_gateway):
@@ -478,21 +467,18 @@ class TestMCPProtocol:
         handler.response_mode = "normal"
         handler.call_log = []
 
-        client = GatewayClient(gateway_url=url, spiffe_id=SPIFFE_ID_DSPY)
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID_DSPY)
 
-        # Make multiple tool calls
-        client.call_tool("tavily_search", {"query": "test1"})
-        client.call_tool("read", {"file_path": "/test/file1.md"})
-        client.call_tool("tavily_search", {"query": "test2"})
-        client.call_tool("read", {"file_path": "/test/file2.md"})
+        client.call("tavily_search", query="test1")
+        client.call("read", file_path="/test/file1.md")
+        client.call("tavily_search", query="test2")
+        client.call("read", file_path="/test/file2.md")
 
-        # All 4 calls should be logged at the gateway
         assert len(handler.call_log) == 4
         methods = [c["method"] for c in handler.call_log]
         assert methods.count("tavily_search") == 2
         assert methods.count("read") == 2
 
-        # Every call has SPIFFE ID
         for call in handler.call_log:
             assert call["spiffe_id"] == SPIFFE_ID_DSPY
 
@@ -535,14 +521,7 @@ class TestFormatReport:
 
 @pytest.mark.integration
 class TestGatewayIntegration:
-    """Integration tests that run against the actual compose stack.
-
-    These verify:
-    - Real tool calls through the gateway
-    - Audit events logged
-    - SPIFFE ID verification
-    - Denial handling with real OPA policy
-    """
+    """Integration tests that run against the actual compose stack."""
 
     def test_gateway_health(self, check_gateway_health):
         """Gateway health endpoint responds."""
@@ -551,118 +530,54 @@ class TestGatewayIntegration:
 
     def test_file_read_through_gateway(self, check_gateway_health):
         """Read a local file through the gateway successfully."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_DSPY,
-        )
-        result = client.call_tool(
-            "read",
-            {"file_path": f"{POC_DIR}/docker-compose.yml"},
-        )
-        client.close()
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
+            result = client.call("read", file_path=f"{POC_DIR}/docker-compose.yml")
 
-        assert result.success is True, f"Failed: {result.error}"
-        assert result.data is not None
-        assert result.raw_status == 200
+        assert result is not None
 
     def test_tavily_search_through_gateway(self, check_gateway_health):
         """Execute a Tavily web search through the gateway."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_DSPY,
-        )
-        result = client.call_tool(
-            "tavily_search",
-            {"query": "prompt injection defenses", "max_results": 2},
-        )
-        client.close()
-
-        # Tavily may or may not be configured -- we accept either success
-        # or a clean error (not a crash)
-        assert result.raw_status in (200, 403, 500, 502), (
-            f"Unexpected status: {result.raw_status}, error: {result.error}"
-        )
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
+            try:
+                result = client.call(
+                    "tavily_search",
+                    query="prompt injection defenses",
+                    max_results=2,
+                )
+                assert result is not None
+            except GatewayError:
+                # Tavily not configured -- acceptable
+                pass
 
     def test_denied_tool_through_gateway(self, check_gateway_health):
         """Verify that a tool the agent is NOT authorized for gets denied."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_DSPY,
-        )
-        # bash requires step-up auth which the agent does not have
-        result = client.call_tool(
-            "bash",
-            {"command": "echo hello"},
-        )
-        client.close()
-
-        # Should be denied (403) because bash requires step-up
-        # The exact mechanism depends on OPA config
-        assert result.success is False, (
-            "bash should be denied for dspy-researcher"
-        )
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
+            with pytest.raises(GatewayError):
+                client.call("bash", command="echo hello")
 
     def test_invalid_spiffe_id_rejected(self, check_gateway_health):
         """Verify that an invalid SPIFFE ID gets rejected."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id="not-a-valid-spiffe-id",
-        )
-        result = client.call_tool(
-            "read",
-            {"file_path": f"{POC_DIR}/docker-compose.yml"},
-        )
-        client.close()
-
-        assert result.success is False
-        assert result.raw_status == 401
+        with GatewayClient(url=GATEWAY_URL, spiffe_id="not-a-valid-spiffe-id") as client:
+            with pytest.raises(GatewayError) as exc_info:
+                client.call("read", file_path=f"{POC_DIR}/docker-compose.yml")
+        assert exc_info.value.http_status == 401
 
     def test_path_denied_outside_poc(self, check_gateway_health):
         """Verify reading files outside POC directory is denied."""
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_DSPY,
-        )
-        result = client.call_tool(
-            "read",
-            {"file_path": "/etc/passwd"},
-        )
-        client.close()
-
-        # Should be denied by OPA path policy
-        assert result.success is False
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
+            with pytest.raises(GatewayError):
+                client.call("read", file_path="/etc/passwd")
 
     def test_audit_events_logged(self, check_gateway_health):
-        """Verify gateway logs audit events for tool calls.
-
-        After making a tool call, check that the gateway container logs
-        show an audit event with the correct SPIFFE ID.
-        """
-        # Make a tool call first
-        client = GatewayClient(
-            gateway_url=GATEWAY_URL,
-            spiffe_id=SPIFFE_ID_DSPY,
-        )
-        client.call_tool(
-            "read",
-            {"file_path": f"{POC_DIR}/Makefile"},
-        )
-        client.close()
-
-        # The audit log verification would check gateway logs.
-        # For this test we verify the call completed without errors
-        # (audit log verification is done externally by examining
-        # docker compose logs mcp-security-gateway)
-        # This test primarily proves the tool call path works.
-        assert True  # If we got here, the call went through the gateway
+        """Verify gateway logs audit events for tool calls."""
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
+            client.call("read", file_path=f"{POC_DIR}/Makefile")
+        assert True
 
 
 @pytest.mark.integration
 class TestPhoenixTracing:
-    """Integration tests for Phoenix observability.
-
-    Requires Phoenix running at http://localhost:6006.
-    """
+    """Integration tests for Phoenix observability."""
 
     def test_phoenix_health(self, check_gateway_health):
         """Phoenix UI is reachable."""
