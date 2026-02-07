@@ -30,6 +30,7 @@ tools:
       - "*.tavily.com"
     risk_level: "medium"
     requires_step_up: false
+    required_scope: "tools.tavily.search"  # RFA-0gr: dynamic scope for SPIKE tokens
 
   # Read - File system read operations
   - name: "read"
@@ -52,6 +53,7 @@ tools:
       - "${ALLOWED_BASE_PATH}/**"
     risk_level: "low"
     requires_step_up: false
+    required_scope: "tools.filesystem.read"  # RFA-0gr: dynamic scope for SPIKE tokens
 
   # Grep - Content search
   - name: "grep"
@@ -77,6 +79,7 @@ tools:
       - "${ALLOWED_BASE_PATH}/**"
     risk_level: "low"
     requires_step_up: false
+    required_scope: "tools.filesystem.read"  # RFA-0gr: dynamic scope for SPIKE tokens
 
   # Bash - Shell command execution (HIGH RISK)
   - name: "bash"
@@ -97,6 +100,7 @@ tools:
           description: "Run command in background"
     risk_level: "critical"
     requires_step_up: true  # MUST have step-up authentication
+    required_scope: "tools.shell.execute"  # RFA-0gr: dynamic scope for SPIKE tokens
     allowed_paths:
       - "${ALLOWED_BASE_PATH}/**"
 
@@ -123,6 +127,7 @@ tools:
       - "*.s3.*.amazonaws.com"
     risk_level: "low"
     requires_step_up: false
+    required_scope: "tools.s3.list"  # RFA-0gr: dynamic scope for SPIKE tokens
 
   # S3 Get Object - S3 object read (RFA-9fv.5)
   - name: "s3_get_object"
@@ -143,6 +148,7 @@ tools:
       - "*.s3.*.amazonaws.com"
     risk_level: "low"
     requires_step_up: false
+    required_scope: "tools.s3.read"  # RFA-0gr: dynamic scope for SPIKE tokens
 
 # Hash computation reference:
 # For each tool, the hash is computed as:

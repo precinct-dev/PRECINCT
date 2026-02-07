@@ -119,7 +119,7 @@ allow { input.tool == "tools/list" }
 	handler := ResponseFirewall(terminal, registry, handleStore, 300)
 
 	// Apply middleware in reverse order (innermost first) -- same as gateway.go
-	handler = TokenSubstitution(handler, spikeRedeemer, auditor)                                    // 13
+	handler = TokenSubstitution(handler, spikeRedeemer, auditor, nil)                                 // 13
 	handler = CircuitBreakerMiddleware(handler, circuitBreaker)                            // 12
 	handler = RateLimitMiddleware(handler, rateLimiter)                                    // 11
 	handler = DeepScanMiddleware(handler, deepScanner)                                     // 10
@@ -513,7 +513,7 @@ allow { input.tool == "file_read" }
 	})
 
 	handler := ResponseFirewall(terminal, registry, handleStore, 300)
-	handler = TokenSubstitution(handler, spikeRedeemer, auditor)
+	handler = TokenSubstitution(handler, spikeRedeemer, auditor, nil)
 	handler = CircuitBreakerMiddleware(handler, circuitBreaker)
 	handler = RateLimitMiddleware(handler, rateLimiter)
 	handler = DeepScanMiddleware(handler, deepScanner)
@@ -726,7 +726,7 @@ allow { input.tool == "file_read" }
 	})
 
 	fullHandler := ResponseFirewall(terminal, registry, hs, 300)
-	fullHandler = TokenSubstitution(fullHandler, spikeRedeemer, auditor)
+	fullHandler = TokenSubstitution(fullHandler, spikeRedeemer, auditor, nil)
 	fullHandler = CircuitBreakerMiddleware(fullHandler, circuitBreaker)
 	fullHandler = RateLimitMiddleware(fullHandler, rateLimiter)
 	fullHandler = DeepScanMiddleware(fullHandler, deepScanner)
