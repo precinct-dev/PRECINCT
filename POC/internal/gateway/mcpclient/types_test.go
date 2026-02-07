@@ -199,3 +199,136 @@ func TestInitializeParams_Serialization(t *testing.T) {
 		t.Errorf("Expected clientInfo.name=mcp-security-gateway, got %v", clientInfo["name"])
 	}
 }
+
+// --- RFA-8rd: New type tests ---
+
+func TestClientCapabilities_WithRoots(t *testing.T) {
+	caps := ClientCapabilities{
+		Roots: &RootsCapability{ListChanged: true},
+	}
+
+	data, err := json.Marshal(caps)
+	if err != nil {
+		t.Fatalf("Failed to marshal: %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	roots, ok := decoded["roots"].(map[string]interface{})
+	if !ok {
+		t.Fatal("Expected roots in capabilities")
+	}
+	if listChanged, ok := roots["listChanged"].(bool); !ok || !listChanged {
+		t.Error("Expected roots.listChanged=true")
+	}
+}
+
+func TestClientCapabilities_EmptyOmitsFields(t *testing.T) {
+	caps := ClientCapabilities{}
+
+	data, err := json.Marshal(caps)
+	if err != nil {
+		t.Fatalf("Failed to marshal: %v", err)
+	}
+
+	var decoded map[string]interface{}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	if _, has := decoded["roots"]; has {
+		t.Error("Expected roots to be omitted when nil")
+	}
+	if _, has := decoded["sampling"]; has {
+		t.Error("Expected sampling to be omitted when nil")
+	}
+}
+
+func TestServerCapabilities_Deserialization(t *testing.T) {
+	raw := `{"tools":{"listChanged":true},"resources":{"subscribe":true,"listChanged":false},"prompts":{"listChanged":true},"logging":{}}`
+
+	var caps ServerCapabilities
+	if err := json.Unmarshal([]byte(raw), &caps); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	if caps.Tools == nil {
+		t.Fatal("Expected non-nil tools capability")
+	}
+	if !caps.Tools.ListChanged {
+		t.Error("Expected tools.listChanged=true")
+	}
+
+	if caps.Resources == nil {
+		t.Fatal("Expected non-nil resources capability")
+	}
+	if !caps.Resources.Subscribe {
+		t.Error("Expected resources.subscribe=true")
+	}
+	if caps.Resources.ListChanged {
+		t.Error("Expected resources.listChanged=false")
+	}
+
+	if caps.Prompts == nil {
+		t.Fatal("Expected non-nil prompts capability")
+	}
+	if !caps.Prompts.ListChanged {
+		t.Error("Expected prompts.listChanged=true")
+	}
+
+	if caps.Logging == nil {
+		t.Fatal("Expected non-nil logging capability")
+	}
+}
+
+func TestInitializeResult_Deserialization(t *testing.T) {
+	raw := `{"protocolVersion":"2025-03-26","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"test-server","version":"2.0"}}`
+
+	var result InitializeResult
+	if err := json.Unmarshal([]byte(raw), &result); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	if result.ProtocolVersion != "2025-03-26" {
+		t.Errorf("Expected protocolVersion=2025-03-26, got %s", result.ProtocolVersion)
+	}
+	if result.ServerInfo.Name != "test-server" {
+		t.Errorf("Expected serverInfo.name=test-server, got %s", result.ServerInfo.Name)
+	}
+	if result.ServerInfo.Version != "2.0" {
+		t.Errorf("Expected serverInfo.version=2.0, got %s", result.ServerInfo.Version)
+	}
+	if result.Capabilities.Tools == nil {
+		t.Fatal("Expected tools capability")
+	}
+	if !result.Capabilities.Tools.ListChanged {
+		t.Error("Expected tools.listChanged=true")
+	}
+}
+
+func TestSessionState_Values(t *testing.T) {
+	// Verify the enum values are distinct
+	if SessionUninitialized == SessionActive {
+		t.Error("SessionUninitialized should not equal SessionActive")
+	}
+	if SessionActive == SessionExpired {
+		t.Error("SessionActive should not equal SessionExpired")
+	}
+	if SessionUninitialized == SessionExpired {
+		t.Error("SessionUninitialized should not equal SessionExpired")
+	}
+
+	// Verify iota ordering
+	if SessionUninitialized != 0 {
+		t.Errorf("Expected SessionUninitialized=0, got %d", SessionUninitialized)
+	}
+	if SessionActive != 1 {
+		t.Errorf("Expected SessionActive=1, got %d", SessionActive)
+	}
+	if SessionExpired != 2 {
+		t.Errorf("Expected SessionExpired=2, got %d", SessionExpired)
+	}
+}
