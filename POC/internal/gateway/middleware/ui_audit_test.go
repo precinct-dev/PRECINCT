@@ -434,6 +434,9 @@ func TestEmitUIEvent_SetsCorrectFields(t *testing.T) {
 		},
 	})
 
+	// RFA-lz1: Flush async writes before reading the file
+	auditor.Flush()
+
 	// Read the written event
 	file, err := os.Open(auditPath)
 	if err != nil {
@@ -546,6 +549,9 @@ func TestEmitUIEvent_AllEventTypes(t *testing.T) {
 
 		auditor.EmitUIEvent(params)
 	}
+
+	// RFA-lz1: Flush async writes before reading the file
+	auditor.Flush()
 
 	// Read all events and verify
 	file, err := os.Open(auditPath)
@@ -697,6 +703,9 @@ func TestEmitUIEvent_FirstEventHasGenesisHash(t *testing.T) {
 		TraceID:   "first-trace",
 	})
 
+	// RFA-lz1: Flush async writes before reading the file
+	auditor.Flush()
+
 	file, err := os.Open(auditPath)
 	if err != nil {
 		t.Fatalf("Failed to open audit file: %v", err)
@@ -761,6 +770,9 @@ func TestEmitUIEvent_TraceIDCorrelation(t *testing.T) {
 			UIContext: &AppDrivenUIContext{ResourceURI: "ui://server/page.html"},
 		},
 	})
+
+	// RFA-lz1: Flush async writes before reading the file
+	auditor.Flush()
 
 	// Read and verify all events have the same trace_id
 	file, err := os.Open(auditPath)

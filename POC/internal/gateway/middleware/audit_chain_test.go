@@ -48,6 +48,9 @@ func TestAuditChainIntegrity(t *testing.T) {
 		StatusCode: 200,
 	})
 
+	// RFA-lz1: Flush async writes before reading the file
+	auditor.Flush()
+
 	// Read first event
 	file, err := os.Open(auditPath)
 	if err != nil {
@@ -79,6 +82,9 @@ func TestAuditChainIntegrity(t *testing.T) {
 			StatusCode: 200,
 		})
 	}
+
+	// RFA-lz1: Flush async writes before verifying chain
+	auditor.Flush()
 
 	// Test 3: Verify chain integrity (12 total events)
 	result, err := VerifyAuditChain(auditPath)
@@ -325,5 +331,236 @@ func TestGenesisHash(t *testing.T) {
 
 	if expected != knownGenesis {
 		t.Errorf("Genesis hash = %s, want %s", expected, knownGenesis)
+	}
+}
+
+// ---- RFA-lz1: Async Audit Logging Tests ----
+
+// TestAsyncAuditFlush verifies that Flush() blocks until all queued events
+// have been written to disk. This is the core correctness guarantee for
+// async audit logging.
+func TestAsyncAuditFlush(t *testing.T) {
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+	bundlePath := filepath.Join(tmpDir, "bundle.rego")
+	registryPath := filepath.Join(tmpDir, "registry.yaml")
+
+	os.WriteFile(bundlePath, []byte("package test"), 0644)
+	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+
+	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create auditor: %v", err)
+	}
+	defer auditor.Close()
+
+	// Log 100 events rapidly
+	for i := 0; i < 100; i++ {
+		auditor.Log(AuditEvent{
+			SessionID: "flush-test",
+			Action:    "test_action",
+		})
+	}
+
+	// After Flush(), all 100 events must be on disk
+	auditor.Flush()
+
+	result, err := VerifyAuditChain(auditPath)
+	if err != nil {
+		t.Fatalf("Chain verification failed: %v", err)
+	}
+
+	if result.TotalEvents != 100 {
+		t.Errorf("Expected 100 events after Flush(), got %d", result.TotalEvents)
+	}
+	if !result.Valid {
+		t.Errorf("Chain should be valid after Flush(): %s", result.ErrorMessage)
+	}
+}
+
+// TestAsyncAuditChainIntegrity verifies that the hash chain is correct
+// even with async writes -- the hash computation is synchronous so
+// ordering is guaranteed regardless of I/O timing.
+func TestAsyncAuditChainIntegrity(t *testing.T) {
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+	bundlePath := filepath.Join(tmpDir, "bundle.rego")
+	registryPath := filepath.Join(tmpDir, "registry.yaml")
+
+	os.WriteFile(bundlePath, []byte("package test"), 0644)
+	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+
+	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create auditor: %v", err)
+	}
+
+	// Log 500 events to stress the async pipeline
+	for i := 0; i < 500; i++ {
+		auditor.Log(AuditEvent{
+			SessionID:  "async-chain-test",
+			DecisionID: "decision",
+			TraceID:    "trace",
+			SPIFFEID:   "spiffe://test/agent",
+			Action:     "stress_test",
+			Result:     "success",
+			Method:     "POST",
+			Path:       "/test",
+			StatusCode: 200,
+		})
+	}
+
+	// Close drains the channel, ensuring all writes complete
+	auditor.Close()
+
+	// Verify the entire chain is valid
+	result, err := VerifyAuditChain(auditPath)
+	if err != nil {
+		t.Fatalf("Chain verification failed: %v", err)
+	}
+
+	if !result.Valid {
+		t.Errorf("Chain should be valid with async writes: %s", result.ErrorMessage)
+	}
+	if result.TotalEvents != 500 {
+		t.Errorf("Expected 500 events, got %d", result.TotalEvents)
+	}
+	if len(result.TamperedEvents) != 0 {
+		t.Errorf("Expected no tampered events, got %d", len(result.TamperedEvents))
+	}
+
+	t.Logf("Async chain integrity PASSED: 500 events with valid hash chain")
+}
+
+// TestAsyncAuditCloseIdempotent verifies that calling Close() multiple
+// times does not panic or cause errors.
+func TestAsyncAuditCloseIdempotent(t *testing.T) {
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+	bundlePath := filepath.Join(tmpDir, "bundle.rego")
+	registryPath := filepath.Join(tmpDir, "registry.yaml")
+
+	os.WriteFile(bundlePath, []byte("package test"), 0644)
+	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+
+	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create auditor: %v", err)
+	}
+
+	auditor.Log(AuditEvent{
+		SessionID: "idempotent-test",
+		Action:    "test",
+	})
+
+	// Close multiple times -- should not panic
+	err1 := auditor.Close()
+	err2 := auditor.Close()
+	err3 := auditor.Close()
+
+	if err1 != nil {
+		t.Errorf("First Close() returned error: %v", err1)
+	}
+	if err2 != nil {
+		t.Errorf("Second Close() returned error: %v", err2)
+	}
+	if err3 != nil {
+		t.Errorf("Third Close() returned error: %v", err3)
+	}
+}
+
+// TestAsyncAuditFlushMultiple verifies that Flush() can be called multiple
+// times and each call correctly waits for pending events.
+func TestAsyncAuditFlushMultiple(t *testing.T) {
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+	bundlePath := filepath.Join(tmpDir, "bundle.rego")
+	registryPath := filepath.Join(tmpDir, "registry.yaml")
+
+	os.WriteFile(bundlePath, []byte("package test"), 0644)
+	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+
+	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create auditor: %v", err)
+	}
+	defer auditor.Close()
+
+	// First batch
+	for i := 0; i < 10; i++ {
+		auditor.Log(AuditEvent{
+			SessionID: "batch-1",
+			Action:    "test",
+		})
+	}
+	auditor.Flush()
+
+	result, _ := VerifyAuditChain(auditPath)
+	if result.TotalEvents != 10 {
+		t.Errorf("After first flush: expected 10, got %d", result.TotalEvents)
+	}
+
+	// Second batch
+	for i := 0; i < 15; i++ {
+		auditor.Log(AuditEvent{
+			SessionID: "batch-2",
+			Action:    "test",
+		})
+	}
+	auditor.Flush()
+
+	result, _ = VerifyAuditChain(auditPath)
+	if result.TotalEvents != 25 {
+		t.Errorf("After second flush: expected 25, got %d", result.TotalEvents)
+	}
+
+	if !result.Valid {
+		t.Errorf("Chain should be valid after multiple flushes: %s", result.ErrorMessage)
+	}
+}
+
+// TestAsyncAuditNoDataLoss verifies that no events are lost during async
+// processing, even under rapid-fire logging.
+func TestAsyncAuditNoDataLoss(t *testing.T) {
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+	bundlePath := filepath.Join(tmpDir, "bundle.rego")
+	registryPath := filepath.Join(tmpDir, "registry.yaml")
+
+	os.WriteFile(bundlePath, []byte("package test"), 0644)
+	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+
+	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create auditor: %v", err)
+	}
+
+	// Rapid fire 1000 events
+	const eventCount = 1000
+	for i := 0; i < eventCount; i++ {
+		auditor.Log(AuditEvent{
+			SessionID: "no-data-loss",
+			Action:    "rapid_fire",
+		})
+	}
+
+	// Close ensures all events are written
+	auditor.Close()
+
+	// Count events in file
+	file, err := os.Open(auditPath)
+	if err != nil {
+		t.Fatalf("Failed to open audit file: %v", err)
+	}
+	defer file.Close()
+
+	lineCount := 0
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		lineCount++
+	}
+
+	if lineCount != eventCount {
+		t.Errorf("Data loss detected: expected %d events, got %d", eventCount, lineCount)
 	}
 }
