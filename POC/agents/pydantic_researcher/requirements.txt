@@ -1,0 +1,22 @@
+# PydanticAI Research Agent - RFA-qq0.8
+# Dependencies for the PydanticAI-based Q&A agent
+
+# Shared SDK for gateway integration (RFA-tj9.3)
+-e ../../sdk/python
+
+# PydanticAI framework for structured LLM agents
+pydantic-ai>=1.0.0
+
+# HTTP client for gateway communication (also a dependency of mcp-gateway-sdk)
+httpx>=0.28.0
+
+# OpenTelemetry for tracing
+opentelemetry-api>=1.39.0
+opentelemetry-sdk>=1.39.0
+opentelemetry-exporter-otlp>=1.39.0
+
+# OpenInference instrumentation for PydanticAI -> Phoenix
+openinference-instrumentation-pydantic-ai>=0.1.0
+
+# Testing
+pytest>=9.0.0

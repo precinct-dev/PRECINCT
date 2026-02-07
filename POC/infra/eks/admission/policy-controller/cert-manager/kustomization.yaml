@@ -1,0 +1,22 @@
+# ------------------------------------------------------------------------------
+# Kustomize: cert-manager TLS for policy-controller webhook
+# Story: RFA-tv9
+#
+# Provides automatic TLS certificate generation and rotation using cert-manager.
+# Included by production overlays (dev, staging, prod) but NOT by the local
+# overlay (which uses a placeholder TLS secret for kustomize build validation).
+#
+# Prerequisites:
+#   - cert-manager must be installed in the target cluster
+#   - cert-manager CRDs (Certificate, Issuer, ClusterIssuer) must exist
+#
+# Usage:
+#   Referenced as a resource by production overlay kustomization.yaml files.
+#   Not included in the base policy-controller kustomization.yaml to keep
+#   the local overlay free of cert-manager dependencies.
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - resources.yaml

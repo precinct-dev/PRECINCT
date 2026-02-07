@@ -1,0 +1,29 @@
+# ------------------------------------------------------------------------------
+# S3 MCP Tool Server Service
+# Story: RFA-9fv.5
+#
+# ClusterIP service exposing the S3 MCP tool server on port 8082 (JSON-RPC).
+# The gateway or other services connect to this at:
+#   http://s3-mcp-server.tools.svc.cluster.local:8082/mcp
+#
+# Port 8082 is distinct from the Docker MCP server (8081) to allow both
+# to run simultaneously in the tools namespace.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: s3-mcp-server
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: s3-mcp-server
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: tool-server
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: s3-mcp-server
+  ports:
+    - name: jsonrpc
+      port: 8082
+      targetPort: jsonrpc
+      protocol: TCP

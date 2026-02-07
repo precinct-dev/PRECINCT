@@ -1,0 +1,23 @@
+# ------------------------------------------------------------------------------
+# Namespace: cosign-system
+# Story: RFA-7bh.2
+#
+# Dedicated namespace for sigstore/policy-controller components.
+# Isolated from application workloads per security best practices.
+#
+# Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cosign-system
+  labels:
+    app.kubernetes.io/part-of: sigstore-policy-controller
+    app.kubernetes.io/managed-by: kustomize
+    # Exempt policy-controller namespace from Gatekeeper enforcement
+    # (policy-controller images are pulled from public sigstore registry)
+    admission.gatekeeper.sh/ignore: "no-self-managing"
+    # Pod Security Standards: policy-controller needs no special privileges
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

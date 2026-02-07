@@ -63,7 +63,7 @@ func TestToolHashVerification(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create MCP request with tool hash
 			params := map[string]interface{}{
-				"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md",
+				"file_path": pocDir() + "/README.md",
 			}
 			if tt.toolHash != "" {
 				params["tool_hash"] = tt.toolHash
@@ -129,7 +129,7 @@ func TestPathBasedRestrictions(t *testing.T) {
 		{
 			name:        "AllowedPathInPOC",
 			tool:        "read",
-			path:        "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md",
+			path:        pocDir() + "/README.md",
 			spiffeID:    "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 			wantAllowed: true,
 			wantReason:  "",
@@ -145,7 +145,7 @@ func TestPathBasedRestrictions(t *testing.T) {
 		{
 			name:        "GrepAllowedInPOC",
 			tool:        "grep",
-			path:        "/Users/ramirosalas/workspace/agentic_reference_architecture/POC",
+			path:        pocDir(),
 			spiffeID:    "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 			wantAllowed: true,
 			wantReason:  "",
@@ -328,7 +328,7 @@ func TestStepUpGating(t *testing.T) {
 		{
 			name:        "ReadNoStepUpRequired",
 			tool:        "read",
-			params:      map[string]interface{}{"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md"},
+			params:      map[string]interface{}{"file_path": pocDir() + "/README.md"},
 			spiffeID:    "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 			stepUpToken: "",
 			wantAllowed: true,
@@ -439,7 +439,7 @@ func TestPoisoningPatternDetection(t *testing.T) {
 				"jsonrpc": "2.0",
 				"method":  tt.toolName,
 				"params": map[string]interface{}{
-					"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md",
+					"file_path": pocDir() + "/README.md",
 				},
 				"id": 1,
 			}

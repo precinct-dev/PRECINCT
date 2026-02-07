@@ -2,11 +2,21 @@ package middleware
 
 import (
 	"bytes"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"testing"
+	"time"
 )
 
 // TestMiddlewareChainOrder verifies middleware executes in correct order
@@ -23,28 +33,31 @@ func TestMiddlewareChainOrder(t *testing.T) {
 		}
 	}
 
-	// Build chain in expected order
+	// Build chain in expected order per Architecture Section 9.2
 	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		executionOrder = append(executionOrder, "handler")
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler = track("token_sub")(handler)
-	handler = track("step_up")(handler)
-	handler = track("opa")(handler)
-	handler = track("registry")(handler)
-	handler = track("audit")(handler)
-	handler = track("spiffe")(handler)
-	handler = track("body")(handler)
-	handler = track("size")(handler)
+	// Apply in reverse order (innermost first) - token_sub MUST be last before handler
+	handler = track("token_sub")(handler) // 13 - LAST before proxy
+	handler = track("deep_scan")(handler) // 10
+	handler = track("step_up")(handler)   // 9
+	handler = track("dlp")(handler)       // 7
+	handler = track("opa")(handler)       // 6
+	handler = track("registry")(handler)  // 5
+	handler = track("audit")(handler)     // 4
+	handler = track("spiffe")(handler)    // 3
+	handler = track("body")(handler)      // 2
+	handler = track("size")(handler)      // 1
 
 	// Execute request
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString("test"))
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	// Verify order
-	expected := []string{"size", "body", "spiffe", "audit", "registry", "opa", "step_up", "token_sub", "handler"}
+	// Verify order - token_sub MUST be last before handler (step 13)
+	expected := []string{"size", "body", "spiffe", "audit", "registry", "opa", "dlp", "step_up", "deep_scan", "token_sub", "handler"}
 	if len(executionOrder) != len(expected) {
 		t.Fatalf("Expected %d middleware, got %d", len(expected), len(executionOrder))
 	}
@@ -193,6 +206,251 @@ func TestSPIFFEAuthDev(t *testing.T) {
 	})
 }
 
+// TestSPIFFEAuthProd verifies SPIFFE auth in prod mode extracts SPIFFE ID from TLS client cert.
+// RFA-8z8.1 AC2: In prod mode, gateway validates client certificates via SPIRE trust bundle.
+func TestSPIFFEAuthProd(t *testing.T) {
+	var capturedSPIFFEID string
+	handler := SPIFFEAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedSPIFFEID = GetSPIFFEID(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}), "prod")
+
+	t.Run("ValidClientCertWithSPIFFEID", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		spiffeURI, _ := url.Parse("spiffe://poc.local/agents/test-agent/dev")
+
+		// Create a self-signed cert with SPIFFE ID as URI SAN
+		cert := createTestCertWithSPIFFEID(t, spiffeURI)
+
+		req := httptest.NewRequest("POST", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", rec.Code)
+		}
+		if capturedSPIFFEID != "spiffe://poc.local/agents/test-agent/dev" {
+			t.Errorf("Expected SPIFFE ID spiffe://poc.local/agents/test-agent/dev, got %q", capturedSPIFFEID)
+		}
+	})
+
+	t.Run("NoTLSConnectionReturns401", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		req := httptest.NewRequest("POST", "/", nil)
+		// No TLS at all
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401 for no TLS connection, got %d", rec.Code)
+		}
+	})
+
+	t.Run("TLSWithNoPeerCertsReturns401", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		req := httptest.NewRequest("POST", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{},
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401 for TLS with no peer certs, got %d", rec.Code)
+		}
+	})
+
+	t.Run("TLSCertWithNoSPIFFEURIReturns401", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		// Create a cert with no URI SANs
+		cert := createTestCertNoSPIFFE(t)
+
+		req := httptest.NewRequest("POST", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401 for cert without SPIFFE URI, got %d", rec.Code)
+		}
+	})
+
+	t.Run("TLSCertWithNonSPIFFEURIReturns401", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		nonSPIFFEURI, _ := url.Parse("https://example.com/not-spiffe")
+		cert := createTestCertWithURI(t, nonSPIFFEURI)
+
+		req := httptest.NewRequest("POST", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Errorf("Expected 401 for cert with non-SPIFFE URI, got %d", rec.Code)
+		}
+	})
+}
+
+// TestExtractSPIFFEIDFromTLS verifies the SPIFFE ID extraction from TLS state.
+func TestExtractSPIFFEIDFromTLS(t *testing.T) {
+	t.Run("NoTLS", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		got := ExtractSPIFFEIDFromTLS(req)
+		if got != "" {
+			t.Errorf("Expected empty string for no TLS, got %q", got)
+		}
+	})
+
+	t.Run("NoPeerCerts", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/", nil)
+		req.TLS = &tls.ConnectionState{}
+		got := ExtractSPIFFEIDFromTLS(req)
+		if got != "" {
+			t.Errorf("Expected empty string for no peer certs, got %q", got)
+		}
+	})
+
+	t.Run("ValidSPIFFEURI", func(t *testing.T) {
+		spiffeURI, _ := url.Parse("spiffe://poc.local/gateway")
+		cert := createTestCertWithSPIFFEID(t, spiffeURI)
+
+		req := httptest.NewRequest("GET", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		got := ExtractSPIFFEIDFromTLS(req)
+		if got != "spiffe://poc.local/gateway" {
+			t.Errorf("Expected spiffe://poc.local/gateway, got %q", got)
+		}
+	})
+
+	t.Run("MultipleSANsFirstSPIFFEWins", func(t *testing.T) {
+		spiffeURI, _ := url.Parse("spiffe://poc.local/first")
+		cert := createTestCertWithSPIFFEID(t, spiffeURI)
+
+		req := httptest.NewRequest("GET", "/", nil)
+		req.TLS = &tls.ConnectionState{
+			PeerCertificates: []*x509.Certificate{cert},
+		}
+		got := ExtractSPIFFEIDFromTLS(req)
+		if got != "spiffe://poc.local/first" {
+			t.Errorf("Expected spiffe://poc.local/first, got %q", got)
+		}
+	})
+}
+
+// TestParseSPIFFEIDFromURI verifies SPIFFE ID URI parsing
+func TestParseSPIFFEIDFromURI(t *testing.T) {
+	tests := []struct {
+		name     string
+		raw      string
+		wantNil  bool
+		wantHost string
+	}{
+		{name: "valid", raw: "spiffe://poc.local/gateway", wantNil: false, wantHost: "poc.local"},
+		{name: "empty", raw: "", wantNil: true},
+		{name: "http_scheme", raw: "http://example.com", wantNil: true},
+		{name: "no_prefix", raw: "poc.local/gateway", wantNil: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			u := ParseSPIFFEIDFromURI(tc.raw)
+			if tc.wantNil && u != nil {
+				t.Errorf("Expected nil for %q, got %v", tc.raw, u)
+			}
+			if !tc.wantNil && u == nil {
+				t.Errorf("Expected non-nil for %q", tc.raw)
+			}
+			if !tc.wantNil && u != nil && u.Host != tc.wantHost {
+				t.Errorf("Expected host %q, got %q", tc.wantHost, u.Host)
+			}
+		})
+	}
+}
+
+// --- Test helpers for creating X.509 certificates with SPIFFE IDs ---
+
+// createTestCertWithSPIFFEID creates a self-signed X.509 certificate with
+// the given SPIFFE ID as a URI SAN.
+func createTestCertWithSPIFFEID(t *testing.T, spiffeURI *url.URL) *x509.Certificate {
+	t.Helper()
+	return createTestCertWithURI(t, spiffeURI)
+}
+
+// createTestCertWithURI creates a self-signed X.509 certificate with the
+// given URI as a SAN.
+func createTestCertWithURI(t *testing.T, uri *url.URL) *x509.Certificate {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "test-cert",
+		},
+		NotBefore: time.Now().Add(-1 * time.Hour),
+		NotAfter:  time.Now().Add(1 * time.Hour),
+		URIs:      []*url.URL{uri},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("Failed to create certificate: %v", err)
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("Failed to parse certificate: %v", err)
+	}
+
+	return cert
+}
+
+// createTestCertNoSPIFFE creates a self-signed X.509 certificate without
+// any URI SANs.
+func createTestCertNoSPIFFE(t *testing.T) *x509.Certificate {
+	t.Helper()
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "test-cert-no-spiffe",
+		},
+		NotBefore: time.Now().Add(-1 * time.Hour),
+		NotAfter:  time.Now().Add(1 * time.Hour),
+		// No URIs
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("Failed to create certificate: %v", err)
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("Failed to parse certificate: %v", err)
+	}
+
+	return cert
+}
+
 // TestAuditLog verifies audit logging functionality
 func TestAuditLog(t *testing.T) {
 	// Create temporary config files for auditor
@@ -247,7 +505,7 @@ func TestToolRegistryVerify(t *testing.T) {
 `
 	os.WriteFile(configPath, []byte(config), 0644)
 
-	registry, err := NewToolRegistry("http://localhost:8080", configPath)
+	registry, err := NewToolRegistry(configPath)
 	if err != nil {
 		t.Fatalf("Failed to create registry: %v", err)
 	}
@@ -296,13 +554,302 @@ func TestToolRegistryVerify(t *testing.T) {
 	})
 }
 
-// TestStepUpGating verifies step-up hook is pass-through
+// TestToolRegistryVerify_MCPProtocolMethodsPassThrough verifies that MCP protocol-level
+// methods (tools/list, resources/read, ping, etc.) pass through the tool registry
+// middleware without verification. These are part of the MCP protocol itself, not
+// user-defined tools. Bug fix for RFA-rqj.
+func TestToolRegistryVerify_MCPProtocolMethodsPassThrough(t *testing.T) {
+	// Create a registry with NO tools registered.
+	// Protocol methods must pass through even when the registry is empty.
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: file_read
+    description: "Read files"
+    hash: "abc123"
+    risk_level: low
+`
+	os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	nextCalled := false
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}), registry)
+
+	// All MCP protocol methods that must pass through
+	protocolMethods := []string{
+		"tools/list",
+		"tools/call",
+		"resources/read",
+		"resources/list",
+		"prompts/list",
+		"prompts/get",
+		"sampling/createMessage",
+		"initialize",
+		"ping",
+	}
+
+	for _, method := range protocolMethods {
+		t.Run("ProtocolMethod_"+method, func(t *testing.T) {
+			nextCalled = false
+			body := []byte(fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":{},"id":1}`, method))
+			req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+			ctx := WithRequestBody(req.Context(), body)
+			req = req.WithContext(ctx)
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("Protocol method %q should pass through, got status %d", method, rec.Code)
+			}
+			if !nextCalled {
+				t.Errorf("Protocol method %q should call next handler", method)
+			}
+		})
+	}
+}
+
+// TestToolRegistryVerify_NotificationsPassThrough verifies that notification methods
+// (notifications/*) pass through the tool registry middleware. These are MCP protocol
+// notifications and should never be subject to tool verification.
+func TestToolRegistryVerify_NotificationsPassThrough(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools: []
+`
+	os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	nextCalled := false
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}), registry)
+
+	notificationMethods := []string{
+		"notifications/initialized",
+		"notifications/cancelled",
+		"notifications/progress",
+		"notifications/tools/list_changed",
+		"notifications/resources/list_changed",
+	}
+
+	for _, method := range notificationMethods {
+		t.Run("Notification_"+method, func(t *testing.T) {
+			nextCalled = false
+			body := []byte(fmt.Sprintf(`{"jsonrpc":"2.0","method":"%s","params":{},"id":1}`, method))
+			req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+			ctx := WithRequestBody(req.Context(), body)
+			req = req.WithContext(ctx)
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Errorf("Notification method %q should pass through, got status %d", method, rec.Code)
+			}
+			if !nextCalled {
+				t.Errorf("Notification method %q should call next handler", method)
+			}
+		})
+	}
+}
+
+// TestToolRegistryVerify_NonProtocolMethodsStillVerified verifies that non-protocol
+// methods (user-defined tools) are still subject to tool registry verification
+// after the protocol method allowlist is applied.
+func TestToolRegistryVerify_NonProtocolMethodsStillVerified(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: file_read
+    description: "Read files"
+    hash: "abc123"
+    risk_level: low
+`
+	os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), registry)
+
+	// Registered tool should still be allowed
+	t.Run("RegisteredToolAllowed", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"file_read","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Registered tool should be allowed, got %d", rec.Code)
+		}
+	})
+
+	// Unregistered non-protocol method should still be blocked
+	t.Run("UnregisteredToolBlocked", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"evil_tool","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Unregistered tool should be blocked, got %d", rec.Code)
+		}
+	})
+
+	// Methods that look similar to protocol methods but aren't
+	t.Run("FakeProtocolMethodBlocked", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/evil","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Fake protocol method 'tools/evil' should be blocked, got %d", rec.Code)
+		}
+	})
+}
+
+// TestToolRegistryVerify_ProtocolMethodIntegration exercises the ToolRegistryVerify
+// middleware end-to-end through the full HTTP handler chain (BodyCapture -> ToolRegistryVerify).
+// This is an integration test with no mocks - it uses real middleware instances.
+func TestToolRegistryVerify_ProtocolMethodIntegration(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: registered_tool
+    description: "A registered tool"
+    hash: "hash123"
+    risk_level: low
+`
+	os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	// Build a real middleware chain: BodyCapture -> ToolRegistryVerify -> handler
+	// This exercises the full integration path with no mocks.
+	var handlerReached bool
+	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerReached = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Wrap with ToolRegistryVerify, then BodyCapture (outer -> inner execution order)
+	chain := BodyCapture(ToolRegistryVerify(innerHandler, registry))
+
+	// Test: protocol method passes through the full chain
+	t.Run("ProtocolMethodThroughFullChain", func(t *testing.T) {
+		handlerReached = false
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+
+		chain.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200 for protocol method through full chain, got %d", rec.Code)
+		}
+		if !handlerReached {
+			t.Error("Protocol method should reach the inner handler through full middleware chain")
+		}
+	})
+
+	// Test: registered tool passes through the full chain
+	t.Run("RegisteredToolThroughFullChain", func(t *testing.T) {
+		handlerReached = false
+		body := []byte(`{"jsonrpc":"2.0","method":"registered_tool","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+
+		chain.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200 for registered tool through full chain, got %d", rec.Code)
+		}
+		if !handlerReached {
+			t.Error("Registered tool should reach the inner handler through full middleware chain")
+		}
+	})
+
+	// Test: unregistered tool is blocked in the full chain
+	t.Run("UnregisteredToolBlockedInFullChain", func(t *testing.T) {
+		handlerReached = false
+		body := []byte(`{"jsonrpc":"2.0","method":"unknown_tool","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+
+		chain.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("Expected 403 for unregistered tool through full chain, got %d", rec.Code)
+		}
+		if handlerReached {
+			t.Error("Unregistered tool should NOT reach the inner handler")
+		}
+	})
+
+	// Test: notification passes through the full chain
+	t.Run("NotificationThroughFullChain", func(t *testing.T) {
+		handlerReached = false
+		body := []byte(`{"jsonrpc":"2.0","method":"notifications/tools/list_changed","params":{},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+
+		chain.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200 for notification through full chain, got %d", rec.Code)
+		}
+		if !handlerReached {
+			t.Error("Notification should reach the inner handler through full middleware chain")
+		}
+	})
+}
+
+// TestStepUpGating verifies step-up gating passes through when no body is present.
+// The real StepUpGating implementation (step_up_gating.go) fast-paths requests
+// with no body, which is what this test validates.
 func TestStepUpGating(t *testing.T) {
 	called := false
-	handler := StepUpGating(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		called = true
-		w.WriteHeader(http.StatusOK)
-	}))
+	handler := StepUpGating(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			called = true
+			w.WriteHeader(http.StatusOK)
+		}),
+		nil, // guardClient
+		nil, // allowlist
+		nil, // riskConfig
+		nil, // registry
+		nil, // auditor
+	)
 
 	req := httptest.NewRequest("POST", "/", nil)
 	rec := httptest.NewRecorder()
@@ -322,7 +869,7 @@ func TestTokenSubstitution(t *testing.T) {
 	handler := TokenSubstitution(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		called = true
 		w.WriteHeader(http.StatusOK)
-	}))
+	}), NewPOCSecretRedeemer(), nil, nil)
 
 	req := httptest.NewRequest("POST", "/", nil)
 	// Add SPIFFE ID to context (required by TokenSubstitution middleware)

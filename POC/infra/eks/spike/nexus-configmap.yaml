@@ -1,0 +1,29 @@
+# ------------------------------------------------------------------------------
+# SPIKE Nexus Configuration (ConfigMap)
+# Story: RFA-9fv.3
+#
+# SPIKE Nexus runs in token mode:
+#   - Receives a SPIFFE SVID from the SPIRE Agent Workload API
+#   - Issues short-lived tokens to authenticated workloads
+#   - Validates tokens for service-to-service authorization
+#
+# Environment variables configure the Nexus runtime behavior.
+# The SPIRE Workload API socket is mounted from the host (via SPIRE Agent).
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spike-nexus-config
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-nexus
+    app.kubernetes.io/part-of: spike
+data:
+  # SPIKE Nexus configuration
+  # These are loaded as environment variables by the deployment.
+  SPIKE_NEXUS_MODE: "token"
+  SPIKE_NEXUS_LOG_LEVEL: "info"
+  SPIKE_NEXUS_ADDR: ":8443"
+  SPIKE_NEXUS_TRUST_DOMAIN: "agentic-ref-arch.poc"
+  # SPIRE Workload API socket path (must match the volume mount)
+  SPIFFE_ENDPOINT_SOCKET: "unix:///run/spire/sockets/agent.sock"

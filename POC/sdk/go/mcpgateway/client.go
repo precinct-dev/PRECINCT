@@ -1,0 +1,276 @@
+package mcpgateway
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"sync/atomic"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// Default configuration values for the client.
+const (
+	DefaultMaxRetries  = 3
+	DefaultBackoffBase = 1 * time.Second
+	DefaultTimeout     = 30 * time.Second
+)
+
+// Option configures a GatewayClient. Use the With* functions to create Options.
+type Option func(*GatewayClient)
+
+// WithSessionID sets the session ID. If not provided, a UUID is auto-generated.
+func WithSessionID(id string) Option {
+	return func(c *GatewayClient) { c.sessionID = id }
+}
+
+// WithTimeout sets the HTTP request timeout. Default is 30 seconds.
+func WithTimeout(d time.Duration) Option {
+	return func(c *GatewayClient) { c.timeout = d }
+}
+
+// WithMaxRetries sets the maximum retry attempts for 503 responses. Default is 3.
+func WithMaxRetries(n int) Option {
+	return func(c *GatewayClient) { c.maxRetries = n }
+}
+
+// WithBackoffBase sets the base duration for exponential backoff. Default is 1 second.
+// Retry delays are: base, base*2, base*4, ...
+func WithBackoffBase(d time.Duration) Option {
+	return func(c *GatewayClient) { c.backoffBase = d }
+}
+
+// WithHTTPClient sets a custom *http.Client. This is useful for testing or
+// when the caller needs custom TLS configuration (e.g., mTLS via go-spiffe).
+func WithHTTPClient(hc *http.Client) Option {
+	return func(c *GatewayClient) { c.httpClient = hc }
+}
+
+// sleepFunc is the function used for backoff delays. Overridable for testing.
+type sleepFunc func(time.Duration)
+
+// withSleepFunc is an internal option for injecting a mock sleep in tests.
+func withSleepFunc(fn sleepFunc) Option {
+	return func(c *GatewayClient) { c.sleep = fn }
+}
+
+// GatewayClient is an HTTP client for MCP JSON-RPC calls through the
+// security gateway. It handles envelope construction, required headers,
+// error parsing, retry logic, and session management.
+//
+// Create with [NewClient]:
+//
+//	client := mcpgateway.NewClient("http://localhost:9090", "spiffe://poc.local/agents/example/dev")
+//	result, err := client.Call(ctx, "tavily_search", map[string]any{"query": "AI security"})
+type GatewayClient struct {
+	url         string
+	spiffeID    string
+	sessionID   string
+	timeout     time.Duration
+	maxRetries  int
+	backoffBase time.Duration
+	httpClient  *http.Client
+	sleep       sleepFunc
+	requestID   atomic.Int64
+}
+
+// NewClient creates a GatewayClient for the given gateway URL and SPIFFE identity.
+//
+// The url is the gateway base URL (e.g. "http://localhost:9090").
+// The spiffeID is sent in the X-SPIFFE-ID header for authentication.
+//
+// Options customize timeout, retries, session ID, and HTTP client.
+// If no session ID is provided, one is auto-generated.
+func NewClient(url, spiffeID string, opts ...Option) *GatewayClient {
+	c := &GatewayClient{
+		url:         url,
+		spiffeID:    spiffeID,
+		sessionID:   uuid.New().String(),
+		timeout:     DefaultTimeout,
+		maxRetries:  DefaultMaxRetries,
+		backoffBase: DefaultBackoffBase,
+		sleep:       time.Sleep,
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	if c.httpClient == nil {
+		c.httpClient = &http.Client{Timeout: c.timeout}
+	}
+	return c
+}
+
+// SessionID returns the session ID used by this client.
+func (c *GatewayClient) SessionID() string {
+	return c.sessionID
+}
+
+// jsonRPCRequest is the MCP JSON-RPC request envelope.
+type jsonRPCRequest struct {
+	JSONRPC string         `json:"jsonrpc"`
+	Method  string         `json:"method"`
+	Params  map[string]any `json:"params"`
+	ID      int64          `json:"id"`
+}
+
+// jsonRPCResponse is the MCP JSON-RPC response envelope.
+type jsonRPCResponse struct {
+	JSONRPC string         `json:"jsonrpc"`
+	Result  any            `json:"result,omitempty"`
+	Error   map[string]any `json:"error,omitempty"`
+	ID      any            `json:"id"`
+}
+
+// Call invokes a tool through the gateway using the MCP JSON-RPC protocol.
+//
+// The toolName is the MCP method name (e.g. "tavily_search", "read").
+// The params are passed as the JSON-RPC params object.
+//
+// On success, the JSON-RPC "result" field is returned as a map.
+// On denial or error, a *[GatewayError] is returned. Use [errors.As] to inspect it.
+//
+// Call respects context cancellation and deadline. It retries 503 responses
+// with exponential backoff up to MaxRetries times.
+func (c *GatewayClient) Call(ctx context.Context, toolName string, params map[string]any) (any, error) {
+	var lastErr *GatewayError
+
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+		result, err := c.doCall(ctx, toolName, params)
+		if err == nil {
+			return result, nil
+		}
+
+		ge, ok := err.(*GatewayError)
+		if !ok {
+			// Non-GatewayError (network issue, context cancelled, etc.) -- no retry
+			return nil, err
+		}
+
+		if ge.HTTPStatus != http.StatusServiceUnavailable {
+			// Non-retryable gateway error (403, 401, 429, etc.)
+			return nil, ge
+		}
+
+		lastErr = ge
+		if attempt < c.maxRetries {
+			backoff := c.backoffBase * (1 << uint(attempt))
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-c.sleepChan(backoff):
+			}
+		}
+	}
+
+	return nil, lastErr
+}
+
+// sleepChan performs the backoff sleep and returns a closed channel when done.
+// This allows select{} to also check ctx.Done().
+func (c *GatewayClient) sleepChan(d time.Duration) <-chan struct{} {
+	ch := make(chan struct{})
+	go func() {
+		c.sleep(d)
+		close(ch)
+	}()
+	return ch
+}
+
+func (c *GatewayClient) nextID() int64 {
+	return c.requestID.Add(1)
+}
+
+func (c *GatewayClient) doCall(ctx context.Context, toolName string, params map[string]any) (any, error) {
+	// Build JSON-RPC envelope
+	reqBody := jsonRPCRequest{
+		JSONRPC: "2.0",
+		Method:  toolName,
+		Params:  params,
+		ID:      c.nextID(),
+	}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("mcpgateway: failed to marshal request: %w", err)
+	}
+
+	// Build HTTP request
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(payload))
+	if err != nil {
+		return nil, fmt.Errorf("mcpgateway: failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", c.spiffeID)
+	req.Header.Set("X-Session-ID", c.sessionID)
+
+	// Execute
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("mcpgateway: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("mcpgateway: failed to read response: %w", err)
+	}
+
+	// Handle HTTP-level errors (denials, rate limits, etc.)
+	if resp.StatusCode >= 400 {
+		return nil, parseGatewayError(resp.StatusCode, body)
+	}
+
+	// Parse JSON-RPC response
+	var rpcResp jsonRPCResponse
+	if err := json.Unmarshal(body, &rpcResp); err != nil {
+		return nil, &GatewayError{
+			Code:       "invalid_response",
+			Message:    fmt.Sprintf("invalid JSON response (HTTP %d): %s", resp.StatusCode, truncate(string(body), 200)),
+			HTTPStatus: resp.StatusCode,
+		}
+	}
+
+	// Check for JSON-RPC error field
+	if rpcResp.Error != nil {
+		msg := "unknown error"
+		if m, ok := rpcResp.Error["message"]; ok {
+			msg = fmt.Sprintf("%v", m)
+		}
+		return nil, &GatewayError{
+			Code:       "jsonrpc_error",
+			Message:    fmt.Sprintf("JSON-RPC error: %s", msg),
+			HTTPStatus: resp.StatusCode,
+		}
+	}
+
+	return rpcResp.Result, nil
+}
+
+// parseGatewayError attempts to parse a GatewayError from an HTTP error response body.
+// Falls back to a generic error if the body is not valid JSON or not the expected format.
+func parseGatewayError(statusCode int, body []byte) *GatewayError {
+	var ge GatewayError
+	if err := json.Unmarshal(body, &ge); err == nil && ge.Code != "" {
+		ge.HTTPStatus = statusCode
+		return &ge
+	}
+
+	// Non-JSON or unrecognized format
+	return &GatewayError{
+		Code:       "unknown",
+		Message:    truncate(string(body), 200),
+		HTTPStatus: statusCode,
+	}
+}
+
+// truncate shortens a string to maxLen, appending "..." if truncated.
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}

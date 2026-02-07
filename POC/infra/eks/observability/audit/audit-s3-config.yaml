@@ -1,0 +1,87 @@
+# ------------------------------------------------------------------------------
+# Audit S3 Sink Configuration
+# Story: RFA-9fv.7
+#
+# ConfigMap containing the S3 sink configuration for audit log storage.
+# The gateway reads this config to determine where and how to ship audit events.
+#
+# S3 Object Lock requirements (Reference Architecture Section 10.9.2):
+#   - Compliance mode: prevents deletion/overwrite for retention period
+#   - 90-day retention: minimum retention for audit records
+#   - Hash chain: prev_hash field enables tamper detection
+#   - Legal hold: support for preventing deletion of specific records
+#
+# Audit event schema fields (Section 10.4):
+#   - timestamp, event_type, agent (spiffe_id, session_id)
+#   - action (tool, server, resource)
+#   - authorization (opa_decision_id, allowed)
+#   - security (tool_hash_verified, safezone_flags, session_risk_score,
+#     tokens_substituted, deep_scan_triggered)
+#   - trace_id, prev_hash, bundle_digest, registry_digest
+#
+# Correlation: trace_id + session_id + opa_decision_id enables end-to-end
+# session reconstruction (Section 10.8).
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: audit-s3-config
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: audit-s3-sink
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: audit
+data:
+  audit-s3-config.yaml: |
+    # S3 destination for audit logs
+    s3:
+      # Bucket name -- override via Kustomize overlay or Helm values
+      bucket: "agentic-ref-arch-poc-audit-logs"
+      region: "us-west-2"
+      # Prefix organizes logs by date for efficient querying
+      # Gateway appends: <prefix>/YYYY/MM/DD/HH/<batch-id>.jsonl
+      prefix: "audit/gateway"
+
+    # S3 Object Lock configuration (applied at bucket level via Terraform)
+    object_lock:
+      # COMPLIANCE mode: no one (including root) can delete within retention
+      mode: "COMPLIANCE"
+      # 90-day minimum retention per Reference Architecture Section 10.9.2
+      retention_days: 90
+
+    # Hash chain configuration
+    hash_chain:
+      # Algorithm for prev_hash field
+      algorithm: "sha256"
+      # Genesis hash: SHA-256 of empty string (matches audit.go initialization)
+      genesis_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      # prev_hash field enables tamper detection across batches
+      enabled: true
+
+    # Batching configuration
+    batching:
+      # Flush interval: how often to ship a batch to S3
+      interval_seconds: 60
+      # Maximum events per batch before forced flush
+      max_batch_size: 1000
+      # Maximum batch age before forced flush (safety net)
+      max_batch_age_seconds: 300
+
+    # Correlation fields (Section 10.8)
+    # These fields MUST be present in every audit event for session reconstruction
+    correlation:
+      required_fields:
+        - "trace_id"
+        - "session_id"
+        - "decision_id"
+        - "spiffe_id"
+      # Enable cross-reference with Phoenix traces
+      phoenix_trace_correlation: true
+
+    # Forensic traceability fields (AC 6)
+    forensic:
+      # bundle_digest: SHA-256 of OPA policy bundle at time of decision
+      # registry_digest: SHA-256 of tool registry config at time of decision
+      # Both are set by the Auditor in audit.go
+      include_bundle_digest: true
+      include_registry_digest: true

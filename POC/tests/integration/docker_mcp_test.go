@@ -6,7 +6,7 @@
 // the gateway and that workspace scope restrictions are enforced.
 //
 // Prerequisites:
-// - Docker MCP Gateway running at http://localhost:8080/mcp
+// - Docker MCP Gateway running at http://localhost:8081/mcp
 // - docker-compose stack running (gateway, OPA, SPIRE)
 // - Tavily API key configured in Docker Desktop
 // - Filesystem tools configured with POC workspace mount
@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -82,7 +83,7 @@ func TestDockerMCPReadToolWorkspaceScope(t *testing.T) {
 	}{
 		{
 			name:        "ReadWithinPOCWorkspace",
-			filePath:    "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md",
+			filePath:    pocDir() + "/README.md",
 			wantAllowed: true,
 			description: "File within POC workspace should be allowed",
 		},
@@ -94,7 +95,7 @@ func TestDockerMCPReadToolWorkspaceScope(t *testing.T) {
 		},
 		{
 			name:        "ReadParentDirectory",
-			filePath:    "/Users/ramirosalas/workspace/agentic_reference_architecture/README.md",
+			filePath:    filepath.Dir(pocDir()) + "/README.md",
 			wantAllowed: false,
 			description: "File in parent directory should be denied",
 		},
@@ -163,7 +164,7 @@ func TestDockerMCPGrepToolWorkspaceScope(t *testing.T) {
 	}{
 		{
 			name:        "GrepWithinPOCWorkspace",
-			searchPath:  "/Users/ramirosalas/workspace/agentic_reference_architecture/POC",
+			searchPath:  pocDir(),
 			wantAllowed: true,
 			description: "Grep within POC workspace should be allowed",
 		},
@@ -320,7 +321,7 @@ func TestDockerMCPBashToolWorkspaceScope(t *testing.T) {
 	}{
 		{
 			name:        "BashListPOCWorkspace",
-			command:     "ls /Users/ramirosalas/workspace/agentic_reference_architecture/POC",
+			command:     "ls " + pocDir(),
 			wantAllowed: true,
 			description: "Bash command targeting POC workspace should be allowed",
 		},
@@ -404,14 +405,14 @@ func TestDockerMCPToolHashVerification(t *testing.T) {
 			tool:        "read",
 			correctHash: "c4fbe869591f047985cd812915ed87d2c9c77de445089dcbc507416a86491453",
 			wrongHash:   "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-			params:      map[string]interface{}{"file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md"},
+			params:      map[string]interface{}{"file_path": pocDir() + "/README.md"},
 		},
 		{
 			name:        "GrepHashVerification",
 			tool:        "grep",
 			correctHash: "8bf71be3abae46b7ac610d92913c20e5f8d46bdbde9144c1c7e9798d92518cec",
 			wrongHash:   "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
-			params:      map[string]interface{}{"pattern": "test", "path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC"},
+			params:      map[string]interface{}{"pattern": "test", "path": pocDir()},
 		},
 		{
 			name:        "BashHashVerification",

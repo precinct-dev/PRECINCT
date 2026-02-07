@@ -1,0 +1,58 @@
+# ------------------------------------------------------------------------------
+# Kustomize: Admission Control Policies
+# Stories: RFA-9fv.9, RFA-7bh.2
+#
+# Manages admission control policies for supply-chain security.
+# Two complementary admission controllers:
+#
+# 1. OPA Gatekeeper (Rego policies):
+#    - Image digest pinning (require @sha256: references)
+#    - Registry allowlist (only allowed registries)
+#
+# 2. sigstore/policy-controller (cosign verification):
+#    - Cryptographic cosign signature verification
+#    - Keyless OIDC identity verification (GitHub Actions)
+#    - ClusterImagePolicy CRDs define which images require signatures
+#
+# Both admission webhooks run independently. Both must PASS for pod admission.
+# Gatekeeper validates image reference format; policy-controller verifies
+# cryptographic signatures. They are complementary, not competing.
+#
+# Usage:
+#   kustomize build POC/infra/eks/admission/
+#   kubectl apply -k POC/infra/eks/admission/
+#
+# Deployment order matters:
+#   1. gatekeeper-system.yaml       (namespace + config)
+#   2. constraint-templates/        (CRD-like definitions)
+#   3. constraints/                 (enforcement rules)
+#   4. policy-controller/           (sigstore webhook + ClusterImagePolicy)
+#
+# Gatekeeper CRDs and controller must be installed separately:
+#   kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.16/deploy/gatekeeper.yaml
+#
+# Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: admission-control
+
+labels:
+  - pairs:
+      app.kubernetes.io/part-of: mcp-admission-control
+      app.kubernetes.io/managed-by: kustomize
+    includeSelectors: false
+
+resources:
+  # 1. Gatekeeper system namespace and configuration
+  - gatekeeper-system.yaml
+  # 2. ConstraintTemplates (define policy logic)
+  - constraint-templates/require-image-signature.yaml
+  - constraint-templates/require-image-digest.yaml
+  # 3. Constraints (apply policies to namespaces)
+  - constraints/enforce-image-signature.yaml
+  - constraints/enforce-image-digest.yaml
+  # 4. sigstore/policy-controller (cosign signature verification webhook)
+  - policy-controller/

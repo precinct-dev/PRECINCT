@@ -4,6 +4,10 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"unicode"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // DLPScanner defines the interface for data loss prevention scanning
@@ -21,10 +25,16 @@ type ScanResult struct {
 	Error          error
 }
 
+// piiCheckFunc is a custom PII detection function for patterns that need
+// validation beyond simple regex (e.g., checksum verification, context-aware matching).
+// Returns true if PII is detected in the content.
+type piiCheckFunc func(content string) bool
+
 // BuiltInScanner is a regex-based DLP scanner implementation
 type BuiltInScanner struct {
 	credentialPatterns []*regexp.Regexp
 	piiPatterns        []*regexp.Regexp
+	customPIIChecks    []piiCheckFunc
 	suspiciousPatterns []*regexp.Regexp
 }
 
@@ -33,16 +43,16 @@ func NewBuiltInScanner() *BuiltInScanner {
 	return &BuiltInScanner{
 		credentialPatterns: []*regexp.Regexp{
 			// API keys and tokens
-			regexp.MustCompile(`\bsk-proj-[a-zA-Z0-9]{20,}\b`),                // OpenAI project keys
-			regexp.MustCompile(`\bsk-[a-zA-Z0-9]{32,}\b`),                     // OpenAI keys
-			regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),                        // AWS access keys
-			regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36,}\b`),                    // GitHub personal access tokens
-			regexp.MustCompile(`\bgho_[a-zA-Z0-9]{36,}\b`),                    // GitHub OAuth tokens
-			regexp.MustCompile(`\bghs_[a-zA-Z0-9]{36,}\b`),                    // GitHub server-to-server tokens
-			regexp.MustCompile(`\bghr_[a-zA-Z0-9]{36,}\b`),                    // GitHub refresh tokens
-			regexp.MustCompile(`\bglpat-[a-zA-Z0-9_\-]{20,}\b`),               // GitLab personal access tokens
+			regexp.MustCompile(`\bsk-proj-[a-zA-Z0-9]{20,}\b`),                              // OpenAI project keys
+			regexp.MustCompile(`\bsk-[a-zA-Z0-9]{32,}\b`),                                   // OpenAI keys
+			regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),                                      // AWS access keys
+			regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36,}\b`),                                  // GitHub personal access tokens
+			regexp.MustCompile(`\bgho_[a-zA-Z0-9]{36,}\b`),                                  // GitHub OAuth tokens
+			regexp.MustCompile(`\bghs_[a-zA-Z0-9]{36,}\b`),                                  // GitHub server-to-server tokens
+			regexp.MustCompile(`\bghr_[a-zA-Z0-9]{36,}\b`),                                  // GitHub refresh tokens
+			regexp.MustCompile(`\bglpat-[a-zA-Z0-9_\-]{20,}\b`),                             // GitLab personal access tokens
 			regexp.MustCompile(`\bxox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}\b`), // Slack tokens
-			regexp.MustCompile(`-----BEGIN [A-Z ]+ PRIVATE KEY-----`),         // Private keys
+			regexp.MustCompile(`-----BEGIN [A-Z ]+ PRIVATE KEY-----`),                       // Private keys
 
 			// Obvious credential patterns in key=value format or JSON
 			regexp.MustCompile(`(?i)\bpassword\s*[:=]\s*[^\s]{8,}`),
@@ -75,6 +85,20 @@ func NewBuiltInScanner() *BuiltInScanner {
 			regexp.MustCompile(`\b[A-Z]{2}\d{2}\s?[\dA-Z]{4}\s?(?:[\dA-Z]{4}\s?){2,7}[\dA-Z]{1,4}\b`),
 			// Date-of-birth pattern (DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, from SafeZone)
 			regexp.MustCompile(`\b\d{2}[./-]\d{2}[./-]\d{4}\b`),
+			// US Employer Identification Number (XX-XXXXXXX)
+			regexp.MustCompile(`\b\d{2}-\d{7}\b`),
+			// US Individual Taxpayer Identification Number (9XX-[7-9]X-XXXX)
+			regexp.MustCompile(`\b9\d{2}-[7-9]\d-\d{4}\b`),
+			// US Passport Number (letter + 8 digits)
+			regexp.MustCompile(`\b[A-Z]\d{8}\b`),
+			// US Medicare Beneficiary Identifier (MBI)
+			// Format: C[AN][AN]N[A][AN]N[AA]NN where C=1-9, A=alpha(no S,L,O,I,B,Z),
+			// N=numeric, AN=alpha-or-numeric (same exclusions)
+			regexp.MustCompile(`\b[1-9][AC-HJKMNP-RT][AC-HJKMNP-RT0-9]\d[AC-HJKMNP-RT][AC-HJKMNP-RT0-9]\d[AC-HJKMNP-RT]{2}\d{2}\b`),
+		},
+		customPIIChecks: []piiCheckFunc{
+			// US Bank Routing Number: 9 digits with ABA checksum, context-aware
+			checkABARoutingNumber,
 		},
 		suspiciousPatterns: []*regexp.Regexp{
 			// SQL injection patterns
@@ -109,9 +133,19 @@ func (s *BuiltInScanner) Scan(content string) ScanResult {
 		}
 	}
 
-	// Check for PII
+	// Check for PII (regex patterns)
 	for _, pattern := range s.piiPatterns {
 		if pattern.MatchString(content) {
+			result.HasPII = true
+			if !contains(result.Flags, "potential_pii") {
+				result.Flags = append(result.Flags, "potential_pii")
+			}
+		}
+	}
+
+	// Check for PII (custom validation checks, e.g., checksum-based)
+	for _, check := range s.customPIIChecks {
+		if check(content) {
 			result.HasPII = true
 			if !contains(result.Flags, "potential_pii") {
 				result.Flags = append(result.Flags, "potential_pii")
@@ -132,6 +166,68 @@ func (s *BuiltInScanner) Scan(content string) ScanResult {
 	return result
 }
 
+// abaRoutingPattern matches 9-digit sequences that could be routing numbers.
+var abaRoutingPattern = regexp.MustCompile(`\b\d{9}\b`)
+
+// abaContextPattern matches keywords that suggest the nearby number is a routing number.
+// Case-insensitive matching is done by lowercasing the content before checking.
+var abaContextKeywords = []string{
+	"routing", "aba", "rtn", "bank", "transit",
+}
+
+// checkABARoutingNumber detects US bank routing numbers using context-aware matching.
+// A 9-digit number is flagged only if it passes the ABA checksum AND appears near
+// a contextual keyword (within 50 characters), reducing false positives.
+func checkABARoutingNumber(content string) bool {
+	matches := abaRoutingPattern.FindAllStringIndex(content, -1)
+	if len(matches) == 0 {
+		return false
+	}
+	lower := strings.ToLower(content)
+	for _, loc := range matches {
+		candidate := content[loc[0]:loc[1]]
+		if !ValidateABAChecksum(candidate) {
+			continue
+		}
+		// Check for contextual keywords within 50 chars before or after the match
+		contextStart := loc[0] - 50
+		if contextStart < 0 {
+			contextStart = 0
+		}
+		contextEnd := loc[1] + 50
+		if contextEnd > len(lower) {
+			contextEnd = len(lower)
+		}
+		surrounding := lower[contextStart:contextEnd]
+		for _, kw := range abaContextKeywords {
+			if strings.Contains(surrounding, kw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// ValidateABAChecksum verifies the ABA routing number checksum.
+// The algorithm: 3*(d1+d4+d7) + 7*(d2+d5+d8) + (d3+d6+d9) must be divisible by 10.
+// Input must be exactly 9 ASCII digits.
+func ValidateABAChecksum(number string) bool {
+	if len(number) != 9 {
+		return false
+	}
+	for _, c := range number {
+		if !unicode.IsDigit(c) {
+			return false
+		}
+	}
+	d := make([]int, 9)
+	for i, c := range number {
+		d[i] = int(c - '0')
+	}
+	checksum := 3*(d[0]+d[3]+d[6]) + 7*(d[1]+d[4]+d[7]) + (d[2] + d[5] + d[8])
+	return checksum%10 == 0
+}
+
 // contains checks if a slice contains a string
 func contains(slice []string, item string) bool {
 	for _, s := range slice {
@@ -146,13 +242,27 @@ func contains(slice []string, item string) bool {
 // Position: After OPA policy, before session context
 func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// RFA-m6j.2: Create OTel span for step 7
+		ctx, span := tracer.Start(r.Context(), "gateway.dlp_scan",
+			trace.WithAttributes(
+				attribute.Int("mcp.gateway.step", 7),
+				attribute.String("mcp.gateway.middleware", "dlp_scan"),
+			),
+		)
+		defer span.End()
+
 		// Get captured request body from context
-		ctx := r.Context()
 		body := GetRequestBody(ctx)
 
 		if body == nil {
 			// No body to scan, continue
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Bool("has_credentials", false),
+				attribute.Bool("has_pii", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "no body"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 
@@ -162,18 +272,53 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
 		// Handle scanner errors - fail open
 		if result.Error != nil {
 			// Log error but allow request to continue
-			// In production, this might be logged to a monitoring system
-			next.ServeHTTP(w, r)
+			span.SetAttributes(
+				attribute.Bool("has_credentials", false),
+				attribute.Bool("has_pii", false),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "scanner error - fail open"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
+
+		// RFA-m6j.2: Set DLP scan span attributes
+		span.SetAttributes(
+			attribute.Bool("has_credentials", result.HasCredentials),
+			attribute.Bool("has_pii", result.HasPII),
+			attribute.StringSlice("flags", result.Flags),
+		)
 
 		// FAIL CLOSED: Block requests with credentials
 		if result.HasCredentials {
 			// Add flags to context for audit logging
 			ctx = WithSecurityFlags(ctx, result.Flags)
 
-			http.Error(w, "Forbidden: Request contains sensitive credentials", http.StatusForbidden)
+			span.SetAttributes(
+				attribute.String("mcp.result", "denied"),
+				attribute.String("mcp.reason", "credentials detected"),
+			)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+				Code:           ErrDLPCredentialsDetected,
+				Message:        "Request contains sensitive credentials",
+				Middleware:     "dlp_scan",
+				MiddlewareStep: 7,
+				Remediation:    "Remove credentials from the request body before retrying.",
+			})
 			return
+		}
+
+		// Determine result for span
+		if result.HasPII || result.HasSuspicious {
+			span.SetAttributes(
+				attribute.String("mcp.result", "flagged"),
+				attribute.String("mcp.reason", strings.Join(result.Flags, ",")),
+			)
+		} else {
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "clean"),
+			)
 		}
 
 		// Add security flags to context for audit logging

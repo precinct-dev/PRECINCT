@@ -1,0 +1,18 @@
+# ------------------------------------------------------------------------------
+# OpenTelemetry Collector ServiceAccount
+# Story: RFA-9fv.7
+#
+# ServiceAccount for the OTEL Collector. No special IRSA annotations needed
+# since the collector only routes telemetry data internally (to Phoenix).
+# If future exporters require AWS access (e.g., CloudWatch, X-Ray), add IRSA
+# annotations here.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: collector

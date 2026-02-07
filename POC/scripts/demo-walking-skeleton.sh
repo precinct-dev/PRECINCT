@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+# POC directory - resolved from env var or discovered from script location.
+# This script lives in scripts/ so the POC root is one level up.
+POC_DIR="${POC_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -43,7 +47,7 @@ echo "========================================="
 echo ""
 echo "Sending MCP request for 'read' tool to gateway..."
 echo "  Tool: read"
-echo "  File: /Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md"
+echo "  File: ${POC_DIR}/README.md"
 echo "  SPIFFE ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 echo ""
 
@@ -51,14 +55,14 @@ echo ""
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:9090 \
     -H "Content-Type: application/json" \
     -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
-    -d '{
-        "jsonrpc": "2.0",
-        "method": "read",
-        "params": {
-            "file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md"
+    -d "{
+        \"jsonrpc\": \"2.0\",
+        \"method\": \"read\",
+        \"params\": {
+            \"file_path\": \"${POC_DIR}/README.md\"
         },
-        "id": 1
-    }')
+        \"id\": 1
+    }")
 
 STATUS_CODE=$(echo "$RESPONSE" | tail -n1)
 BODY=$(echo "$RESPONSE" | head -n-1)
@@ -115,15 +119,15 @@ echo ""
 RESPONSE=$(curl -s -w "\n%{http_code}" -X POST http://localhost:9090 \
     -H "Content-Type: application/json" \
     -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
-    -d '{
-        "jsonrpc": "2.0",
-        "method": "read",
-        "params": {
-            "file_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/README.md",
-            "tool_hash": "0000000000000000000000000000000000000000000000000000000000000000"
+    -d "{
+        \"jsonrpc\": \"2.0\",
+        \"method\": \"read\",
+        \"params\": {
+            \"file_path\": \"${POC_DIR}/README.md\",
+            \"tool_hash\": \"0000000000000000000000000000000000000000000000000000000000000000\"
         },
-        "id": 1
-    }')
+        \"id\": 1
+    }")
 
 STATUS_CODE=$(echo "$RESPONSE" | tail -n1)
 

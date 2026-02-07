@@ -1,0 +1,63 @@
+# ------------------------------------------------------------------------------
+# ValidatingWebhookConfiguration: policy-controller
+# Story: RFA-7bh.2
+#
+# Registers the policy-controller as a ValidatingAdmissionWebhook with the
+# Kubernetes API server. When pods are created/updated, the API server calls
+# this webhook to verify cosign image signatures.
+#
+# Interaction with OPA Gatekeeper:
+#   - OPA Gatekeeper has its OWN ValidatingWebhookConfiguration
+#   - Both webhooks run independently (no ordering dependency)
+#   - Both must PASS for pod admission to succeed
+#   - Gatekeeper checks: digest pinning + registry allowlist
+#   - policy-controller checks: cryptographic cosign signatures
+#
+# failurePolicy: Fail
+#   In production, unsigned images MUST be rejected. If the webhook is
+#   unavailable, pod creation is denied rather than allowing unsigned images.
+#   For development/testing, this can be changed to Ignore.
+#
+# namespaceSelector:
+#   Only intercepts pods in namespaces labeled with
+#   policy.sigstore.dev/include: "true". This prevents the webhook from
+#   blocking system pods in kube-system, gatekeeper-system, etc.
+#
+# Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
+# ------------------------------------------------------------------------------
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingWebhookConfiguration
+metadata:
+  name: policy-controller-validating
+  labels:
+    app.kubernetes.io/name: policy-controller
+    app.kubernetes.io/part-of: sigstore-policy-controller
+webhooks:
+  - name: policy.sigstore.dev
+    admissionReviewVersions:
+      - v1
+      - v1beta1
+    clientConfig:
+      service:
+        name: policy-controller-webhook
+        namespace: cosign-system
+        path: /validations
+        port: 443
+    failurePolicy: Fail
+    sideEffects: None
+    timeoutSeconds: 10
+    # Only validate pod creation and updates (not deletes)
+    rules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["pods"]
+        scope: Namespaced
+    # Only enforce in namespaces that opt in via label.
+    # This prevents blocking system namespaces and allows development
+    # namespaces to opt out of signature verification.
+    namespaceSelector:
+      matchExpressions:
+        - key: policy.sigstore.dev/include
+          operator: In
+          values: ["true"]

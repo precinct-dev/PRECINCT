@@ -1,8 +1,13 @@
 package middleware
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -129,6 +134,77 @@ func TestValidateTokenOwnership(t *testing.T) {
 			}
 			if !tt.wantError && err != nil {
 				t.Errorf("ValidateTokenOwnership() error = %v, want nil", err)
+			}
+		})
+	}
+}
+
+func TestValidateTokenOwnership_EmptyOwnerID(t *testing.T) {
+	// RFA-7ct: Tokens with empty OwnerID must be rejected.
+	// Previously, the POC auto-assigned OwnerID to the caller, allowing
+	// any agent to claim ownership of an unclaimed token.
+	tests := []struct {
+		name      string
+		token     *SPIKEToken
+		spiffeID  string
+		wantError error
+	}{
+		{
+			name: "reject empty OwnerID - prevents unauthorized claiming",
+			token: &SPIKEToken{
+				Ref:      "abc123",
+				Exp:      3600,
+				Scope:    "read",
+				OwnerID:  "", // Empty: simulates token without SPIKE Nexus pre-population
+				IssuedAt: time.Now().Unix(),
+			},
+			spiffeID:  "spiffe://poc.local/agent/attacker",
+			wantError: ErrEmptyOwnerID,
+		},
+		{
+			name: "reject empty OwnerID - even for legitimate agent",
+			token: &SPIKEToken{
+				Ref:      "def456",
+				Exp:      7200,
+				Scope:    "tools.docker.read",
+				OwnerID:  "", // Empty: must be rejected regardless of who calls
+				IssuedAt: time.Now().Unix(),
+			},
+			spiffeID:  "spiffe://poc.local/agent/legitimate-agent",
+			wantError: ErrEmptyOwnerID,
+		},
+		{
+			name: "accept token with pre-populated OwnerID matching caller",
+			token: &SPIKEToken{
+				Ref:      "abc123",
+				Exp:      3600,
+				Scope:    "read",
+				OwnerID:  "spiffe://poc.local/agent/legitimate-agent",
+				IssuedAt: time.Now().Unix(),
+			},
+			spiffeID:  "spiffe://poc.local/agent/legitimate-agent",
+			wantError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := ValidateTokenOwnership(tt.token, tt.spiffeID)
+			if tt.wantError != nil {
+				if err == nil {
+					t.Fatalf("ValidateTokenOwnership() = nil, want error %v", tt.wantError)
+				}
+				if !errors.Is(err, tt.wantError) {
+					t.Errorf("ValidateTokenOwnership() error = %v, want %v", err, tt.wantError)
+				}
+				// Verify OwnerID was NOT mutated (the old bug would set it)
+				if tt.token.OwnerID != "" {
+					t.Errorf("Token OwnerID was mutated to %q, should remain empty", tt.token.OwnerID)
+				}
+			} else {
+				if err != nil {
+					t.Errorf("ValidateTokenOwnership() error = %v, want nil", err)
+				}
 			}
 		})
 	}
@@ -377,6 +453,173 @@ func TestSubstituteTokens(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestTokenSubstitutionWithScopeResolver verifies that the TokenSubstitution
+// middleware uses the ScopeResolver for dynamic scope validation. RFA-0gr.
+func TestTokenSubstitutionWithScopeResolver(t *testing.T) {
+	ownerSPIFFEID := "spiffe://poc.local/agent/test-agent"
+
+	// Create a mock scope resolver for tests
+	type mockScopeResolver struct {
+		scopes map[string]struct{ loc, op, dest string }
+	}
+
+	resolveFn := func(m *mockScopeResolver, toolName string) (string, string, string, bool) {
+		if s, ok := m.scopes[toolName]; ok {
+			return s.loc, s.op, s.dest, true
+		}
+		return "", "", "", false
+	}
+
+	t.Run("scope match - tool in registry with matching token scope", func(t *testing.T) {
+		resolver := &mockScopeResolver{
+			scopes: map[string]struct{ loc, op, dest string }{
+				"tools/call": {loc: "tools", op: "docker", dest: "read"},
+			},
+		}
+
+		echoHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(body)
+		})
+
+		// Use a scopeResolver adapter since interface requires a method
+		adaptedResolver := &testScopeResolverAdapter{resolveFn: func(toolName string) (string, string, string, bool) {
+			return resolveFn(resolver, toolName)
+		}}
+
+		// Build middleware chain: BodyCapture -> SPIFFEAuth -> TokenSubstitution -> Echo
+		var handler http.Handler = echoHandler
+		handler = TokenSubstitution(handler, NewPOCSecretRedeemerWithOwner(ownerSPIFFEID), nil, adaptedResolver)
+		handler = SPIFFEAuth(handler, "dev")
+		handler = BodyCapture(handler)
+
+		// MCP request body: the method is "tools/call" which matches the resolver
+		requestBody := `{"jsonrpc":"2.0","method":"tools/call","params":{"tool":"docker_tool"},"id":1,"api_key":"$SPIKE{ref:abc123,exp:3600,scope:tools.docker.read}"}`
+		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(requestBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-SPIFFE-ID", ownerSPIFFEID)
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d: %s", rr.Code, rr.Body.String())
+		}
+		// Token should be substituted
+		body := rr.Body.String()
+		if !strings.Contains(body, "secret-value-for-abc123") {
+			t.Errorf("Expected substituted secret, got: %s", body)
+		}
+	})
+
+	t.Run("scope mismatch - tool requires different scope than token has", func(t *testing.T) {
+		resolver := &mockScopeResolver{
+			scopes: map[string]struct{ loc, op, dest string }{
+				"tools/call": {loc: "tools", op: "s3", dest: "write"},
+			},
+		}
+
+		echoHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})
+
+		adaptedResolver := &testScopeResolverAdapter{resolveFn: func(toolName string) (string, string, string, bool) {
+			return resolveFn(resolver, toolName)
+		}}
+
+		var handler http.Handler = echoHandler
+		handler = TokenSubstitution(handler, NewPOCSecretRedeemerWithOwner(ownerSPIFFEID), nil, adaptedResolver)
+		handler = SPIFFEAuth(handler, "dev")
+		handler = BodyCapture(handler)
+
+		// Token has scope "tools.docker.read" but registry requires "tools.s3.write"
+		requestBody := `{"jsonrpc":"2.0","method":"tools/call","params":{},"id":1,"api_key":"$SPIKE{ref:abc123,exp:3600,scope:tools.docker.read}"}`
+		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(requestBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-SPIFFE-ID", ownerSPIFFEID)
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("Expected 403 for scope mismatch, got %d: %s", rr.Code, rr.Body.String())
+		}
+		if !strings.Contains(rr.Body.String(), "token_scope_failed") {
+			t.Errorf("Expected token_scope_failed error, got: %s", rr.Body.String())
+		}
+	})
+
+	t.Run("tool not in resolver - scope validation is permissive", func(t *testing.T) {
+		resolver := &mockScopeResolver{
+			scopes: map[string]struct{ loc, op, dest string }{}, // empty - no tools registered
+		}
+
+		echoHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(body)
+		})
+
+		adaptedResolver := &testScopeResolverAdapter{resolveFn: func(toolName string) (string, string, string, bool) {
+			return resolveFn(resolver, toolName)
+		}}
+
+		var handler http.Handler = echoHandler
+		handler = TokenSubstitution(handler, NewPOCSecretRedeemerWithOwner(ownerSPIFFEID), nil, adaptedResolver)
+		handler = SPIFFEAuth(handler, "dev")
+		handler = BodyCapture(handler)
+
+		// Tool not in resolver -- scope validation should be skipped (permissive)
+		requestBody := `{"jsonrpc":"2.0","method":"unknown_tool","params":{},"id":1,"api_key":"$SPIKE{ref:abc123,exp:3600,scope:anything.goes.here}"}`
+		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(requestBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-SPIFFE-ID", ownerSPIFFEID)
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected 200 (permissive when tool not in resolver), got %d: %s", rr.Code, rr.Body.String())
+		}
+	})
+
+	t.Run("nil scope resolver - scope validation completely skipped", func(t *testing.T) {
+		echoHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write(body)
+		})
+
+		var handler http.Handler = echoHandler
+		handler = TokenSubstitution(handler, NewPOCSecretRedeemerWithOwner(ownerSPIFFEID), nil, nil)
+		handler = SPIFFEAuth(handler, "dev")
+		handler = BodyCapture(handler)
+
+		// With nil resolver, scope validation is completely skipped regardless of token scope
+		requestBody := `{"jsonrpc":"2.0","method":"any_tool","params":{},"id":1,"api_key":"$SPIKE{ref:abc123,exp:3600,scope:any.scope.here}"}`
+		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(requestBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-SPIFFE-ID", ownerSPIFFEID)
+
+		rr := httptest.NewRecorder()
+		handler.ServeHTTP(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Errorf("Expected 200 (nil resolver), got %d: %s", rr.Code, rr.Body.String())
+		}
+	})
+}
+
+// testScopeResolverAdapter adapts a function to the ScopeResolver interface for testing.
+type testScopeResolverAdapter struct {
+	resolveFn func(toolName string) (string, string, string, bool)
+}
+
+func (a *testScopeResolverAdapter) ResolveScope(toolName string) (string, string, string, bool) {
+	return a.resolveFn(toolName)
 }
 
 func TestTokenSubstitutionAudit(t *testing.T) {

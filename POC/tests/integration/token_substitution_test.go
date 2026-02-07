@@ -24,7 +24,7 @@ func TestTokenSubstitutionMiddleware_FullFlow(t *testing.T) {
 
 	// Build middleware chain: BodyCapture -> SPIFFEAuth -> TokenSubstitution -> Echo
 	var handler http.Handler = echoHandler
-	handler = middleware.TokenSubstitution(handler)
+	handler = middleware.TokenSubstitution(handler, middleware.NewPOCSecretRedeemerWithOwner("spiffe://poc.local/agent/test-agent"), nil, nil)
 	handler = middleware.SPIFFEAuth(handler, "dev")
 	handler = middleware.BodyCapture(handler)
 
@@ -135,7 +135,7 @@ func TestTokenSubstitutionMiddleware_TokenParsing(t *testing.T) {
 	})
 
 	var handler http.Handler = echoHandler
-	handler = middleware.TokenSubstitution(handler)
+	handler = middleware.TokenSubstitution(handler, middleware.NewPOCSecretRedeemerWithOwner("spiffe://poc.local/agent/test-agent"), nil, nil)
 	handler = middleware.SPIFFEAuth(handler, "dev")
 	handler = middleware.BodyCapture(handler)
 
@@ -202,7 +202,7 @@ func TestTokenSubstitutionMiddleware_AuditLogging(t *testing.T) {
 
 	// Build handler chain (audit logging happens via stdout for POC)
 	var handler http.Handler = echoHandler
-	handler = middleware.TokenSubstitution(handler)
+	handler = middleware.TokenSubstitution(handler, middleware.NewPOCSecretRedeemerWithOwner("spiffe://poc.local/agent/test-agent"), nil, nil)
 	handler = middleware.SPIFFEAuth(handler, "dev")
 	handler = middleware.BodyCapture(handler)
 
@@ -237,7 +237,7 @@ func TestTokenSubstitutionMiddleware_SecretNotLeaked(t *testing.T) {
 	})
 
 	var handler http.Handler = echoHandler
-	handler = middleware.TokenSubstitution(handler)
+	handler = middleware.TokenSubstitution(handler, middleware.NewPOCSecretRedeemerWithOwner("spiffe://poc.local/agent/test-agent"), nil, nil)
 	handler = middleware.SPIFFEAuth(handler, "dev")
 	handler = middleware.BodyCapture(handler)
 

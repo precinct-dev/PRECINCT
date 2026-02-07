@@ -56,6 +56,8 @@ var (
 	ErrScopeMismatch = errors.New("token scope validation failed")
 	// ErrMissingSPIFFEID indicates the SPIFFE ID is missing from context
 	ErrMissingSPIFFEID = errors.New("missing SPIFFE ID in context")
+	// ErrEmptyOwnerID indicates the token has no OwnerID set (must be pre-populated by SPIKE Nexus)
+	ErrEmptyOwnerID = errors.New("token has empty OwnerID: SPIKE Nexus must pre-populate OwnerID at issuance")
 )
 
 // ParseSPIKEToken parses a SPIKE token string into a SPIKEToken struct
@@ -98,12 +100,11 @@ func ValidateTokenOwnership(token *SPIKEToken, spiffeID string) error {
 		return ErrMissingSPIFFEID
 	}
 
-	// For POC: In production, token.OwnerID would be populated by the SecretRedeemer
-	// after redeeming the token from SPIKE Nexus. For now, we assume it's set.
+	// OwnerID must be pre-populated by SPIKE Nexus at token issuance time.
+	// Reject tokens with empty OwnerID to prevent unauthorized token claiming
+	// in multi-agent scenarios (see RFA-7ct).
 	if token.OwnerID == "" {
-		// If OwnerID not yet set, set it now (for testing)
-		token.OwnerID = spiffeID
-		return nil
+		return ErrEmptyOwnerID
 	}
 
 	if token.OwnerID != spiffeID {

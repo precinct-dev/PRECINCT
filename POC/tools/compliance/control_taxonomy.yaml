@@ -1,0 +1,466 @@
+# Control Taxonomy -- Agentic Reference Architecture POC
+# Maps gateway security controls to SOC 2, ISO 27001, CCPA, and GDPR frameworks.
+# Each control references the middleware step in the 13-middleware chain.
+#
+# evidence_type: audit_log | configuration | test_result
+# evidence_query: jq-style filter for extracting evidence from audit logs
+
+controls:
+  # ---------------------------------------------------------------------------
+  # Identity (SPIFFE Authentication -- middleware step 3)
+  # ---------------------------------------------------------------------------
+  - id: GW-AUTH-001
+    name: "SPIFFE mTLS Authentication"
+    description: "All agent requests are authenticated via SPIFFE SVIDs presented over mTLS"
+    middleware: spiffe_auth
+    step: 3
+    frameworks:
+      soc2: ["CC6.1"]
+      iso27001: ["A.9.2.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.spiffe_id != "" and .spiffe_id != null'
+
+  - id: GW-AUTH-002
+    name: "SPIFFE ID Validation"
+    description: "SPIFFE IDs are validated against registered trust domains"
+    middleware: spiffe_auth
+    step: 3
+    frameworks:
+      soc2: ["CC6.1"]
+      iso27001: ["A.9.2.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.spiffe_id | startswith("spiffe://")'
+
+  - id: GW-AUTH-003
+    name: "Mutual TLS Enforcement"
+    description: "Gateway enforces mutual TLS for all inbound agent connections"
+    middleware: spiffe_auth
+    step: 3
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.13.1.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: configuration
+    evidence_query: null
+
+  # ---------------------------------------------------------------------------
+  # Authorization (OPA Policy Engine -- middleware step 6)
+  # ---------------------------------------------------------------------------
+  - id: GW-AUTHZ-001
+    name: "OPA Policy-Based Authorization"
+    description: "Tool invocations are authorized via OPA policies against SPIFFE grants"
+    middleware: opa
+    step: 6
+    frameworks:
+      soc2: ["CC6.1"]
+      iso27001: ["A.9.4.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.action == "mcp_request" and .result != null'
+
+  - id: GW-AUTHZ-002
+    name: "Path-Based Access Control"
+    description: "File read/grep operations restricted to allowed base path"
+    middleware: opa
+    step: 6
+    frameworks:
+      soc2: ["CC6.1"]
+      iso27001: ["A.9.4.1"]
+      ccpa: ["1798.150"]
+      gdpr: ["Art. 25"]
+    evidence_type: configuration
+    evidence_query: null
+
+  - id: GW-AUTHZ-003
+    name: "Destination-Based Egress Control"
+    description: "External egress restricted to approved destinations per tool"
+    middleware: opa
+    step: 6
+    frameworks:
+      soc2: ["CC6.6"]
+      iso27001: ["A.13.1.1"]
+      ccpa: []
+      gdpr: ["Art. 28"]
+    evidence_type: configuration
+    evidence_query: null
+
+  - id: GW-AUTHZ-004
+    name: "Tool Grant Enforcement"
+    description: "Only explicitly granted tools are available per SPIFFE identity"
+    middleware: opa
+    step: 6
+    frameworks:
+      soc2: ["CC6.1"]
+      iso27001: ["A.9.4.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.action == "mcp_request" and .status_code == 403'
+
+  # ---------------------------------------------------------------------------
+  # Data Protection (DLP -- middleware step 7, Token Substitution -- step 13)
+  # ---------------------------------------------------------------------------
+  - id: GW-DLP-001
+    name: "PII Detection in Requests"
+    description: "Requests scanned for PII patterns (SSN, credit card, email) before forwarding"
+    middleware: dlp
+    step: 7
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.8.2.1"]
+      ccpa: ["1798.105"]
+      gdpr: ["Art. 25"]
+    evidence_type: audit_log
+    evidence_query: '.action == "mcp_request"'
+
+  - id: GW-DLP-002
+    name: "PII Detection in Responses"
+    description: "Responses scanned for PII patterns before returning to agent"
+    middleware: response_firewall
+    step: 7
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.8.2.1"]
+      ccpa: ["1798.105"]
+      gdpr: ["Art. 25"]
+    evidence_type: audit_log
+    evidence_query: '.action == "mcp_request"'
+
+  - id: GW-DLP-003
+    name: "Credit Card Number Detection"
+    description: "Credit card numbers detected and blocked in transit"
+    middleware: dlp
+    step: 7
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.8.2.1"]
+      ccpa: ["1798.150"]
+      gdpr: ["Art. 25"]
+    evidence_type: test_result
+    evidence_query: null
+
+  - id: GW-DLP-004
+    name: "SSN Detection"
+    description: "Social Security Numbers detected and blocked in transit"
+    middleware: dlp
+    step: 7
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.8.2.1"]
+      ccpa: ["1798.150"]
+      gdpr: ["Art. 25"]
+    evidence_type: test_result
+    evidence_query: null
+
+  - id: GW-DLP-005
+    name: "Configurable DLP Patterns"
+    description: "DLP patterns configurable via regex definitions"
+    middleware: dlp
+    step: 7
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.8.2.1"]
+      ccpa: []
+      gdpr: ["Art. 25"]
+    evidence_type: configuration
+    evidence_query: null
+
+  # ---------------------------------------------------------------------------
+  # Content Security (Deep Scan -- step 10, Step-Up Gating -- step 9)
+  # ---------------------------------------------------------------------------
+  - id: GW-SCAN-001
+    name: "Deep Content Scanning"
+    description: "Tool payloads scanned for malicious content patterns"
+    middleware: deep_scan
+    step: 10
+    frameworks:
+      soc2: ["CC7.1"]
+      iso27001: ["A.12.2.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.action == "mcp_request"'
+
+  - id: GW-SCAN-002
+    name: "Step-Up Gating for High-Risk Tools"
+    description: "High-risk tool invocations require step-up authentication token"
+    middleware: step_up_gating
+    step: 9
+    frameworks:
+      soc2: ["CC6.1"]
+      iso27001: ["A.9.4.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.action == "step_up_gating"'
+
+  - id: GW-SCAN-003
+    name: "Tool Poisoning Detection"
+    description: "Tool descriptions checked for injection patterns (IMPORTANT tags, system overrides)"
+    middleware: deep_scan
+    step: 10
+    frameworks:
+      soc2: ["CC7.1"]
+      iso27001: ["A.12.2.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: configuration
+    evidence_query: null
+
+  # ---------------------------------------------------------------------------
+  # Audit (Audit Logging -- middleware step 4)
+  # ---------------------------------------------------------------------------
+  - id: GW-AUDIT-001
+    name: "Structured Audit Logging"
+    description: "All gateway decisions logged as structured JSON with timestamps and trace IDs"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.timestamp != null and .trace_id != null'
+
+  - id: GW-AUDIT-002
+    name: "Decision Traceability"
+    description: "Each authorization decision linked to session, decision, and trace IDs"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.session_id != null and .decision_id != null'
+
+  - id: GW-AUDIT-003
+    name: "Tamper-Evident Audit Chain"
+    description: "Audit log entries chained with SHA-256 prev_hash for tamper detection"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.prev_hash != null'
+
+  - id: GW-AUDIT-004
+    name: "Security Metadata in Audit"
+    description: "Audit entries include security context (hash verification, bundle/registry digests)"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.bundle_digest != null and .registry_digest != null'
+
+  # ---------------------------------------------------------------------------
+  # Secrets (Token Substitution -- middleware step 13, SPIKE Nexus)
+  # ---------------------------------------------------------------------------
+  - id: GW-SEC-001
+    name: "Late-Binding Secret Substitution"
+    description: "Secrets never exposed to agents; token references substituted at gateway egress"
+    middleware: spike_token
+    step: 13
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.10.1.1"]
+      ccpa: ["1798.150"]
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.action == "mcp_request"'
+
+  - id: GW-SEC-002
+    name: "SPIKE Nexus Integration"
+    description: "Secrets retrieved from SPIKE Nexus vault via SPIFFE-authenticated mTLS"
+    middleware: spike_redeemer
+    step: 13
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.10.1.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: test_result
+    evidence_query: null
+
+  - id: GW-SEC-003
+    name: "Secret Reference Format"
+    description: "Secrets referenced via spike:// URI scheme, never as plaintext"
+    middleware: spike_token
+    step: 13
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.10.1.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: test_result
+    evidence_query: null
+
+  # ---------------------------------------------------------------------------
+  # Transport (mTLS)
+  # ---------------------------------------------------------------------------
+  - id: GW-TRANS-001
+    name: "TLS Encryption in Transit"
+    description: "All gateway communications encrypted with TLS 1.2+"
+    middleware: spiffe_auth
+    step: 3
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.13.1.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: configuration
+    evidence_query: null
+
+  - id: GW-TRANS-002
+    name: "Certificate-Based Identity"
+    description: "Agent identity established via X.509 SVID certificates"
+    middleware: spiffe_auth
+    step: 3
+    frameworks:
+      soc2: ["CC6.1"]
+      iso27001: ["A.9.2.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: configuration
+    evidence_query: null
+
+  # ---------------------------------------------------------------------------
+  # Availability (Rate Limit -- step 11, Circuit Breaker -- step 12)
+  # ---------------------------------------------------------------------------
+  - id: GW-AVAIL-001
+    name: "Rate Limiting"
+    description: "Per-agent rate limiting prevents resource exhaustion"
+    middleware: rate_limiter
+    step: 11
+    frameworks:
+      soc2: ["CC6.5"]
+      iso27001: ["A.14.2.7"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: test_result
+    evidence_query: null
+
+  - id: GW-AVAIL-002
+    name: "Circuit Breaker"
+    description: "Circuit breaker prevents cascade failures to downstream MCP servers"
+    middleware: circuit_breaker
+    step: 12
+    frameworks:
+      soc2: ["CC6.5"]
+      iso27001: ["A.14.2.7"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: test_result
+    evidence_query: null
+
+  - id: GW-AVAIL-003
+    name: "Request Size Limiting"
+    description: "Inbound request size limited to prevent resource exhaustion"
+    middleware: size_limit
+    step: 1
+    frameworks:
+      soc2: ["CC6.5"]
+      iso27001: ["A.14.2.7"]
+      ccpa: []
+      gdpr: []
+    evidence_type: configuration
+    evidence_query: null
+
+  # ---------------------------------------------------------------------------
+  # Session (Session Context -- middleware step 8)
+  # ---------------------------------------------------------------------------
+  - id: GW-SESS-001
+    name: "Session Context Tracking"
+    description: "Per-agent session state tracked for risk scoring and anomaly detection"
+    middleware: session_context
+    step: 8
+    frameworks:
+      soc2: ["CC6.1"]
+      iso27001: ["A.9.4.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.session_id != null'
+
+  - id: GW-SESS-002
+    name: "Risk Score Computation"
+    description: "Session risk score computed from tool usage patterns and exposure"
+    middleware: session_context
+    step: 8
+    frameworks:
+      soc2: ["CC7.1"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.action == "step_up_gating" and .result | contains("total_score")'
+
+  - id: GW-SESS-003
+    name: "Session-Aware Authorization"
+    description: "OPA policy evaluates session risk score to gate high-risk operations"
+    middleware: session_context
+    step: 8
+    frameworks:
+      soc2: ["CC7.1"]
+      iso27001: ["A.9.4.1"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: configuration
+    evidence_query: null
+
+  # ---------------------------------------------------------------------------
+  # Supply Chain (Cosign, SBOM)
+  # ---------------------------------------------------------------------------
+  - id: GW-SC-001
+    name: "Container Image Signing"
+    description: "Container images signed with Sigstore cosign for supply chain integrity"
+    middleware: null
+    step: null
+    frameworks:
+      soc2: ["CC7.1"]
+      iso27001: ["A.14.2.7"]
+      ccpa: []
+      gdpr: []
+    evidence_type: configuration
+    evidence_query: null
+
+  - id: GW-SC-002
+    name: "SBOM Generation"
+    description: "Software Bill of Materials generated for all container images"
+    middleware: null
+    step: null
+    frameworks:
+      soc2: ["CC7.1"]
+      iso27001: ["A.14.2.7"]
+      ccpa: []
+      gdpr: []
+    evidence_type: configuration
+    evidence_query: null
+
+  - id: GW-SC-003
+    name: "Tool Hash Verification"
+    description: "Tool descriptions verified against SHA-256 hashes to detect tampering"
+    middleware: tool_registry
+    step: 5
+    frameworks:
+      soc2: ["CC7.1"]
+      iso27001: ["A.14.2.7"]
+      ccpa: []
+      gdpr: ["Art. 32"]
+    evidence_type: audit_log
+    evidence_query: '.security.tool_hash_verified != null'
