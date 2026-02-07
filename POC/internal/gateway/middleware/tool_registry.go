@@ -1,4 +1,4 @@
-// Tool Registry Implementation - RFA-qq0.5, RFA-qq0.19, RFA-j2d.5, RFA-dh9
+// Tool Registry Implementation - RFA-qq0.5, RFA-qq0.19, RFA-j2d.5, RFA-dh9, RFA-lo1.4
 // Implements hash-based verification of MCP tools to detect poisoning attacks.
 // Loads tool definitions from config/tool-registry.yaml and verifies SHA-256 hashes.
 // RFA-qq0.19: Adds poisoning pattern detection using regex patterns to identify
@@ -7,12 +7,20 @@
 // Hash mismatches on UI resources are treated as rug-pull attacks (critical severity).
 // RFA-dh9: Adds fsnotify-based hot-reload. Watch() starts a file watcher that
 // automatically reloads the registry YAML on file change without gateway restart.
+// RFA-lo1.4: Adds cosign-blob signature verification for registry hot-reload.
+// When a public key is configured (TOOL_REGISTRY_PUBLIC_KEY), registry updates
+// must have a companion .sig file with a valid Ed25519 signature. Without a key,
+// reload works in dev mode with warning logs.
 package middleware
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"log"
 	"net/http"
@@ -161,11 +169,13 @@ type ToolRegistryConfig struct {
 // ToolRegistry manages tool verification with hash checking and UI resource verification.
 // RFA-j2d.5: Extended with uiResources map for UI resource hash verification.
 // RFA-dh9: Protected by sync.RWMutex for concurrent-safe reads during hot-reload.
+// RFA-lo1.4: Added publicKey for cosign-blob attestation on hot-reload.
 type ToolRegistry struct {
 	mu          sync.RWMutex
 	tools       map[string]ToolDefinition       // tool_name -> definition
 	uiResources map[string]RegisteredUIResource // "server|resourceURI" -> registration
 	configPath  string                          // path to YAML config file (for Watch)
+	publicKey   ed25519.PublicKey               // RFA-lo1.4: Ed25519 public key for signature verification (nil = dev mode)
 }
 
 // NewToolRegistry creates a new tool registry from a config file.
@@ -222,6 +232,81 @@ func (tr *ToolRegistry) loadConfig(configPath string) error {
 	return nil
 }
 
+// SetPublicKey configures an Ed25519 public key for cosign-blob signature verification.
+// The pemData should be PEM-encoded (PKCS8 or raw Ed25519 public key).
+// When a public key is set, Watch() will require companion .sig files for every
+// registry reload. Without a public key, Watch() accepts all updates (dev mode).
+//
+// RFA-lo1.4: Called from gateway.New() with the value of TOOL_REGISTRY_PUBLIC_KEY.
+func (tr *ToolRegistry) SetPublicKey(pemData []byte) error {
+	block, _ := pem.Decode(pemData)
+	if block == nil {
+		return fmt.Errorf("failed to decode PEM block from public key data")
+	}
+
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse public key: %w", err)
+	}
+
+	edPub, ok := pub.(ed25519.PublicKey)
+	if !ok {
+		return fmt.Errorf("public key is not Ed25519 (got %T)", pub)
+	}
+
+	tr.publicKey = edPub
+	return nil
+}
+
+// HasPublicKey returns true if a public key is configured for signature verification.
+func (tr *ToolRegistry) HasPublicKey() bool {
+	return tr.publicKey != nil
+}
+
+// verifySignature verifies an Ed25519 signature over data.
+// The sig parameter should be the base64-decoded raw signature bytes.
+// Returns nil if signature is valid, error otherwise.
+//
+// RFA-lo1.4: Used by Watch() to verify registry file updates.
+func (tr *ToolRegistry) verifySignature(data, sig []byte) error {
+	if tr.publicKey == nil {
+		return fmt.Errorf("no public key configured for signature verification")
+	}
+
+	if len(sig) != ed25519.SignatureSize {
+		return fmt.Errorf("invalid signature size: got %d, want %d", len(sig), ed25519.SignatureSize)
+	}
+
+	if !ed25519.Verify(tr.publicKey, data, sig) {
+		return fmt.Errorf("signature verification failed: invalid signature")
+	}
+
+	return nil
+}
+
+// readAndVerifySigFile reads the companion .sig file for a registry YAML file,
+// base64-decodes it, and verifies the signature against the YAML data.
+// Returns nil if the signature is valid, error otherwise.
+//
+// The .sig file is expected to contain a base64-encoded Ed25519 signature,
+// matching the format produced by `cosign sign-blob --key <key> <file>`.
+func (tr *ToolRegistry) readAndVerifySigFile(yamlData []byte, configPath string) error {
+	sigPath := configPath + ".sig"
+	sigData, err := os.ReadFile(sigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read signature file %s: %w", sigPath, err)
+	}
+
+	// Trim whitespace (cosign output may have trailing newline)
+	sigB64 := strings.TrimSpace(string(sigData))
+	sig, err := base64.StdEncoding.DecodeString(sigB64)
+	if err != nil {
+		return fmt.Errorf("failed to base64-decode signature from %s: %w", sigPath, err)
+	}
+
+	return tr.verifySignature(yamlData, sig)
+}
+
 // ToolCount returns the number of registered tools. Useful for diagnostics and testing.
 func (tr *ToolRegistry) ToolCount() int {
 	tr.mu.RLock()
@@ -234,8 +319,12 @@ func (tr *ToolRegistry) ToolCount() int {
 // sync.RWMutex). Returns a stop function that must be called for graceful
 // shutdown. If configPath is empty, Watch is a no-op and returns a no-op stop.
 //
-// RFA-dh9: Walking skeleton for registry hot-reload. No signature verification
-// is performed here (that is RFA-lo1.4).
+// RFA-dh9: Walking skeleton for registry hot-reload.
+// RFA-lo1.4: When a public key is configured (via SetPublicKey), Watch requires
+// a companion .sig file for every reload. The .sig file must contain a valid
+// base64-encoded Ed25519 signature over the YAML content. If verification fails,
+// the old registry is kept and a critical audit event is emitted. When no public
+// key is configured (dev mode), all updates are accepted with a warning.
 //
 // Debounce: editors often fire multiple fsnotify events for a single save
 // (write + chmod, rename + create). We debounce by waiting 100ms after the
@@ -264,7 +353,13 @@ func (tr *ToolRegistry) Watch() (stop func(), err error) {
 		return noop, fmt.Errorf("failed to watch directory %s: %w", configDir, err)
 	}
 
-	log.Printf("[tool-registry] watching %s for changes", tr.configPath)
+	// RFA-lo1.4: Log attestation mode at startup
+	if tr.publicKey != nil {
+		log.Printf("[tool-registry] watching %s for changes (attestation: ENABLED)", tr.configPath)
+	} else {
+		log.Printf("[tool-registry] WARNING: Registry hot-reload is enabled WITHOUT attestation. Unsigned updates will be accepted.")
+		log.Printf("[tool-registry] watching %s for changes (attestation: DISABLED)", tr.configPath)
+	}
 
 	done := make(chan struct{})
 	go func() {
@@ -290,15 +385,7 @@ func (tr *ToolRegistry) Watch() (stop func(), err error) {
 				}
 				debounceTimer = time.AfterFunc(100*time.Millisecond, func() {
 					log.Printf("[tool-registry] file change detected: %s (op=%s), reloading", event.Name, event.Op)
-					if loadErr := tr.loadConfig(tr.configPath); loadErr != nil {
-						log.Printf("[tool-registry] reload failed, keeping old registry: %v", loadErr)
-					} else {
-						tr.mu.RLock()
-						toolCount := len(tr.tools)
-						uiCount := len(tr.uiResources)
-						tr.mu.RUnlock()
-						log.Printf("[tool-registry] reload successful: %d tools, %d ui_resources", toolCount, uiCount)
-					}
+					tr.reloadWithAttestation()
 				})
 			case watchErr, ok := <-watcher.Errors:
 				if !ok {
@@ -315,6 +402,62 @@ func (tr *ToolRegistry) Watch() (stop func(), err error) {
 	}
 
 	return stopFn, nil
+}
+
+// reloadWithAttestation performs the hot-reload logic with optional signature
+// verification. When a public key is configured, the companion .sig file is
+// checked before accepting the new registry data. On verification failure,
+// the old registry is kept and a critical audit event is logged.
+//
+// RFA-lo1.4: Central reload logic called by Watch() on file change.
+func (tr *ToolRegistry) reloadWithAttestation() {
+	// Read the YAML data first (we need it for both loading and sig verification)
+	yamlData, err := os.ReadFile(tr.configPath)
+	if err != nil {
+		log.Printf("[tool-registry] reload failed, keeping old registry: failed to read config file: %v", err)
+		return
+	}
+
+	if tr.publicKey != nil {
+		// Attestation mode: verify signature before accepting update
+		if sigErr := tr.readAndVerifySigFile(yamlData, tr.configPath); sigErr != nil {
+			log.Printf("[CRITICAL] [tool-registry] signature verification failed, keeping old registry: %v", sigErr)
+			log.Printf("[AUDIT] registry_reload_rejected: signature_verification_failed path=%s", tr.configPath)
+			return
+		}
+		log.Printf("[tool-registry] signature verification passed for %s", tr.configPath)
+	} else {
+		// Dev mode: accept without verification but warn
+		log.Printf("[tool-registry] WARNING: accepting unsigned registry update (no public key configured)")
+	}
+
+	// Parse and atomically swap
+	var config ToolRegistryConfig
+	if err := yaml.Unmarshal(yamlData, &config); err != nil {
+		log.Printf("[tool-registry] reload failed, keeping old registry: failed to parse config file: %v", err)
+		return
+	}
+
+	newTools := make(map[string]ToolDefinition, len(config.Tools))
+	for _, tool := range config.Tools {
+		newTools[tool.Name] = tool
+	}
+	newUIResources := make(map[string]RegisteredUIResource, len(config.UIResources))
+	for _, res := range config.UIResources {
+		key := uiResourceKey(res.Server, res.ResourceURI)
+		newUIResources[key] = res
+	}
+
+	tr.mu.Lock()
+	tr.tools = newTools
+	tr.uiResources = newUIResources
+	tr.mu.Unlock()
+
+	tr.mu.RLock()
+	toolCount := len(tr.tools)
+	uiCount := len(tr.uiResources)
+	tr.mu.RUnlock()
+	log.Printf("[tool-registry] reload successful: %d tools, %d ui_resources", toolCount, uiCount)
 }
 
 // VerifyTool checks if a tool is allowed and matches expected hash

@@ -1,8 +1,12 @@
 package middleware
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/pem"
 	"os"
 	"path/filepath"
 	"strings"
@@ -1734,5 +1738,723 @@ func TestToolCount(t *testing.T) {
 
 	if registry.ToolCount() != 3 {
 		t.Errorf("Expected 3 tools, got %d", registry.ToolCount())
+	}
+}
+
+// --- RFA-lo1.4: Cosign-blob Attestation Tests ---
+
+// generateTestKeyPair creates an Ed25519 key pair and returns the public key
+// as PEM-encoded bytes, plus the private key for signing.
+func generateTestKeyPair(t *testing.T) (pemPub []byte, privKey ed25519.PrivateKey) {
+	t.Helper()
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("Failed to generate Ed25519 key pair: %v", err)
+	}
+
+	// Marshal public key to PKIX DER
+	derBytes, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("Failed to marshal public key: %v", err)
+	}
+
+	// Encode to PEM
+	pemBlock := &pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: derBytes,
+	}
+	pemData := pem.EncodeToMemory(pemBlock)
+
+	return pemData, priv
+}
+
+// signData signs data with an Ed25519 private key and returns the base64-encoded signature.
+func signData(t *testing.T, data []byte, privKey ed25519.PrivateKey) string {
+	t.Helper()
+	sig := ed25519.Sign(privKey, data)
+	return base64.StdEncoding.EncodeToString(sig)
+}
+
+// writeSignedConfig writes a YAML config and its companion .sig file.
+func writeSignedConfig(t *testing.T, configPath string, yamlData []byte, privKey ed25519.PrivateKey) {
+	t.Helper()
+	if err := os.WriteFile(configPath, yamlData, 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	sigB64 := signData(t, yamlData, privKey)
+	sigPath := configPath + ".sig"
+	if err := os.WriteFile(sigPath, []byte(sigB64), 0644); err != nil {
+		t.Fatalf("Failed to write sig file: %v", err)
+	}
+}
+
+// TestSetPublicKey_ValidEd25519 verifies that a valid Ed25519 PEM key is accepted.
+func TestSetPublicKey_ValidEd25519(t *testing.T) {
+	pemPub, _ := generateTestKeyPair(t)
+
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	if registry.HasPublicKey() {
+		t.Error("Expected no public key before SetPublicKey")
+	}
+
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	if !registry.HasPublicKey() {
+		t.Error("Expected public key to be set after SetPublicKey")
+	}
+}
+
+// TestSetPublicKey_InvalidPEM verifies that invalid PEM data is rejected.
+func TestSetPublicKey_InvalidPEM(t *testing.T) {
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	err = registry.SetPublicKey([]byte("this is not PEM data"))
+	if err == nil {
+		t.Error("Expected error for invalid PEM data")
+	}
+	if !strings.Contains(err.Error(), "failed to decode PEM block") {
+		t.Errorf("Expected PEM decode error, got: %v", err)
+	}
+}
+
+// TestSetPublicKey_NonEd25519 verifies that non-Ed25519 keys are rejected.
+// We create an RSA-like PEM block with garbage DER to trigger the type assertion.
+func TestSetPublicKey_NonEd25519(t *testing.T) {
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	// Create a PEM block with invalid DER data
+	badPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: []byte("not a valid DER-encoded key"),
+	})
+
+	err = registry.SetPublicKey(badPEM)
+	if err == nil {
+		t.Error("Expected error for invalid key data")
+	}
+	// Should fail at x509.ParsePKIXPublicKey
+	if !strings.Contains(err.Error(), "failed to parse public key") {
+		t.Errorf("Expected parse error, got: %v", err)
+	}
+}
+
+// TestVerifySignature_ValidSignature verifies that a correct Ed25519 signature passes.
+func TestVerifySignature_ValidSignature(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	data := []byte("tools:\n  - name: test\n")
+	sig := ed25519.Sign(privKey, data)
+
+	if err := registry.verifySignature(data, sig); err != nil {
+		t.Errorf("Expected valid signature to pass, got error: %v", err)
+	}
+}
+
+// TestVerifySignature_InvalidSignature verifies that a wrong signature is rejected.
+func TestVerifySignature_InvalidSignature(t *testing.T) {
+	pemPub, _ := generateTestKeyPair(t)
+
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	data := []byte("tools:\n  - name: test\n")
+	// Create a bogus signature of the right length
+	badSig := make([]byte, ed25519.SignatureSize)
+
+	err = registry.verifySignature(data, badSig)
+	if err == nil {
+		t.Error("Expected error for invalid signature")
+	}
+	if !strings.Contains(err.Error(), "signature verification failed") {
+		t.Errorf("Expected verification failure, got: %v", err)
+	}
+}
+
+// TestVerifySignature_WrongSizeSignature verifies that a signature of wrong size is rejected.
+func TestVerifySignature_WrongSizeSignature(t *testing.T) {
+	pemPub, _ := generateTestKeyPair(t)
+
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	data := []byte("test data")
+	shortSig := []byte("too short")
+
+	err = registry.verifySignature(data, shortSig)
+	if err == nil {
+		t.Error("Expected error for wrong-size signature")
+	}
+	if !strings.Contains(err.Error(), "invalid signature size") {
+		t.Errorf("Expected size error, got: %v", err)
+	}
+}
+
+// TestVerifySignature_NoPublicKey verifies that calling verifySignature without
+// a public key returns an error.
+func TestVerifySignature_NoPublicKey(t *testing.T) {
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	err = registry.verifySignature([]byte("data"), make([]byte, ed25519.SignatureSize))
+	if err == nil {
+		t.Error("Expected error when no public key configured")
+	}
+	if !strings.Contains(err.Error(), "no public key configured") {
+		t.Errorf("Expected no-key error, got: %v", err)
+	}
+}
+
+// TestReadAndVerifySigFile_ValidSig verifies end-to-end .sig file reading and verification.
+func TestReadAndVerifySigFile_ValidSig(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	yamlData := []byte("tools:\n  - name: test\n    hash: abc\n")
+	writeSignedConfig(t, configPath, yamlData, privKey)
+
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	if err := registry.readAndVerifySigFile(yamlData, configPath); err != nil {
+		t.Errorf("Expected valid .sig file to pass, got error: %v", err)
+	}
+}
+
+// TestReadAndVerifySigFile_MissingSigFile verifies behavior when .sig file doesn't exist.
+func TestReadAndVerifySigFile_MissingSigFile(t *testing.T) {
+	pemPub, _ := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	yamlData := []byte("tools:\n  - name: test\n")
+	if err := os.WriteFile(configPath, yamlData, 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	// Do NOT create .sig file
+
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	err = registry.readAndVerifySigFile(yamlData, configPath)
+	if err == nil {
+		t.Error("Expected error when .sig file is missing")
+	}
+	if !strings.Contains(err.Error(), "failed to read signature file") {
+		t.Errorf("Expected file-read error, got: %v", err)
+	}
+}
+
+// TestReadAndVerifySigFile_InvalidBase64 verifies behavior when .sig file has bad base64.
+func TestReadAndVerifySigFile_InvalidBase64(t *testing.T) {
+	pemPub, _ := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	yamlData := []byte("tools:\n  - name: test\n")
+	if err := os.WriteFile(configPath, yamlData, 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+	// Write invalid base64 to .sig file
+	if err := os.WriteFile(configPath+".sig", []byte("not!valid!base64!!!"), 0644); err != nil {
+		t.Fatalf("Failed to write sig: %v", err)
+	}
+
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	err = registry.readAndVerifySigFile(yamlData, configPath)
+	if err == nil {
+		t.Error("Expected error for invalid base64 in .sig file")
+	}
+	if !strings.Contains(err.Error(), "failed to base64-decode signature") {
+		t.Errorf("Expected base64 decode error, got: %v", err)
+	}
+}
+
+// TestReadAndVerifySigFile_TamperedData verifies that signature fails when data is modified
+// after signing (detect registry poisoning).
+func TestReadAndVerifySigFile_TamperedData(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	originalData := []byte("tools:\n  - name: original\n    hash: abc\n")
+	writeSignedConfig(t, configPath, originalData, privKey)
+
+	// Tamper with the data after signing
+	tamperedData := []byte("tools:\n  - name: TAMPERED_EVIL\n    hash: evil\n")
+
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	// Verify with tampered data against original signature should FAIL
+	err = registry.readAndVerifySigFile(tamperedData, configPath)
+	if err == nil {
+		t.Error("Expected error when data has been tampered")
+	}
+	if !strings.Contains(err.Error(), "signature verification failed") {
+		t.Errorf("Expected signature verification failure, got: %v", err)
+	}
+}
+
+// TestWatch_AttestationEnabled_SignedUpdateAccepted verifies that with a public key
+// configured, a properly signed registry update is accepted.
+func TestWatch_AttestationEnabled_SignedUpdateAccepted(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	// Write initial config (signed)
+	initialYAML := []byte(`tools:
+  - name: "initial_tool"
+    description: "Initial"
+    hash: "hash_initial"
+    risk_level: "low"
+`)
+	writeSignedConfig(t, configPath, initialYAML, privKey)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	if registry.ToolCount() != 1 {
+		t.Fatalf("Expected 1 tool initially, got %d", registry.ToolCount())
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Write updated config (properly signed)
+	updatedYAML := []byte(`tools:
+  - name: "initial_tool"
+    description: "Updated"
+    hash: "hash_updated"
+    risk_level: "low"
+  - name: "new_tool"
+    description: "New tool"
+    hash: "hash_new"
+    risk_level: "medium"
+`)
+	writeSignedConfig(t, configPath, updatedYAML, privKey)
+
+	// Wait for reload
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if registry.ToolCount() == 2 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if registry.ToolCount() != 2 {
+		t.Fatalf("Expected 2 tools after signed reload, got %d", registry.ToolCount())
+	}
+
+	// Verify updated data
+	tool, exists := registry.GetToolDefinition("new_tool")
+	if !exists {
+		t.Fatal("new_tool should exist after signed reload")
+	}
+	if tool.Hash != "hash_new" {
+		t.Errorf("Expected hash_new, got %s", tool.Hash)
+	}
+}
+
+// TestWatch_AttestationEnabled_UnsignedUpdateRejected verifies that with a public key
+// configured, an unsigned (no .sig file) registry update is rejected and old registry kept.
+func TestWatch_AttestationEnabled_UnsignedUpdateRejected(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	// Write initial config (signed)
+	initialYAML := []byte(`tools:
+  - name: "secure_tool"
+    description: "Secure"
+    hash: "hash_secure"
+    risk_level: "low"
+`)
+	writeSignedConfig(t, configPath, initialYAML, privKey)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Write updated config WITHOUT a .sig file (attacker scenario)
+	unsignedYAML := []byte(`tools:
+  - name: "evil_tool"
+    description: "Evil injected tool"
+    hash: "hash_evil"
+    risk_level: "critical"
+`)
+	// Delete the old .sig file and write unsigned config
+	_ = os.Remove(configPath + ".sig")
+	if err := os.WriteFile(configPath, unsignedYAML, 0644); err != nil {
+		t.Fatalf("Failed to write unsigned config: %v", err)
+	}
+
+	// Wait long enough for the watcher to try reloading
+	time.Sleep(500 * time.Millisecond)
+
+	// Old registry should be preserved -- evil_tool should NOT exist
+	if registry.ToolCount() != 1 {
+		t.Errorf("Expected 1 tool (old registry preserved), got %d", registry.ToolCount())
+	}
+	_, exists := registry.GetToolDefinition("secure_tool")
+	if !exists {
+		t.Error("secure_tool should still exist (old registry preserved)")
+	}
+	_, exists = registry.GetToolDefinition("evil_tool")
+	if exists {
+		t.Error("evil_tool should NOT exist (unsigned update must be rejected)")
+	}
+}
+
+// TestWatch_AttestationEnabled_BadSignatureRejected verifies that a registry update
+// with an invalid signature is rejected and old registry is kept.
+func TestWatch_AttestationEnabled_BadSignatureRejected(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	// Write initial config (signed)
+	initialYAML := []byte(`tools:
+  - name: "safe_tool"
+    description: "Safe"
+    hash: "hash_safe"
+    risk_level: "low"
+`)
+	writeSignedConfig(t, configPath, initialYAML, privKey)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Write a new config and sign with a DIFFERENT key (simulates key compromise scenario)
+	_, attackerPrivKey := generateTestKeyPair(t)
+	attackerYAML := []byte(`tools:
+  - name: "attacker_tool"
+    description: "Attacker injected"
+    hash: "hash_attacker"
+    risk_level: "critical"
+`)
+	writeSignedConfig(t, configPath, attackerYAML, attackerPrivKey)
+
+	// Wait for watcher to try reloading
+	time.Sleep(500 * time.Millisecond)
+
+	// Old registry should be preserved -- attacker_tool should NOT exist
+	if registry.ToolCount() != 1 {
+		t.Errorf("Expected 1 tool (old registry preserved), got %d", registry.ToolCount())
+	}
+	_, exists := registry.GetToolDefinition("safe_tool")
+	if !exists {
+		t.Error("safe_tool should still exist (old registry preserved)")
+	}
+	_, exists = registry.GetToolDefinition("attacker_tool")
+	if exists {
+		t.Error("attacker_tool should NOT exist (bad signature must be rejected)")
+	}
+}
+
+// TestWatch_DevMode_AcceptsUnsignedUpdates verifies that when no public key is
+// configured (dev mode), all registry updates are accepted without verification.
+func TestWatch_DevMode_AcceptsUnsignedUpdates(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	initialYAML := []byte(`tools:
+  - name: "dev_tool"
+    description: "Dev tool"
+    hash: "hash_dev"
+    risk_level: "low"
+`)
+	if err := os.WriteFile(configPath, initialYAML, 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	// No SetPublicKey call -- dev mode
+
+	if registry.HasPublicKey() {
+		t.Error("Should be in dev mode (no public key)")
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Write unsigned update -- should be accepted in dev mode
+	updatedYAML := []byte(`tools:
+  - name: "dev_tool"
+    description: "Updated dev tool"
+    hash: "hash_dev_v2"
+    risk_level: "low"
+  - name: "new_dev_tool"
+    description: "New dev tool"
+    hash: "hash_new_dev"
+    risk_level: "medium"
+`)
+	if err := os.WriteFile(configPath, updatedYAML, 0644); err != nil {
+		t.Fatalf("Failed to write updated config: %v", err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if registry.ToolCount() == 2 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if registry.ToolCount() != 2 {
+		t.Fatalf("Expected 2 tools in dev mode (unsigned accepted), got %d", registry.ToolCount())
+	}
+
+	_, exists := registry.GetToolDefinition("new_dev_tool")
+	if !exists {
+		t.Fatal("new_dev_tool should exist after unsigned dev-mode reload")
+	}
+}
+
+// TestWatch_AttestationEnabled_UIResourcesAlsoProtected verifies that UI resources
+// are also reloaded when a signed update includes them.
+func TestWatch_AttestationEnabled_UIResourcesAlsoProtected(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	htmlContent := []byte("<html>Dashboard</html>")
+	contentHash := computeTestHash(htmlContent)
+
+	initialYAML := []byte(`tools:
+  - name: "tool_one"
+    description: "Tool one"
+    hash: "hash_one"
+    risk_level: "low"
+ui_resources: []
+`)
+	writeSignedConfig(t, configPath, initialYAML, privKey)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	if registry.UIResourceCount() != 0 {
+		t.Fatalf("Expected 0 UI resources initially, got %d", registry.UIResourceCount())
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Signed update with UI resources
+	updatedYAML := []byte(`tools:
+  - name: "tool_one"
+    description: "Tool one"
+    hash: "hash_one"
+    risk_level: "low"
+ui_resources:
+  - server: "dash-server"
+    resource_uri: "ui://dash/main.html"
+    content_hash: "` + contentHash + `"
+    version: "1.0.0"
+    approved_by: "security@example.com"
+    max_size_bytes: 524288
+`)
+	writeSignedConfig(t, configPath, updatedYAML, privKey)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if registry.UIResourceCount() == 1 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if registry.UIResourceCount() != 1 {
+		t.Fatalf("Expected 1 UI resource after signed reload, got %d", registry.UIResourceCount())
+	}
+
+	res, exists := registry.GetUIResource("dash-server", "ui://dash/main.html")
+	if !exists {
+		t.Fatal("dash-server ui://dash/main.html should exist after signed reload")
+	}
+	if res.ContentHash != contentHash {
+		t.Errorf("Expected content_hash %s, got %s", contentHash, res.ContentHash)
+	}
+}
+
+// TestWatch_AttestationEnabled_RecoveryAfterRejection verifies that after a rejected
+// unsigned update, a subsequent properly signed update IS accepted.
+func TestWatch_AttestationEnabled_RecoveryAfterRejection(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	// Phase 1: Initial signed config
+	initialYAML := []byte(`tools:
+  - name: "phase1_tool"
+    description: "Phase 1"
+    hash: "hash_p1"
+    risk_level: "low"
+`)
+	writeSignedConfig(t, configPath, initialYAML, privKey)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+	if err := registry.SetPublicKey(pemPub); err != nil {
+		t.Fatalf("SetPublicKey failed: %v", err)
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Phase 2: Unsigned update (should be REJECTED)
+	unsignedYAML := []byte(`tools:
+  - name: "unsigned_evil"
+    description: "Should be rejected"
+    hash: "hash_evil"
+    risk_level: "critical"
+`)
+	_ = os.Remove(configPath + ".sig")
+	if err := os.WriteFile(configPath, unsignedYAML, 0644); err != nil {
+		t.Fatalf("Failed to write unsigned config: %v", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	// Verify old registry preserved
+	if registry.ToolCount() != 1 {
+		t.Fatalf("Phase 2: Expected 1 tool (rejection should preserve old), got %d", registry.ToolCount())
+	}
+
+	// Phase 3: Properly signed update (should be ACCEPTED)
+	recoveryYAML := []byte(`tools:
+  - name: "phase1_tool"
+    description: "Phase 1 still here"
+    hash: "hash_p1_v2"
+    risk_level: "low"
+  - name: "phase3_tool"
+    description: "Phase 3 new tool"
+    hash: "hash_p3"
+    risk_level: "medium"
+`)
+	writeSignedConfig(t, configPath, recoveryYAML, privKey)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if registry.ToolCount() == 2 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if registry.ToolCount() != 2 {
+		t.Fatalf("Phase 3: Expected 2 tools after recovery, got %d", registry.ToolCount())
+	}
+
+	_, exists := registry.GetToolDefinition("phase3_tool")
+	if !exists {
+		t.Fatal("Phase 3: phase3_tool should exist after signed recovery")
+	}
+	_, exists = registry.GetToolDefinition("unsigned_evil")
+	if exists {
+		t.Fatal("unsigned_evil should NOT exist at any point")
 	}
 }
