@@ -106,6 +106,11 @@ type ToolDefinition struct {
 	AllowedPaths        []string               `yaml:"allowed_paths"`
 	RiskLevel           string                 `yaml:"risk_level"`
 	RequiresStepUp      bool                   `yaml:"requires_step_up"`
+	// RequiredScope defines the SPIKE token scope required to access this tool.
+	// Format: "location.operation.destination" (e.g., "tools.docker.read").
+	// When empty, scope validation is permissive (any scope accepted).
+	// RFA-0gr: Replaces hardcoded scope in TokenSubstitution middleware.
+	RequiredScope string `yaml:"required_scope"`
 }
 
 // UIResourceCSP represents the approved Content Security Policy declaration for a UI resource.
@@ -549,6 +554,48 @@ func (tr *ToolRegistry) GetToolDefinition(toolName string) (ToolDefinition, bool
 	defer tr.mu.RUnlock()
 	toolDef, exists := tr.tools[toolName]
 	return toolDef, exists
+}
+
+// ScopeResolver resolves the required SPIKE token scope for a given tool name.
+// RFA-0gr: Replaces hardcoded scope validation in TokenSubstitution middleware.
+type ScopeResolver interface {
+	// ResolveScope returns the required scope components (location, operation, destination)
+	// for the given tool name. If the tool is not found or has no required scope,
+	// returns empty strings and found=false. When found=false, scope validation
+	// should be permissive (allow any scope, matching the behavior for tokens
+	// without a scope field).
+	ResolveScope(toolName string) (location, operation, destination string, found bool)
+}
+
+// ToolRegistryScopeResolver resolves scope from the tool registry's RequiredScope field.
+// RFA-0gr: Backed by ToolRegistry for dynamic scope lookup.
+type ToolRegistryScopeResolver struct {
+	registry *ToolRegistry
+}
+
+// NewToolRegistryScopeResolver creates a ScopeResolver backed by the tool registry.
+func NewToolRegistryScopeResolver(registry *ToolRegistry) *ToolRegistryScopeResolver {
+	return &ToolRegistryScopeResolver{registry: registry}
+}
+
+// ResolveScope looks up the required scope for a tool from the registry.
+// The RequiredScope field uses "location.operation.destination" format.
+// Returns the three components and found=true if the tool has a required scope.
+// Returns empty strings and found=false if the tool is not registered or has
+// no required scope defined.
+func (r *ToolRegistryScopeResolver) ResolveScope(toolName string) (location, operation, destination string, found bool) {
+	toolDef, exists := r.registry.GetToolDefinition(toolName)
+	if !exists || toolDef.RequiredScope == "" {
+		return "", "", "", false
+	}
+
+	parts := strings.SplitN(toolDef.RequiredScope, ".", 3)
+	if len(parts) != 3 {
+		// Malformed scope in registry -- treat as not found rather than failing
+		return "", "", "", false
+	}
+
+	return parts[0], parts[1], parts[2], true
 }
 
 // GetUIResource returns the registered UI resource for a given server and resource URI.

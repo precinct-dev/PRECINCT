@@ -2458,3 +2458,211 @@ func TestWatch_AttestationEnabled_RecoveryAfterRejection(t *testing.T) {
 		t.Fatal("unsigned_evil should NOT exist at any point")
 	}
 }
+
+// TestToolRegistryScopeResolver_ResolveScope verifies dynamic scope lookup
+// from the tool registry. RFA-0gr: Replaces hardcoded scope validation.
+func TestToolRegistryScopeResolver_ResolveScope(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	config := `tools:
+  - name: "docker_tool"
+    description: "Docker operations"
+    hash: "abc123"
+    risk_level: "medium"
+    required_scope: "tools.docker.read"
+  - name: "s3_tool"
+    description: "S3 operations"
+    hash: "def456"
+    risk_level: "low"
+    required_scope: "tools.s3.list"
+  - name: "no_scope_tool"
+    description: "Tool without required scope"
+    hash: "ghi789"
+    risk_level: "low"
+  - name: "malformed_scope_tool"
+    description: "Tool with malformed scope"
+    hash: "jkl012"
+    risk_level: "low"
+    required_scope: "just_one_part"
+`
+
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	resolver := NewToolRegistryScopeResolver(registry)
+
+	tests := []struct {
+		name         string
+		toolName     string
+		wantLoc      string
+		wantOp       string
+		wantDest     string
+		wantFound    bool
+	}{
+		{
+			name:      "tool with scope - docker",
+			toolName:  "docker_tool",
+			wantLoc:   "tools",
+			wantOp:    "docker",
+			wantDest:  "read",
+			wantFound: true,
+		},
+		{
+			name:      "tool with scope - s3",
+			toolName:  "s3_tool",
+			wantLoc:   "tools",
+			wantOp:    "s3",
+			wantDest:  "list",
+			wantFound: true,
+		},
+		{
+			name:      "tool without required scope - permissive",
+			toolName:  "no_scope_tool",
+			wantLoc:   "",
+			wantOp:    "",
+			wantDest:  "",
+			wantFound: false,
+		},
+		{
+			name:      "tool with malformed scope - treated as not found",
+			toolName:  "malformed_scope_tool",
+			wantLoc:   "",
+			wantOp:    "",
+			wantDest:  "",
+			wantFound: false,
+		},
+		{
+			name:      "unregistered tool - not found",
+			toolName:  "unknown_tool",
+			wantLoc:   "",
+			wantOp:    "",
+			wantDest:  "",
+			wantFound: false,
+		},
+		{
+			name:      "empty tool name - not found",
+			toolName:  "",
+			wantLoc:   "",
+			wantOp:    "",
+			wantDest:  "",
+			wantFound: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			loc, op, dest, found := resolver.ResolveScope(tt.toolName)
+			if found != tt.wantFound {
+				t.Errorf("ResolveScope(%q) found = %v, want %v", tt.toolName, found, tt.wantFound)
+			}
+			if loc != tt.wantLoc {
+				t.Errorf("ResolveScope(%q) location = %q, want %q", tt.toolName, loc, tt.wantLoc)
+			}
+			if op != tt.wantOp {
+				t.Errorf("ResolveScope(%q) operation = %q, want %q", tt.toolName, op, tt.wantOp)
+			}
+			if dest != tt.wantDest {
+				t.Errorf("ResolveScope(%q) destination = %q, want %q", tt.toolName, dest, tt.wantDest)
+			}
+		})
+	}
+}
+
+// TestToolRegistryScopeResolver_RequiredScopeLoaded verifies that required_scope
+// field is properly loaded from YAML configuration. RFA-0gr.
+func TestToolRegistryScopeResolver_RequiredScopeLoaded(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	config := `tools:
+  - name: "test_tool"
+    description: "Test tool"
+    hash: "abc123"
+    risk_level: "low"
+    required_scope: "tools.docker.read"
+`
+
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	toolDef, exists := registry.GetToolDefinition("test_tool")
+	if !exists {
+		t.Fatal("test_tool not found")
+	}
+
+	if toolDef.RequiredScope != "tools.docker.read" {
+		t.Errorf("RequiredScope = %q, want %q", toolDef.RequiredScope, "tools.docker.read")
+	}
+}
+
+// TestToolRegistryScopeResolver_HotReload verifies that required_scope is
+// correctly loaded during hot-reload. RFA-0gr.
+func TestToolRegistryScopeResolver_HotReload(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	// Initial config: no required_scope
+	config1 := `tools:
+  - name: "test_tool"
+    description: "Test tool"
+    hash: "abc123"
+    risk_level: "low"
+`
+
+	if err := os.WriteFile(configPath, []byte(config1), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	resolver := NewToolRegistryScopeResolver(registry)
+
+	// Initially no scope
+	_, _, _, found := resolver.ResolveScope("test_tool")
+	if found {
+		t.Error("Expected found=false before reload (no required_scope)")
+	}
+
+	// Update config: add required_scope
+	config2 := `tools:
+  - name: "test_tool"
+    description: "Test tool"
+    hash: "abc123"
+    risk_level: "low"
+    required_scope: "tools.docker.write"
+`
+
+	if err := os.WriteFile(configPath, []byte(config2), 0644); err != nil {
+		t.Fatalf("Failed to write updated config: %v", err)
+	}
+
+	// Reload (simulating hot-reload)
+	if err := registry.loadConfig(configPath); err != nil {
+		t.Fatalf("Failed to reload config: %v", err)
+	}
+
+	// After reload, scope should be available
+	loc, op, dest, found := resolver.ResolveScope("test_tool")
+	if !found {
+		t.Fatal("Expected found=true after reload")
+	}
+	if loc != "tools" || op != "docker" || dest != "write" {
+		t.Errorf("ResolveScope after reload = (%q, %q, %q), want (tools, docker, write)", loc, op, dest)
+	}
+}

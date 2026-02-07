@@ -37,7 +37,10 @@ func logTokenEvent(auditor *Auditor, ctx context.Context, r *http.Request, actio
 // - POCSecretRedeemer: returns deterministic mock secrets (dev/test)
 // The auditor parameter enables structured audit logging; pass nil to disable
 // (safe for unit tests that don't need audit infrastructure).
-func TokenSubstitution(next http.Handler, redeemer SecretRedeemer, auditor *Auditor) http.Handler {
+// The scopeResolver parameter controls how required scopes are determined per tool.
+// Pass nil to skip scope validation entirely (backward-compatible with pre-RFA-0gr behavior).
+// RFA-0gr: Added scopeResolver parameter to replace hardcoded scope validation.
+func TokenSubstitution(next http.Handler, redeemer SecretRedeemer, auditor *Auditor, scopeResolver ScopeResolver) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// RFA-m6j.2: Create OTel span for step 13
 		ctx, span := tracer.Start(r.Context(), "gateway.token_substitution",
@@ -133,23 +136,30 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer, auditor *Audi
 				return
 			}
 
-			// Validate token scope (for POC, we use a default scope)
-			// In production, scope would come from the request context or tool registry
-			if err := ValidateTokenScope(token, "tools", "docker", "read"); err != nil {
-				logTokenEvent(auditor, ctx, r, "token_substitution",
-					fmt.Sprintf("scope_failed ref=%s spiffe=%s error=%v", token.Ref, spiffeID, err))
-				span.SetAttributes(
-					attribute.Int("tokens_substituted", len(tokenMap)),
-					attribute.String("mcp.result", "denied"),
-					attribute.String("mcp.reason", "token scope failed"),
-				)
-				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
-					Code:           "token_scope_failed",
-					Message:        fmt.Sprintf("Token scope validation failed: %v", err),
-					Middleware:     "token_substitution",
-					MiddlewareStep: 13,
-				})
-				return
+			// Validate token scope against the tool registry's required scope.
+			// RFA-0gr: Replaced hardcoded "tools.docker.read" with dynamic lookup.
+			// When scopeResolver is nil or the tool has no required scope, scope
+			// validation is permissive (any token scope is accepted).
+			if scopeResolver != nil {
+				toolName := extractToolName(ctx)
+				if loc, op, dest, found := scopeResolver.ResolveScope(toolName); found {
+					if err := ValidateTokenScope(token, loc, op, dest); err != nil {
+						logTokenEvent(auditor, ctx, r, "token_substitution",
+							fmt.Sprintf("scope_failed ref=%s spiffe=%s tool=%s error=%v", token.Ref, spiffeID, toolName, err))
+						span.SetAttributes(
+							attribute.Int("tokens_substituted", len(tokenMap)),
+							attribute.String("mcp.result", "denied"),
+							attribute.String("mcp.reason", "token scope failed"),
+						)
+						WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+							Code:           "token_scope_failed",
+							Message:        fmt.Sprintf("Token scope validation failed: %v", err),
+							Middleware:     "token_substitution",
+							MiddlewareStep: 13,
+						})
+						return
+					}
+				}
 			}
 
 			// Redeem token for actual secret.
