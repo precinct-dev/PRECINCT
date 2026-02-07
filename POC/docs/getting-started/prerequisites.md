@@ -33,11 +33,68 @@ These tools enable additional security features but are not required for basic o
 
 | Tool | Purpose | Degradation if Missing |
 |------|---------|------------------------|
+| gosec | Go source code security scanning | Go security vulnerabilities undetected |
+| trivy | Container image and filesystem CVE scanning | Dependency vulnerabilities undetected |
 | cosign | Container image signature verification | Image signing disabled |
 | syft | SBOM generation | Supply chain transparency reduced |
 | opa | Policy testing | Policy tests skipped in CI |
 
 The setup wizard (`make setup`) will detect which optional tools are installed and report the security posture accordingly.
+
+### Installing Optional Tools
+
+**gosec** -- Static analysis tool for Go source code that detects security vulnerabilities (SQL injection, hardcoded credentials, insecure crypto, etc.):
+
+```bash
+# Install via go install
+go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+# Verify installation
+gosec --version
+```
+
+For alternative installation methods, see: https://github.com/securego/gosec#install
+
+**trivy** -- Comprehensive vulnerability scanner for container images, filesystems, and git repositories. Detects CVEs in OS packages and application dependencies:
+
+```bash
+# macOS (Homebrew)
+brew install trivy
+
+# Linux (apt)
+sudo apt-get install -y wget apt-transport-https gnupg lsb-release
+wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo apt-key add -
+echo "deb https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+sudo apt-get update && sudo apt-get install -y trivy
+
+# Verify installation
+trivy --version
+```
+
+For additional platforms and methods, see: https://aquasecurity.github.io/trivy/latest/getting-started/installation/
+
+**cosign** -- Signs and verifies container images using Sigstore:
+
+```bash
+go install github.com/sigstore/cosign/v2/cmd/cosign@latest
+```
+
+**syft** -- Generates Software Bill of Materials (SBOM) for container images:
+
+```bash
+curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+```
+
+**opa** -- Open Policy Agent for policy testing and evaluation:
+
+```bash
+# macOS (Homebrew)
+brew install opa
+
+# Linux
+curl -L -o opa https://openpolicyagent.org/downloads/latest/opa_linux_amd64_static
+chmod 755 opa && sudo mv opa /usr/local/bin/
+```
 
 ## 30-Minute Setup Claim
 
