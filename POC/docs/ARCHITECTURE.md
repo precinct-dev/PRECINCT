@@ -61,7 +61,7 @@ The system remains a **reverse-proxy gateway** written in Go that interposes bet
 | Identity | SPIFFE/SPIRE | 1.10.0 | Apache-2.0 | CNCF-standard workload identity |
 | Secrets | SPIKE Nexus | 0.8.0 | Apache-2.0 | SPIFFE-native, late-binding tokens |
 | Secrets backend (K8s) | OpenBAO | 2.4+ | MPL-2.0 | Open-source Vault fork, enterprise-safe license |
-| Session store | KeyDB | eqalpha/keydb:6.3.4 | BSD-3 | Redis-compatible, truly open license |
+| Session store | KeyDB | eqalpha/keydb:latest | BSD-3 | Redis-compatible, truly open license |
 | Observability | OTel SDK (Go) | 1.28+ | Apache-2.0 | Vendor-neutral, per-middleware spans |
 | Trace backend | Phoenix | latest | Apache-2.0 | OTel-native, zero-config |
 | OTel pipeline | OTel Collector Contrib | latest | Apache-2.0 | Standard pipeline |
@@ -178,7 +178,7 @@ GDPR/CCPA Keys:
 **Docker Compose integration:**
 ```yaml
 keydb:
-  image: eqalpha/keydb:6.3.4
+  image: eqalpha/keydb:latest
   container_name: keydb
   hostname: keydb
   ports:
@@ -801,7 +801,7 @@ Services in Phase 2:
 | spire-token-generator | spire-token-generator:latest (built) | -- | One-shot join token |
 | spike-nexus | spike-nexus:latest (built from SPIKE) | 8443 | Secrets management |
 | spike-bootstrap | spike-bootstrap:latest (built) | -- | One-shot root key init |
-| keydb | eqalpha/keydb:6.3.4 | 6379 | Session + rate limiting |
+| keydb | eqalpha/keydb:latest | 6379 | Session + rate limiting |
 | otel-collector | otel/opentelemetry-collector-contrib:latest | 4317-4318 | Telemetry pipeline |
 | phoenix | arizephoenix/phoenix:latest | 6006 | Trace visualization |
 | mcp-security-gateway | mcp-security-gateway:latest (built) | 9090 | Security enforcement |

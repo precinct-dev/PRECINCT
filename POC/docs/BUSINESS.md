@@ -83,7 +83,7 @@ The gateway emits OpenTelemetry spans that provide visibility into every request
 
 Exfiltration detection works across HTTP requests, not just within a single request. An attacker cannot read secrets in request 1 and exfiltrate in request 2 without detection.
 
-**Implementation:** KeyDB (eqalpha/keydb:6.3.4, BSD-3-Clause licensed) for session context persistence AND distributed rate limiting.
+**Implementation:** KeyDB (eqalpha/keydb:latest, BSD-3-Clause licensed) for session context persistence AND distributed rate limiting.
 
 **Scope:** Both Docker Compose and K8s.
 
