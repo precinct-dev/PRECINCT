@@ -165,7 +165,7 @@ Docker Desktop is configured as a kubeadm-based K8s endpoint. All EKS manifests 
 
 ### 5.3 KeyDB vs Redis
 
-KeyDB (`eqalpha/keydb:6.3.4`) chosen for truly open licensing. Need to determine:
+KeyDB (`eqalpha/keydb:latest`) chosen for truly open licensing. Need to determine:
 - Where does KeyDB fit? Session persistence, distributed rate limiting, both?
 - Should it run in Docker Compose for local development too, or only K8s?
 - What is the data model for session context in KeyDB?
@@ -269,7 +269,7 @@ Options: manual SPIRE SVIDs, cert-manager, or hybrid. Need to determine:
 | Embedded OPA (no sidecar) | Eliminates network latency and failure domain | 2026-02-05 |
 | OpenTofu over Terraform | MPL-2.0 licensing for reference architecture forkability | 2026-02-05 |
 | SPIRE for identity | CNCF-standard SPIFFE implementation, Docker+K8s attestors | 2026-02-05 |
-| KeyDB over Redis | Truly open licensing (eqalpha/keydb:6.3.4) | 2026-02-06 |
+| KeyDB over Redis | Truly open licensing (eqalpha/keydb:latest) | 2026-02-06 |
 | Library/wiring separation | Component stories testable independently; wiring story integrates | 2026-02-05 |
 | Token substitution as innermost middleware | Security invariant: secrets must never be visible to any other middleware | 2026-02-05 |
 | DLP: credentials fail-closed, PII audit-only | Different risk profiles warrant different enforcement modes | 2026-02-05 |
