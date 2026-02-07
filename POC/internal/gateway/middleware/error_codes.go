@@ -25,13 +25,13 @@ const (
 	ErrDLPCredentialsDetected = "dlp_credentials_detected"
 
 	// Step-Up Gating (step 9) -- 403 Forbidden
-	ErrStepUpDenied              = "stepup_denied"
-	ErrStepUpApprovalRequired    = "stepup_approval_required"
-	ErrStepUpGuardBlocked        = "stepup_guard_blocked"
-	ErrStepUpDestinationBlocked  = "stepup_destination_blocked"
+	ErrStepUpDenied             = "stepup_denied"
+	ErrStepUpApprovalRequired   = "stepup_approval_required"
+	ErrStepUpGuardBlocked       = "stepup_guard_blocked"
+	ErrStepUpDestinationBlocked = "stepup_destination_blocked"
 
 	// Deep Scan (step 10) -- 403 / 503
-	ErrDeepScanBlocked              = "deepscan_blocked"
+	ErrDeepScanBlocked               = "deepscan_blocked"
 	ErrDeepScanUnavailableFailClosed = "deepscan_unavailable_fail_closed"
 
 	// Rate Limiting (step 11) -- 429 Too Many Requests
