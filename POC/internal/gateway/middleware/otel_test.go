@@ -988,7 +988,7 @@ func TestOTelSpan_TokenSubstitution_NoTokens(t *testing.T) {
 	redeemer := NewPOCSecretRedeemer()
 	handler := TokenSubstitution(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}), redeemer)
+	}), redeemer, nil)
 
 	body := []byte(`{"method":"file_read","params":{}}`)
 	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
