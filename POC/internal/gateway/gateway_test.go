@@ -1476,3 +1476,241 @@ func TestMCPTransport_ErrorUsesWriteGatewayError(t *testing.T) {
 
 	t.Logf("PASS: transport error uses WriteGatewayError (code=%s, content-type=%s)", gatewayErr.Code, contentType)
 }
+
+// --- RFA-8rd: Full Streamable HTTP Integration Tests ---
+
+// newMockMCPServerSSE creates an httptest server that simulates a Streamable HTTP
+// MCP server responding with text/event-stream for tools/call (SSE mode).
+// Records received methods and session IDs for verification.
+func newMockMCPServerSSE(t *testing.T) (*httptest.Server, *mcpServerLog) {
+	t.Helper()
+
+	log := &mcpServerLog{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			var rpcReq map[string]interface{}
+			if err := json.Unmarshal(body, &rpcReq); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			method, _ := rpcReq["method"].(string)
+			log.RecordCall(method, r.Header.Get("Mcp-Session-Id"), body)
+
+			switch method {
+			case "initialize":
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Mcp-Session-Id", "sse-integration-session")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"mock-mcp-sse","version":"1.0"}}}`))
+
+			case "notifications/initialized":
+				w.WriteHeader(http.StatusOK)
+
+			case "tools/call", "tavily_search":
+				// Respond with SSE instead of JSON
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"SSE integration test passed through all 13 layers\"}]}}\n\n"))
+
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}`))
+			}
+
+		case http.MethodDelete:
+			log.RecordCall("DELETE", r.Header.Get("Mcp-Session-Id"), nil)
+			w.WriteHeader(http.StatusOK)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	t.Cleanup(server.Close)
+	return server, log
+}
+
+// TestMCPTransport_SSEResponse_ThroughAll13Layers proves AC9: an SSE response
+// from the upstream MCP server flows through all 13 middleware layers and is
+// correctly parsed back to JSON-RPC for the client.
+func TestMCPTransport_SSEResponse_ThroughAll13Layers(t *testing.T) {
+	mcpServer, serverLog := newMockMCPServerSSE(t)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	// Build a tools/call request that passes all middleware checks
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"SSE integration test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// --- Verify response ---
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	var rpcResp map[string]interface{}
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		t.Fatalf("Response is not valid JSON: %v. Body: %s", err, string(respBody))
+	}
+
+	if rpcResp["jsonrpc"] != "2.0" {
+		t.Errorf("Expected jsonrpc=2.0, got %v", rpcResp["jsonrpc"])
+	}
+
+	result, ok := rpcResp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected result in response, got: %s", string(respBody))
+	}
+
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		t.Fatal("Expected non-empty content array in result")
+	}
+
+	firstContent := content[0].(map[string]interface{})
+	if text, ok := firstContent["text"].(string); !ok || !strings.Contains(text, "SSE integration test passed through all 13 layers") {
+		t.Errorf("Expected text containing 'SSE integration test passed through all 13 layers', got: %v", firstContent["text"])
+	}
+
+	// --- Verify MCP server received proper requests ---
+	initCalls := serverLog.MethodCalls("initialize")
+	if len(initCalls) != 1 {
+		t.Errorf("Expected 1 initialize call, got %d", len(initCalls))
+	}
+
+	toolsCalls := serverLog.MethodCalls("tavily_search")
+	if len(toolsCalls) != 1 {
+		t.Fatalf("Expected 1 tavily_search call, got %d", len(toolsCalls))
+	}
+
+	// Verify session ID was sent with the tools call
+	if toolsCalls[0].SessionID != "sse-integration-session" {
+		t.Errorf("Expected Mcp-Session-Id 'sse-integration-session', got '%s'", toolsCalls[0].SessionID)
+	}
+
+	t.Logf("PASS: SSE response flowed through all 13 middleware layers (status=%d)", rec.Code)
+}
+
+// TestMCPTransport_404_SessionExpiry_ThroughGateway proves AC3 at the
+// gateway level: a 404 from upstream triggers re-initialize + retry,
+// all flowing through the full middleware chain.
+func TestMCPTransport_404_SessionExpiry_ThroughGateway(t *testing.T) {
+	requestCount := 0
+	initCount := 0
+
+	mcpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			if r.Method == http.MethodDelete {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		switch method {
+		case "initialize":
+			initCount++
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "renewed-session")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock-mcp","version":"1.0"}}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		default:
+			requestCount++
+			if requestCount == 1 {
+				// First request: 404 (session expired)
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte("session expired"))
+				return
+			}
+			// After re-init: success
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"recovered from 404"}]}}`))
+		}
+	}))
+	t.Cleanup(mcpServer.Close)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"session recovery test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	if !strings.Contains(string(respBody), "recovered from 404") {
+		t.Errorf("Expected 'recovered from 404' in response, got: %s", string(respBody))
+	}
+
+	// Verify re-initialization happened: 2 init calls (original + re-init)
+	if initCount != 2 {
+		t.Errorf("Expected 2 initialize calls (original + re-init), got %d", initCount)
+	}
+
+	t.Logf("PASS: 404 session expiry recovery through gateway (init_count=%d, status=%d)", initCount, rec.Code)
+}
