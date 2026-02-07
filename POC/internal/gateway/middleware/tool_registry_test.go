@@ -6,7 +6,9 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestToolRegistryLoadConfig(t *testing.T) {
@@ -1131,5 +1133,606 @@ func TestToolRegistryLoadActualConfig(t *testing.T) {
 	_, exists := registry.GetUIResource("dashboard-server", "ui://dashboard/analytics.html")
 	if !exists {
 		t.Error("Expected dashboard-server ui://dashboard/analytics.html in actual config")
+	}
+}
+
+// --- RFA-dh9: fsnotify Watch() Tests ---
+
+// TestWatch_StartsAndStops verifies the watcher lifecycle: start, stop, clean exit.
+func TestWatch_StartsAndStops(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	config := `tools:
+  - name: "initial_tool"
+    description: "Initial tool"
+    hash: "abc123"
+    risk_level: "low"
+`
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+
+	// Verify initial state
+	if registry.ToolCount() != 1 {
+		t.Errorf("Expected 1 tool initially, got %d", registry.ToolCount())
+	}
+
+	// Stop should not panic or block indefinitely
+	done := make(chan struct{})
+	go func() {
+		stop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// Good, stop returned
+	case <-time.After(5 * time.Second):
+		t.Fatal("stop() blocked for more than 5 seconds")
+	}
+}
+
+// TestWatch_EmptyConfigPath verifies Watch is a no-op when configPath is empty.
+func TestWatch_EmptyConfigPath(t *testing.T) {
+	registry, err := NewToolRegistry("")
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() should succeed with empty configPath, got error: %v", err)
+	}
+
+	// Stop should be a no-op, not panic
+	stop()
+}
+
+// TestWatch_ReloadsOnFileChange verifies that modifying the YAML file triggers
+// an automatic registry reload without requiring a restart.
+func TestWatch_ReloadsOnFileChange(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	// Write initial config with one tool
+	initialConfig := `tools:
+  - name: "tool_alpha"
+    description: "Alpha tool"
+    hash: "hash_alpha"
+    risk_level: "low"
+`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("Failed to write initial config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	// Verify initial state
+	if registry.ToolCount() != 1 {
+		t.Fatalf("Expected 1 tool initially, got %d", registry.ToolCount())
+	}
+	_, exists := registry.GetToolDefinition("tool_alpha")
+	if !exists {
+		t.Fatal("tool_alpha should exist initially")
+	}
+
+	// Start watcher
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Write updated config with two tools (different from initial)
+	updatedConfig := `tools:
+  - name: "tool_alpha"
+    description: "Alpha tool updated"
+    hash: "hash_alpha_v2"
+    risk_level: "medium"
+  - name: "tool_beta"
+    description: "Beta tool"
+    hash: "hash_beta"
+    risk_level: "high"
+`
+	if err := os.WriteFile(configPath, []byte(updatedConfig), 0644); err != nil {
+		t.Fatalf("Failed to write updated config: %v", err)
+	}
+
+	// Wait for the watcher to pick up the change (debounce 100ms + processing)
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if registry.ToolCount() == 2 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Verify updated state
+	if registry.ToolCount() != 2 {
+		t.Fatalf("Expected 2 tools after reload, got %d", registry.ToolCount())
+	}
+
+	toolAlpha, exists := registry.GetToolDefinition("tool_alpha")
+	if !exists {
+		t.Fatal("tool_alpha should still exist after reload")
+	}
+	if toolAlpha.Hash != "hash_alpha_v2" {
+		t.Errorf("Expected hash_alpha_v2, got %s", toolAlpha.Hash)
+	}
+	if toolAlpha.RiskLevel != "medium" {
+		t.Errorf("Expected risk_level medium, got %s", toolAlpha.RiskLevel)
+	}
+
+	_, exists = registry.GetToolDefinition("tool_beta")
+	if !exists {
+		t.Fatal("tool_beta should exist after reload")
+	}
+}
+
+// TestWatch_AtomicSwapPreservesOldRegistryOnBadYAML verifies that if the new
+// YAML is malformed, the old registry is preserved (no partial state).
+func TestWatch_AtomicSwapPreservesOldRegistryOnBadYAML(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	initialConfig := `tools:
+  - name: "good_tool"
+    description: "Good tool"
+    hash: "hash_good"
+    risk_level: "low"
+`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("Failed to write initial config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Write invalid YAML
+	badYAML := `this is not valid YAML: [[[`
+	if err := os.WriteFile(configPath, []byte(badYAML), 0644); err != nil {
+		t.Fatalf("Failed to write bad YAML: %v", err)
+	}
+
+	// Wait for watcher debounce + processing
+	time.Sleep(500 * time.Millisecond)
+
+	// Old registry should be preserved
+	if registry.ToolCount() != 1 {
+		t.Errorf("Expected 1 tool (old registry preserved), got %d", registry.ToolCount())
+	}
+	_, exists := registry.GetToolDefinition("good_tool")
+	if !exists {
+		t.Error("good_tool should still exist after failed reload")
+	}
+}
+
+// TestWatch_ConcurrentReadsDuringReload verifies that concurrent readers do not
+// see partial state during an atomic swap triggered by file change.
+func TestWatch_ConcurrentReadsDuringReload(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	initialConfig := `tools:
+  - name: "tool_v1"
+    description: "Version 1"
+    hash: "hash_v1"
+    risk_level: "low"
+`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("Failed to write initial config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Start concurrent readers
+	var wg sync.WaitGroup
+	errChan := make(chan string, 100)
+	readerDone := make(chan struct{})
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-readerDone:
+					return
+				default:
+					// Read operations should never panic or return inconsistent state.
+					// Either we see the old registry or the new one, never partial.
+					count := registry.ToolCount()
+					if count != 1 && count != 2 {
+						errChan <- "unexpected tool count during concurrent read"
+					}
+					time.Sleep(time.Millisecond)
+				}
+			}
+		}()
+	}
+
+	// Trigger reload while readers are active
+	updatedConfig := `tools:
+  - name: "tool_v1"
+    description: "Version 1 updated"
+    hash: "hash_v1_updated"
+    risk_level: "low"
+  - name: "tool_v2"
+    description: "Version 2"
+    hash: "hash_v2"
+    risk_level: "medium"
+`
+	if err := os.WriteFile(configPath, []byte(updatedConfig), 0644); err != nil {
+		t.Fatalf("Failed to write updated config: %v", err)
+	}
+
+	// Wait for reload to complete
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if registry.ToolCount() == 2 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Stop readers and collect errors
+	close(readerDone)
+	wg.Wait()
+	close(errChan)
+
+	for errMsg := range errChan {
+		t.Errorf("Concurrent read error: %s", errMsg)
+	}
+
+	// Verify final state
+	if registry.ToolCount() != 2 {
+		t.Errorf("Expected 2 tools after concurrent reload, got %d", registry.ToolCount())
+	}
+}
+
+// TestWatch_UIResourcesReloadedToo verifies that UI resources are also reloaded
+// when the YAML file changes (not just tools).
+func TestWatch_UIResourcesReloadedToo(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	initialConfig := `tools:
+  - name: "tool_one"
+    description: "Tool one"
+    hash: "hash_one"
+    risk_level: "low"
+ui_resources: []
+`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("Failed to write initial config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	if registry.UIResourceCount() != 0 {
+		t.Fatalf("Expected 0 UI resources initially, got %d", registry.UIResourceCount())
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	htmlContent := []byte("<html>New dashboard</html>")
+	contentHash := computeTestHash(htmlContent)
+
+	updatedConfig := `tools:
+  - name: "tool_one"
+    description: "Tool one"
+    hash: "hash_one"
+    risk_level: "low"
+ui_resources:
+  - server: "new-server"
+    resource_uri: "ui://new/dashboard.html"
+    content_hash: "` + contentHash + `"
+    version: "1.0.0"
+    approved_by: "security@example.com"
+    max_size_bytes: 524288
+`
+	if err := os.WriteFile(configPath, []byte(updatedConfig), 0644); err != nil {
+		t.Fatalf("Failed to write updated config: %v", err)
+	}
+
+	// Wait for reload
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if registry.UIResourceCount() == 1 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if registry.UIResourceCount() != 1 {
+		t.Fatalf("Expected 1 UI resource after reload, got %d", registry.UIResourceCount())
+	}
+
+	res, exists := registry.GetUIResource("new-server", "ui://new/dashboard.html")
+	if !exists {
+		t.Fatal("new-server ui://new/dashboard.html should exist after reload")
+	}
+	if res.ContentHash != contentHash {
+		t.Errorf("Expected content_hash %s, got %s", contentHash, res.ContentHash)
+	}
+}
+
+// TestWatch_ToolRemovalAfterReload verifies that tools removed from the YAML
+// are no longer in the registry after reload (atomic swap replaces the map).
+func TestWatch_ToolRemovalAfterReload(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	initialConfig := `tools:
+  - name: "keep_tool"
+    description: "Will be kept"
+    hash: "hash_keep"
+    risk_level: "low"
+  - name: "remove_tool"
+    description: "Will be removed"
+    hash: "hash_remove"
+    risk_level: "low"
+`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	if registry.ToolCount() != 2 {
+		t.Fatalf("Expected 2 tools initially, got %d", registry.ToolCount())
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Write config with only one tool (remove_tool is gone)
+	updatedConfig := `tools:
+  - name: "keep_tool"
+    description: "Still here"
+    hash: "hash_keep_v2"
+    risk_level: "low"
+`
+	if err := os.WriteFile(configPath, []byte(updatedConfig), 0644); err != nil {
+		t.Fatalf("Failed to write updated config: %v", err)
+	}
+
+	// Wait for reload
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if registry.ToolCount() == 1 {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	if registry.ToolCount() != 1 {
+		t.Fatalf("Expected 1 tool after reload, got %d", registry.ToolCount())
+	}
+
+	_, exists := registry.GetToolDefinition("remove_tool")
+	if exists {
+		t.Error("remove_tool should NOT exist after reload")
+	}
+
+	_, exists = registry.GetToolDefinition("keep_tool")
+	if !exists {
+		t.Error("keep_tool should still exist after reload")
+	}
+}
+
+// TestWatch_VerifyToolAfterReload is an integration-style test that simulates
+// the real workflow: start gateway -> tool call succeeds -> modify registry YAML
+// -> tool call uses updated registry (no restart).
+func TestWatch_VerifyToolAfterReload(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	// Phase 1: Initial registry allows "read" tool with hash_v1
+	initialConfig := `tools:
+  - name: "read"
+    description: "Read file contents"
+    hash: "hash_v1"
+    risk_level: "low"
+`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Phase 1: Verify tool call with hash_v1 succeeds
+	result := registry.VerifyToolWithPoisoningCheck("read", "hash_v1")
+	if !result.Allowed {
+		t.Fatalf("Phase 1: read tool with hash_v1 should be allowed, got: %s", result.Reason)
+	}
+
+	// Phase 2: Modify registry to update hash
+	updatedConfig := `tools:
+  - name: "read"
+    description: "Read file contents v2"
+    hash: "hash_v2"
+    risk_level: "low"
+`
+	if err := os.WriteFile(configPath, []byte(updatedConfig), 0644); err != nil {
+		t.Fatalf("Failed to write updated config: %v", err)
+	}
+
+	// Wait for reload to complete
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		td, _ := registry.GetToolDefinition("read")
+		if td.Hash == "hash_v2" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Phase 2: Verify old hash_v1 is now rejected
+	result = registry.VerifyToolWithPoisoningCheck("read", "hash_v1")
+	if result.Allowed {
+		t.Error("Phase 2: read tool with hash_v1 should be REJECTED after reload (hash changed)")
+	}
+	if result.Reason != "hash_mismatch" {
+		t.Errorf("Phase 2: expected hash_mismatch reason, got %s", result.Reason)
+	}
+
+	// Phase 2: Verify new hash_v2 is accepted
+	result = registry.VerifyToolWithPoisoningCheck("read", "hash_v2")
+	if !result.Allowed {
+		t.Fatalf("Phase 2: read tool with hash_v2 should be allowed after reload, got: %s", result.Reason)
+	}
+}
+
+// TestWatch_MultipleReloads verifies the watcher handles multiple consecutive
+// file changes correctly, converging to the final state.
+func TestWatch_MultipleReloads(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	initialConfig := `tools:
+  - name: "tool_v1"
+    description: "V1"
+    hash: "h1"
+    risk_level: "low"
+`
+	if err := os.WriteFile(configPath, []byte(initialConfig), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	stop, err := registry.Watch()
+	if err != nil {
+		t.Fatalf("Watch() returned error: %v", err)
+	}
+	defer stop()
+
+	// Rapid fire 5 writes. Due to debouncing, not all may trigger separate reloads,
+	// but the final state should reflect the last write.
+	for i := 1; i <= 5; i++ {
+		cfg := `tools:
+  - name: "tool_final"
+    description: "Final version"
+    hash: "hash_final"
+    risk_level: "low"
+`
+		if i < 5 {
+			cfg = `tools:
+  - name: "tool_intermediate"
+    description: "Intermediate"
+    hash: "hash_intermediate"
+    risk_level: "low"
+`
+		}
+		if err := os.WriteFile(configPath, []byte(cfg), 0644); err != nil {
+			t.Fatalf("Failed to write config iteration %d: %v", i, err)
+		}
+		time.Sleep(20 * time.Millisecond) // Slight delay between writes
+	}
+
+	// Wait for final state to settle
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		td, exists := registry.GetToolDefinition("tool_final")
+		if exists && td.Hash == "hash_final" {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	// Final state should be tool_final
+	td, exists := registry.GetToolDefinition("tool_final")
+	if !exists {
+		t.Fatal("Expected tool_final to exist after multiple reloads")
+	}
+	if td.Hash != "hash_final" {
+		t.Errorf("Expected hash_final, got %s", td.Hash)
+	}
+}
+
+// TestToolCount verifies the ToolCount helper method.
+func TestToolCount(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := filepath.Join(tmpDir, "tool-registry.yaml")
+
+	config := `tools:
+  - name: "t1"
+    description: "Tool 1"
+    hash: "h1"
+  - name: "t2"
+    description: "Tool 2"
+    hash: "h2"
+  - name: "t3"
+    description: "Tool 3"
+    hash: "h3"
+`
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("Failed to write config: %v", err)
+	}
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	if registry.ToolCount() != 3 {
+		t.Errorf("Expected 3 tools, got %d", registry.ToolCount())
 	}
 }
