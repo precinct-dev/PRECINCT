@@ -53,7 +53,7 @@ spec:
         fsGroup: 999
       containers:
         - name: keydb
-          image: eqalpha/keydb:6.3.4
+          image: eqalpha/keydb:latest
           ports:
             - name: redis
               containerPort: 6379

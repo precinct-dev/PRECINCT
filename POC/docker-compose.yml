@@ -139,7 +139,7 @@ services:
   # connects via rediss://keydb:6380 with mTLS.
   # In SPIFFE_MODE=dev (default), only port 6379 is used (no TLS).
   keydb:
-    image: eqalpha/keydb:6.3.4
+    image: eqalpha/keydb:latest
     container_name: keydb
     hostname: keydb
     ports:
