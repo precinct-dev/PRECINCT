@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/example/agentic-security-poc/internal/testutil"
 )
 
 // --- MediateCSP Unit Tests ---
@@ -646,7 +648,7 @@ func TestDomainMatchesAllowlist_MultiplePatterns(t *testing.T) {
 
 func TestMediateCSP_Integration_WithRealGrantFile(t *testing.T) {
 	// Integration test: load real grants, mediate CSP with mixed domains
-	grants, err := LoadUICapabilityGrants("../../config/opa/ui_capability_grants.yaml")
+	grants, err := LoadUICapabilityGrants(testutil.UICapabilityGrantsPath())
 	if err != nil {
 		t.Fatalf("Failed to load real grants: %v", err)
 	}
@@ -713,7 +715,7 @@ func TestMediateCSP_Integration_WithRealGrantFile(t *testing.T) {
 
 func TestMediatePermissions_Integration_WithRealGrantFile(t *testing.T) {
 	// Integration test: load real grants, mediate permissions
-	grants, err := LoadUICapabilityGrants("../../config/opa/ui_capability_grants.yaml")
+	grants, err := LoadUICapabilityGrants(testutil.UICapabilityGrantsPath())
 	if err != nil {
 		t.Fatalf("Failed to load real grants: %v", err)
 	}

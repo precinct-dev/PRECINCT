@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/example/agentic-security-poc/internal/testutil"
 )
 
 // --- Grant Loading Tests ---
@@ -114,7 +116,7 @@ func TestLoadUICapabilityGrants_EmptyFile(t *testing.T) {
 
 func TestLoadUICapabilityGrants_FromRealOPAFile(t *testing.T) {
 	// Test loading the actual ui_capability_grants.yaml from config/opa/
-	grants, err := LoadUICapabilityGrants("../../config/opa/ui_capability_grants.yaml")
+	grants, err := LoadUICapabilityGrants(testutil.UICapabilityGrantsPath())
 	if err != nil {
 		t.Fatalf("Failed to load real grants file: %v", err)
 	}

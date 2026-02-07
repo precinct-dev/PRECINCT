@@ -27,6 +27,7 @@ import (
 
 	"github.com/example/agentic-security-poc/internal/gateway"
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/example/agentic-security-poc/internal/testutil"
 )
 
 // buildTestGateway creates a real gateway handler with a test upstream server.
@@ -59,10 +60,10 @@ func buildTestGateway(t *testing.T, handleTTL int) (*httptest.Server, func()) {
 	cfg := &gateway.Config{
 		Port:                    0,
 		UpstreamURL:             upstream.URL,
-		OPAPolicyDir:            "../../config/opa",
-		ToolRegistryConfigPath:  "../../config/tool-registry.yaml",
+		OPAPolicyDir:            testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath:  testutil.ToolRegistryConfigPath(),
 		AuditLogPath:            "/tmp/audit-response-firewall-test.jsonl",
-		OPAPolicyPath:           "../../config/opa/mcp_policy.rego",
+		OPAPolicyPath:           testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:     10 * 1024 * 1024,
 		SPIFFEMode:              "dev",
 		LogLevel:                "info",
