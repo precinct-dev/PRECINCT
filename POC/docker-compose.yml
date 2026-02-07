@@ -210,7 +210,9 @@ services:
     networks:
       - agentic-net
     # Health provided by health_check extension on :13133 (configured in otel-collector.yaml).
-    # No docker healthcheck: distroless image lacks wget/curl, and no service depends on this.
+    # No Docker healthcheck defined: the otel-collector-contrib image is FROM scratch and
+    # lacks wget/curl/shell for a Docker HEALTHCHECK command. The gateway depends on this
+    # service with condition: service_started (not service_healthy) for this reason.
 
   # Phoenix - Trace visualization and analysis
   phoenix:
@@ -246,6 +248,12 @@ services:
         condition: service_healthy
       keydb:
         condition: service_healthy
+      otel-collector:
+        condition: service_started  # service_started (not service_healthy) because the
+                                    # otel-collector-contrib image is FROM scratch and has
+                                    # no shell/curl/wget for a Docker healthcheck.
+                                    # The OTel gRPC exporter uses lazy connection with
+                                    # automatic retries, so startup ordering is sufficient.
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
       - ./config:/config:ro  # Mount config directory for OPA policies and tool registry
