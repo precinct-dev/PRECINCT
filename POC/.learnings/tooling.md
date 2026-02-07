@@ -144,3 +144,31 @@
 **Applies to:** All stories parsing logs from docker-compose services
 
 **Source stories:** RFA-8jl.1
+
+---
+
+## [Added from Epic RFA-7bh retro - 2026-02-06]
+
+### Kustomize requires wrapper kustomization.yaml in each resource group
+
+**Priority:** Important
+
+**Context:** RFA-7bh.1 needed to create kustomization.yaml wrappers in each resource group directory (spire/, spike/, observability/) for the local overlay to reference them via relative paths.
+
+**Recommendation:** When building Kustomize overlays that reference existing resource directories, plan for creating wrapper kustomization.yaml files. These are additive (don't modify existing manifests) but necessary for cross-directory references.
+
+**Applies to:** All Kustomize overlay stories
+
+**Source stories:** RFA-7bh.1
+
+### Kustomize strategic merge patches for StatefulSet VCTs require full block
+
+**Priority:** Nice-to-have
+
+**Context:** Kustomize strategic merge patches for StatefulSet volumeClaimTemplates require specifying the full VCT block (not just the field to change) because VCTs are matched by metadata.name.
+
+**Recommendation:** When patching StatefulSet VCTs via Kustomize, include the complete volumeClaimTemplates entry, not just the fields being modified.
+
+**Applies to:** All Kustomize patches for StatefulSets with VCTs
+
+**Source stories:** RFA-7bh.1
