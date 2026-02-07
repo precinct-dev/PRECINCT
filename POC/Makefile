@@ -1,4 +1,4 @@
-.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate validate-setup-time
+.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate validate-setup-time benchmark security-scan
 
 # Default target
 help: ## Show this help message
@@ -314,6 +314,51 @@ validate-setup-time: ## Validate 30-minute git-clone-to-running claim. Usage: ma
 		exit 1; \
 	fi
 	@bash tests/e2e/validate_setup_time.sh $(MODE)
+
+# ==============================================================================
+# Performance Benchmarking (RFA-lo1.2)
+# ==============================================================================
+
+benchmark: ## Run performance benchmarks (Go benchmarks + optional load test against Docker Compose stack)
+	@echo "==> Performance Benchmarking (RFA-lo1.2)"
+	@echo ""
+	@echo "    Phase 1: Go Benchmarks (13-middleware chain, in-process)"
+	@echo "    --------------------------------------------------------"
+	go test -bench=BenchmarkFullMiddlewareChain -benchmem -run=^$$ ./internal/gateway/middleware/ -count=3
+	@echo ""
+	go test -bench=BenchmarkMinimalChain -benchmem -run=^$$ ./internal/gateway/middleware/ -count=3
+	@echo ""
+	@echo "    Phase 2: Latency Percentiles (P50/P95/P99)"
+	@echo "    -------------------------------------------"
+	go test -bench=BenchmarkLatencyPercentiles -benchmem -run=^$$ ./internal/gateway/middleware/ -v
+	@echo ""
+	@echo "    Phase 3: Per-Middleware Breakdown (OTel Span Timing)"
+	@echo "    ----------------------------------------------------"
+	go test -bench=BenchmarkPerMiddlewareLatency -benchmem -run=^$$ ./internal/gateway/middleware/ -v
+	@echo ""
+	@echo "    Phase 4: Full vs Minimal Comparison"
+	@echo "    ------------------------------------"
+	go test -bench=BenchmarkCompareFullVsMinimal -benchmem -run=^$$ ./internal/gateway/middleware/ -v
+	@echo ""
+	@echo "    Phase 5: Benchmark Report"
+	@echo "    -------------------------"
+	BENCHMARK_REPORT=1 go test -run=TestPrintBenchmarkReport -v ./internal/gateway/middleware/
+	@echo ""
+	@echo "    Phase 6: Load Test (Docker Compose stack)"
+	@echo "    ------------------------------------------"
+	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
+		if command -v hey >/dev/null 2>&1; then \
+			bash tests/benchmark/load_test.sh; \
+		else \
+			echo "    WARNING: 'hey' not installed. Skipping load test."; \
+			echo "    Install with: go install github.com/rakyll/hey@latest"; \
+		fi; \
+	else \
+		echo "    Docker Compose stack not running. Skipping load test."; \
+		echo "    Run 'make up' first, then 'make benchmark' to include load testing."; \
+	fi
+	@echo ""
+	@echo "==> Benchmarking complete. Results documented in docs/operations/performance.md"
 
 # ==============================================================================
 # Security Scanning (RFA-lo1.1)
