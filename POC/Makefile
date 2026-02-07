@@ -192,7 +192,7 @@ $(COMPLIANCE_VENV): tools/compliance/requirements.txt
 	python3 -m venv $(COMPLIANCE_VENV)
 	$(COMPLIANCE_PYTHON) -m pip install --quiet -r tools/compliance/requirements.txt
 
-compliance-report: $(COMPLIANCE_VENV) ## Generate compliance CSV report (runs E2E suite first if docker stack is up)
+compliance-report: test-compliance ## Generate compliance CSV report (runs E2E suite first if docker stack is up)
 	@echo "==> Compliance Report Generation (RFA-8jl)"
 	@echo ""
 	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
