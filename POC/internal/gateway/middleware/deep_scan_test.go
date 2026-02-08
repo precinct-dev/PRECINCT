@@ -68,6 +68,180 @@ func TestNewDeepScannerWithConfig(t *testing.T) {
 	}
 }
 
+// TestNewDeepScannerWithConfig_EndpointAndModel verifies configurable endpoint and model
+func TestNewDeepScannerWithConfig_EndpointAndModel(t *testing.T) {
+	t.Run("CustomEndpointAndModel", func(t *testing.T) {
+		scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+			APIKey:    "test-key",
+			Timeout:   5 * time.Second,
+			Endpoint:  "http://localhost:11434/v1",
+			ModelName: "custom-guard-model",
+		})
+		if scanner.groqBaseURL != "http://localhost:11434/v1" {
+			t.Errorf("Expected custom endpoint http://localhost:11434/v1, got %s", scanner.groqBaseURL)
+		}
+		if scanner.modelName != "custom-guard-model" {
+			t.Errorf("Expected custom model name custom-guard-model, got %s", scanner.modelName)
+		}
+	})
+
+	t.Run("EmptyEndpoint_DefaultsToGroq", func(t *testing.T) {
+		scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+			APIKey:  "test-key",
+			Timeout: 5 * time.Second,
+		})
+		if scanner.groqBaseURL != "https://api.groq.com/openai/v1" {
+			t.Errorf("Expected default Groq endpoint, got %s", scanner.groqBaseURL)
+		}
+	})
+
+	t.Run("EmptyModelName_DefaultsToPromptGuard", func(t *testing.T) {
+		scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+			APIKey:  "test-key",
+			Timeout: 5 * time.Second,
+		})
+		if scanner.modelName != "meta-llama/llama-prompt-guard-2-86m" {
+			t.Errorf("Expected default model name meta-llama/llama-prompt-guard-2-86m, got %s", scanner.modelName)
+		}
+	})
+}
+
+// TestDeepScannerUsesConfiguredModel verifies scan() and classifyWithPromptGuard() use configured model
+func TestDeepScannerUsesConfiguredModel(t *testing.T) {
+	customModel := "my-custom-guard-v3"
+
+	// Mock server that verifies the model name in the API request
+	var receivedModel string
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var reqBody map[string]interface{}
+		_ = json.NewDecoder(r.Body).Decode(&reqBody)
+		if model, ok := reqBody["model"].(string); ok {
+			receivedModel = model
+		}
+
+		resp := GroqClassificationResponse{
+			ID:    "test-id",
+			Model: customModel,
+			Choices: []struct {
+				Index   int `json:"index"`
+				Message struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"message"`
+				FinishReason string `json:"finish_reason"`
+			}{
+				{
+					Index: 0,
+					Message: struct {
+						Role    string `json:"role"`
+						Content string `json:"content"`
+					}{
+						Role:    "assistant",
+						Content: "BENIGN",
+					},
+					FinishReason: "stop",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockServer.Close()
+
+	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+		APIKey:    "test-key",
+		Timeout:   5 * time.Second,
+		Endpoint:  mockServer.URL,
+		ModelName: customModel,
+	})
+
+	result := scanner.Scan(context.Background(), "test content", "trace-custom-model")
+
+	if result.Error != nil {
+		t.Fatalf("Unexpected error: %v", result.Error)
+	}
+
+	// Verify the API request used the configured model name
+	if receivedModel != customModel {
+		t.Errorf("Expected API request to use model %q, got %q", customModel, receivedModel)
+	}
+
+	// Verify the result records the configured model name (audit accuracy)
+	if result.ModelUsed != customModel {
+		t.Errorf("Expected result.ModelUsed=%q, got %q", customModel, result.ModelUsed)
+	}
+}
+
+// TestDeepScannerUsesConfiguredEndpoint verifies the scanner hits the configured endpoint
+func TestDeepScannerUsesConfiguredEndpoint(t *testing.T) {
+	endpointCalled := false
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		endpointCalled = true
+		// Verify path is appended correctly
+		if r.URL.Path != "/chat/completions" {
+			t.Errorf("Expected path /chat/completions, got %s", r.URL.Path)
+		}
+
+		resp := GroqClassificationResponse{
+			ID:    "test-id",
+			Model: "test-model",
+			Choices: []struct {
+				Index   int `json:"index"`
+				Message struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"message"`
+				FinishReason string `json:"finish_reason"`
+			}{
+				{
+					Index: 0,
+					Message: struct {
+						Role    string `json:"role"`
+						Content string `json:"content"`
+					}{
+						Role:    "assistant",
+						Content: "BENIGN",
+					},
+					FinishReason: "stop",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockServer.Close()
+
+	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+		APIKey:    "test-key",
+		Timeout:   5 * time.Second,
+		Endpoint:  mockServer.URL,
+		ModelName: "test-model",
+	})
+
+	result := scanner.Scan(context.Background(), "test content", "trace-endpoint")
+
+	if result.Error != nil {
+		t.Fatalf("Unexpected error: %v", result.Error)
+	}
+	if !endpointCalled {
+		t.Error("Expected custom endpoint to be called, but it was not")
+	}
+}
+
+// TestNewDeepScanner_BackwardCompat verifies NewDeepScanner convenience constructor
+// still uses Groq defaults for backward compatibility
+func TestNewDeepScanner_BackwardCompat(t *testing.T) {
+	scanner := NewDeepScanner("test-key", 5*time.Second)
+	if scanner.groqBaseURL != "https://api.groq.com/openai/v1" {
+		t.Errorf("Expected Groq default endpoint, got %s", scanner.groqBaseURL)
+	}
+	if scanner.modelName != "meta-llama/llama-prompt-guard-2-86m" {
+		t.Errorf("Expected Groq default model, got %s", scanner.modelName)
+	}
+}
+
 // TestHasAPIKey verifies API key detection
 func TestHasAPIKey(t *testing.T) {
 	withKey := NewDeepScanner("test-key", 5*time.Second)

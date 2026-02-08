@@ -28,6 +28,9 @@ NC='\033[0m'
 DEEP_SCAN_FALLBACK="fail_closed"
 GROQ_API_KEY=""
 GROQ_API_KEY_SET=false
+GUARD_ENDPOINT=""
+GUARD_MODEL_NAME=""
+GUARD_API_KEY_OVERRIDE=""
 SESSION_PERSISTENCE=true
 SPIFFE_MODE="dev"
 
@@ -234,6 +237,44 @@ else
     echo -e "  ${YELLOW}Skipped.${NC} Deep scan DISABLED -- payloads will not be analyzed by LLM."
 fi
 
+# ---- Q2b: Guard Model Configuration (only shown if GROQ_API_KEY was set) ----
+if [ "$GROQ_API_KEY_SET" = true ]; then
+    print_section "Q2b: Guard Model Configuration"
+    echo "  By default, deep scan uses the Groq API with Prompt Guard 2."
+    echo "  You can override the endpoint, model, or API key to use an"
+    echo "  alternative OpenAI-compatible provider (Ollama, Azure, Together AI, etc.)."
+    echo ""
+    echo "  Press Enter at each prompt to keep the Groq defaults."
+    echo ""
+
+    printf "  Guard model endpoint (default: Groq): "
+    read -r GUARD_ENDPOINT_INPUT || true
+    GUARD_ENDPOINT="${GUARD_ENDPOINT_INPUT:-}"
+    if [ -n "$GUARD_ENDPOINT" ]; then
+        echo -e "  ${GREEN}Custom endpoint:${NC} ${GUARD_ENDPOINT}"
+    else
+        echo -e "  ${GREEN}Using default:${NC} Groq API (https://api.groq.com/openai/v1)"
+    fi
+
+    printf "  Guard model name (default: meta-llama/llama-prompt-guard-2-86m): "
+    read -r GUARD_MODEL_NAME_INPUT || true
+    GUARD_MODEL_NAME="${GUARD_MODEL_NAME_INPUT:-}"
+    if [ -n "$GUARD_MODEL_NAME" ]; then
+        echo -e "  ${GREEN}Custom model:${NC} ${GUARD_MODEL_NAME}"
+    else
+        echo -e "  ${GREEN}Using default:${NC} meta-llama/llama-prompt-guard-2-86m"
+    fi
+
+    printf "  Guard API key (default: use GROQ_API_KEY): "
+    read -r GUARD_API_KEY_INPUT || true
+    GUARD_API_KEY_OVERRIDE="${GUARD_API_KEY_INPUT:-}"
+    if [ -n "$GUARD_API_KEY_OVERRIDE" ]; then
+        echo -e "  ${GREEN}Custom API key set.${NC}"
+    else
+        echo -e "  ${GREEN}Using GROQ_API_KEY.${NC}"
+    fi
+fi
+
 # ---- Q3: Session Persistence (KeyDB) ----
 print_section "Q3: Session Persistence (KeyDB)"
 echo "  KeyDB (Redis-compatible) stores session context across requests."
@@ -309,6 +350,11 @@ cat > "$ENV_FILE" <<ENVEOF
 GROQ_API_KEY=${GROQ_API_KEY}
 DEEP_SCAN_FALLBACK=${DEEP_SCAN_FALLBACK}
 
+# Guard model configuration (RFA-j6c)
+GUARD_MODEL_ENDPOINT=${GUARD_ENDPOINT}
+GUARD_MODEL_NAME=${GUARD_MODEL_NAME}
+GUARD_API_KEY=${GUARD_API_KEY_OVERRIDE}
+
 # Session persistence (KeyDB)
 KEYDB_URL=${KEYDB_URL}
 
@@ -334,6 +380,12 @@ if [ "$GROQ_API_KEY_SET" = false ]; then
 elif [ "$DEEP_SCAN_FALLBACK" = "fail_open" ]; then
     DEEP_SCAN_STATUS="DEGRADED"
     DEEP_SCAN_DETAIL="LLM analysis active, but fail-open on LLM errors"
+fi
+# Show custom guard model info if configured
+if [ -n "$GUARD_ENDPOINT" ] || [ -n "$GUARD_MODEL_NAME" ]; then
+    GUARD_PROVIDER="${GUARD_ENDPOINT:-Groq}"
+    GUARD_MODEL="${GUARD_MODEL_NAME:-llama-prompt-guard-2-86m}"
+    DEEP_SCAN_DETAIL="Guard: ${GUARD_MODEL} @ ${GUARD_PROVIDER}; fallback=${DEEP_SCAN_FALLBACK}"
 fi
 
 SESSION_STATUS="ENABLED"

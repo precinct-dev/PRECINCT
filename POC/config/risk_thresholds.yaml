@@ -25,3 +25,18 @@ unknown_tool_defaults:
   reversibility: 2
   exposure: 2
   novelty: 3        # Unknown tools get max novelty score
+
+# DLP regex scanner policy: block or flag per content category (RFA-sd7).
+# "block" returns HTTP 403 immediately; "flag" adds to safezone_flags and continues.
+#
+# Only dlp.injection has an env var override (DLP_INJECTION_POLICY) because:
+#   - credentials=block is a security invariant -- credential leakage through
+#     tool calls must always be blocked. Making this easily overridable via env var
+#     risks accidental degradation of a critical security control.
+#   - pii=flag is rarely changed -- PII audit-only policy is the standard approach
+#     across compliance frameworks. Operators who need to change this should do so
+#     deliberately via YAML config, not a quick env var toggle.
+dlp:
+  credentials: block    # block | flag  (default: block)
+  injection: flag       # block | flag  (default: flag)
+  pii: flag             # block | flag  (default: flag)
