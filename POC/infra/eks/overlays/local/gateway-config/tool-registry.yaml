@@ -1,0 +1,228 @@
+# Tool Registry Configuration - RFA-qq0.5, RFA-qq0.6
+# Defines MCP tools with SHA-256 hashes for poisoning detection
+# Each tool is identified by name and verified via SHA-256 hash
+# Hash is computed over: tool description + input schema (canonical JSON)
+#
+# NOTE (RFA-n6g): allowed_paths uses a placeholder. At runtime, path-based
+# access control is enforced by the OPA policy engine using the ALLOWED_BASE_PATH
+# environment variable (see config.go and mcp_policy.rego). The allowed_paths
+# field here is declarative metadata; it is not consumed by the Go tool registry
+# loader. When the POC is deployed, set ALLOWED_BASE_PATH to the repository root.
+
+tools:
+  # Tavily - Web search API
+  - name: "tavily_search"
+    description: "Search the web using Tavily API"
+    hash: "76c6b3d8a7ddbc387ca87aa784e99354feeda1ff438768cd99232a6772cceac0"  # SHA-256 (RFA-qq0.6)
+    input_schema:
+      type: "object"
+      required: ["query"]
+      properties:
+        query:
+          type: "string"
+          description: "Search query"
+        max_results:
+          type: "integer"
+          description: "Maximum results to return"
+          default: 5
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "medium"
+    requires_step_up: false
+    required_scope: "tools.tavily.search"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  # Read - File system read operations
+  - name: "read"
+    description: "Read file contents from filesystem"
+    hash: "c4fbe869591f047985cd812915ed87d2c9c77de445089dcbc507416a86491453"  # SHA-256 (RFA-qq0.6)
+    input_schema:
+      type: "object"
+      required: ["file_path"]
+      properties:
+        file_path:
+          type: "string"
+          description: "Absolute path to file"
+        offset:
+          type: "integer"
+          description: "Line number to start reading"
+        limit:
+          type: "integer"
+          description: "Number of lines to read"
+    allowed_paths:
+      - "${ALLOWED_BASE_PATH}/**"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.filesystem.read"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  # Grep - Content search
+  - name: "grep"
+    description: "Search for patterns in files"
+    hash: "8bf71be3abae46b7ac610d92913c20e5f8d46bdbde9144c1c7e9798d92518cec"  # SHA-256 (RFA-qq0.6)
+    input_schema:
+      type: "object"
+      required: ["pattern", "path"]
+      properties:
+        pattern:
+          type: "string"
+          description: "Regular expression pattern"
+        path:
+          type: "string"
+          description: "Directory or file path to search"
+        glob:
+          type: "string"
+          description: "Glob pattern to filter files"
+        output_mode:
+          type: "string"
+          enum: ["content", "files_with_matches", "count"]
+    allowed_paths:
+      - "${ALLOWED_BASE_PATH}/**"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.filesystem.read"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  # Bash - Shell command execution (HIGH RISK)
+  - name: "bash"
+    description: "Execute shell commands"
+    hash: "ada241bb834f0737fd259606208f5d8ba2aeb2adbefa5ddc9df8f59b7c152c9f"  # SHA-256 (RFA-qq0.6)
+    input_schema:
+      type: "object"
+      required: ["command"]
+      properties:
+        command:
+          type: "string"
+          description: "Shell command to execute"
+        timeout:
+          type: "integer"
+          description: "Timeout in milliseconds"
+        run_in_background:
+          type: "boolean"
+          description: "Run command in background"
+    risk_level: "critical"
+    requires_step_up: true  # MUST have step-up authentication
+    required_scope: "tools.shell.execute"  # RFA-0gr: dynamic scope for SPIKE tokens
+    allowed_paths:
+      - "${ALLOWED_BASE_PATH}/**"
+
+  # S3 List Objects - S3 bucket listing (RFA-9fv.5)
+  - name: "s3_list_objects"
+    description: "List objects in an S3 bucket with allowed prefix"
+    hash: "8e007a4ef7ffb625b72e43f04febb0f7409435f9551018b6dbb3d3858fcef0ea"  # SHA-256 (RFA-9fv.5)
+    input_schema:
+      type: "object"
+      required: ["bucket", "prefix"]
+      properties:
+        bucket:
+          type: "string"
+          description: "S3 bucket name"
+        prefix:
+          type: "string"
+          description: "Object key prefix"
+        max_keys:
+          type: "integer"
+          description: "Max objects to return"
+          default: 100
+    allowed_destinations:
+      - "*.s3.amazonaws.com"
+      - "*.s3.*.amazonaws.com"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.s3.list"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  # S3 Get Object - S3 object read (RFA-9fv.5)
+  - name: "s3_get_object"
+    description: "Read an object from an S3 bucket with allowed prefix"
+    hash: "c2fd4dfceb57d856cdf0bdf9d50d64798dae998d5e107b28220f2fea76c7f7f4"  # SHA-256 (RFA-9fv.5)
+    input_schema:
+      type: "object"
+      required: ["bucket", "key"]
+      properties:
+        bucket:
+          type: "string"
+          description: "S3 bucket name"
+        key:
+          type: "string"
+          description: "Object key"
+    allowed_destinations:
+      - "*.s3.amazonaws.com"
+      - "*.s3.*.amazonaws.com"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.s3.read"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+# Hash computation reference:
+# For each tool, the hash is computed as:
+# SHA-256(description + canonical_json(input_schema))
+#
+# Example (pseudo-code):
+# content = tool.description + json.dumps(tool.input_schema, sort_keys=True, separators=(',', ':'))
+# hash = sha256(content.encode('utf-8')).hexdigest()
+#
+# Hashes computed in RFA-qq0.6 using scripts/compute_tool_hashes.go
+
+# RFA-j2d.5: UI Resource Registry
+# Every ui:// resource must be registered with a content hash baseline.
+# On each read, the gateway verifies the content hash matches the registered baseline.
+# Hash mismatches are treated as rug-pull attacks (critical severity).
+#
+# UI resource hash computation:
+# SHA-256(raw HTML/resource content bytes)
+#
+# Onboarding workflow (Section 7.9.6):
+# 1. Server declares a tool with _meta.ui.resourceUri
+# 2. Gateway in audit-only mode logs resource content and metadata
+# 3. Security review: static analysis, CSP review, permissions review
+# 4. Upon approval: register (server, resourceUri, contentHash, approvedCSP, approvedPerms)
+# 5. Switch server to allow mode for this tool
+# 6. Ongoing: gateway verifies content hash on every resource read
+
+ui_resources:
+  # Analytics Dashboard - Example approved UI resource
+  - server: "dashboard-server"
+    resource_uri: "ui://dashboard/analytics.html"
+    content_hash: "944c21cc4f8c2cf5f9e9cb7662e14d271638dce52d0c86cec6afb483a5cacbaf"
+    version: "1.0.0"
+    approved_at: "2026-01-15T10:00:00Z"
+    approved_by: "security-team@example.com"
+    max_size_bytes: 524288  # 512 KB
+    declared_csp:
+      default_src: ["'self'"]
+      script_src: ["'self'"]
+      style_src: ["'self'", "'unsafe-inline'"]
+      connect_src: ["'self'", "https://api.example.com"]
+      img_src: ["'self'", "data:"]
+    declared_perms:
+      camera: false
+      microphone: false
+      geolocation: false
+      clipboard_write: false
+    scan_result:
+      scanned_at: "2026-01-15T09:55:00Z"
+      dangerous_pattern: false
+      script_count: 2
+      external_refs: 1
+
+  # Settings Panel - Example approved UI resource with minimal permissions
+  - server: "settings-server"
+    resource_uri: "ui://settings/panel.html"
+    content_hash: "cbb13550dd79cfda09926810f63d66e60e8e8841fdf5179df41a067ae2dc47de"
+    version: "2.1.0"
+    approved_at: "2026-01-20T14:30:00Z"
+    approved_by: "security-team@example.com"
+    max_size_bytes: 262144  # 256 KB
+    declared_csp:
+      default_src: ["'self'"]
+      script_src: ["'self'"]
+      style_src: ["'self'"]
+      connect_src: ["'self'"]
+      img_src: ["'self'"]
+    declared_perms:
+      camera: false
+      microphone: false
+      geolocation: false
+      clipboard_write: false
+    scan_result:
+      scanned_at: "2026-01-20T14:25:00Z"
+      dangerous_pattern: false
+      script_count: 1
+      external_refs: 0

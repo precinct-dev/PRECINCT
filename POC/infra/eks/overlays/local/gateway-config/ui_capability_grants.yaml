@@ -1,0 +1,59 @@
+# OPA Policy Data: UI Capability Grants - RFA-j2d.1
+# Based on Reference Architecture Section 7.9.2
+#
+# This file defines per-server, per-tenant capability gating for MCP-UI features.
+# Each entry specifies:
+#   - server: The MCP server name
+#   - tenant: The tenant identifier
+#   - mode: deny | allow | audit-only
+#   - approved_tools: List of tool names that may retain _meta.ui (empty = all tools)
+#   - max_resource_size_bytes: Per-grant resource size limit
+#   - allowed_csp_connect_domains: Allowed CSP connect-src domains for this grant
+#   - allowed_permissions: Browser permissions allowed for this grant
+#   - approved_at: ISO 8601 timestamp of approval
+#   - approved_by: Identity of approver
+#
+# Configuration hierarchy principle:
+# Grants operate WITHIN hard constraints (config/ui.yaml).
+# A grant cannot override hard constraints -- e.g., if camera_allowed=false
+# in hard constraints, a grant with camera in allowed_permissions is rejected.
+#
+# The global kill switch (ui.enabled=false in config/ui.yaml) overrides ALL grants.
+# When the kill switch is off, all _meta.ui is stripped regardless of grant mode.
+
+ui_capability_grants:
+  # Example: Dashboard server for acme-corp -- UI allowed for specific tools
+  - server: "mcp-dashboard-server"
+    tenant: "acme-corp"
+    mode: "allow"
+    approved_tools:
+      - "render-analytics"
+      - "show-chart"
+    max_resource_size_bytes: 2097152
+    allowed_csp_connect_domains:
+      - "https://api.acme.corp"
+    allowed_permissions: []
+    approved_at: "2026-02-01T00:00:00Z"
+    approved_by: "security-review@acme.corp"
+
+  # Example: Reporting server for acme-corp -- audit-only mode for review
+  - server: "mcp-reporting-server"
+    tenant: "acme-corp"
+    mode: "audit-only"
+    approved_tools: []
+    max_resource_size_bytes: 1048576
+    allowed_csp_connect_domains: []
+    allowed_permissions: []
+    approved_at: "2026-02-01T00:00:00Z"
+    approved_by: "security-review@acme.corp"
+
+  # Example: Denied server -- explicit deny entry (same as no entry, but documented)
+  - server: "mcp-untrusted-server"
+    tenant: "acme-corp"
+    mode: "deny"
+    approved_tools: []
+    max_resource_size_bytes: 0
+    allowed_csp_connect_domains: []
+    allowed_permissions: []
+    approved_at: "2026-02-01T00:00:00Z"
+    approved_by: "security-review@acme.corp"

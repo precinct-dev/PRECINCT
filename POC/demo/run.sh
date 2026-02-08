@@ -220,6 +220,11 @@ run_demo_cycle() {
         log "Restarting gateway to reset rate limits for Python demo"
         docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         wait_for_health "http://localhost:9090" || exit 1
+    elif [ "$mode" = "k8s" ]; then
+        log "Restarting gateway to reset rate limits for Python demo"
+        kubectl -n gateway rollout restart deploy/mcp-security-gateway >/dev/null 2>&1 || true
+        sleep 5
+        wait_for_health "http://localhost:30090" || exit 1
     fi
 
     run_python_demo "$url" "$network" || py_ok=1
