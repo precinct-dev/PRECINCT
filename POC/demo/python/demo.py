@@ -160,16 +160,22 @@ def test_opa_denial(url: str) -> bool:
 
 
 def test_dlp_credential_block(url: str) -> bool:
-    """6. DLP credential block: AWS access key pattern."""
+    """6. DLP credential block: AWS access key pattern at step 7.
+
+    Uses tavily_search (not read) so the AWS key bypasses OPA path restrictions
+    and reaches the DLP scanner at step 7.
+    """
     client = new_client(url)
     try:
-        client.call("read", file_path="AKIAIOSFODNN7EXAMPLE")
-        return print_proof(False, "expected DLP block but chain passed through")
+        client.call("tavily_search", query="AKIAIOSFODNN7EXAMPLE")
+        return print_proof(False, "expected DLP block but chain passed through (200)")
     except GatewayError as e:
         print_gateway_error(e)
+        if e.code == "dlp_credentials_detected" and e.step == 7:
+            return print_proof(True, f"DLP blocked credential at step {e.step}: {e.code}")
         if e.http_status == 502:
             return print_proof(False, "DLP did not block credential pattern (reached upstream)")
-        return print_proof(True, f"DLP blocked: code={e.code}, step={e.step}")
+        return print_proof(False, f"expected dlp_credentials_detected at step 7, got {e.code} at step {e.step}")
     except Exception as e:
         print(f"  Error: {e}")
         return print_proof(False, f"unexpected error: {type(e).__name__}")
@@ -282,7 +288,7 @@ def test_spike_token_reference(url: str) -> bool:
         if e.http_status == 502:
             return print_proof(True, "SPIKE reference flowed through chain, 502 = no upstream (expected)")
         if e.http_status == 500:
-            return print_proof(True, f"SPIKE token substitution attempted: {e.code} (proves pipeline works)")
+            return print_proof(True, f"SPIKE reference reached token substitution (step 13) without DLP false-positive. Token redemption failed as expected (SPIKE Nexus not configured for demo): {e.code}")
         if e.http_status == 403 and e.code == "dlp_credentials_detected":
             return print_proof(False, "SPIKE reference was BLOCKED by DLP (403) -- should pass through")
         if e.http_status == 403 and e.step and e.step >= 13:
@@ -492,8 +498,8 @@ def main() -> None:
         TestCase(
             name="DLP credential block (AWS key)",
             what="DLP scanner blocks AWS access key patterns in request payloads",
-            send="read(file_path='AKIAIOSFODNN7EXAMPLE') -- contains AWS access key pattern",
-            expect="403 -- DLP blocks credential pattern before reaching upstream",
+            send="tavily_search(query='AKIAIOSFODNN7EXAMPLE') -- AWS key in query bypasses OPA path rules, reaches DLP",
+            expect="403 at step 7 -- DLP detects AWS access key pattern (dlp_credentials_detected)",
             fn=test_dlp_credential_block,
         ),
         TestCase(

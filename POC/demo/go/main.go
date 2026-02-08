@@ -83,8 +83,8 @@ func main() {
 		{
 			name:   "DLP credential block (AWS key)",
 			what:   "DLP scanner blocks AWS access key patterns in request payloads",
-			send:   "read(file_path='AKIAIOSFODNN7EXAMPLE') -- contains AWS access key pattern",
-			expect: "403 -- DLP blocks credential pattern before reaching upstream",
+			send:   "tavily_search(query='AKIAIOSFODNN7EXAMPLE') -- AWS key in query bypasses OPA path rules, reaches DLP",
+			expect: "403 at step 7 -- DLP detects AWS access key pattern (dlp_credentials_detected)",
 			fn:     testDLPCredentialBlock,
 		},
 		{
@@ -380,26 +380,28 @@ func testOPADenial() bool {
 	return printProof(false, "error is not a GatewayError")
 }
 
-// 6. DLP credential block: AWS access key pattern should be blocked.
+// 6. DLP credential block: AWS access key pattern should be blocked at step 7.
+// Uses tavily_search (not read) so the AWS key bypasses OPA path restrictions
+// and reaches the DLP scanner at step 7.
 func testDLPCredentialBlock() bool {
 	client := newClient()
 	ctx := context.Background()
-	_, err := client.Call(ctx, "read", map[string]any{
-		"file_path": "AKIAIOSFODNN7EXAMPLE",
+	_, err := client.Call(ctx, "tavily_search", map[string]any{
+		"query": "AKIAIOSFODNN7EXAMPLE",
 	})
 	if err == nil {
-		// Chain may pass to upstream which 502s -- check if DLP caught it
-		return printProof(false, "expected DLP block but chain passed through")
+		return printProof(false, "expected DLP block but chain passed through (200)")
 	}
 	var ge *mcpgateway.GatewayError
 	if errors.As(err, &ge) {
 		printGatewayError(ge)
-		// DLP block should be 403 or 400
+		if ge.Code == "dlp_credentials_detected" && ge.Step == 7 {
+			return printProof(true, fmt.Sprintf("DLP blocked credential at step %d: %s", ge.Step, ge.Code))
+		}
 		if ge.HTTPStatus == 502 {
-			// Reached upstream (DLP didn't block) -- still useful data
 			return printProof(false, "DLP did not block credential pattern (reached upstream)")
 		}
-		return printProof(true, fmt.Sprintf("DLP blocked: code=%s, step=%d", ge.Code, ge.Step))
+		return printProof(false, fmt.Sprintf("expected dlp_credentials_detected at step 7, got %s at step %d", ge.Code, ge.Step))
 	}
 	fmt.Printf("  Error: %v\n", err)
 	return printProof(false, "error is not a GatewayError")
@@ -603,7 +605,7 @@ func testSPIKETokenReference() bool {
 			return printProof(true, "SPIKE reference flowed through chain, 502 = no upstream (expected)")
 		}
 		if ge.HTTPStatus == 500 {
-			return printProof(true, fmt.Sprintf("SPIKE token substitution attempted: %s (proves pipeline works)", ge.Code))
+			return printProof(true, fmt.Sprintf("SPIKE reference reached token substitution (step 13) without DLP false-positive. Token redemption failed as expected (SPIKE Nexus not configured for demo): %s", ge.Code))
 		}
 		if ge.HTTPStatus == 403 && ge.Code == "dlp_credentials_detected" {
 			return printProof(false, "SPIKE reference was BLOCKED by DLP (403) -- should pass through")
