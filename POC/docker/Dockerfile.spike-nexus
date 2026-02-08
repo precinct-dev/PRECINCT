@@ -1,0 +1,36 @@
+# Dockerfile for spike-nexus with mTLS healthcheck
+# Layers a small Go binary onto the distroless spike-nexus image so Docker
+# can perform HEALTHCHECK via the SPIRE Workload API (mTLS required).
+
+# ============================================================================
+# Stage 1: Build the mTLS healthcheck binary
+# ============================================================================
+FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS builder
+
+RUN apk add --no-cache ca-certificates git
+
+WORKDIR /build
+
+# Cache dependency download
+COPY go.mod go.sum ./
+ENV GOTOOLCHAIN=auto
+RUN go mod download && go mod verify
+
+COPY . .
+
+# Static binary -- spike-nexus image is distroless (no libc)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/mtls-healthcheck \
+    ./cmd/mtls-healthcheck
+
+# ============================================================================
+# Stage 2: Runtime -- spike-nexus + healthcheck sidecar binary
+# ============================================================================
+FROM ghcr.io/spiffe/spike-nexus:0.8.0
+
+COPY --from=builder /build/mtls-healthcheck /usr/local/bin/mtls-healthcheck
+
+HEALTHCHECK --interval=5s --timeout=15s --start-period=15s --retries=12 \
+    CMD ["/usr/local/bin/mtls-healthcheck"]

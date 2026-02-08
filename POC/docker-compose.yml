@@ -36,7 +36,7 @@ services:
   spire-token-generator:
     build:
       context: .
-      dockerfile: build/docker/Dockerfile.token-generator
+      dockerfile: docker/Dockerfile.token-generator
     image: spire-token-generator:latest
     container_name: spire-token-generator
     depends_on:
@@ -53,7 +53,7 @@ services:
   spire-agent:
     build:
       context: .
-      dockerfile: build/docker/Dockerfile.spire-agent
+      dockerfile: docker/Dockerfile.spire-agent
     image: spire-agent-wrapper:latest
     container_name: spire-agent
     hostname: spire-agent
@@ -76,19 +76,42 @@ services:
       start_period: 20s
     networks:
       - agentic-net
-    # Privileged mode required for Docker socket access
+    # Privileged mode required for Docker socket access.
+    # Host PID namespace required so the Docker workload attestor can resolve
+    # PIDs from other containers' PID namespaces via SO_PEERCRED on the
+    # shared Workload API Unix socket.
     privileged: true
+    pid: host
+
+  # SPIRE Entry Registrar - One-shot init to register workload SPIFFE IDs
+  # Must complete BEFORE spike-nexus / gateway start so they can obtain SVIDs.
+  spire-entry-registrar:
+    image: spire-token-generator:latest   # Reuse image that has spire-server binary + shell
+    container_name: spire-entry-registrar
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+    volumes:
+      - spire-server-socket:/tmp/spire-server:ro
+      - ./scripts/register-spire-entries.sh:/register.sh:ro
+    entrypoint: ["/bin/sh", "/register.sh"]
+    networks:
+      - agentic-net
+    restart: "no"
 
   # SPIKE Nexus - Late-binding secrets vault with SPIFFE mTLS (RFA-a2y.1)
   # Provides token-based secret redemption so agents never see raw credentials.
   # Docker Compose Tier 1: in-memory root key (lost on restart, acceptable for POC per ADR-001).
   spike-nexus:
-    image: ghcr.io/spiffe/spike-nexus:0.8.0
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spike-nexus
+    image: spike-nexus:latest
     container_name: spike-nexus
     hostname: spike-nexus
     depends_on:
-      spire-agent:
-        condition: service_healthy
+      spire-entry-registrar:
+        condition: service_completed_successfully  # Entries must exist before SVID fetch
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
     ports:
@@ -100,14 +123,13 @@ services:
       - SPIKE_TRUST_ROOT=poc.local
       - SPIKE_TRUST_ROOT_NEXUS=poc.local
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - HEALTHCHECK_URL=https://localhost:8443/
     networks:
       - agentic-net
     labels:
       - "spiffe-id=spike-nexus"
       - "component=secrets"
       - "service=spike"
-    # No healthcheck: image is minimal (only /nexus binary, no wget/curl/sh)
-    # and SPIKE requires mTLS on all endpoints including /healthz.
 
   # SPIKE Bootstrap - One-shot init container to generate and deliver root key to Nexus (RFA-a2y.1)
   spike-bootstrap:
@@ -259,13 +281,17 @@ services:
   mcp-security-gateway:
     build:
       context: .
-      dockerfile: build/docker/Dockerfile.gateway
+      dockerfile: docker/Dockerfile.gateway
     image: mcp-security-gateway:latest
     container_name: mcp-security-gateway
     hostname: mcp-security-gateway
     depends_on:
       spire-agent:
         condition: service_healthy
+      spike-nexus:
+        condition: service_healthy  # Zero Trust: gateway must not start until SPIKE Nexus
+                                    # is serving mTLS on port 8443.  The mTLS healthcheck
+                                    # binary verifies end-to-end SPIRE SVID + TLS readiness.
       keydb:
         condition: service_healthy
       otel-collector:

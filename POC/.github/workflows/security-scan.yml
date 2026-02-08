@@ -96,7 +96,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: build/docker/Dockerfile.gateway
+          file: docker/Dockerfile.gateway
           push: false
           load: true
           tags: mcp-security-gateway:scan
