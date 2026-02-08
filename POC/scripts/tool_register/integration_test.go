@@ -316,8 +316,11 @@ func TestIntegration_GeneratedEntryLoadableByOPA(t *testing.T) {
 	registryYAML := extractSection(outputStr, "=== tool-registry.yaml entry ===", "=== tool_grants.yaml entry ===")
 	yamlContent := stripComments(registryYAML)
 
-	// Append new entry to existing registry
-	combined := string(existingData) + "\n" + yamlContent
+	// Insert new entry into the tools: section of the existing registry.
+	// The registry file has multiple top-level keys (tools:, ui_resources:),
+	// so naively appending to the end would place the entry outside the tools:
+	// section. Instead, find the end of the tools: list and insert there.
+	combined := insertIntoToolsSection(string(existingData), yamlContent)
 
 	// Parse the combined YAML to verify it's loadable
 	var config struct {
@@ -435,4 +438,50 @@ func stripComments(text string) string {
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+// insertIntoToolsSection inserts a new tool entry into the tools: section
+// of the registry YAML. The registry file may contain multiple top-level keys
+// (e.g., tools:, ui_resources:), so we cannot simply append to the end.
+// We find the last tool entry in the tools: list and insert after it.
+func insertIntoToolsSection(existingYAML, newEntry string) string {
+	lines := strings.Split(existingYAML, "\n")
+
+	// Find the tools: section and its last entry.
+	// The tools: section ends when we hit a non-indented, non-comment, non-empty
+	// line that is a new top-level key (e.g., "ui_resources:").
+	inToolsSection := false
+	insertIdx := -1
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+
+		if trimmed == "tools:" {
+			inToolsSection = true
+			continue
+		}
+
+		if inToolsSection {
+			// A non-empty, non-comment line at column 0 that isn't indented
+			// marks the end of the tools: section (new top-level key).
+			if trimmed != "" && !strings.HasPrefix(trimmed, "#") && len(line) > 0 && line[0] != ' ' && line[0] != '\t' {
+				// Insert before this line
+				insertIdx = i
+				break
+			}
+			// Track the last non-empty line within tools: section as fallback
+			if trimmed != "" {
+				insertIdx = i + 1
+			}
+		}
+	}
+
+	// If we never found tools: section, fall back to appending at end
+	if insertIdx == -1 {
+		return existingYAML + "\n" + newEntry
+	}
+
+	// Insert the new entry at the identified position
+	before := strings.Join(lines[:insertIdx], "\n")
+	after := strings.Join(lines[insertIdx:], "\n")
+	return before + "\n" + newEntry + "\n" + after
 }

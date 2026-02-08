@@ -143,6 +143,21 @@ collect_audit_proof_k8s() {
     echo ""
 }
 
+collect_mcp_transport_proof_compose() {
+    log "MCP transport detection proof (Docker Compose logs)"
+    echo ""
+    # Check gateway logs for MCP transport initialization
+    docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+        | grep -i -E "streamable|mcp.*transport|mcp.*session|mock-mcp|transport.*mode" | tail -10 \
+        || echo "  (no MCP transport entries found in logs)"
+    echo ""
+    # Check mock MCP server logs for session activity
+    docker compose -f "$POC_DIR/docker-compose.yml" logs mock-mcp-server 2>/dev/null \
+        | grep -i -E "session|tools" | tail -10 \
+        || echo "  (no mock MCP server activity found)"
+    echo ""
+}
+
 print_otel_proof() {
     log "OpenTelemetry traces"
     echo "  Phoenix UI: http://localhost:6006"
@@ -213,6 +228,7 @@ run_demo_cycle() {
     # Collect proofs
     if [ "$mode" = "compose" ]; then
         collect_audit_proof_compose
+        collect_mcp_transport_proof_compose
     else
         collect_audit_proof_k8s
     fi
