@@ -640,7 +640,7 @@ The 13-step middleware chain order is a security invariant and does NOT change i
 spike-nexus:
   build:
     context: .
-    dockerfile: build/docker/Dockerfile.spike-nexus
+    dockerfile: docker/Dockerfile.spike-nexus
     # Builds from github.com/spiffe/spike nexus.Dockerfile
     # or pulls ghcr.io/spiffe/spike-nexus:0.8.0
   image: spike-nexus:latest
@@ -672,7 +672,7 @@ spike-nexus:
 spike-bootstrap:
   build:
     context: .
-    dockerfile: build/docker/Dockerfile.spike-bootstrap
+    dockerfile: docker/Dockerfile.spike-bootstrap
   image: spike-bootstrap:latest
   container_name: spike-bootstrap
   depends_on:

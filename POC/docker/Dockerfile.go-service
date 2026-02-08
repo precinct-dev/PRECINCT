@@ -92,7 +92,7 @@ CMD []
 # Build Instructions
 # ============================================================================
 # Build the image:
-#   docker build -f build/docker/Dockerfile.go-service -t go-service:latest .
+#   docker build -f docker/Dockerfile.go-service -t go-service:latest .
 #
 # Run the image:
 #   docker run -p 8080:8080 go-service:latest

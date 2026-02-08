@@ -23,6 +23,23 @@ PY_IMAGE="demo-python-sdk"
 COMPOSE_NETWORK="agentic-security-network"
 PF_PID=""
 
+# Lua script for targeted rate-limit key cleanup (avoids FLUSHALL).
+# Scans for ratelimit:* keys only, leaving other KeyDB data intact.
+RATELIMIT_FLUSH_LUA='
+local count = 0
+local cursor = "0"
+repeat
+    local result = redis.call("SCAN", cursor, "MATCH", "ratelimit:*", "COUNT", 100)
+    cursor = result[1]
+    local keys = result[2]
+    for i, key in ipairs(keys) do
+        redis.call("DEL", key)
+        count = count + 1
+    end
+until cursor == "0"
+return count
+'
+
 cleanup() { [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null; true; }
 
 # Colors
@@ -235,13 +252,13 @@ run_demo_cycle() {
         url="http://mcp-security-gateway:9090"
         network="$COMPOSE_NETWORK"
         if [ "$SKIP_SETUP" = false ]; then
-            start_compose || true  # spike-nexus may fail; gateway still works
+            start_compose
         fi
-        # Flush KeyDB and restart gateway to reset circuit breaker + rate limits
+        # Clear rate-limit keys and restart gateway to reset circuit breaker
         # from any previous run. Without this, accumulated 502s keep the
         # circuit breaker open and subsequent demo runs fail with 503.
-        log "Flushing KeyDB and restarting gateway"
-        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli FLUSHALL >/dev/null 2>&1 || true
+        log "Clearing rate-limit keys and restarting gateway"
+        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
         docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         # Health check via localhost (host-side port mapping)
         wait_for_health "http://localhost:9090" || exit 1
@@ -288,13 +305,13 @@ run_demo_cycle() {
     # Reset rate limits between demos (both use same SPIFFE ID).
     # Rate limits persist in KeyDB, so gateway restart alone is insufficient.
     if [ "$mode" = "compose" ]; then
-        log "Flushing KeyDB rate limits and restarting gateway for Python demo"
-        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli FLUSHALL >/dev/null 2>&1 || true
+        log "Clearing rate-limit keys and restarting gateway for Python demo"
+        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
         docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         wait_for_health "http://localhost:9090" || exit 1
     elif [ "$mode" = "k8s" ]; then
-        log "Flushing KeyDB rate limits and restarting gateway for Python demo"
-        kubectl -n data exec deploy/keydb -- keydb-cli FLUSHALL >/dev/null 2>&1 || true
+        log "Clearing rate-limit keys and restarting gateway for Python demo"
+        kubectl -n data exec deploy/keydb -- keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
         kubectl -n gateway rollout restart deploy/mcp-security-gateway >/dev/null 2>&1 || true
         kubectl -n gateway rollout status deploy/mcp-security-gateway --timeout=60s 2>/dev/null || true
         # Restart port-forward (old one died with old pod)
@@ -338,6 +355,19 @@ run_demo_cycle() {
 }
 
 # --------------------------------------------------------------------------
+# Teardown
+# --------------------------------------------------------------------------
+teardown() {
+    local mode="$1"
+    log "Tearing down environment ($mode)"
+    if [ "$mode" = "compose" ]; then
+        docker compose -f "$POC_DIR/docker-compose.yml" down -v 2>/dev/null || true
+    elif [ "$mode" = "k8s" ]; then
+        make -C "$POC_DIR" k8s-down 2>/dev/null || true
+    fi
+}
+
+# --------------------------------------------------------------------------
 # Main
 # --------------------------------------------------------------------------
 main() {
@@ -345,23 +375,68 @@ main() {
     build_images
 
     local total_failures=0
+    local cycle1_failures=0
+    local cycle2_failures=0
 
     case "$MODE" in
-        compose)
-            run_demo_cycle compose || total_failures=$?
-            ;;
-        k8s)
-            run_demo_cycle k8s || total_failures=$?
+        compose|k8s)
+            # Cycle 1: full setup
+            log "=== Cycle 1 ==="
+            run_demo_cycle "$MODE" || cycle1_failures=$?
+
+            # Cycle 2: re-run on same environment (skip setup)
+            log "Sleeping 5s before re-run cycle..."
+            sleep 5
+            SKIP_SETUP=true
+            log "=== Cycle 2 (re-run) ==="
+            run_demo_cycle "$MODE" || cycle2_failures=$?
+
+            total_failures=$((cycle1_failures + cycle2_failures))
+
+            # Auto-teardown (unconditional -- runs whether tests passed or failed)
+            teardown "$MODE"
             ;;
         both)
-            run_demo_cycle compose || total_failures=$?
-            run_demo_cycle k8s || { total_failures=$((total_failures + $?)); }
+            # Compose cycles
+            log "=== Compose Cycle 1 ==="
+            run_demo_cycle compose || cycle1_failures=$?
+            log "Sleeping 5s before re-run cycle..."
+            sleep 5
+            SKIP_SETUP=true
+            log "=== Compose Cycle 2 (re-run) ==="
+            run_demo_cycle compose || cycle2_failures=$?
+            total_failures=$((cycle1_failures + cycle2_failures))
+            teardown compose
+
+            # K8s cycles
+            cycle1_failures=0
+            cycle2_failures=0
+            SKIP_SETUP=false
+            log "=== K8s Cycle 1 ==="
+            run_demo_cycle k8s || cycle1_failures=$?
+            log "Sleeping 5s before re-run cycle..."
+            sleep 5
+            SKIP_SETUP=true
+            log "=== K8s Cycle 2 (re-run) ==="
+            run_demo_cycle k8s || cycle2_failures=$?
+            total_failures=$((total_failures + cycle1_failures + cycle2_failures))
+            teardown k8s
             ;;
         *)
             echo "Usage: $0 {compose|k8s|both} [--skip-setup]"
             exit 1
             ;;
     esac
+
+    # Final summary
+    echo ""
+    echo -e "${BOLD}============================================${RESET}"
+    if [ "$total_failures" -eq 0 ]; then
+        echo -e "  ${GREEN}ALL CYCLES PASSED${RESET}"
+    else
+        echo -e "  ${RED}FAILURES DETECTED (exit code: $total_failures)${RESET}"
+    fi
+    echo -e "${BOLD}============================================${RESET}"
 
     exit "$total_failures"
 }

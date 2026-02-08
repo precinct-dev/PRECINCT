@@ -7,13 +7,14 @@ data/
 /tool_register
 /s3-mcp-server
 /spike-cli
+/mtls-healthcheck
 demo/go/demo
 demo/mock-mcp-server/mock-mcp-server
 *.exe
 *.out
 
-# Build artifacts
-build/sbom/
+# Build artifacts (entire directory is ephemeral)
+build/
 coverage.out
 
 # Generated reports

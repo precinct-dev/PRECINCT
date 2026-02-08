@@ -39,7 +39,7 @@ for S3 access. It provides two tools:
 2. `tools` namespace exists (from `make -C ../mcp-server deploy`)
 3. SPIRE deployed (`make -C ../spire deploy`)
 4. IAM role created: `cd s3-mcp-server && tofu init && tofu apply`
-5. Docker image built: `docker build -f build/docker/Dockerfile.s3-mcp-server -t s3-mcp-server .`
+5. Docker image built: `docker build -f docker/Dockerfile.s3-mcp-server -t s3-mcp-server .`
 
 ## Deployment
 

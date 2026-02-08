@@ -30,20 +30,11 @@ help: ## Show available targets
 # Core
 # ---------------------------------------------------------------------------
 
-up: ## Start Docker Compose stack
-	@echo "Starting services..."
-	docker compose up -d
-	@echo "Waiting for SPIRE server..."
-	@timeout=60; \
-	while ! docker compose exec -T spire-server /opt/spire/bin/spire-server healthcheck 2>/dev/null; do \
-		timeout=$$((timeout - 1)); \
-		if [ $$timeout -le 0 ]; then \
-			echo "ERROR: SPIRE server failed to become healthy"; \
-			exit 1; \
-		fi; \
-		sleep 1; \
-	done
-	@echo "SPIRE server ready. Registering workload entries..."
+up: ## Start Docker Compose stack (waits for all services healthy)
+	@echo "Building and starting services (waiting for all health checks)..."
+	docker compose up -d --build --wait --wait-timeout 180
+	@echo "All services healthy."
+	@echo "Running register-spire for any additional entries..."
 	$(MAKE) register-spire
 
 down: ## Stop Docker Compose stack
@@ -104,9 +95,9 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	fi
 	$(MAKE) k8s-registry
 	@echo "Building and pushing local images..."
-	docker build -f build/docker/Dockerfile.gateway -t mcp-security-gateway:latest .
+	docker build -f docker/Dockerfile.gateway -t mcp-security-gateway:latest .
 	docker build -f demo/mock-mcp-server/Dockerfile -t poc-mock-mcp-server:latest demo/mock-mcp-server/
-	docker build -f build/docker/Dockerfile.spire-agent -t spire-agent-wrapper:latest .
+	docker build -f docker/Dockerfile.spire-agent -t spire-agent-wrapper:latest .
 	docker tag mcp-security-gateway:latest $(LOCAL_REGISTRY)/mcp-security-gateway:latest
 	docker push $(LOCAL_REGISTRY)/mcp-security-gateway:latest
 	docker tag poc-mock-mcp-server:latest $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
@@ -322,9 +313,9 @@ build:
 
 build-images:
 	@echo "Building container images..."
-	docker build -f build/docker/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
+	docker build -f docker/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
 	docker tag $(GATEWAY_IMAGE):$(IMAGE_TAG) $(GATEWAY_IMAGE):dev
-	docker build -f build/docker/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
+	docker build -f docker/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
 	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
 	@echo "Built: $(GATEWAY_IMAGE):$(IMAGE_TAG), $(S3_MCP_IMAGE):$(IMAGE_TAG)"
 

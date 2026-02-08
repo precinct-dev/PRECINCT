@@ -75,14 +75,14 @@ func ConfigFromEnv() *Config {
 		deepScanFallback = fb
 	}
 
-	rateLimitRPM := 100 // 100 requests/min default
+	rateLimitRPM := 600 // 10 req/sec sustained -- protective but won't choke legitimate traffic
 	if rpm := os.Getenv("RATE_LIMIT_RPM"); rpm != "" {
 		if parsed, err := strconv.Atoi(rpm); err == nil {
 			rateLimitRPM = parsed
 		}
 	}
 
-	rateLimitBurst := 20 // 20 burst default
+	rateLimitBurst := 100 // allows brief spikes without immediate throttling
 	if burst := os.Getenv("RATE_LIMIT_BURST"); burst != "" {
 		if parsed, err := strconv.Atoi(burst); err == nil {
 			rateLimitBurst = parsed
