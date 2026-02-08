@@ -33,16 +33,19 @@ func BodyCapture(next http.Handler) http.Handler {
 		ctx = WithDecisionID(ctx, decisionID)
 		ctx = WithTraceID(ctx, traceID)
 
-		// Capture request body if present
+		// Capture request body if present.
+		// RFA-zxf: Size validation is handled by RequestSizeLimit (step 1).
+		// This middleware only captures the body for downstream use. Any read
+		// error here is a genuine I/O problem, not a size violation.
 		if r.Body != nil {
 			bodyBytes, err := io.ReadAll(r.Body)
 			if err != nil {
 				WriteGatewayError(w, r.WithContext(ctx), http.StatusBadRequest, GatewayError{
-					Code:           ErrRequestTooLarge,
+					Code:           "body_read_failed",
 					Message:        "Failed to read request body",
 					Middleware:     "body_capture",
 					MiddlewareStep: 2,
-					Remediation:    "Reduce the request body size or check for network issues.",
+					Remediation:    "Check for network issues or malformed request body.",
 				})
 				return
 			}
