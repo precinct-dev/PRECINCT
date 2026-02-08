@@ -42,6 +42,24 @@ resources:
   # Development namespace with policy-controller exemption
   - namespace-dev-exempt.yaml
 
+# Override the placeholder gateway-config with actual policy and registry files
+configMapGenerator:
+  - name: gateway-config
+    namespace: gateway
+    behavior: replace
+    files:
+      - tool-registry.yaml=gateway-config/tool-registry.yaml
+      - mcp_policy.rego=gateway-config/mcp_policy.rego
+      - ui_policy.rego=gateway-config/ui_policy.rego
+      - ui_csp_policy.rego=gateway-config/ui_csp_policy.rego
+      - exfiltration.rego=gateway-config/exfiltration.rego
+      - context_policy.rego=gateway-config/context_policy.rego
+      - tool_grants.yaml=gateway-config/tool_grants.yaml
+      - ui_capability_grants.yaml=gateway-config/ui_capability_grants.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
 patches:
   # --------------------------------------------------------------------------
   # Gateway: NodePort on 30090, reduced resources, debug logging
@@ -88,6 +106,8 @@ patches:
                     value: "dev"
                   - name: KEYDB_URL
                     value: "redis://keydb.data.svc.cluster.local:6379"
+                  - name: UPSTREAM_URL
+                    value: "http://mcp-server.tools.svc.cluster.local:8081"
                 resources:
                   requests:
                     cpu: 50m
@@ -97,31 +117,40 @@ patches:
                     memory: 128Mi
 
   # --------------------------------------------------------------------------
-  # MCP Server: reduced resources
+  # MCP Server: use mock-mcp-server for local dev (Streamable HTTP transport)
   # --------------------------------------------------------------------------
   - target:
       kind: Deployment
       name: mcp-server
       namespace: tools
     patch: |
-      apiVersion: apps/v1
-      kind: Deployment
-      metadata:
-        name: mcp-server
-        namespace: tools
-      spec:
-        replicas: 1
-        template:
-          spec:
-            containers:
-              - name: mcp-server
-                resources:
-                  requests:
-                    cpu: 25m
-                    memory: 32Mi
-                  limits:
-                    cpu: 50m
-                    memory: 64Mi
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: poc-mock-mcp-server:latest
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Never
+      - op: replace
+        path: /spec/template/spec/containers/0/command
+        value: ["/mock-mcp-server"]
+      - op: replace
+        path: /spec/template/spec/containers/0/ports
+        value:
+          - name: jsonrpc
+            containerPort: 8082
+            protocol: TCP
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            cpu: 50m
+            memory: 64Mi
 
   # --------------------------------------------------------------------------
   # SPIRE Server: single replica, join_token attestor, hostpath storage
@@ -196,6 +225,88 @@ patches:
                     cpu: 100m
                     memory: 128Mi
 
+  # SPIRE Agent: use custom wrapper image (spire-agent:1.10.0 is distroless/no shell)
+  # The wrapper reads join token from /token/join-token and starts the agent.
+  - target:
+      kind: DaemonSet
+      name: spire-agent
+      namespace: spire-system
+    patch: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: spire-agent
+        namespace: spire-system
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: init-socket-dir
+                image: busybox:1.36
+                command:
+                  - sh
+                  - -c
+                  - |
+                    mkdir -p /run/spire/sockets
+                    chown 1000:1000 /run/spire/sockets
+                    mkdir -p /opt/spire/data/agent
+                    chown 1000:1000 /opt/spire/data/agent
+                volumeMounts:
+                  - name: spire-agent-data
+                    mountPath: /opt/spire/data/agent
+                securityContext:
+                  runAsUser: 0
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                    add: ["CHOWN", "DAC_OVERRIDE"]
+              - name: wait-for-token
+                image: bitnami/kubectl:latest
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    echo "Waiting for SPIRE join token secret..."
+                    RETRIES=0
+                    MAX=120
+                    until kubectl -n spire-system get secret spire-join-token 2>/dev/null; do
+                      RETRIES=$((RETRIES + 1))
+                      if [ $RETRIES -ge $MAX ]; then
+                        echo "ERROR: Join token secret not found after ${MAX} attempts"
+                        exit 1
+                      fi
+                      echo "  Attempt ${RETRIES}/${MAX}..."
+                      sleep 2
+                    done
+                    # Extract token and write to shared volume
+                    TOKEN=$(kubectl -n spire-system get secret spire-join-token -o jsonpath='{.data.token}' | base64 -d)
+                    echo "${TOKEN}" > /token/join-token
+                    echo "Join token written to /token/join-token"
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  runAsGroup: 1000
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: false
+                  capabilities:
+                    drop: ["ALL"]
+                volumeMounts:
+                  - name: join-token
+                    mountPath: /token
+            containers:
+              - name: spire-agent
+                image: spire-agent-wrapper:latest
+                imagePullPolicy: Never
+                command: ["/entrypoint-wrapper.sh"]
+                args: []
+                volumeMounts:
+                  - name: join-token
+                    mountPath: /token
+                    readOnly: true
+            volumes:
+              - name: join-token
+                emptyDir: {}
+
   # SPIRE Agent config: replace k8s_psat with join_token attestor
   - target:
       kind: ConfigMap
@@ -247,6 +358,56 @@ patches:
                     memory: 64Mi
 
   # --------------------------------------------------------------------------
+  # --------------------------------------------------------------------------
+  # SPIRE Server RBAC: add exec and secrets for token generator job
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ClusterRole
+      name: spire-server
+    patch: |
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: spire-server
+      rules:
+        - apiGroups: ["authentication.k8s.io"]
+          resources: ["tokenreviews"]
+          verbs: ["create"]
+        - apiGroups: [""]
+          resources: ["pods", "nodes"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: [""]
+          resources: ["pods/exec"]
+          verbs: ["create"]
+        - apiGroups: [""]
+          resources: ["secrets"]
+          verbs: ["create", "get", "update", "patch"]
+
+  # --------------------------------------------------------------------------
+  # SPIRE Agent RBAC: add secrets read for join token retrieval
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ClusterRole
+      name: spire-agent
+    patch: |
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: spire-agent
+      rules:
+        - apiGroups: [""]
+          resources: ["pods"]
+          verbs: ["get", "list"]
+        - apiGroups: [""]
+          resources: ["nodes"]
+          verbs: ["get"]
+        - apiGroups: [""]
+          resources: ["nodes/proxy"]
+          verbs: ["get"]
+        - apiGroups: [""]
+          resources: ["secrets"]
+          verbs: ["get"]
+
   # Registration entries: replace k8s_psat selectors with join_token (RFA-38s)
   # --------------------------------------------------------------------------
   - target:
@@ -323,6 +484,11 @@ patches:
         name: gateway
         labels:
           policy.sigstore.dev/include: "true"
+          # Relax PSS from restricted -> privileged for local dev.
+          # Gateway needs hostPath volume for SPIRE agent socket.
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
 
   - target:
       kind: Namespace
@@ -334,6 +500,10 @@ patches:
         name: tools
         labels:
           policy.sigstore.dev/include: "true"
+          # Relax PSS for local dev (hostPath for SPIRE agent socket)
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
 
   - target:
       kind: Namespace
@@ -345,6 +515,10 @@ patches:
         name: spike-system
         labels:
           policy.sigstore.dev/include: "true"
+          # Relax PSS for local dev (hostPath for SPIRE agent socket)
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
 
   # cosign-system namespace: relax PSS for local dev
   # (policy-controller webhook container runs as non-root but the
