@@ -237,10 +237,11 @@ run_demo_cycle() {
         if [ "$SKIP_SETUP" = false ]; then
             start_compose || true  # spike-nexus may fail; gateway still works
         fi
-        # Restart gateway to reset circuit breaker and in-memory rate limits
+        # Flush KeyDB and restart gateway to reset circuit breaker + rate limits
         # from any previous run. Without this, accumulated 502s keep the
         # circuit breaker open and subsequent demo runs fail with 503.
-        log "Restarting gateway to reset circuit breaker state"
+        log "Flushing KeyDB and restarting gateway"
+        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli FLUSHALL >/dev/null 2>&1 || true
         docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         # Health check via localhost (host-side port mapping)
         wait_for_health "http://localhost:9090" || exit 1
@@ -284,13 +285,16 @@ run_demo_cycle() {
     run_go_demo "$url" "$network" || go_ok=1
     echo ""
 
-    # Reset rate limits between demos (both use same SPIFFE ID)
+    # Reset rate limits between demos (both use same SPIFFE ID).
+    # Rate limits persist in KeyDB, so gateway restart alone is insufficient.
     if [ "$mode" = "compose" ]; then
-        log "Restarting gateway to reset rate limits for Python demo"
+        log "Flushing KeyDB rate limits and restarting gateway for Python demo"
+        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli FLUSHALL >/dev/null 2>&1 || true
         docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         wait_for_health "http://localhost:9090" || exit 1
     elif [ "$mode" = "k8s" ]; then
-        log "Restarting gateway to reset rate limits for Python demo"
+        log "Flushing KeyDB rate limits and restarting gateway for Python demo"
+        kubectl -n data exec deploy/keydb -- keydb-cli FLUSHALL >/dev/null 2>&1 || true
         kubectl -n gateway rollout restart deploy/mcp-security-gateway >/dev/null 2>&1 || true
         kubectl -n gateway rollout status deploy/mcp-security-gateway --timeout=60s 2>/dev/null || true
         # Restart port-forward (old one died with old pod)
