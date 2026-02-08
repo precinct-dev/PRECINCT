@@ -247,6 +247,8 @@ func TestErrorCodes_Constants(t *testing.T) {
 		ErrRegistryHashMismatch,
 		ErrRegistryToolUnknown,
 		ErrDLPCredentialsDetected,
+		ErrDLPInjectionBlocked,
+		ErrDLPPIIBlocked,
 		ErrStepUpDenied,
 		ErrStepUpApprovalRequired,
 		ErrStepUpGuardBlocked,
@@ -272,8 +274,8 @@ func TestErrorCodes_Constants(t *testing.T) {
 		seen[code] = true
 	}
 
-	if len(codes) != 20 {
-		t.Errorf("Expected 20 error codes, got %d", len(codes))
+	if len(codes) != 22 {
+		t.Errorf("Expected 22 error codes, got %d", len(codes))
 	}
 }
 

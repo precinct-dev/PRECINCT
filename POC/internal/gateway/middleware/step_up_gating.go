@@ -61,11 +61,45 @@ type UnknownToolDefaults struct {
 	Novelty       int `yaml:"novelty"`
 }
 
+// DLPPolicy holds the per-category block/flag policy for the DLP regex scanner.
+// Valid values for each field: "block" or "flag".
+// "block" returns HTTP 403 immediately; "flag" adds to safezone_flags and continues.
+type DLPPolicy struct {
+	Credentials string `yaml:"credentials"` // "block" (default) or "flag"
+	Injection   string `yaml:"injection"`   // "block" or "flag" (default)
+	PII         string `yaml:"pii"`         // "block" or "flag" (default)
+}
+
+// DefaultDLPPolicy returns the default DLP policy matching historical behavior:
+// credentials=block, injection=flag, pii=flag.
+func DefaultDLPPolicy() DLPPolicy {
+	return DLPPolicy{
+		Credentials: "block",
+		Injection:   "flag",
+		PII:         "flag",
+	}
+}
+
+// Normalize ensures all fields have valid values, defaulting to the historical
+// behavior if a field is empty or invalid.
+func (p *DLPPolicy) Normalize() {
+	if p.Credentials != "block" && p.Credentials != "flag" {
+		p.Credentials = "block"
+	}
+	if p.Injection != "block" && p.Injection != "flag" {
+		p.Injection = "flag"
+	}
+	if p.PII != "block" && p.PII != "flag" {
+		p.PII = "flag"
+	}
+}
+
 // RiskConfig holds the complete risk configuration loaded from YAML
 type RiskConfig struct {
 	Thresholds          RiskThresholds      `yaml:"thresholds"`
 	Guard               GuardThresholds     `yaml:"guard"`
 	UnknownToolDefaults UnknownToolDefaults `yaml:"unknown_tool_defaults"`
+	DLP                 DLPPolicy           `yaml:"dlp"`
 }
 
 // DestinationAllowlist holds the set of allowed destinations
@@ -201,6 +235,9 @@ func LoadRiskConfig(path string) (*RiskConfig, error) {
 		return nil, fmt.Errorf("failed to parse risk config: %w", err)
 	}
 
+	// RFA-sd7: Normalize DLP policy so missing/invalid values get safe defaults.
+	config.DLP.Normalize()
+
 	return &config, nil
 }
 
@@ -222,6 +259,7 @@ func DefaultRiskConfig() *RiskConfig {
 			Exposure:      2,
 			Novelty:       3,
 		},
+		DLP: DefaultDLPPolicy(),
 	}
 }
 
