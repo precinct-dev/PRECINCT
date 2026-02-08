@@ -52,7 +52,7 @@ func NewBuiltInScanner() *BuiltInScanner {
 			regexp.MustCompile(`\bghr_[a-zA-Z0-9]{36,}\b`),                                  // GitHub refresh tokens
 			regexp.MustCompile(`\bglpat-[a-zA-Z0-9_\-]{20,}\b`),                             // GitLab personal access tokens
 			regexp.MustCompile(`\bxox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}\b`), // Slack tokens
-			regexp.MustCompile(`-----BEGIN [A-Z ]+ PRIVATE KEY-----`),                       // Private keys
+			regexp.MustCompile(`-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----`),                   // Private keys (RSA, EC, PKCS#8 etc.)
 
 			// Obvious credential patterns in key=value format or JSON
 			regexp.MustCompile(`(?i)\bpassword\s*[:=]\s*[^\s]{8,}`),
