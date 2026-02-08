@@ -68,10 +68,10 @@ type Auditor struct {
 	jsonlPath      string
 
 	// RFA-lz1: Async write infrastructure
-	writeCh   chan []byte          // buffered channel for async file/stdout writes
-	flushCh   chan chan struct{}   // flush synchronization: caller sends done channel, writer closes it after draining
-	done      chan struct{}        // signals the writer goroutine has finished draining
-	closeOnce sync.Once           // ensures Close() is idempotent
+	writeCh   chan []byte        // buffered channel for async file/stdout writes
+	flushCh   chan chan struct{} // flush synchronization: caller sends done channel, writer closes it after draining
+	done      chan struct{}      // signals the writer goroutine has finished draining
+	closeOnce sync.Once          // ensures Close() is idempotent
 }
 
 // NewAuditor creates a new auditor with hash chain support

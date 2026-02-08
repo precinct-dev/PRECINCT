@@ -165,10 +165,10 @@ func main() {
 			fn:     testInjectionBase64Obfuscation,
 		},
 		{
-			name:   "SPIKE: token reference passes DLP (safe pattern)",
-			what:   "SPIKE token reference ($SPIKE{ref:deadbeef}) passes DLP and reaches token substitution (step 13)",
-			send:   "tavily_search(query='$SPIKE{ref:deadbeef}') -- safe SPIKE reference, not a raw credential",
-			expect: "200, 403/500 at step 13 (token_substitution), or 502 -- all prove SPIKE ref flows through DLP to step 13",
+			name:   "SPIKE: token reference -> full redemption (200)",
+			what:   "SPIKE token reference ($SPIKE{ref:deadbeef}) passes DLP, redeemed via SPIKE Nexus mTLS, reaches upstream",
+			send:   "tavily_search(query='$SPIKE{ref:deadbeef}') -- safe SPIKE reference, redeemed at step 13",
+			expect: "200 -- full late-binding secrets flow proven end-to-end",
 			fn:     testSPIKETokenReference,
 		},
 		{
@@ -601,6 +601,8 @@ func testInjectionBase64Obfuscation() bool {
 // --- SPIKE token tests ----------------------------------------------------
 
 // 18. SPIKE token reference: safe $SPIKE{ref:...} passes DLP and reaches token substitution.
+// With SPIKE Nexus fully configured, this should return HTTP 200 proving full
+// late-binding secrets flow: token -> SPIKE Nexus mTLS redemption -> upstream.
 func testSPIKETokenReference() bool {
 	client := newClient()
 	ctx := context.Background()
@@ -609,24 +611,24 @@ func testSPIKETokenReference() bool {
 	})
 	if err == nil {
 		fmt.Printf("  Result: %v\n", truncateStr(fmt.Sprintf("%v", result), 100))
-		return printProof(true, "SPIKE reference processed through full chain (200)")
+		return printProof(true, "SPIKE Nexus token redemption succeeded -- full late-binding secrets flow proven")
 	}
 	var ge *mcpgateway.GatewayError
 	if errors.As(err, &ge) {
 		printGatewayError(ge)
 		if ge.HTTPStatus == 502 {
-			return printProof(true, "SPIKE reference flowed through chain, 502 = no upstream (expected)")
+			return printProof(true, "SPIKE token redeemed, 502 = upstream returned error (token substitution succeeded)")
 		}
 		if ge.HTTPStatus == 500 {
-			return printProof(true, fmt.Sprintf("SPIKE reference reached token substitution (step 13) without DLP false-positive. Token redemption failed as expected (SPIKE Nexus not configured for demo): %s", ge.Code))
+			return printProof(false, fmt.Sprintf("SPIKE token redemption failed: %s -- SPIKE Nexus may not be configured", ge.Code))
 		}
 		if ge.HTTPStatus == 403 && ge.Code == "dlp_credentials_detected" {
 			return printProof(false, "SPIKE reference was BLOCKED by DLP (403) -- should pass through")
 		}
 		if ge.HTTPStatus == 403 && ge.Step >= 13 {
-			return printProof(true, fmt.Sprintf("SPIKE token substitution reached (step %d): %s -- SPIKE integration working", ge.Step, ge.Code))
+			return printProof(false, fmt.Sprintf("SPIKE token ownership/scope failed at step %d: %s", ge.Step, ge.Code))
 		}
-		return printProof(true, fmt.Sprintf("SPIKE reference processed: code=%s, step=%d", ge.Code, ge.Step))
+		return printProof(false, fmt.Sprintf("unexpected gateway error: code=%s, step=%d, http=%d", ge.Code, ge.Step, ge.HTTPStatus))
 	}
 	fmt.Printf("  Error: %v\n", err)
 	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))

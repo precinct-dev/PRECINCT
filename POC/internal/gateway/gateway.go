@@ -16,6 +16,7 @@ import (
 
 	"github.com/example/agentic-security-poc/internal/gateway/mcpclient"
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -44,8 +45,8 @@ type Gateway struct {
 	sessionStore         middleware.SessionStore          // RFA-hh5.1: session persistence store (InMemory or KeyDB)
 	spiffeTLS            *SPIFFETLSConfig                 // RFA-8z8.1: SPIFFE mTLS config (nil in dev mode)
 	registryStop         func()                           // RFA-dh9: stop function for registry fsnotify watcher
-	mcpTransport         mcpclient.Transport // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
-	mcpTransportMu       sync.Mutex         // RFA-9ol: protects lazy initialization of mcpTransport
+	mcpTransport         mcpclient.Transport              // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
+	mcpTransportMu       sync.Mutex                       // RFA-9ol: protects lazy initialization of mcpTransport
 }
 
 // New creates a new gateway instance
@@ -173,16 +174,30 @@ func New(cfg *Config) (*Gateway, error) {
 		auditor,
 	)
 
-	// RFA-a2y.1: Create secret redeemer (SPIKE Nexus for production, POC for dev/test)
+	// RFA-a2y.1 + RFA-uln: Create secret redeemer (SPIKE Nexus for production, POC for dev/test).
+	// SPIKE Nexus requires mTLS for ALL endpoints (including secret get/put).
+	// When SPIFFE_ENDPOINT_SOCKET is set (Docker Compose), we create an X509Source
+	// from the SPIRE Workload API so the redeemer presents a valid client cert.
+	// In dev mode without SPIRE, we fall back to InsecureSkipVerify (no client cert).
 	var spikeRedeemer middleware.SecretRedeemer
 	if cfg.SPIKENexusURL != "" {
-		// SPIKE Nexus mode: use mTLS via SPIRE to redeem secrets from Nexus.
-		// x509Source is nil here because the SPIRE agent socket connection is
-		// established at runtime via the SPIFFE_ENDPOINT_SOCKET env var.
-		// In a full production setup, we would create an X509Source here.
-		// For Docker Compose POC, we pass nil and the redeemer uses
-		// InsecureSkipVerify (acceptable for POC per ADR-001).
-		spikeRedeemer = middleware.NewSPIKENexusRedeemer(cfg.SPIKENexusURL, nil)
+		var spikeX509 *workloadapi.X509Source
+		if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
+			// SPIRE agent socket available -- obtain X509Source for mTLS to SPIKE Nexus.
+			spikeCtx, spikeCancel := context.WithTimeout(context.Background(), 15*time.Second)
+			x509Src, err := workloadapi.NewX509Source(spikeCtx)
+			spikeCancel()
+			if err != nil {
+				log.Printf("WARNING: Failed to create X509Source for SPIKE Nexus mTLS: %v (falling back to InsecureSkipVerify)", err)
+			} else {
+				spikeX509 = x509Src
+				log.Printf("SPIKE Nexus: mTLS configured via SPIRE X509Source")
+			}
+		}
+		// devMode=true when x509Source is nil (no SPIRE agent) -- auto-populate OwnerID.
+		// Even with mTLS, SPIKE Nexus v0.8.0 may not return owner metadata,
+		// so devMode is always true in the Docker Compose POC.
+		spikeRedeemer = middleware.NewSPIKENexusRedeemer(cfg.SPIKENexusURL, spikeX509, true)
 	} else {
 		// Fallback to POC redeemer (Phase 1 behavior with deterministic mock secrets).
 		// NOTE (RFA-7ct): Without SPIKE Nexus, the POC redeemer does not populate
@@ -291,18 +306,18 @@ func (g *Gateway) Handler() http.Handler {
 
 	// Apply middleware in reverse order (innermost first)
 	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor, middleware.NewToolRegistryScopeResolver(g.registry)) // 13 - LAST before proxy (RFA-0gr: dynamic scope)
-	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                   // 12
-	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                           // 11
-	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)                                                            // 10
-	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor) // 9
-	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                   // 8
-	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy())                                                    // 7
-	handler = middleware.OPAPolicy(handler, g.opa)                                                                             // 6
-	handler = middleware.ToolRegistryVerify(handler, g.registry)                                                               // 5
-	handler = middleware.AuditLog(handler, g.auditor)                                                                          // 4
-	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                                              // 3
-	handler = middleware.BodyCapture(handler)                                                                                  // 2
-	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes)                                               // 1
+	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                         // 12
+	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                                 // 11
+	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)                                                                  // 10
+	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor)       // 9
+	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                         // 8
+	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy())                                                         // 7
+	handler = middleware.OPAPolicy(handler, g.opa)                                                                                   // 6
+	handler = middleware.ToolRegistryVerify(handler, g.registry)                                                                     // 5
+	handler = middleware.AuditLog(handler, g.auditor)                                                                                // 4
+	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                                                    // 3
+	handler = middleware.BodyCapture(handler)                                                                                        // 2
+	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes)                                                     // 1
 
 	// Add endpoints
 	mux := http.NewServeMux()

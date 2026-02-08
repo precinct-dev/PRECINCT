@@ -24,6 +24,7 @@ type SPIKENexusRedeemer struct {
 	nexusURL   string                  // Base URL of SPIKE Nexus (e.g., https://spike-nexus:8443)
 	httpClient *http.Client            // mTLS-configured HTTP client
 	x509Source *workloadapi.X509Source // SPIRE X.509 SVID source for mTLS
+	devMode    bool                    // When true, auto-populate OwnerID if Nexus doesn't return it (POC accommodation)
 }
 
 // spikeSecretRequest is the JSON body for POST /v1/store/secret/get
@@ -41,7 +42,10 @@ type spikeSecretResponse struct {
 // The x509Source provides automatic certificate rotation from the SPIRE Agent.
 // If x509Source is nil, TLS is used without client certificates (useful for
 // testing scenarios where SPIRE is unavailable).
-func NewSPIKENexusRedeemer(nexusURL string, x509Source *workloadapi.X509Source) *SPIKENexusRedeemer {
+// When devMode is true, the redeemer auto-populates OwnerID from the
+// requesting agent's SPIFFE ID (via context) if SPIKE Nexus does not return
+// owner metadata. This is a POC accommodation documented in ADR-001.
+func NewSPIKENexusRedeemer(nexusURL string, x509Source *workloadapi.X509Source, devMode ...bool) *SPIKENexusRedeemer {
 	var tlsConfig *tls.Config
 
 	if x509Source != nil {
@@ -65,10 +69,12 @@ func NewSPIKENexusRedeemer(nexusURL string, x509Source *workloadapi.X509Source) 
 		Timeout: 10 * time.Second,
 	}
 
+	dm := len(devMode) > 0 && devMode[0]
 	return &SPIKENexusRedeemer{
 		nexusURL:   strings.TrimRight(nexusURL, "/"),
 		httpClient: client,
 		x509Source: x509Source,
+		devMode:    dm,
 	}
 }
 
@@ -101,8 +107,10 @@ func (s *SPIKENexusRedeemer) RedeemSecret(ctx context.Context, token *SPIKEToken
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	// Create HTTP request
-	url := fmt.Sprintf("%s/v1/store/secret/get", s.nexusURL)
+	// Create HTTP request.
+	// SPIKE Nexus v0.8.0 GET endpoint: POST /v1/store/secrets?action=get
+	// See spike-sdk-go/api/url/secret.go SecretGet() and config.go NexusSecrets.
+	url := fmt.Sprintf("%s/v1/store/secrets?action=get", s.nexusURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(bodyJSON)))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -155,6 +163,17 @@ func (s *SPIKENexusRedeemer) RedeemSecret(ctx context.Context, token *SPIKEToken
 	// defense-in-depth ownership validation after redemption.
 	if owner, ok := spikeResp.Data["owner"]; ok {
 		token.OwnerID = owner
+	}
+
+	// RFA-uln: In dev mode, if SPIKE Nexus did not return owner metadata,
+	// auto-populate OwnerID from the requesting agent's SPIFFE ID (from
+	// context). This prevents "empty OwnerID" rejection in POC mode where
+	// SPIKE Nexus v0.8.0 does not track ownership. This is an explicit POC
+	// accommodation; production deployments MUST have Nexus populate OwnerID.
+	if s.devMode && token.OwnerID == "" {
+		if spiffeID := GetSPIFFEID(ctx); spiffeID != "" {
+			token.OwnerID = spiffeID
+		}
 	}
 
 	return &SPIKESecret{

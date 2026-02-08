@@ -67,17 +67,30 @@ workloads:
       - "docker:label:tool-type:docker"
 
   # SPIKE Nexus - SPIFFE-native secrets management
-  - spiffe_id: spiffe://poc.local/infrastructure/spike-nexus/dev
+  # SPIFFE ID matches register-spire-entries.sh (line 60-61).
+  # SPIKE Nexus IsNexus() validation requires the path /spike/nexus.
+  - spiffe_id: spiffe://poc.local/spike/nexus
     description: SPIKE Nexus Secrets Server
     purpose: >
       SPIFFE-native secrets management service providing late-binding
       tokens and credential substitution for agents.
-    agent_class: infrastructure
-    agent_purpose: spike-nexus
+    agent_class: spike
+    agent_purpose: nexus
     selectors:
       - "docker:label:spiffe-id:spike-nexus"
-      - "docker:label:component:secrets"
-      - "docker:label:service:spike"
+
+  # SPIKE Secret Seeder - Init container that pre-seeds test secrets
+  # Uses Pilot superuser SPIFFE ID pattern so SPIKE Nexus authorizes writes.
+  # SPIKE's IsPilotOperator() allows /spike/pilot/role/superuser + suffix.
+  - spiffe_id: spiffe://poc.local/spike/pilot/role/superuser/seeder
+    description: SPIKE Secret Seeder (POC init container)
+    purpose: >
+      One-shot init container that seeds test secrets into SPIKE Nexus
+      via mTLS. Uses Pilot superuser SPIFFE ID for write authorization.
+    agent_class: spike/pilot/role
+    agent_purpose: superuser/seeder
+    selectors:
+      - "docker:label:spiffe-id:spike-seeder"
 
 # Pattern matching for OPA policies
 # These patterns allow wildcard matching in SPIFFE IDs for authorization

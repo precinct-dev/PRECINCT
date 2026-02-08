@@ -277,23 +277,27 @@ def test_session_exfiltration(url: str) -> bool:
 
 
 def test_spike_token_reference(url: str) -> bool:
-    """18. SPIKE token reference: safe $SPIKE{ref:deadbeef} passes DLP, reaches token substitution."""
+    """18. SPIKE token reference: safe $SPIKE{ref:deadbeef} passes DLP, reaches token substitution.
+
+    With SPIKE Nexus fully configured, this should return HTTP 200 proving full
+    late-binding secrets flow: token -> SPIKE Nexus mTLS redemption -> upstream.
+    """
     client = new_client(url)
     try:
         result = client.call("tavily_search", query="$SPIKE{ref:deadbeef}")
         print(f"  Result: {str(result)[:100]}")
-        return print_proof(True, "SPIKE reference processed through full chain (200)")
+        return print_proof(True, "SPIKE Nexus token redemption succeeded -- full late-binding secrets flow proven")
     except GatewayError as e:
         print_gateway_error(e)
         if e.http_status == 502:
-            return print_proof(True, "SPIKE reference flowed through chain, 502 = no upstream (expected)")
+            return print_proof(True, "SPIKE token redeemed, 502 = upstream returned error (token substitution succeeded)")
         if e.http_status == 500:
-            return print_proof(True, f"SPIKE reference reached token substitution (step 13) without DLP false-positive. Token redemption failed as expected (SPIKE Nexus not configured for demo): {e.code}")
+            return print_proof(False, f"SPIKE token redemption failed: {e.code} -- SPIKE Nexus may not be configured")
         if e.http_status == 403 and e.code == "dlp_credentials_detected":
             return print_proof(False, "SPIKE reference was BLOCKED by DLP (403) -- should pass through")
         if e.http_status == 403 and e.step and e.step >= 13:
-            return print_proof(True, f"SPIKE token substitution reached (step {e.step}): {e.code} -- SPIKE integration working")
-        return print_proof(True, f"SPIKE reference processed: code={e.code}, step={e.step}")
+            return print_proof(False, f"SPIKE token ownership/scope failed at step {e.step}: {e.code}")
+        return print_proof(False, f"unexpected gateway error: code={e.code}, step={e.step}, http={e.http_status}")
     except Exception as e:
         print(f"  Error: {e}")
         return print_proof(False, f"unexpected error: {type(e).__name__}")
@@ -596,10 +600,10 @@ def main() -> None:
             fn=test_injection_base64_obfuscation,
         ),
         TestCase(
-            name="SPIKE: token reference passes DLP (safe pattern)",
-            what="SPIKE token reference ($SPIKE{ref:deadbeef}) passes DLP and reaches token substitution (step 13)",
-            send="tavily_search(query='$SPIKE{ref:deadbeef}') -- safe SPIKE reference, not a raw credential",
-            expect="200, 403/500 at step 13 (token_substitution), or 502 -- all prove SPIKE ref flows through DLP to step 13",
+            name="SPIKE: token reference -> full redemption (200)",
+            what="SPIKE token reference ($SPIKE{ref:deadbeef}) passes DLP, redeemed via SPIKE Nexus mTLS, reaches upstream",
+            send="tavily_search(query='$SPIKE{ref:deadbeef}') -- safe SPIKE reference, redeemed at step 13",
+            expect="200 -- full late-binding secrets flow proven end-to-end",
             fn=test_spike_token_reference,
         ),
         TestCase(

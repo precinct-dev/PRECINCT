@@ -145,7 +145,7 @@ func TestToolCallParams_Serialization(t *testing.T) {
 	params := ToolCallParams{
 		Name: "web_search",
 		Arguments: map[string]interface{}{
-			"query":      "MCP specification",
+			"query":       "MCP specification",
 			"max_results": 10,
 		},
 	}
