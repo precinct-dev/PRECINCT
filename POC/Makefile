@@ -35,7 +35,7 @@ up: ## Start Docker Compose stack
 	docker compose up -d
 	@echo "Waiting for SPIRE server..."
 	@timeout=60; \
-	while ! docker compose exec -T spire-server wget --spider -q http://localhost:8080/ready 2>/dev/null; do \
+	while ! docker compose exec -T spire-server /opt/spire/bin/spire-server healthcheck 2>/dev/null; do \
 		timeout=$$((timeout - 1)); \
 		if [ $$timeout -le 0 ]; then \
 			echo "ERROR: SPIRE server failed to become healthy"; \
@@ -71,7 +71,7 @@ lint: ## Run linters
 
 clean: ## Full cleanup (containers, volumes, build artifacts, logs)
 	docker compose down -v
-	rm -rf build/
+	rm -rf build/sbom/ build/bin/
 	@if [ -f .beads/daemon.log ]; then \
 		: > .beads/daemon.log; \
 	fi
@@ -262,9 +262,49 @@ k8s-prereqs:
 setup:
 	@bash scripts/setup.sh
 
+COMPOSE_SPIRE_EXEC := docker compose exec -T spire-server /opt/spire/bin/spire-server
+COMPOSE_SPIRE_SOCK := /tmp/spire-server/private/api.sock
+COMPOSE_TRUST_DOMAIN := poc.local
+COMPOSE_PARENT_ID := spiffe://$(COMPOSE_TRUST_DOMAIN)/spire/agent/join_token
+
 register-spire:
 	@echo "Registering SPIRE workload entries..."
-	docker compose exec -T spire-server /bin/bash < scripts/register-spire-entries.sh
+	@echo "  Detecting SPIRE agent identity..."
+	@PARENT_ID=$$($(COMPOSE_SPIRE_EXEC) agent list -socketPath $(COMPOSE_SPIRE_SOCK) 2>/dev/null | \
+		grep 'SPIFFE ID' | head -1 | awk '{print $$NF}'); \
+	if [ -z "$$PARENT_ID" ]; then \
+		echo "  No agent entry yet, using default parent: $(COMPOSE_PARENT_ID)"; \
+		PARENT_ID="$(COMPOSE_PARENT_ID)"; \
+	fi; \
+	echo "  Parent ID: $$PARENT_ID"; \
+	echo "  Registering gateway workload..."; \
+	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/gateways/mcp-security-gateway/dev \
+		-selector docker:label:spiffe-id:mcp-security-gateway \
+		-selector docker:label:component:gateway 2>/dev/null || true; \
+	echo "  Registering DSPy researcher agent..."; \
+	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/agents/mcp-client/dspy-researcher/dev \
+		-selector docker:label:spiffe-id:dspy-researcher 2>/dev/null || true; \
+	echo "  Registering PydanticAI researcher agent..."; \
+	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/agents/mcp-client/pydantic-researcher/dev \
+		-selector docker:label:spiffe-id:pydantic-researcher 2>/dev/null || true; \
+	echo "  Registering spike-nexus..."; \
+	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/spike/nexus \
+		-selector docker:label:spiffe-id:spike-nexus 2>/dev/null || true; \
+	echo "  Registering KeyDB..."; \
+	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/keydb \
+		-selector docker:label:spiffe-id:keydb 2>/dev/null || true; \
+	echo "  Current entries:"; \
+	$(COMPOSE_SPIRE_EXEC) entry show -socketPath $(COMPOSE_SPIRE_SOCK)
 
 test-integration:
 	go test -tags=integration ./tests/integration/... -v -timeout 60s
@@ -324,7 +364,7 @@ k8s-register-spire:
 		exit 1; \
 	fi
 	@echo "  Detecting SPIRE agent identity..."
-	@PARENT_ID=$$($(SPIRE_EXEC) entry show -socketPath $(SPIRE_SOCK) 2>/dev/null | \
+	@PARENT_ID=$$($(SPIRE_EXEC) agent list -socketPath $(SPIRE_SOCK) 2>/dev/null | \
 		grep 'SPIFFE ID' | head -1 | awk '{print $$NF}'); \
 	if [ -z "$$PARENT_ID" ]; then \
 		echo "ERROR: No SPIRE node entry found. Is the agent attested?"; \

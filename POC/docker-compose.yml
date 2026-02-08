@@ -94,9 +94,11 @@ services:
     ports:
       - "8443:8443"  # HTTPS API
     environment:
-      - SPIKE_NEXUS_MODE=token
-      - SPIKE_NEXUS_ADDR=:8443
-      - SPIKE_NEXUS_TRUST_DOMAIN=poc.local
+      - SPIKE_NEXUS_TLS_PORT=:8443
+      - SPIKE_NEXUS_BACKEND_STORE=memory
+      - SPIKE_SYSTEM_LOG_LEVEL=INFO
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
     networks:
       - agentic-net
@@ -104,20 +106,17 @@ services:
       - "spiffe-id=spike-nexus"
       - "component=secrets"
       - "service=spike"
-    healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "-k", "https://localhost:8443/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+    # No healthcheck: image is minimal (only /nexus binary, no wget/curl/sh)
+    # and SPIKE requires mTLS on all endpoints including /healthz.
 
   # SPIKE Bootstrap - One-shot init container to generate and deliver root key to Nexus (RFA-a2y.1)
   spike-bootstrap:
+    profiles: ["prod"]  # spike-nexus image is distroless (no spike CLI); not needed with memory backend
     image: ghcr.io/spiffe/spike-nexus:0.8.0
     container_name: spike-bootstrap
     depends_on:
       spike-nexus:
-        condition: service_healthy
+        condition: service_started
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
@@ -167,7 +166,8 @@ services:
   # In SPIFFE_MODE=dev, this service is defined but KeyDB ignores the certs
   # (it only listens on plain port 6379). The init runs harmlessly.
   keydb-svid-init:
-    image: ghcr.io/spiffe/spire-agent:1.10.0
+    profiles: ["prod"]  # Only needed for SPIFFE_MODE=prod (KeyDB mTLS on port 6380)
+    image: spire-agent-wrapper:latest  # Busybox-based wrapper with /bin/sh
     container_name: keydb-svid-init
     depends_on:
       spire-agent:
