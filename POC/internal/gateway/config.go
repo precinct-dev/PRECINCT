@@ -7,19 +7,19 @@ import (
 
 // Config holds gateway configuration
 type Config struct {
-	Port                    int
-	UpstreamURL             string
-	OPAPolicyDir            string
-	ToolRegistryConfigPath  string
-	AuditLogPath            string
-	OPAPolicyPath           string
-	MaxRequestSizeBytes     int64
-	SPIFFEMode              string // "dev" or "prod"
-	LogLevel                string
-	GroqAPIKey              string
-	GuardModelEndpoint      string    // base URL for guard model API (default: Groq)
-	GuardModelName          string    // model identifier for guard model (default: llama-prompt-guard-2-86m)
-	GuardAPIKey             string    // API key for guard model (default: falls back to GroqAPIKey)
+	Port                   int
+	UpstreamURL            string
+	OPAPolicyDir           string
+	ToolRegistryConfigPath string
+	AuditLogPath           string
+	OPAPolicyPath          string
+	MaxRequestSizeBytes    int64
+	SPIFFEMode             string // "dev" or "prod"
+	LogLevel               string
+	GroqAPIKey             string
+	GuardModelEndpoint     string // base URL for guard model API (default: Groq)
+	GuardModelName         string // model identifier for guard model (default: llama-prompt-guard-2-86m)
+	GuardAPIKey            string // API key for guard model (default: falls back to GroqAPIKey)
 	// DLP_INJECTION_POLICY env var overrides dlp.injection YAML config (RFA-sd7).
 	// Only injection gets an env var override:
 	//   - credentials=block is a security invariant (must not be easily toggled via env var)
@@ -49,10 +49,10 @@ type Config struct {
 	KeyDBPoolMax            int       // Maximum connections in KeyDB pool (default 20)
 	SessionTTL              int       // Session TTL in seconds (default 3600)
 	ToolRegistryPublicKey   string    // RFA-lo1.4: Path to PEM public key for registry attestation (empty = dev mode)
-	MCPTransportMode       string    // RFA-9ol: "mcp" (default) or "proxy" (backward compat reverse proxy)
-	MCPProbeTimeout        int       // RFA-xhr: per-probe timeout in seconds for transport detection (default: 5)
-	MCPDetectTimeout       int       // RFA-xhr: overall detection timeout in seconds (default: 15)
-	MCPRequestTimeout      int       // RFA-xhr: per-request timeout in seconds for MCP calls (default: 30)
+	MCPTransportMode        string    // RFA-9ol: "mcp" (default) or "proxy" (backward compat reverse proxy)
+	MCPProbeTimeout         int       // RFA-xhr: per-probe timeout in seconds for transport detection (default: 5)
+	MCPDetectTimeout        int       // RFA-xhr: overall detection timeout in seconds (default: 15)
+	MCPRequestTimeout       int       // RFA-xhr: per-request timeout in seconds for MCP calls (default: 30)
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -212,7 +212,7 @@ func ConfigFromEnv() *Config {
 		GuardModelEndpoint:      getEnvOrDefault("GUARD_MODEL_ENDPOINT", "https://api.groq.com/openai/v1"),
 		GuardModelName:          getEnvOrDefault("GUARD_MODEL_NAME", "meta-llama/llama-prompt-guard-2-86m"),
 		GuardAPIKey:             getEnvOrDefault("GUARD_API_KEY", getEnvOrDefault("GROQ_API_KEY", "")),
-		DLPInjectionPolicy:     getEnvOrDefault("DLP_INJECTION_POLICY", ""),
+		DLPInjectionPolicy:      getEnvOrDefault("DLP_INJECTION_POLICY", ""),
 		DeepScanTimeout:         deepScanTimeout,
 		DeepScanFallback:        deepScanFallback,
 		RateLimitRPM:            rateLimitRPM,
@@ -237,10 +237,10 @@ func ConfigFromEnv() *Config {
 		KeyDBPoolMax:            keyDBPoolMax,
 		SessionTTL:              sessionTTL,
 		ToolRegistryPublicKey:   getEnvOrDefault("TOOL_REGISTRY_PUBLIC_KEY", ""),
-		MCPTransportMode:       getEnvOrDefault("MCP_TRANSPORT_MODE", "mcp"),
-		MCPProbeTimeout:        mcpProbeTimeout,
-		MCPDetectTimeout:       mcpDetectTimeout,
-		MCPRequestTimeout:      mcpRequestTimeout,
+		MCPTransportMode:        getEnvOrDefault("MCP_TRANSPORT_MODE", "mcp"),
+		MCPProbeTimeout:         mcpProbeTimeout,
+		MCPDetectTimeout:        mcpDetectTimeout,
+		MCPRequestTimeout:       mcpRequestTimeout,
 	}
 }
 

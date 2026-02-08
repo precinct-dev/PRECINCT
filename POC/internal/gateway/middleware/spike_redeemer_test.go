@@ -194,12 +194,14 @@ func TestSPIKENexusRedeemer_ConnectionFailure(t *testing.T) {
 }
 
 // TestSPIKENexusRedeemer_CorrectEndpoint verifies the redeemer calls the
-// correct API endpoint: POST /v1/store/secret/get
+// correct API endpoint: POST /v1/store/secrets?action=get (SPIKE Nexus v0.8.0)
 func TestSPIKENexusRedeemer_CorrectEndpoint(t *testing.T) {
-	var requestedURL string
+	var requestedPath string
+	var requestedQuery string
 
 	nexusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestedURL = r.URL.Path
+		requestedPath = r.URL.Path
+		requestedQuery = r.URL.RawQuery
 
 		resp := spikeSecretResponse{
 			Data: map[string]string{"value": "secret"},
@@ -218,19 +220,25 @@ func TestSPIKENexusRedeemer_CorrectEndpoint(t *testing.T) {
 		t.Fatalf("RedeemSecret() unexpected error: %v", err)
 	}
 
-	expectedPath := "/v1/store/secret/get"
-	if requestedURL != expectedPath {
-		t.Errorf("Expected endpoint %s, got %s", expectedPath, requestedURL)
+	expectedPath := "/v1/store/secrets"
+	if requestedPath != expectedPath {
+		t.Errorf("Expected path %s, got %s", expectedPath, requestedPath)
+	}
+	expectedQuery := "action=get"
+	if requestedQuery != expectedQuery {
+		t.Errorf("Expected query %s, got %s", expectedQuery, requestedQuery)
 	}
 }
 
 // TestSPIKENexusRedeemer_TrailingSlashHandling verifies the redeemer handles
 // trailing slashes in the nexus URL correctly.
 func TestSPIKENexusRedeemer_TrailingSlashHandling(t *testing.T) {
-	var requestedURL string
+	var requestedPath string
+	var requestedQuery string
 
 	nexusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestedURL = r.URL.Path
+		requestedPath = r.URL.Path
+		requestedQuery = r.URL.RawQuery
 		resp := spikeSecretResponse{
 			Data: map[string]string{"value": "secret"},
 		}
@@ -248,8 +256,11 @@ func TestSPIKENexusRedeemer_TrailingSlashHandling(t *testing.T) {
 		t.Fatalf("RedeemSecret() unexpected error: %v", err)
 	}
 
-	if requestedURL != "/v1/store/secret/get" {
-		t.Errorf("Expected /v1/store/secret/get, got %s", requestedURL)
+	if requestedPath != "/v1/store/secrets" {
+		t.Errorf("Expected /v1/store/secrets, got %s", requestedPath)
+	}
+	if requestedQuery != "action=get" {
+		t.Errorf("Expected query action=get, got %s", requestedQuery)
 	}
 }
 
@@ -468,6 +479,121 @@ func TestSPIKENexusRedeemer_InjectsTraceparent(t *testing.T) {
 	}
 
 	t.Logf("SPIKE Nexus traceparent: %s (trace_id matches gateway span)", receivedTraceparent)
+}
+
+// ---------- RFA-uln: devMode OwnerID fallback tests ----------
+
+// TestSPIKENexusRedeemer_DevModeOwnerIDFallback verifies that when devMode is
+// true and SPIKE Nexus does not return owner metadata, the redeemer
+// auto-populates OwnerID from the requesting agent's SPIFFE ID in context.
+func TestSPIKENexusRedeemer_DevModeOwnerIDFallback(t *testing.T) {
+	// Nexus server that does NOT return owner metadata
+	nexusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := spikeSecretResponse{
+			Data: map[string]string{
+				"value": "test-secret-value",
+				// No "owner" key -- simulates SPIKE Nexus v0.8.0 behavior
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer nexusServer.Close()
+
+	// Create redeemer with devMode=true via the variadic parameter
+	redeemer := NewSPIKENexusRedeemer(nexusServer.URL, nil, true)
+	// Override the httpClient to use the test server's client
+	redeemer.httpClient = nexusServer.Client()
+
+	testSPIFFEID := "spiffe://poc.local/agents/mcp-client/test-agent/dev"
+	ctx := WithSPIFFEID(context.Background(), testSPIFFEID)
+
+	token := &SPIKEToken{Ref: "deadbeef"}
+	secret, err := redeemer.RedeemSecret(ctx, token)
+	if err != nil {
+		t.Fatalf("RedeemSecret() unexpected error: %v", err)
+	}
+
+	if secret.Value != "test-secret-value" {
+		t.Errorf("Expected secret value 'test-secret-value', got '%s'", secret.Value)
+	}
+
+	// Verify OwnerID was auto-populated from context
+	if token.OwnerID != testSPIFFEID {
+		t.Errorf("Expected OwnerID to be auto-populated to %q, got %q", testSPIFFEID, token.OwnerID)
+	}
+}
+
+// TestSPIKENexusRedeemer_DevModeDisabledNoFallback verifies that when devMode
+// is false (default), OwnerID is NOT auto-populated from context.
+func TestSPIKENexusRedeemer_DevModeDisabledNoFallback(t *testing.T) {
+	// Nexus server that does NOT return owner metadata
+	nexusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := spikeSecretResponse{
+			Data: map[string]string{
+				"value": "test-secret-value",
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer nexusServer.Close()
+
+	// Create redeemer without devMode (default=false)
+	redeemer := NewSPIKENexusRedeemer(nexusServer.URL, nil)
+	redeemer.httpClient = nexusServer.Client()
+
+	testSPIFFEID := "spiffe://poc.local/agents/mcp-client/test-agent/dev"
+	ctx := WithSPIFFEID(context.Background(), testSPIFFEID)
+
+	token := &SPIKEToken{Ref: "deadbeef"}
+	_, err := redeemer.RedeemSecret(ctx, token)
+	if err != nil {
+		t.Fatalf("RedeemSecret() unexpected error: %v", err)
+	}
+
+	// OwnerID should remain empty (devMode is false, Nexus didn't return owner)
+	if token.OwnerID != "" {
+		t.Errorf("Expected empty OwnerID when devMode is false, got %q", token.OwnerID)
+	}
+}
+
+// TestSPIKENexusRedeemer_DevModeNexusOwnerTakesPrecedence verifies that when
+// Nexus DOES return owner metadata, it takes precedence even in devMode.
+func TestSPIKENexusRedeemer_DevModeNexusOwnerTakesPrecedence(t *testing.T) {
+	nexusOwner := "spiffe://poc.local/agents/original-owner/dev"
+
+	nexusServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := spikeSecretResponse{
+			Data: map[string]string{
+				"value": "test-secret-value",
+				"owner": nexusOwner, // Nexus provides owner
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer nexusServer.Close()
+
+	redeemer := NewSPIKENexusRedeemer(nexusServer.URL, nil, true)
+	redeemer.httpClient = nexusServer.Client()
+
+	differentSPIFFEID := "spiffe://poc.local/agents/mcp-client/different-agent/dev"
+	ctx := WithSPIFFEID(context.Background(), differentSPIFFEID)
+
+	token := &SPIKEToken{Ref: "deadbeef"}
+	_, err := redeemer.RedeemSecret(ctx, token)
+	if err != nil {
+		t.Fatalf("RedeemSecret() unexpected error: %v", err)
+	}
+
+	// Nexus-provided owner should take precedence (devMode fallback only kicks in when empty)
+	if token.OwnerID != nexusOwner {
+		t.Errorf("Expected OwnerID from Nexus %q, got %q", nexusOwner, token.OwnerID)
+	}
 }
 
 // TestSPIKENexusRedeemer_NoSpanContext_NoTraceparent verifies graceful behavior
