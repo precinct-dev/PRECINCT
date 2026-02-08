@@ -335,16 +335,30 @@ func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 		)
 		defer span.End()
 
+		// RFA-9i2: Create a mutable flags collector so downstream middleware
+		// (DLP at step 7, deep scan at step 10) can propagate security flags
+		// back to this audit middleware. Go's context.WithValue creates child
+		// contexts invisible to parents, so we use a shared pointer instead.
+		collector := &SecurityFlagsCollector{}
+		ctx = WithFlagsCollector(ctx, collector)
+
 		// Wrap response writer to capture status code
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		// Call next handler
 		next.ServeHTTP(wrapped, r.WithContext(ctx))
 
-		// Build security audit info
+		// Build security audit info.
+		// RFA-9i2: Read from collector (upstream-propagated) with fallback to
+		// context value for backward compatibility with any middleware that
+		// might set flags directly on the context passed to next.ServeHTTP.
+		flags := collector.Flags
+		if len(flags) == 0 {
+			flags = GetSecurityFlags(ctx)
+		}
 		securityAudit := &SecurityAudit{
 			ToolHashVerified: GetToolHashVerified(ctx),
-			SafeZoneFlags:    GetSecurityFlags(ctx),
+			SafeZoneFlags:    flags,
 		}
 
 		// Build authorization audit info
