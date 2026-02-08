@@ -17,6 +17,9 @@ type Config struct {
 	SPIFFEMode              string // "dev" or "prod"
 	LogLevel                string
 	GroqAPIKey              string
+	GuardModelEndpoint      string    // base URL for guard model API (default: Groq)
+	GuardModelName          string    // model identifier for guard model (default: llama-prompt-guard-2-86m)
+	GuardAPIKey             string    // API key for guard model (default: falls back to GroqAPIKey)
 	DeepScanTimeout         int       // in seconds
 	DeepScanFallback        string    // "fail_closed" or "fail_open" (default: fail_closed)
 	RateLimitRPM            int       // requests per minute per agent
@@ -201,6 +204,9 @@ func ConfigFromEnv() *Config {
 		SPIFFEMode:              getEnvOrDefault("SPIFFE_MODE", "dev"),
 		LogLevel:                getEnvOrDefault("LOG_LEVEL", "info"),
 		GroqAPIKey:              getEnvOrDefault("GROQ_API_KEY", ""),
+		GuardModelEndpoint:      getEnvOrDefault("GUARD_MODEL_ENDPOINT", "https://api.groq.com/openai/v1"),
+		GuardModelName:          getEnvOrDefault("GUARD_MODEL_NAME", "meta-llama/llama-prompt-guard-2-86m"),
+		GuardAPIKey:             getEnvOrDefault("GUARD_API_KEY", getEnvOrDefault("GROQ_API_KEY", "")),
 		DeepScanTimeout:         deepScanTimeout,
 		DeepScanFallback:        deepScanFallback,
 		RateLimitRPM:            rateLimitRPM,
