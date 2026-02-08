@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -39,6 +40,7 @@ func main() {
 		fn   func() bool
 	}{
 		{"Happy path (chain runs, reaches upstream)", testHappyPath},
+		{"MCP transport: tools/call through all 13 layers", testMCPToolsCall},
 		{"SPIFFE auth denial (empty identity)", testAuthDenial},
 		{"Unregistered tool (registry rejection)", testUnregisteredTool},
 		{"OPA policy denial (bash requires step-up)", testOPADenial},
@@ -281,4 +283,56 @@ func testRequestSizeLimit() bool {
 	fmt.Printf("  Error: %v\n", err)
 	// Even a non-GatewayError (e.g. connection reset) proves the limit works
 	return printVerdict(true, fmt.Sprintf("rejected (non-JSON): %v", err))
+}
+
+// 9. MCP transport: tools/call flows through all 13 middleware layers to mock MCP server.
+// Unlike the happy path which accepts 502 as success, this test REQUIRES actual results
+// from the mock MCP server. This proves the MCP Streamable HTTP transport works end-to-end:
+// SDK -> gateway (13 middleware layers) -> MCP transport -> mock MCP server -> results back.
+func testMCPToolsCall() bool {
+	client := newClient()
+	ctx := context.Background()
+	result, err := client.Call(ctx, "tavily_search", map[string]any{"query": "AI security best practices"})
+	if err != nil {
+		var ge *mcpgateway.GatewayError
+		if errors.As(err, &ge) {
+			printGatewayError(ge)
+			if ge.HTTPStatus == 502 {
+				return printVerdict(false, "got 502 -- MCP transport did not reach mock server (expected actual results)")
+			}
+			return printVerdict(false, fmt.Sprintf("gateway error: %s (HTTP %d)", ge.Code, ge.HTTPStatus))
+		}
+		fmt.Printf("  Error: %v\n", err)
+		return printVerdict(false, fmt.Sprintf("unexpected error: %v", err))
+	}
+
+	// We expect a JSON-RPC result with content from the mock MCP server
+	if result == nil {
+		return printVerdict(false, "got nil result from MCP transport")
+	}
+
+	// The result from the gateway is the JSON-RPC result field, which should contain
+	// the mock MCP server's canned response with search results.
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		return printVerdict(false, fmt.Sprintf("failed to marshal result: %v", err))
+	}
+
+	resultStr := string(resultJSON)
+	fmt.Printf("  %sResult preview:%s %s\n", colorDim, colorReset, truncateStr(resultStr, 200))
+
+	// Verify the canned search results are present
+	if !strings.Contains(resultStr, "AI Security") {
+		return printVerdict(false, "result does not contain expected canned search data")
+	}
+
+	return printVerdict(true, "MCP transport returned actual search results through all 13 layers")
+}
+
+// truncateStr shortens a string for display, appending "..." if truncated.
+func truncateStr(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
 }

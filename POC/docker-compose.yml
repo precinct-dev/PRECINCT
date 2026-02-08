@@ -235,6 +235,26 @@ services:
       timeout: 5s
       retries: 5
 
+  # Mock MCP Server - Canned Streamable HTTP MCP server for E2E demo (RFA-71u)
+  # Speaks MCP Streamable HTTP per spec 2025-03-26. Returns canned tool results
+  # for tavily_search and echo tools, enabling self-contained E2E testing
+  # without external dependencies (Docker MCP Gateway, Tavily API keys).
+  mock-mcp-server:
+    build:
+      context: ./demo/mock-mcp-server
+      dockerfile: Dockerfile
+    container_name: mock-mcp-server
+    hostname: mock-mcp-server
+    ports:
+      - "8082:8082"
+    networks:
+      - agentic-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   # MCP Security Gateway - Security enforcement point for all MCP requests
   mcp-security-gateway:
     build:
@@ -254,6 +274,9 @@ services:
                                     # no shell/curl/wget for a Docker healthcheck.
                                     # The OTel gRPC exporter uses lazy connection with
                                     # automatic retries, so startup ordering is sufficient.
+      mock-mcp-server:
+        condition: service_healthy  # RFA-71u: Gateway needs mock MCP server ready before
+                                    # MCP transport auto-detection on first request.
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
       - ./config:/config:ro  # Mount config directory for OPA policies and tool registry
@@ -262,7 +285,7 @@ services:
       - "9443:9443"   # MCP JSON-RPC API (HTTPS/mTLS, prod mode) (RFA-8z8.1)
     environment:
       - PORT=9090
-      - UPSTREAM_URL=http://host.docker.internal:8081/mcp
+      - UPSTREAM_URL=http://mock-mcp-server:8082  # RFA-71u: Point to mock MCP server in Docker network
       - OPA_POLICY_DIR=/config/opa
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760
