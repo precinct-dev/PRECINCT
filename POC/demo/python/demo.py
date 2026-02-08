@@ -196,8 +196,55 @@ def test_dlp_pii_pass(url: str) -> bool:
         client.close()
 
 
+def _test_dlp_credential_block(url: str, query: str, cred_type: str) -> bool:
+    """Helper for credential block tests. 403 = PASS, 200/502 = FAIL."""
+    client = new_client(url)
+    try:
+        client.call("tavily_search", query=query)
+        return print_proof(False, f"expected DLP block but request succeeded (200) -- {cred_type} not caught")
+    except GatewayError as e:
+        print_gateway_error(e)
+        if e.http_status == 403:
+            return print_proof(True, f"DLP blocked {cred_type}: code={e.code}, step={e.step}")
+        if e.http_status == 502:
+            return print_proof(False, f"{cred_type} reached upstream (502) -- DLP did NOT block")
+        return print_proof(False, f"unexpected error: {e.code} (HTTP {e.http_status})")
+    except Exception as e:
+        print(f"  Error: {e}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
+    finally:
+        client.close()
+
+
+def test_dlp_private_key_block(url: str) -> bool:
+    """DLP: private key block -- hard blocked at 403."""
+    return _test_dlp_credential_block(
+        url,
+        "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA2a2rwplBQLF8gMCR",
+        "private key",
+    )
+
+
+def test_dlp_api_key_block(url: str) -> bool:
+    """DLP: API key block -- hard blocked at 403."""
+    return _test_dlp_credential_block(
+        url,
+        "api_key=sk-proj-AAAAAAAAAAAAAAAAAAAAAA",
+        "API key",
+    )
+
+
+def test_dlp_password_leak_block(url: str) -> bool:
+    """DLP: password leak block -- hard blocked at 403."""
+    return _test_dlp_credential_block(
+        url,
+        "password=SuperSecretP@ssw0rd123!",
+        "password",
+    )
+
+
 def test_session_exfiltration(url: str) -> bool:
-    """8. Session exfiltration detection: read sensitive then HTTP request."""
+    """11. Session exfiltration detection: read sensitive then HTTP request."""
     client = new_client(url)
     try:
         # Step A: read a sensitive path
@@ -424,6 +471,27 @@ def main() -> None:
             send="read(file_path='AKIAIOSFODNN7EXAMPLE') -- contains AWS access key pattern",
             expect="403 -- DLP blocks credential pattern before reaching upstream",
             fn=test_dlp_credential_block,
+        ),
+        TestCase(
+            name="DLP: private key block",
+            what="DLP scanner blocks PEM private key patterns -- prevents key exfiltration through tool calls",
+            send="tavily_search(query='-----BEGIN PRIVATE KEY-----\\nMIIE...') -- contains PEM private key header",
+            expect="403 -- DLP hard-blocks credential patterns (unlike injection which is flag-only)",
+            fn=test_dlp_private_key_block,
+        ),
+        TestCase(
+            name="DLP: API key block",
+            what="DLP scanner blocks API key patterns (sk-proj-*) -- prevents token leakage",
+            send="tavily_search(query='api_key=sk-proj-AAAAAAAAAAAAAAAAAAAAAA') -- contains API key pattern",
+            expect="403 -- DLP hard-blocks API key patterns to prevent credential leakage",
+            fn=test_dlp_api_key_block,
+        ),
+        TestCase(
+            name="DLP: password leak block",
+            what="DLP scanner blocks password patterns -- prevents credential exposure in tool payloads",
+            send="tavily_search(query='password=SuperSecretP@ssw0rd123!') -- contains password= pattern",
+            expect="403 -- DLP hard-blocks password patterns to prevent credential exposure",
+            fn=test_dlp_password_leak_block,
         ),
         TestCase(
             name="DLP PII pass-through (email is audit-only)",
