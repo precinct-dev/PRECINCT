@@ -181,8 +181,11 @@ collect_mcp_transport_proof_compose() {
 collect_dlp_injection_proof_compose() {
     log "DLP injection detection proof (Docker Compose logs)"
     echo ""
-    docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
-        | grep -E '"safezone_flags".*"potential_injection"|"potential_injection"' | tail -5 \
+    # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
+    # The audit JSON contains "safezone_flags":["potential_injection"] for flagged injection.
+    # Use --no-log-prefix for cleaner grep matching (avoids container name prefix).
+    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+        | grep -E '"safezone_flags":\[.*"potential_injection"' | tail -5 \
         || echo "  (no injection detection entries found in logs)"
     echo ""
 }
@@ -190,8 +193,10 @@ collect_dlp_injection_proof_compose() {
 collect_dlp_credential_proof_compose() {
     log "DLP credential blocking proof (Docker Compose logs)"
     echo ""
-    docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
-        | grep -E '"safezone_flags".*"blocked_content"|dlp_credentials_detected' | tail -5 \
+    # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
+    # The audit JSON contains "safezone_flags":["blocked_content"] for blocked credentials.
+    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+        | grep -E '"safezone_flags":\[.*"blocked_content"' | tail -5 \
         || echo "  (no credential blocking entries found in logs)"
     echo ""
 }
@@ -208,8 +213,9 @@ collect_spike_token_proof_compose() {
 collect_dlp_injection_proof_k8s() {
     log "DLP injection detection proof (K8s logs)"
     echo ""
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
-        | grep -E '"safezone_flags".*"potential_injection"|"potential_injection"' | tail -5 \
+    # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
+    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 2>/dev/null \
+        | grep -E '"safezone_flags":\[.*"potential_injection"' | tail -5 \
         || echo "  (no injection detection entries found in logs)"
     echo ""
 }
@@ -217,8 +223,9 @@ collect_dlp_injection_proof_k8s() {
 collect_dlp_credential_proof_k8s() {
     log "DLP credential blocking proof (K8s logs)"
     echo ""
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
-        | grep -E '"safezone_flags".*"blocked_content"|dlp_credentials_detected' | tail -5 \
+    # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
+    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 2>/dev/null \
+        | grep -E '"safezone_flags":\[.*"blocked_content"' | tail -5 \
         || echo "  (no credential blocking entries found in logs)"
     echo ""
 }
@@ -324,6 +331,9 @@ run_demo_cycle() {
 
     run_python_demo "$url" "$network" || py_ok=1
     echo ""
+
+    # RFA-9i2: Allow async audit writer to flush before collecting proofs.
+    sleep 2
 
     # Collect proofs
     if [ "$mode" = "compose" ]; then

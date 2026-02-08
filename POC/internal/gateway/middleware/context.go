@@ -16,12 +16,42 @@ const (
 	contextKeyToolHashVerified contextKey = "tool_hash_verified"
 	contextKeyOPADecisionID    contextKey = "opa_decision_id"
 	contextKeySecurityFlags    contextKey = "security_flags"
+	contextKeyFlagsCollector   contextKey = "flags_collector" // RFA-9i2: mutable collector for upstream propagation
 	contextKeySessionContext   contextKey = "session_context_engine"
 	contextKeyUIEnabled        contextKey = "ui_enabled"        // RFA-j2d.7: MCP-UI enabled flag
 	contextKeyUICallOrigin     contextKey = "ui_call_origin"    // RFA-j2d.7: "model" or "app"
 	contextKeyUIAppToolCalls   contextKey = "ui_app_tool_calls" // RFA-j2d.7: app session tool call count
 	contextKeyUIResourceURI    contextKey = "ui_resource_uri"   // RFA-j2d.7: ui:// resource URI
 )
+
+// SecurityFlagsCollector is a mutable container for security flags that
+// propagates upstream through Go's immutable context chain. The audit
+// middleware (step 4) creates a collector and puts a pointer in the context.
+// Downstream middleware (DLP at step 7, deep scan at step 10) append flags
+// to the collector. When control returns to the audit middleware, it reads
+// the collected flags -- solving the Go context upstream-propagation problem.
+// RFA-9i2: Without this, safezone_flags never appeared in audit logs because
+// context.WithValue creates child contexts invisible to parent middleware.
+type SecurityFlagsCollector struct {
+	Flags []string
+}
+
+// Append adds a flag to the collector if not already present.
+func (c *SecurityFlagsCollector) Append(flag string) {
+	for _, f := range c.Flags {
+		if f == flag {
+			return
+		}
+	}
+	c.Flags = append(c.Flags, flag)
+}
+
+// AppendAll adds multiple flags to the collector.
+func (c *SecurityFlagsCollector) AppendAll(flags []string) {
+	for _, f := range flags {
+		c.Append(f)
+	}
+}
 
 // GetSessionID retrieves session ID from context
 func GetSessionID(ctx context.Context) string {
@@ -122,9 +152,30 @@ func GetSecurityFlags(ctx context.Context) []string {
 	return nil
 }
 
-// WithSecurityFlags adds security flags to context
+// WithSecurityFlags adds security flags to context.
+// It also appends to the SecurityFlagsCollector if one exists in the context,
+// ensuring flags propagate upstream to the audit middleware. RFA-9i2.
 func WithSecurityFlags(ctx context.Context, flags []string) context.Context {
+	// Propagate to collector for upstream visibility (audit middleware)
+	if c := GetFlagsCollector(ctx); c != nil {
+		c.AppendAll(flags)
+	}
 	return context.WithValue(ctx, contextKeySecurityFlags, flags)
+}
+
+// GetFlagsCollector retrieves the mutable security flags collector from context.
+// RFA-9i2: Used by audit middleware to read flags set by downstream middleware.
+func GetFlagsCollector(ctx context.Context) *SecurityFlagsCollector {
+	if v := ctx.Value(contextKeyFlagsCollector); v != nil {
+		return v.(*SecurityFlagsCollector)
+	}
+	return nil
+}
+
+// WithFlagsCollector adds a mutable security flags collector to context.
+// RFA-9i2: Created by audit middleware, read by audit middleware after next.ServeHTTP.
+func WithFlagsCollector(ctx context.Context, collector *SecurityFlagsCollector) context.Context {
+	return context.WithValue(ctx, contextKeyFlagsCollector, collector)
 }
 
 // GetUIEnabled retrieves MCP-UI enabled flag from context (RFA-j2d.7)

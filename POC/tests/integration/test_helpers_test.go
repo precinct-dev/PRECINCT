@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"testing"
 	"time"
 )
 
@@ -54,6 +55,21 @@ func waitForService(url string, timeout time.Duration) error {
 		time.Sleep(500 * time.Millisecond)
 	}
 	return fmt.Errorf("service %s not ready after %v", url, timeout)
+}
+
+// requireGateway skips the test if the gateway is not reachable.
+// Use this at the start of any test that requires a running gateway instance.
+// Unlike waitForService (which blocks for up to 30s), this does a single quick
+// probe and skips immediately if the gateway is down -- preventing noisy failures
+// during normal `make test-integration` runs without a live gateway.
+func requireGateway(t *testing.T) {
+	t.Helper()
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(gatewayURL + "/health")
+	if err != nil {
+		t.Skipf("gateway not reachable at %s (requires running gateway: make up): %v", gatewayURL, err)
+	}
+	resp.Body.Close()
 }
 
 // getEnvOrDefault returns the environment variable value or a default.
