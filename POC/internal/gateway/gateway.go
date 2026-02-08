@@ -296,7 +296,7 @@ func (g *Gateway) Handler() http.Handler {
 	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)                                                            // 10
 	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor) // 9
 	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                   // 8
-	handler = middleware.DLPMiddleware(handler, g.dlpScanner)                                                                  // 7
+	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy())                                                    // 7
 	handler = middleware.OPAPolicy(handler, g.opa)                                                                             // 6
 	handler = middleware.ToolRegistryVerify(handler, g.registry)                                                               // 5
 	handler = middleware.AuditLog(handler, g.auditor)                                                                          // 4
@@ -824,6 +824,18 @@ func (g *Gateway) checkUIResourceReadAllowed(server, tenant, resourceURI string)
 	}
 
 	return allowed
+}
+
+// dlpPolicy returns the effective DLP policy by merging the YAML config with
+// the DLP_INJECTION_POLICY env var override. The env var takes precedence over
+// the YAML value for the injection category only.
+func (g *Gateway) dlpPolicy() middleware.DLPPolicy {
+	p := g.riskConfig.DLP
+	// RFA-sd7: DLP_INJECTION_POLICY env var overrides dlp.injection YAML config.
+	if g.config.DLPInjectionPolicy == "block" || g.config.DLPInjectionPolicy == "flag" {
+		p.Injection = g.config.DLPInjectionPolicy
+	}
+	return p
 }
 
 // Close cleans up gateway resources

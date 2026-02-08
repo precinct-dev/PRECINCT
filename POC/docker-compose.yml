@@ -333,6 +333,7 @@ services:
       - GUARD_MODEL_ENDPOINT=${GUARD_MODEL_ENDPOINT:-}  # RFA-j6c: Guard model API base URL (default: Groq)
       - GUARD_MODEL_NAME=${GUARD_MODEL_NAME:-}  # RFA-j6c: Guard model identifier (default: llama-prompt-guard-2-86m)
       - GUARD_API_KEY=${GUARD_API_KEY:-}  # RFA-j6c: Guard model API key (default: falls back to GROQ_API_KEY)
+      - DLP_INJECTION_POLICY=${DLP_INJECTION_POLICY:-}  # RFA-sd7: Override DLP injection policy ("block" or "flag", default: use YAML config)
     networks:
       - agentic-net
     labels:

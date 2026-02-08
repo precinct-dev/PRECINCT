@@ -20,6 +20,11 @@ type Config struct {
 	GuardModelEndpoint      string    // base URL for guard model API (default: Groq)
 	GuardModelName          string    // model identifier for guard model (default: llama-prompt-guard-2-86m)
 	GuardAPIKey             string    // API key for guard model (default: falls back to GroqAPIKey)
+	// DLP_INJECTION_POLICY env var overrides dlp.injection YAML config (RFA-sd7).
+	// Only injection gets an env var override:
+	//   - credentials=block is a security invariant (must not be easily toggled via env var)
+	//   - pii=flag is rarely changed (deliberate YAML edit required)
+	DLPInjectionPolicy      string    // "block" or "flag" (empty = use YAML config)
 	DeepScanTimeout         int       // in seconds
 	DeepScanFallback        string    // "fail_closed" or "fail_open" (default: fail_closed)
 	RateLimitRPM            int       // requests per minute per agent
@@ -207,6 +212,7 @@ func ConfigFromEnv() *Config {
 		GuardModelEndpoint:      getEnvOrDefault("GUARD_MODEL_ENDPOINT", "https://api.groq.com/openai/v1"),
 		GuardModelName:          getEnvOrDefault("GUARD_MODEL_NAME", "meta-llama/llama-prompt-guard-2-86m"),
 		GuardAPIKey:             getEnvOrDefault("GUARD_API_KEY", getEnvOrDefault("GROQ_API_KEY", "")),
+		DLPInjectionPolicy:     getEnvOrDefault("DLP_INJECTION_POLICY", ""),
 		DeepScanTimeout:         deepScanTimeout,
 		DeepScanFallback:        deepScanFallback,
 		RateLimitRPM:            rateLimitRPM,

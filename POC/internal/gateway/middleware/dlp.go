@@ -238,9 +238,20 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
-// DLPMiddleware creates middleware for DLP scanning
-// Position: After OPA policy, before session context
-func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
+// DLPMiddleware creates middleware for DLP scanning with configurable policy.
+// The policy controls whether each content category (credentials, injection, PII)
+// is blocked (HTTP 403) or flagged (added to safezone_flags, request continues).
+// Position: After OPA policy, before session context.
+func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) http.Handler {
+	// Accept optional policy for backward compatibility: existing call sites
+	// that pass only (next, scanner) get the default policy (credentials=block,
+	// injection=flag, pii=flag) which matches historical behavior.
+	p := DefaultDLPPolicy()
+	if len(policy) > 0 {
+		p = policy[0]
+		p.Normalize()
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// RFA-m6j.2: Create OTel span for step 7
 		ctx, span := tracer.Start(r.Context(), "gateway.dlp_scan",
@@ -289,32 +300,77 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
 			attribute.StringSlice("flags", result.Flags),
 		)
 
-		// FAIL CLOSED: Block requests with credentials
-		if result.HasCredentials {
-			// Add flags to context for audit logging
-			ctx = WithSecurityFlags(ctx, result.Flags)
+		// RFA-sd7: Policy-driven block/flag per content category.
+		// Each category checks the policy: "block" returns 403, "flag" continues.
 
-			span.SetAttributes(
-				attribute.String("mcp.result", "denied"),
-				attribute.String("mcp.reason", "credentials detected"),
-			)
-			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
-				Code:           ErrDLPCredentialsDetected,
-				Message:        "Request contains sensitive credentials",
-				Middleware:     "dlp_scan",
-				MiddlewareStep: 7,
-				Remediation:    "Remove credentials from the request body before retrying.",
-			})
-			return
+		// Credentials check
+		if result.HasCredentials {
+			ctx = WithSecurityFlags(ctx, result.Flags)
+			if p.Credentials == "block" {
+				span.SetAttributes(
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "credentials detected"),
+				)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           ErrDLPCredentialsDetected,
+					Message:        "Request contains sensitive credentials",
+					Middleware:     "dlp_scan",
+					MiddlewareStep: 7,
+					Remediation:    "Remove credentials from the request body before retrying.",
+				})
+				return
+			}
+			// policy is "flag": credentials flagged but not blocked
 		}
 
-		// Determine result for span
+		// Injection check (suspicious patterns: SQL injection, prompt injection)
+		if result.HasSuspicious {
+			if p.Injection == "block" {
+				ctx = WithSecurityFlags(ctx, result.Flags)
+				span.SetAttributes(
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "injection pattern detected"),
+				)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           ErrDLPInjectionBlocked,
+					Message:        "Request contains suspicious injection patterns",
+					Middleware:     "dlp_scan",
+					MiddlewareStep: 7,
+					Remediation:    "Remove injection patterns from the request body before retrying.",
+				})
+				return
+			}
+			// policy is "flag": injection flagged but not blocked (current default)
+		}
+
+		// PII check
+		if result.HasPII {
+			if p.PII == "block" {
+				ctx = WithSecurityFlags(ctx, result.Flags)
+				span.SetAttributes(
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "PII detected"),
+				)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           ErrDLPPIIBlocked,
+					Message:        "Request contains personally identifiable information",
+					Middleware:     "dlp_scan",
+					MiddlewareStep: 7,
+					Remediation:    "Remove PII from the request body before retrying.",
+				})
+				return
+			}
+			// policy is "flag": PII flagged but not blocked (current default)
+		}
+
+		// Determine result for span (for content that was flagged but not blocked)
 		if result.HasPII || result.HasSuspicious {
 			span.SetAttributes(
 				attribute.String("mcp.result", "flagged"),
 				attribute.String("mcp.reason", strings.Join(result.Flags, ",")),
 			)
-		} else {
+		} else if !result.HasCredentials {
+			// Only mark as "allowed/clean" if nothing was detected at all
 			span.SetAttributes(
 				attribute.String("mcp.result", "allowed"),
 				attribute.String("mcp.reason", "clean"),
@@ -322,7 +378,6 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
 		}
 
 		// Add security flags to context for audit logging
-		// PII and suspicious content are flagged but NOT blocked
 		if len(result.Flags) > 0 {
 			ctx = WithSecurityFlags(ctx, result.Flags)
 		}

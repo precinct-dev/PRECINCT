@@ -23,6 +23,8 @@ const (
 
 	// DLP (step 7) -- 403 Forbidden
 	ErrDLPCredentialsDetected = "dlp_credentials_detected"
+	ErrDLPInjectionBlocked    = "dlp_injection_blocked"   // RFA-sd7: injection blocked by policy
+	ErrDLPPIIBlocked          = "dlp_pii_blocked"         // RFA-sd7: PII blocked by policy
 
 	// Step-Up Gating (step 9) -- 403 Forbidden
 	ErrStepUpDenied             = "stepup_denied"
