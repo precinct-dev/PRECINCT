@@ -14,9 +14,8 @@ metadata:
   labels:
     app.kubernetes.io/part-of: sigstore-policy-controller
     app.kubernetes.io/managed-by: kustomize
-    # Exempt policy-controller namespace from Gatekeeper enforcement
-    # (policy-controller images are pulled from public sigstore registry)
-    admission.gatekeeper.sh/ignore: "no-self-managing"
+    # Gatekeeper exemption handled via gatekeeper-config ConfigMap
+    # (admission.gatekeeper.sh/ignore label blocked by Gatekeeper webhook)
     # Pod Security Standards: policy-controller needs no special privileges
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/audit: restricted

@@ -283,8 +283,10 @@ def test_spike_token_reference(url: str) -> bool:
             return print_proof(True, "SPIKE reference flowed through chain, 502 = no upstream (expected)")
         if e.http_status == 500:
             return print_proof(True, f"SPIKE token substitution attempted: {e.code} (proves pipeline works)")
-        if e.http_status == 403:
+        if e.http_status == 403 and e.code == "dlp_credentials_detected":
             return print_proof(False, "SPIKE reference was BLOCKED by DLP (403) -- should pass through")
+        if e.http_status == 403 and e.step and e.step >= 13:
+            return print_proof(True, f"SPIKE token substitution reached (step {e.step}): {e.code} -- SPIKE integration working")
         return print_proof(True, f"SPIKE reference processed: code={e.code}, step={e.step}")
     except Exception as e:
         print(f"  Error: {e}")
@@ -575,7 +577,7 @@ def main() -> None:
             name="SPIKE: token reference passes DLP (safe pattern)",
             what="SPIKE token reference ($SPIKE{ref:deadbeef}) passes DLP and reaches token substitution (step 13)",
             send="tavily_search(query='$SPIKE{ref:deadbeef}') -- safe SPIKE reference, not a raw credential",
-            expect="200, 500 (token_redemption_failed), or 502 -- all prove SPIKE ref flows through DLP to step 13",
+            expect="200, 403/500 at step 13 (token_substitution), or 502 -- all prove SPIKE ref flows through DLP to step 13",
             fn=test_spike_token_reference,
         ),
         TestCase(

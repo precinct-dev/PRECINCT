@@ -99,6 +99,8 @@ patches:
           spec:
             containers:
               - name: mcp-security-gateway
+                image: registry:5000/mcp-security-gateway:latest
+                imagePullPolicy: Always
                 env:
                   - name: LOG_LEVEL
                     value: "debug"
@@ -129,10 +131,10 @@ patches:
         value: 1
       - op: replace
         path: /spec/template/spec/containers/0/image
-        value: poc-mock-mcp-server:latest
+        value: registry:5000/poc-mock-mcp-server:latest
       - op: replace
         path: /spec/template/spec/containers/0/imagePullPolicy
-        value: Never
+        value: Always
       - op: replace
         path: /spec/template/spec/containers/0/command
         value: ["/mock-mcp-server"]
@@ -295,8 +297,8 @@ patches:
                     mountPath: /token
             containers:
               - name: spire-agent
-                image: spire-agent-wrapper:latest
-                imagePullPolicy: Never
+                image: registry:5000/spire-agent-wrapper:latest
+                imagePullPolicy: Always
                 command: ["/entrypoint-wrapper.sh"]
                 args: []
                 volumeMounts:
@@ -352,10 +354,36 @@ patches:
                 resources:
                   requests:
                     cpu: 25m
-                    memory: 32Mi
-                  limits:
-                    cpu: 50m
                     memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 256Mi
+
+  # SPIKE Nexus: replace HTTPS probes with TCP socket (JSON patch)
+  # SPIKE requires mTLS; kubelet can't provide SPIFFE client certs.
+  - target:
+      kind: Deployment
+      name: spike-nexus
+      namespace: spike-system
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe
+        value:
+          tcpSocket:
+            port: 8443
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe
+        value:
+          tcpSocket:
+            port: 8443
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
 
   # --------------------------------------------------------------------------
   # --------------------------------------------------------------------------
@@ -417,7 +445,15 @@ patches:
     path: patch-spire-registration.yaml
 
   # --------------------------------------------------------------------------
-  # sigstore/policy-controller: reduced resources for local dev (RFA-7bh.2)
+  # sigstore/policy-controller: disabled for local dev (RFA-7bh.2)
+  #
+  # The policy-controller requires Helm-managed resources (auto-TLS rotation,
+  # Knative ConfigMaps, extended RBAC) that are complex to replicate manually.
+  # Scale to 0 for local dev; use the Helm chart in production:
+  #   helm install policy-controller sigstore/policy-controller -n cosign-system
+  #
+  # The ValidatingWebhookConfiguration still exists (failurePolicy: Ignore)
+  # so pods are admitted normally when the webhook is unavailable.
   # --------------------------------------------------------------------------
   - target:
       kind: Deployment
@@ -430,18 +466,7 @@ patches:
         name: policy-controller-webhook
         namespace: cosign-system
       spec:
-        replicas: 1
-        template:
-          spec:
-            containers:
-              - name: policy-webhook
-                resources:
-                  requests:
-                    cpu: 25m
-                    memory: 32Mi
-                  limits:
-                    cpu: 50m
-                    memory: 64Mi
+        replicas: 0
 
   # --------------------------------------------------------------------------
   # policy-controller webhook: Ignore failures for local dev (RFA-7bh.2)
@@ -555,6 +580,43 @@ patches:
           gatekeeper-system
           cosign-system
           dev
+
+  # --------------------------------------------------------------------------
+  # Gatekeeper constraints: remap namespaces + dryrun for local dev
+  # Production uses mcp-gateway/mcp-servers; local uses gateway/tools.
+  # enforcementAction: dryrun -- audit violations without blocking pods.
+  # This lets locally-built unsigned images deploy while still demonstrating
+  # the Gatekeeper constraint architecture.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: RequireImageDigest
+      name: enforce-image-digest
+    patch: |
+      - op: replace
+        path: /spec/match/namespaces
+        value:
+          - gateway
+          - tools
+          - spike-system
+          - spire-system
+      - op: add
+        path: /spec/enforcementAction
+        value: dryrun
+
+  - target:
+      kind: RequireImageSignature
+      name: enforce-image-signature
+    patch: |
+      - op: replace
+        path: /spec/match/namespaces
+        value:
+          - gateway
+          - tools
+          - spike-system
+          - spire-system
+      - op: add
+        path: /spec/enforcementAction
+        value: dryrun
 
 commonAnnotations:
   app.kubernetes.io/environment: local

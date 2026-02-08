@@ -35,10 +35,8 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
         - name: spike-nexus
-          # SPIKE is part of the SPIFFE ecosystem.
-          # Use the official vsecm/spike-nexus image.
-          # Pin to a specific version for reproducibility.
-          image: vsecm/spike-nexus:0.3.0
+          # SPIKE is part of the SPIFFE ecosystem (ghcr.io/spiffe).
+          image: ghcr.io/spiffe/spike-nexus:0.8.0
           ports:
             - name: https
               containerPort: 8443

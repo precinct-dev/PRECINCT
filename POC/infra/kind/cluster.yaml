@@ -1,0 +1,16 @@
+# kind cluster config for local development.
+# Creates a single control-plane node with NodePort access on 30090.
+#
+# Usage:
+#   kind create cluster --config infra/kind/cluster.yaml
+#   make k8s-up
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: agentic-poc
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      # MCP Security Gateway (NodePort 30090 -> host 30090)
+      - containerPort: 30090
+        hostPort: 30090
+        protocol: TCP

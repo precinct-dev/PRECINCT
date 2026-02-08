@@ -168,7 +168,7 @@ func main() {
 			name:   "SPIKE: token reference passes DLP (safe pattern)",
 			what:   "SPIKE token reference ($SPIKE{ref:deadbeef}) passes DLP and reaches token substitution (step 13)",
 			send:   "tavily_search(query='$SPIKE{ref:deadbeef}') -- safe SPIKE reference, not a raw credential",
-			expect: "200, 500 (token_redemption_failed), or 502 -- all prove SPIKE ref flows through DLP to step 13",
+			expect: "200, 403/500 at step 13 (token_substitution), or 502 -- all prove SPIKE ref flows through DLP to step 13",
 			fn:     testSPIKETokenReference,
 		},
 		{
@@ -605,8 +605,11 @@ func testSPIKETokenReference() bool {
 		if ge.HTTPStatus == 500 {
 			return printProof(true, fmt.Sprintf("SPIKE token substitution attempted: %s (proves pipeline works)", ge.Code))
 		}
-		if ge.HTTPStatus == 403 {
+		if ge.HTTPStatus == 403 && ge.Code == "dlp_credentials_detected" {
 			return printProof(false, "SPIKE reference was BLOCKED by DLP (403) -- should pass through")
+		}
+		if ge.HTTPStatus == 403 && ge.Step >= 13 {
+			return printProof(true, fmt.Sprintf("SPIKE token substitution reached (step %d): %s -- SPIKE integration working", ge.Step, ge.Code))
 		}
 		return printProof(true, fmt.Sprintf("SPIKE reference processed: code=%s, step=%d", ge.Code, ge.Step))
 	}

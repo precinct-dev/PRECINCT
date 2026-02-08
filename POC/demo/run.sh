@@ -21,6 +21,9 @@ done
 GO_IMAGE="demo-go-sdk"
 PY_IMAGE="demo-python-sdk"
 COMPOSE_NETWORK="agentic-security-network"
+PF_PID=""
+
+cleanup() { [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null; true; }
 
 # Colors
 RESET="\033[0m"
@@ -78,7 +81,7 @@ start_k8s() {
         err "docker-desktop context not found. Is Docker Desktop K8s enabled?"
         exit 1
     }
-    make -C "$POC_DIR" k8s-local-up
+    make -C "$POC_DIR" k8s-up
 }
 
 # --------------------------------------------------------------------------
@@ -242,16 +245,28 @@ run_demo_cycle() {
         # Health check via localhost (host-side port mapping)
         wait_for_health "http://localhost:9090" || exit 1
     elif [ "$mode" = "k8s" ]; then
-        # K8s: use host network so containers can reach NodePort
-        url="http://host.docker.internal:30090"
-        network="host"
+        # K8s (Docker Desktop): connect demo containers to "kind" network
+        # so they can reach the K8s node's NodePort directly.
+        local node_ip
+        node_ip=$(docker inspect desktop-control-plane --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null | head -1)
+        if [ -z "$node_ip" ]; then
+            err "Cannot find K8s node IP. Is Docker Desktop K8s running?"
+            exit 1
+        fi
+        url="http://${node_ip}:30090"
+        network="kind"
         if [ "$SKIP_SETUP" = false ]; then
             start_k8s
         fi
         # Restart gateway to reset circuit breaker state
         log "Restarting gateway to reset circuit breaker state"
         kubectl -n gateway rollout restart deploy/mcp-security-gateway >/dev/null 2>&1 || true
-        wait_for_health "http://localhost:30090" || exit 1
+        sleep 5
+        # Health check: use port-forward since NodePort isn't exposed on host
+        kubectl -n gateway port-forward svc/mcp-security-gateway 30090:9090 >/dev/null 2>&1 &
+        PF_PID=$!
+        trap cleanup EXIT
+        wait_for_health "http://localhost:30090" || { cleanup; exit 1; }
     else
         err "Unknown mode: $mode (expected compose|k8s|both)"
         exit 1
@@ -277,7 +292,12 @@ run_demo_cycle() {
     elif [ "$mode" = "k8s" ]; then
         log "Restarting gateway to reset rate limits for Python demo"
         kubectl -n gateway rollout restart deploy/mcp-security-gateway >/dev/null 2>&1 || true
-        sleep 5
+        kubectl -n gateway rollout status deploy/mcp-security-gateway --timeout=60s 2>/dev/null || true
+        # Restart port-forward (old one died with old pod)
+        cleanup
+        sleep 2
+        kubectl -n gateway port-forward svc/mcp-security-gateway 30090:9090 >/dev/null 2>&1 &
+        PF_PID=$!
         wait_for_health "http://localhost:30090" || exit 1
     fi
 

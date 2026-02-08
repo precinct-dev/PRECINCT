@@ -15,18 +15,19 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "POC/**"
-      - ".github/workflows/ci.yaml"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "POC/**"
-      - ".github/workflows/ci.yaml"
+  workflow_dispatch:  # Manual-only until GH Actions credits are replenished
+  # push:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "POC/**"
+  #     - ".github/workflows/ci.yaml"
+  # pull_request:
+  #   branches:
+  #     - main
+  #   paths:
+  #     - "POC/**"
+  #     - ".github/workflows/ci.yaml"
 
 env:
   REGISTRY: ghcr.io

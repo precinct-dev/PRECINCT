@@ -21,9 +21,11 @@ metadata:
 data:
   # SPIKE Nexus configuration
   # These are loaded as environment variables by the deployment.
-  SPIKE_NEXUS_MODE: "token"
-  SPIKE_NEXUS_LOG_LEVEL: "info"
-  SPIKE_NEXUS_ADDR: ":8443"
-  SPIKE_NEXUS_TRUST_DOMAIN: "agentic-ref-arch.poc"
+  # See: https://spike.ist/usage/configuration/
+  SPIKE_NEXUS_TLS_PORT: ":8443"
+  SPIKE_NEXUS_BACKEND_STORE: "memory"
+  SPIKE_SYSTEM_LOG_LEVEL: "INFO"
+  SPIKE_TRUST_ROOT: "agentic-ref-arch.poc"
+  SPIKE_TRUST_ROOT_NEXUS: "agentic-ref-arch.poc"
   # SPIRE Workload API socket path (must match the volume mount)
   SPIFFE_ENDPOINT_SOCKET: "unix:///run/spire/sockets/agent.sock"
