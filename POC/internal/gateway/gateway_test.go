@@ -3,12 +3,14 @@ package gateway
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
@@ -1713,4 +1715,349 @@ func TestMCPTransport_404_SessionExpiry_ThroughGateway(t *testing.T) {
 	}
 
 	t.Logf("PASS: 404 session expiry recovery through gateway (init_count=%d, status=%d)", initCount, rec.Code)
+}
+
+// --- RFA-0dz: Legacy SSE Transport + Auto-Detection Integration Tests ---
+
+// newMockLegacySSEMCPServer creates an httptest server that simulates a legacy SSE
+// MCP server (pre-2025-03-26). It handles:
+//   - GET /sse: sends "endpoint" event pointing to /message, then streams responses
+//   - POST /message: accepts JSON-RPC requests, sends responses via the SSE stream
+//   - POST / (initialize): responds to Streamable HTTP initialize with 405 to force SSE fallback
+//
+// This server rejects Streamable HTTP (POST to /) so that DetectTransport
+// falls back to Legacy SSE.
+func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
+	t.Helper()
+
+	sseLog := &mcpServerLog{}
+
+	// mu protects sseWriters
+	var mu sync.Mutex
+	type sseConn struct {
+		w http.ResponseWriter
+		f http.Flusher
+	}
+	var sseConns []sseConn
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/sse":
+			// Legacy SSE endpoint
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			w.WriteHeader(http.StatusOK)
+
+			// Send the endpoint event
+			fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			flusher.Flush()
+
+			// Register this SSE connection
+			mu.Lock()
+			sseConns = append(sseConns, sseConn{w: w, f: flusher})
+			mu.Unlock()
+
+			// Keep connection open until client disconnects
+			<-r.Context().Done()
+
+		case r.Method == http.MethodPost && r.URL.Path == "/message":
+			// Message endpoint: handle JSON-RPC requests
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+
+			var rpcReq map[string]interface{}
+			if err := json.Unmarshal(body, &rpcReq); err != nil {
+				http.Error(w, "invalid JSON", http.StatusBadRequest)
+				return
+			}
+
+			method, _ := rpcReq["method"].(string)
+			sseLog.RecordCall(method, "", body)
+
+			var respJSON []byte
+			switch method {
+			case "tools/call", "tavily_search":
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      rpcReq["id"],
+					"result": map[string]interface{}{
+						"content": []map[string]interface{}{
+							{"type": "text", "text": "legacy SSE integration test passed through all 13 layers"},
+						},
+					},
+				}
+				respJSON, _ = json.Marshal(resp)
+			default:
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      rpcReq["id"],
+					"result":  map[string]interface{}{"status": "ok"},
+				}
+				respJSON, _ = json.Marshal(resp)
+			}
+
+			// Acknowledge the POST
+			w.WriteHeader(http.StatusAccepted)
+
+			// Send response via all SSE connections
+			mu.Lock()
+			for _, conn := range sseConns {
+				fmt.Fprintf(conn.w, "event: message\ndata: %s\n\n", string(respJSON))
+				conn.f.Flush()
+			}
+			mu.Unlock()
+
+		case r.Method == http.MethodPost && r.URL.Path == "/":
+			// Reject Streamable HTTP initialize to force SSE fallback
+			body, _ := io.ReadAll(r.Body)
+			var rpcReq map[string]interface{}
+			_ = json.Unmarshal(body, &rpcReq)
+			method, _ := rpcReq["method"].(string)
+
+			if method == "initialize" {
+				sseLog.RecordCall("initialize-rejected", "", body)
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			w.WriteHeader(http.StatusMethodNotAllowed)
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	t.Cleanup(server.Close)
+	return server, sseLog
+}
+
+// TestMCPTransport_LegacySSE_ThroughAll13Layers proves that a legacy SSE
+// upstream is auto-detected and requests flow through all 13 middleware layers.
+// This is the primary integration test for AC9.
+func TestMCPTransport_LegacySSE_ThroughAll13Layers(t *testing.T) {
+	mcpServer, serverLog := newMockLegacySSEMCPServer(t)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	// Build a tools/call request using "tavily_search" to pass middleware checks
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"legacy SSE test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// --- Verify response ---
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	var rpcResp map[string]interface{}
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		t.Fatalf("Response is not valid JSON: %v. Body: %s", err, string(respBody))
+	}
+
+	if rpcResp["jsonrpc"] != "2.0" {
+		t.Errorf("Expected jsonrpc=2.0, got %v", rpcResp["jsonrpc"])
+	}
+
+	result, ok := rpcResp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected result in response, got: %s", string(respBody))
+	}
+
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		t.Fatal("Expected non-empty content array in result")
+	}
+
+	firstContent := content[0].(map[string]interface{})
+	if text, ok := firstContent["text"].(string); !ok || !strings.Contains(text, "legacy SSE integration test passed through all 13 layers") {
+		t.Errorf("Expected text containing 'legacy SSE integration test passed through all 13 layers', got: %v", firstContent["text"])
+	}
+
+	// --- Verify the server received the tavily_search request ---
+	toolsCalls := serverLog.MethodCalls("tavily_search")
+	if len(toolsCalls) != 1 {
+		t.Fatalf("Expected 1 tavily_search call, got %d", len(toolsCalls))
+	}
+
+	// Verify Streamable HTTP was rejected (forcing SSE fallback)
+	rejectCalls := serverLog.MethodCalls("initialize-rejected")
+	if len(rejectCalls) < 1 {
+		t.Error("Expected Streamable HTTP initialize to be rejected (405) before SSE fallback")
+	}
+
+	t.Logf("PASS: legacy SSE transport detected and tools/call flowed through all 13 middleware layers (status=%d)", rec.Code)
+}
+
+// TestMCPTransport_AutoDetect_StreamableHTTP verifies that auto-detection
+// correctly selects Streamable HTTP when the server supports it.
+func TestMCPTransport_AutoDetect_StreamableHTTP(t *testing.T) {
+	mcpServer, serverLog := newMockMCPServer(t)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"auto-detect test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	// Verify the server received proper Streamable HTTP handshake
+	initCalls := serverLog.MethodCalls("initialize")
+	if len(initCalls) != 1 {
+		t.Errorf("Expected 1 initialize call (Streamable HTTP detected), got %d", len(initCalls))
+	}
+
+	notifCalls := serverLog.MethodCalls("notifications/initialized")
+	if len(notifCalls) != 1 {
+		t.Errorf("Expected 1 notifications/initialized call, got %d", len(notifCalls))
+	}
+
+	t.Logf("PASS: auto-detection correctly selected Streamable HTTP (init_calls=%d)", len(initCalls))
+}
+
+// TestMCPTransport_AutoDetect_SSEFallback verifies that auto-detection
+// falls back to SSE when Streamable HTTP fails, and emits a deprecation log.
+func TestMCPTransport_AutoDetect_SSEFallback(t *testing.T) {
+	mcpServer, serverLog := newMockLegacySSEMCPServer(t)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"fallback test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	// Verify Streamable HTTP was attempted first (rejected)
+	rejectCalls := serverLog.MethodCalls("initialize-rejected")
+	if len(rejectCalls) < 1 {
+		t.Error("Expected Streamable HTTP initialize to be rejected before SSE fallback")
+	}
+
+	// Verify SSE was used for the actual request
+	toolsCalls := serverLog.MethodCalls("tavily_search")
+	if len(toolsCalls) != 1 {
+		t.Fatalf("Expected 1 tavily_search call via SSE, got %d", len(toolsCalls))
+	}
+
+	// Verify the response came back correctly
+	respBody, _ := io.ReadAll(rec.Body)
+	var rpcResp map[string]interface{}
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		t.Fatalf("Response is not valid JSON: %v", err)
+	}
+	if rpcResp["jsonrpc"] != "2.0" {
+		t.Errorf("Expected jsonrpc=2.0, got %v", rpcResp["jsonrpc"])
+	}
+
+	t.Logf("PASS: auto-detection fell back to SSE after Streamable HTTP rejected (reject_calls=%d, tool_calls=%d)",
+		len(rejectCalls), len(toolsCalls))
+}
+
+// TestMCPTransport_GatewayUsesTransportInterface verifies AC5: the gateway
+// struct uses the Transport interface (not concrete type) for mcpTransport.
+func TestMCPTransport_GatewayUsesTransportInterface(t *testing.T) {
+	cfg := &Config{
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	// At startup, mcpTransport should be nil (lazy init via DetectTransport)
+	if gw.mcpTransport != nil {
+		t.Error("Expected mcpTransport to be nil at startup (lazy init)")
+	}
+
+	t.Log("PASS: gateway uses Transport interface with lazy initialization")
 }

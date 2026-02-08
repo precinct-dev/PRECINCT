@@ -44,8 +44,8 @@ type Gateway struct {
 	sessionStore         middleware.SessionStore          // RFA-hh5.1: session persistence store (InMemory or KeyDB)
 	spiffeTLS            *SPIFFETLSConfig                 // RFA-8z8.1: SPIFFE mTLS config (nil in dev mode)
 	registryStop         func()                           // RFA-dh9: stop function for registry fsnotify watcher
-	mcpTransport         *mcpclient.StreamableHTTPTransport // RFA-9ol: MCP Streamable HTTP transport (lazy init)
-	mcpTransportMu       sync.Mutex                         // RFA-9ol: protects lazy initialization of mcpTransport
+	mcpTransport         mcpclient.Transport // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
+	mcpTransportMu       sync.Mutex         // RFA-9ol: protects lazy initialization of mcpTransport
 }
 
 // New creates a new gateway instance
@@ -226,18 +226,15 @@ func New(cfg *Config) (*Gateway, error) {
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
 
-	// RFA-9ol: Create MCP transport when in MCP mode.
-	// Actual Initialize() call is deferred to first request (lazy init)
-	// to handle Docker Compose ordering where upstream may not be ready yet.
-	var mcpTransport *mcpclient.StreamableHTTPTransport
-	if cfg.MCPTransportMode == "mcp" {
-		mcpTransport = mcpclient.NewStreamableHTTPTransport(cfg.UpstreamURL, nil)
-	}
+	// RFA-0dz: MCP transport creation is deferred to first request (lazy init).
+	// DetectTransport will try Streamable HTTP first, then fall back to
+	// Legacy SSE, with a deprecation warning for SSE.
+	// No transport is created at startup to handle Docker Compose ordering
+	// where upstream may not be ready yet.
 
 	return &Gateway{
 		config:               cfg,
 		proxy:                proxy,
-		mcpTransport:         mcpTransport,
 		auditor:              auditor,
 		opa:                  opa,
 		registry:             registry,
@@ -405,8 +402,9 @@ func (prw *proxyResponseWriter) Write(b []byte) (int, error) {
 }
 
 // handleMCPRequest translates an SDK-format request into an MCP JSON-RPC request,
-// sends it via the StreamableHTTPTransport, and writes the response back as JSON.
+// sends it via the auto-detected Transport, and writes the response back as JSON.
 // RFA-9ol: Walking skeleton -- handles tools/call and any other MCP method.
+// RFA-0dz: Uses Transport interface (Streamable HTTP or Legacy SSE).
 //
 // Lazy initialization: the MCP transport is initialized on the first request,
 // not at startup, to handle Docker Compose ordering where upstream may not be
@@ -480,12 +478,16 @@ func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, metho
 
 // ensureMCPTransportInitialized performs lazy initialization of the MCP transport.
 // Thread-safe: only the first caller initializes; subsequent callers wait.
+//
+// RFA-0dz: Uses DetectTransport for auto-detection. On first request, tries
+// Streamable HTTP first, falls back to Legacy SSE with deprecation warning.
 func (g *Gateway) ensureMCPTransportInitialized(ctx context.Context) error {
-	if g.mcpTransport == nil {
-		return fmt.Errorf("MCP transport not configured (MCPTransportMode may be 'proxy')")
+	if g.config.MCPTransportMode != "mcp" {
+		return fmt.Errorf("MCP transport not configured (MCPTransportMode=%q)", g.config.MCPTransportMode)
 	}
 
-	if g.mcpTransport.Initialized() {
+	// Fast path: already initialized
+	if g.mcpTransport != nil {
 		return nil
 	}
 
@@ -493,11 +495,17 @@ func (g *Gateway) ensureMCPTransportInitialized(ctx context.Context) error {
 	defer g.mcpTransportMu.Unlock()
 
 	// Double-check after acquiring lock
-	if g.mcpTransport.Initialized() {
+	if g.mcpTransport != nil {
 		return nil
 	}
 
-	return g.mcpTransport.Initialize(ctx)
+	transport, err := mcpclient.DetectTransport(ctx, g.config.UpstreamURL, nil)
+	if err != nil {
+		return err
+	}
+
+	g.mcpTransport = transport
+	return nil
 }
 
 // processUpstreamResponse routes MCP responses through the appropriate UI
