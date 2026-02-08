@@ -209,7 +209,7 @@ collect_dlp_injection_proof_k8s() {
     log "DLP injection detection proof (K8s logs)"
     echo ""
     kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
-        | grep -i -E "potential_injection|injection.*detected|injection.*flagged" | tail -10 \
+        | grep -E '"safezone_flags".*"potential_injection"|"potential_injection"' | tail -5 \
         || echo "  (no injection detection entries found in logs)"
     echo ""
 }
@@ -218,7 +218,7 @@ collect_dlp_credential_proof_k8s() {
     log "DLP credential blocking proof (K8s logs)"
     echo ""
     kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
-        | grep -i -E "credential.*block|secret.*block|dlp.*block|sensitive.*data" | tail -10 \
+        | grep -E '"safezone_flags".*"blocked_content"|dlp_credentials_detected' | tail -5 \
         || echo "  (no credential blocking entries found in logs)"
     echo ""
 }
