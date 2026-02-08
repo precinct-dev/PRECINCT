@@ -76,6 +76,125 @@ func NewLegacySSETransport(baseURL string, httpClient *http.Client) *LegacySSETr
 	}
 }
 
+// ConnectWithTimeout establishes the SSE stream with a handshake timeout.
+// The handshakeTimeout limits how long we wait for the initial HTTP response
+// and the "endpoint" event. Once connected, the SSE stream body lives
+// independently (not subject to the handshake timeout).
+//
+// CRITICAL: The HTTP request for the SSE stream must NOT use the timeout
+// context, because cancelling a request context closes the response body.
+// The SSE stream must survive after the handshake completes. Instead, we
+// use the parent ctx for the HTTP request and a separate timer for the
+// handshake deadline.
+//
+// RFA-xhr: Used by DetectTransportWithConfig to enforce per-probe timeouts
+// on the Legacy SSE probe without hanging indefinitely on unresponsive servers.
+func (t *LegacySSETransport) ConnectWithTimeout(ctx context.Context, handshakeTimeout time.Duration) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.connected {
+		return nil
+	}
+
+	// Build the /sse URL
+	sseURL, err := resolveSSEURL(t.baseURL)
+	if err != nil {
+		return fmt.Errorf("failed to resolve SSE URL: %w", err)
+	}
+
+	// CRITICAL: Use a background-derived context for the HTTP request so the
+	// SSE stream body is NOT tied to the handshake timeout. The parent ctx
+	// provides cancellation if the caller abandons detection entirely.
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sseURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create SSE request: %w", err)
+	}
+	req.Header.Set("Accept", "text/event-stream")
+
+	// Start the HTTP request (this returns when headers are received)
+	type dialResult struct {
+		resp *http.Response
+		err  error
+	}
+	ch := make(chan dialResult, 1)
+	go func() {
+		resp, dialErr := t.httpClient.Do(req)
+		ch <- dialResult{resp, dialErr}
+	}()
+
+	// Wait for dial with timeout
+	timer := time.NewTimer(handshakeTimeout)
+	defer timer.Stop()
+
+	var resp *http.Response
+	select {
+	case result := <-ch:
+		if result.err != nil {
+			return fmt.Errorf("SSE connection failed: %w", result.err)
+		}
+		resp = result.resp
+	case <-timer.C:
+		return fmt.Errorf("SSE handshake timed out after %v", handshakeTimeout)
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		return fmt.Errorf("SSE endpoint returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	t.sseResp = resp
+
+	// Create a scanner on the response body
+	scanner := bufio.NewScanner(resp.Body)
+
+	// Read the endpoint event with a deadline. We use a goroutine + channel
+	// to enforce the handshake timeout on the scanner read.
+	type endpointResult struct {
+		url string
+		err error
+	}
+	epCh := make(chan endpointResult, 1)
+	go func() {
+		epURL, epErr := t.readEndpointEvent(ctx, scanner)
+		epCh <- endpointResult{epURL, epErr}
+	}()
+
+	// Reset the timer for the endpoint event read
+	timer.Reset(handshakeTimeout)
+	var endpointURL string
+	select {
+	case result := <-epCh:
+		if result.err != nil {
+			resp.Body.Close()
+			return result.err
+		}
+		endpointURL = result.url
+	case <-timer.C:
+		resp.Body.Close()
+		return fmt.Errorf("SSE endpoint event timed out after %v", handshakeTimeout)
+	case <-ctx.Done():
+		resp.Body.Close()
+		return ctx.Err()
+	}
+
+	messageURL, err := resolveMessageURL(t.baseURL, endpointURL)
+	if err != nil {
+		resp.Body.Close()
+		return fmt.Errorf("invalid endpoint URL %q: %w", endpointURL, err)
+	}
+	t.messageURL = messageURL
+
+	// Start background goroutine to read remaining SSE events (responses)
+	go t.readSSELoop(scanner)
+
+	t.connected = true
+	return nil
+}
+
 // Connect establishes the SSE stream by sending GET /sse and waiting for the
 // "endpoint" event that contains the URL for POSTing JSON-RPC messages.
 // This must be called before Send(). It starts the background goroutine that

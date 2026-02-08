@@ -42,6 +42,9 @@ type Config struct {
 	SessionTTL              int       // Session TTL in seconds (default 3600)
 	ToolRegistryPublicKey   string    // RFA-lo1.4: Path to PEM public key for registry attestation (empty = dev mode)
 	MCPTransportMode       string    // RFA-9ol: "mcp" (default) or "proxy" (backward compat reverse proxy)
+	MCPProbeTimeout        int       // RFA-xhr: per-probe timeout in seconds for transport detection (default: 5)
+	MCPDetectTimeout       int       // RFA-xhr: overall detection timeout in seconds (default: 15)
+	MCPRequestTimeout      int       // RFA-xhr: per-request timeout in seconds for MCP calls (default: 30)
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -165,6 +168,28 @@ func ConfigFromEnv() *Config {
 	}
 	uiConfig.ApplyEnvOverrides()
 
+	// RFA-xhr: MCP transport timeout configuration
+	mcpProbeTimeout := 5 // 5 seconds default per AC1
+	if pt := os.Getenv("MCP_PROBE_TIMEOUT"); pt != "" {
+		if parsed, err := strconv.Atoi(pt); err == nil && parsed > 0 {
+			mcpProbeTimeout = parsed
+		}
+	}
+
+	mcpDetectTimeout := 15 // 15 seconds default per AC2
+	if dt := os.Getenv("MCP_DETECT_TIMEOUT"); dt != "" {
+		if parsed, err := strconv.Atoi(dt); err == nil && parsed > 0 {
+			mcpDetectTimeout = parsed
+		}
+	}
+
+	mcpRequestTimeout := 30 // 30 seconds default per AC3
+	if rt := os.Getenv("MCP_REQUEST_TIMEOUT"); rt != "" {
+		if parsed, err := strconv.Atoi(rt); err == nil && parsed > 0 {
+			mcpRequestTimeout = parsed
+		}
+	}
+
 	return &Config{
 		Port:                    port,
 		UpstreamURL:             getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
@@ -201,6 +226,9 @@ func ConfigFromEnv() *Config {
 		SessionTTL:              sessionTTL,
 		ToolRegistryPublicKey:   getEnvOrDefault("TOOL_REGISTRY_PUBLIC_KEY", ""),
 		MCPTransportMode:       getEnvOrDefault("MCP_TRANSPORT_MODE", "mcp"),
+		MCPProbeTimeout:        mcpProbeTimeout,
+		MCPDetectTimeout:       mcpDetectTimeout,
+		MCPRequestTimeout:      mcpRequestTimeout,
 	}
 }
 

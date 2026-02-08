@@ -405,6 +405,8 @@ func (prw *proxyResponseWriter) Write(b []byte) (int, error) {
 // sends it via the auto-detected Transport, and writes the response back as JSON.
 // RFA-9ol: Walking skeleton -- handles tools/call and any other MCP method.
 // RFA-0dz: Uses Transport interface (Streamable HTTP or Legacy SSE).
+// RFA-xhr: Adds per-request timeouts, retry with backoff on session loss,
+// response validation, and size limits.
 //
 // Lazy initialization: the MCP transport is initialized on the first request,
 // not at startup, to handle Docker Compose ordering where upstream may not be
@@ -433,14 +435,43 @@ func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, metho
 		Params:  params,
 	}
 
-	// Send via MCP transport
-	rpcResp, err := g.mcpTransport.Send(ctx, rpcReq)
+	// RFA-xhr: Apply per-request timeout (default 30s when config is zero)
+	requestTimeoutSec := g.config.MCPRequestTimeout
+	if requestTimeoutSec <= 0 {
+		requestTimeoutSec = 30
+	}
+	requestTimeout := time.Duration(requestTimeoutSec) * time.Second
+	sendCtx, sendCancel := context.WithTimeout(ctx, requestTimeout)
+	defer sendCancel()
+
+	// RFA-xhr: Send with retry and backoff on session loss.
+	// The reinitFn re-initializes the transport after session loss.
+	retryCfg := mcpclient.DefaultRetryConfig()
+	reinitFn := func(retryCtx context.Context) error {
+		g.mcpTransportMu.Lock()
+		g.mcpTransport = nil
+		g.mcpTransportMu.Unlock()
+		return g.ensureMCPTransportInitialized(retryCtx)
+	}
+
+	rpcResp, err := mcpclient.SendWithRetry(sendCtx, g.mcpTransport, rpcReq, retryCfg, reinitFn)
 	if err != nil {
 		middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
 			Code:        middleware.ErrMCPTransportFailed,
 			Message:     fmt.Sprintf("MCP request failed: %v", err),
 			Middleware:  "mcp_transport",
 			Remediation: "Check upstream MCP server availability and network connectivity.",
+		})
+		return
+	}
+
+	// RFA-xhr: Validate response structure
+	if validationErr := mcpclient.ValidateResponse(rpcReq, rpcResp); validationErr != nil {
+		middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
+			Code:        middleware.ErrMCPInvalidResponse,
+			Message:     fmt.Sprintf("Invalid MCP response: %v", validationErr),
+			Middleware:  "mcp_transport",
+			Remediation: "The upstream MCP server returned an invalid JSON-RPC response.",
 		})
 		return
 	}
@@ -456,6 +487,21 @@ func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, metho
 			},
 			Middleware:  "mcp_transport",
 			Remediation: "The upstream MCP server returned an error. Check the error details.",
+		})
+		return
+	}
+
+	// RFA-xhr: Enforce response size limit using MaxRequestSizeBytes
+	if rpcResp.Result != nil && int64(len(rpcResp.Result)) > g.config.MaxRequestSizeBytes {
+		middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
+			Code:    middleware.ErrMCPInvalidResponse,
+			Message: fmt.Sprintf("MCP response result exceeds maximum size of %d bytes (got %d bytes)", g.config.MaxRequestSizeBytes, len(rpcResp.Result)),
+			Details: map[string]any{
+				"max_bytes":    g.config.MaxRequestSizeBytes,
+				"actual_bytes": len(rpcResp.Result),
+			},
+			Middleware:  "mcp_transport",
+			Remediation: "The upstream MCP server returned a response larger than MAX_REQUEST_SIZE_BYTES.",
 		})
 		return
 	}
@@ -481,6 +527,7 @@ func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, metho
 //
 // RFA-0dz: Uses DetectTransport for auto-detection. On first request, tries
 // Streamable HTTP first, falls back to Legacy SSE with deprecation warning.
+// RFA-xhr: Uses DetectTransportWithConfig for per-probe and overall timeouts.
 func (g *Gateway) ensureMCPTransportInitialized(ctx context.Context) error {
 	if g.config.MCPTransportMode != "mcp" {
 		return fmt.Errorf("MCP transport not configured (MCPTransportMode=%q)", g.config.MCPTransportMode)
@@ -499,7 +546,17 @@ func (g *Gateway) ensureMCPTransportInitialized(ctx context.Context) error {
 		return nil
 	}
 
-	transport, err := mcpclient.DetectTransport(ctx, g.config.UpstreamURL, nil)
+	// RFA-xhr: Use configured timeouts for detection, with safe defaults
+	// when config values are zero (e.g., tests that create Config{} directly).
+	detectCfg := mcpclient.DefaultDetectConfig()
+	if g.config.MCPProbeTimeout > 0 {
+		detectCfg.ProbeTimeout = time.Duration(g.config.MCPProbeTimeout) * time.Second
+	}
+	if g.config.MCPDetectTimeout > 0 {
+		detectCfg.OverallTimeout = time.Duration(g.config.MCPDetectTimeout) * time.Second
+	}
+
+	transport, err := mcpclient.DetectTransportWithConfig(ctx, g.config.UpstreamURL, nil, detectCfg)
 	if err != nil {
 		return err
 	}
