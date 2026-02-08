@@ -263,6 +263,53 @@ func TestConfigFromEnv(t *testing.T) {
 	if cfg.SPIFFEListenPort != 8443 {
 		t.Errorf("Expected SPIFFEListenPort=8443, got %d", cfg.SPIFFEListenPort)
 	}
+
+	// RFA-j6c: Test guard model config defaults
+	t.Setenv("GUARD_MODEL_ENDPOINT", "")
+	t.Setenv("GUARD_MODEL_NAME", "")
+	t.Setenv("GUARD_API_KEY", "")
+	t.Setenv("GROQ_API_KEY", "")
+	cfg = ConfigFromEnv()
+	if cfg.GuardModelEndpoint != "https://api.groq.com/openai/v1" {
+		t.Errorf("Expected default GuardModelEndpoint=https://api.groq.com/openai/v1, got %s", cfg.GuardModelEndpoint)
+	}
+	if cfg.GuardModelName != "meta-llama/llama-prompt-guard-2-86m" {
+		t.Errorf("Expected default GuardModelName=meta-llama/llama-prompt-guard-2-86m, got %s", cfg.GuardModelName)
+	}
+	if cfg.GuardAPIKey != "" {
+		t.Errorf("Expected default GuardAPIKey empty when both GUARD_API_KEY and GROQ_API_KEY unset, got %s", cfg.GuardAPIKey)
+	}
+
+	// RFA-j6c: Test guard model config custom values
+	t.Setenv("GUARD_MODEL_ENDPOINT", "http://localhost:11434/v1")
+	t.Setenv("GUARD_MODEL_NAME", "custom-guard-model")
+	t.Setenv("GUARD_API_KEY", "custom-guard-key")
+	cfg = ConfigFromEnv()
+	if cfg.GuardModelEndpoint != "http://localhost:11434/v1" {
+		t.Errorf("Expected GuardModelEndpoint=http://localhost:11434/v1, got %s", cfg.GuardModelEndpoint)
+	}
+	if cfg.GuardModelName != "custom-guard-model" {
+		t.Errorf("Expected GuardModelName=custom-guard-model, got %s", cfg.GuardModelName)
+	}
+	if cfg.GuardAPIKey != "custom-guard-key" {
+		t.Errorf("Expected GuardAPIKey=custom-guard-key, got %s", cfg.GuardAPIKey)
+	}
+
+	// RFA-j6c: Test GUARD_API_KEY falls back to GROQ_API_KEY when not set
+	t.Setenv("GUARD_API_KEY", "")
+	t.Setenv("GROQ_API_KEY", "groq-fallback-key")
+	cfg = ConfigFromEnv()
+	if cfg.GuardAPIKey != "groq-fallback-key" {
+		t.Errorf("Expected GuardAPIKey to fall back to GROQ_API_KEY=groq-fallback-key, got %s", cfg.GuardAPIKey)
+	}
+
+	// RFA-j6c: Test GUARD_API_KEY takes precedence over GROQ_API_KEY when both set
+	t.Setenv("GUARD_API_KEY", "explicit-guard-key")
+	t.Setenv("GROQ_API_KEY", "groq-key-should-be-ignored")
+	cfg = ConfigFromEnv()
+	if cfg.GuardAPIKey != "explicit-guard-key" {
+		t.Errorf("Expected GuardAPIKey=explicit-guard-key (GUARD_API_KEY should take precedence), got %s", cfg.GuardAPIKey)
+	}
 }
 
 // TestGatewayDevModePreservesPhase1Behavior verifies AC4: In SPIFFE_MODE=dev,

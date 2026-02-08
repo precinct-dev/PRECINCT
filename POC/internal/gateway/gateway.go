@@ -76,10 +76,12 @@ func New(cfg *Config) (*Gateway, error) {
 	}
 	dlpScanner := middleware.NewBuiltInScanner()
 	deepScanner := middleware.NewDeepScannerWithConfig(middleware.DeepScannerConfig{
-		APIKey:       cfg.GroqAPIKey,
+		APIKey:       cfg.GuardAPIKey,
 		Timeout:      time.Duration(cfg.DeepScanTimeout) * time.Second,
 		FallbackMode: cfg.DeepScanFallback,
 		Auditor:      auditor,
+		Endpoint:     cfg.GuardModelEndpoint,
+		ModelName:    cfg.GuardModelName,
 	})
 	// RFA-hh5.1: Select session store based on KeyDB availability.
 	// RFA-hh5.2: Also select rate limit store. Both share the same redis client

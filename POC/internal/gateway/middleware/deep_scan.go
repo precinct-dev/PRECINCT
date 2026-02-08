@@ -32,6 +32,7 @@ const (
 type DeepScanner struct {
 	groqAPIKey   string
 	groqBaseURL  string
+	modelName    string
 	timeout      time.Duration
 	fallbackMode DeepScanFallbackMode
 	resultChan   chan DeepScanResult
@@ -110,6 +111,8 @@ type DeepScannerConfig struct {
 	Timeout      time.Duration
 	FallbackMode string // "fail_closed" or "fail_open"
 	Auditor      *Auditor
+	Endpoint     string // base URL for guard model API (empty = Groq default)
+	ModelName    string // model identifier (empty = Groq Prompt Guard 2 default)
 }
 
 // NewDeepScanner creates a new deep scanner with Groq API
@@ -128,9 +131,20 @@ func NewDeepScannerWithConfig(cfg DeepScannerConfig) *DeepScanner {
 		fallback = FailOpen
 	}
 
+	// Default to Groq values when endpoint or model name not configured
+	endpoint := cfg.Endpoint
+	if endpoint == "" {
+		endpoint = "https://api.groq.com/openai/v1"
+	}
+	modelName := cfg.ModelName
+	if modelName == "" {
+		modelName = "meta-llama/llama-prompt-guard-2-86m"
+	}
+
 	return &DeepScanner{
 		groqAPIKey:   cfg.APIKey,
-		groqBaseURL:  "https://api.groq.com/openai/v1",
+		groqBaseURL:  endpoint,
+		modelName:    modelName,
 		timeout:      cfg.Timeout,
 		fallbackMode: fallback,
 		resultChan:   make(chan DeepScanResult, 100),
@@ -178,7 +192,7 @@ func (d *DeepScanner) scan(ctx context.Context, content string, traceID string) 
 	result := DeepScanResult{
 		TraceID:    traceID,
 		Timestamp:  start,
-		ModelUsed:  "meta-llama/llama-prompt-guard-2-86m",
+		ModelUsed:  d.modelName,
 		ChunkCount: 1,
 	}
 
@@ -236,7 +250,7 @@ func (d *DeepScanner) scan(ctx context.Context, content string, traceID string) 
 func (d *DeepScanner) classifyWithPromptGuard(ctx context.Context, content string) (PromptGuardResponse, error) {
 	// Construct request to Groq API
 	reqBody := map[string]interface{}{
-		"model": "meta-llama/llama-prompt-guard-2-86m",
+		"model": d.modelName,
 		"messages": []map[string]string{
 			{
 				"role":    "user",
