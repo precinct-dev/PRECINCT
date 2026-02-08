@@ -112,8 +112,8 @@ func ParseSSEEvents(body io.Reader) ([]SSEEvent, error) {
 		case "data":
 			dataLines = append(dataLines, value)
 			hasData = true
-		// "id" and "retry" fields are valid SSE but not used by MCP transport;
-		// we ignore them per spec (unknown fields are ignored).
+			// "id" and "retry" fields are valid SSE but not used by MCP transport;
+			// we ignore them per spec (unknown fields are ignored).
 		}
 	}
 

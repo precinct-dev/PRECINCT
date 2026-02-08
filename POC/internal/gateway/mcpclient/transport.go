@@ -24,8 +24,8 @@ type StreamableHTTPTransport struct {
 	// Uses RWMutex: reads (SessionID, State, ServerCapabilities) take RLock,
 	// writes (Initialize, Close, session expiry reset) take full Lock.
 	mu         sync.RWMutex
-	sessionID  string       // Mcp-Session-Id from initialize response
-	state      SessionState // current session lifecycle state
+	sessionID  string            // Mcp-Session-Id from initialize response
+	state      SessionState      // current session lifecycle state
 	serverCaps *InitializeResult // parsed server capabilities from initialize
 }
 

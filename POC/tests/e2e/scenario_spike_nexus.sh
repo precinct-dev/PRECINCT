@@ -20,11 +20,14 @@ log_header "Scenario: SPIKE Nexus Full Lifecycle (RFA-a2y.2)"
 # ---- Configuration ----
 SPIKE_NEXUS_URL="${SPIKE_NEXUS_URL:-https://localhost:8443}"
 
-# Test secret: a realistic API key value that must NEVER appear in audit logs
-TEST_SECRET_VALUE="sk-test-groq-key-e2e-abc123def456"
+# Test secret: pre-seeded by spike-secret-seeder init container (ref=deadbeef).
+# The seeder uses mTLS with a Pilot SPIFFE ID to write to SPIKE Nexus.
+# This value must NEVER appear in audit logs.
+TEST_SECRET_VALUE="test-secret-value-12345"
 # Hex-compatible ref for the secret path (token regex requires [a-f0-9]+)
-TEST_SECRET_REF="a1b2c3d4e5f6"
-# A second ref for scope validation tests
+# Must match SEED_REF in docker-compose.yml spike-secret-seeder service.
+TEST_SECRET_REF="deadbeef"
+# A second ref for scope validation tests (seeded by E2E via gateway if possible)
 TEST_SECRET_REF2="f6e5d4c3b2a1"
 
 # ============================================================
@@ -57,92 +60,47 @@ else
     exit 1
 fi
 
-# Verify SPIKE Nexus healthcheck endpoint is reachable from host
-NEXUS_HEALTH=$(curl -sk -o /dev/null -w "%{http_code}" "${SPIKE_NEXUS_URL}/healthz" 2>/dev/null || echo "000")
-if [ "$NEXUS_HEALTH" = "200" ]; then
-    log_pass "SPIKE Nexus healthcheck endpoint reachable (HTTP 200)"
+# Verify SPIKE Nexus healthcheck.
+# SPIKE Nexus requires mTLS for ALL endpoints (no plain HTTPS /healthz).
+# Docker Compose uses a custom mTLS healthcheck binary (mtls-healthcheck)
+# which proves end-to-end SPIRE SVID + TLS readiness. If docker compose
+# reports "healthy", the mTLS healthcheck already passed.
+# The spike-nexus image is distroless (no sh/wget/curl) so docker exec is not possible.
+if check_service_healthy "spike-nexus"; then
+    log_pass "SPIKE Nexus mTLS healthcheck verified (Docker Compose health status)"
 else
-    log_info "SPIKE Nexus healthcheck returned HTTP ${NEXUS_HEALTH} (may require mTLS)"
-    # Try via docker exec as fallback
-    NEXUS_DOCKER_HEALTH=$(docker compose exec -T spike-nexus wget --spider -q -k https://localhost:8443/healthz 2>&1; echo $?)
-    if [ "$NEXUS_DOCKER_HEALTH" = "0" ]; then
-        log_pass "SPIKE Nexus healthcheck reachable via container (internal)"
-    else
-        log_fail "SPIKE Nexus healthcheck" "Not reachable from host or container"
-        print_summary
-        exit 1
-    fi
+    log_fail "SPIKE Nexus healthcheck" "Container not in healthy state"
+    print_summary
+    exit 1
 fi
 
 # ============================================================
 # Test S1: Seed a real secret via SPIKE Nexus API
 # ============================================================
-log_subheader "S1: Seed secret into SPIKE Nexus"
+log_subheader "S1: Verify pre-seeded secret in SPIKE Nexus"
 
-# Seed secret using SPIKE Nexus PUT API
-# POST /v1/store/secret/put with {"path": "<ref>", "data": {"value": "<secret>"}}
-SEED_RESPONSE=$(curl -sk -w "\n%{http_code}" -X POST "${SPIKE_NEXUS_URL}/v1/store/secret/put" \
-    -H "Content-Type: application/json" \
-    -d "{
-        \"path\": \"${TEST_SECRET_REF}\",
-        \"data\": {\"value\": \"${TEST_SECRET_VALUE}\"}
-    }" 2>&1) || true
+# SPIKE Nexus requires mTLS for ALL endpoints. Secrets are pre-seeded by the
+# spike-secret-seeder init container (cmd/spike-seeder) which uses a Pilot-role
+# SPIFFE ID (spiffe://poc.local/spike/pilot/role/superuser/seeder) via SPIRE.
+# The seeder also creates an ACL policy granting the gateway read access.
+#
+# Verify the seeder ran successfully by checking its container exit code.
+SEEDER_STATUS=$(docker compose ps --format '{{.Status}}' spike-secret-seeder 2>/dev/null || echo "not found")
+log_info "spike-secret-seeder status: ${SEEDER_STATUS}"
 
-SEED_CODE=$(echo "$SEED_RESPONSE" | tail -n1)
-SEED_BODY=$(echo "$SEED_RESPONSE" | sed '$d')
-
-log_info "Seed response code: $SEED_CODE"
-log_info "Seed response body: ${SEED_BODY:0:200}"
-
-if [ "$SEED_CODE" = "200" ] || [ "$SEED_CODE" = "201" ] || [ "$SEED_CODE" = "204" ]; then
-    log_pass "Secret seeded into SPIKE Nexus (HTTP $SEED_CODE)"
+if echo "$SEEDER_STATUS" | grep -qi "exited (0)"; then
+    log_pass "spike-secret-seeder completed successfully (ref=${TEST_SECRET_REF} seeded)"
 else
-    # SPIKE Nexus may require mTLS for the PUT endpoint.
-    # Fall back to seeding via docker exec.
-    log_info "Direct API seed returned HTTP $SEED_CODE, attempting via docker exec..."
-
-    EXEC_RESULT=$(docker compose exec -T spike-nexus sh -c "
-        wget -q -O- --no-check-certificate \
-            --header='Content-Type: application/json' \
-            --post-data='{\"path\": \"${TEST_SECRET_REF}\", \"data\": {\"value\": \"${TEST_SECRET_VALUE}\"}}' \
-            https://localhost:8443/v1/store/secret/put 2>&1
-    " 2>&1) || true
-
-    if echo "$EXEC_RESULT" | grep -qi "error\|fail\|refused"; then
-        log_info "wget failed, trying curl inside container..."
-        EXEC_RESULT=$(docker compose exec -T spike-nexus sh -c "
-            curl -sk -X POST https://localhost:8443/v1/store/secret/put \
-                -H 'Content-Type: application/json' \
-                -d '{\"path\": \"${TEST_SECRET_REF}\", \"data\": {\"value\": \"${TEST_SECRET_VALUE}\"}}' 2>&1
-        " 2>&1) || true
-    fi
-
-    log_info "Docker exec result: ${EXEC_RESULT:0:200}"
-
-    # Verify the secret was stored by attempting to retrieve it
-    VERIFY_RESULT=$(curl -sk -X POST "${SPIKE_NEXUS_URL}/v1/store/secret/get" \
-        -H "Content-Type: application/json" \
-        -d "{\"path\": \"${TEST_SECRET_REF}\"}" 2>&1) || true
-
-    if echo "$VERIFY_RESULT" | grep -q "${TEST_SECRET_VALUE}"; then
-        log_pass "Secret seeded and verified in SPIKE Nexus (via docker exec)"
+    SEEDER_LOGS=$(docker compose logs --tail 5 spike-secret-seeder 2>/dev/null || echo "no logs")
+    log_info "Seeder logs: ${SEEDER_LOGS}"
+    if echo "$SEEDER_LOGS" | grep -q "successfully seeded"; then
+        log_pass "spike-secret-seeder confirmed secret seeded (ref=${TEST_SECRET_REF})"
     else
-        # Even if direct seeding is not possible due to mTLS, the gateway's POC
-        # redeemer path uses InsecureSkipVerify with nil X509Source. The E2E test
-        # can still prove the middleware chain works with the POC fallback path.
-        log_info "SPIKE Nexus may enforce mTLS for write operations"
-        log_info "Testing with gateway's token substitution middleware chain..."
-        log_pass "SPIKE Nexus API accessible (secret seeding attempted)"
+        log_fail "spike-secret-seeder" "Did not complete successfully: ${SEEDER_STATUS}"
+        print_summary
+        exit 1
     fi
 fi
-
-# Also seed a second secret for cross-agent scope validation (test S7)
-curl -sk -X POST "${SPIKE_NEXUS_URL}/v1/store/secret/put" \
-    -H "Content-Type: application/json" \
-    -d "{
-        \"path\": \"${TEST_SECRET_REF2}\",
-        \"data\": {\"value\": \"sk-second-secret-for-scope-test\"}
-    }" >/dev/null 2>&1 || true
 
 # ============================================================
 # Test S2: Obtain a SPIKE token reference for the seeded secret
@@ -151,7 +109,7 @@ log_subheader "S2: Construct SPIKE token reference"
 
 # Build the SPIKE token in the format expected by the gateway middleware
 # Format: $SPIKE{ref:<hex>}
-# The ref is used as the path when calling SPIKE Nexus /v1/store/secret/get
+# The ref is used as the path when calling SPIKE Nexus /v1/store/secrets?action=get
 SPIKE_TOKEN="\$SPIKE{ref:${TEST_SECRET_REF}}"
 
 log_info "SPIKE token: ${SPIKE_TOKEN}"
@@ -172,8 +130,10 @@ log_subheader "S3: Tool call with SPIKE token through full middleware chain"
 # Send a tool call with the SPIKE token embedded in the request body.
 # The TokenSubstitution middleware (step 13) should replace it with the real secret
 # BEFORE the request reaches the upstream MCP server.
-gateway_request "$DEFAULT_SPIFFE_ID" "read" \
-    "{\"file_path\": \"/tmp/test\", \"api_key\": \"${SPIKE_TOKEN}\"}"
+# Uses tavily_search (not read) because OPA policy allows tavily_search for the
+# dspy-researcher SPIFFE ID, while read requires an allowed path prefix.
+gateway_request "$DEFAULT_SPIFFE_ID" "tavily_search" \
+    "{\"query\": \"${SPIKE_TOKEN}\"}"
 
 log_info "Response code: $RESP_CODE"
 log_info "Response body (first 300 chars): ${RESP_BODY:0:300}"
@@ -272,8 +232,8 @@ log_info "Expired token: ${EXPIRED_TOKEN}"
 log_info "Waiting 2 seconds for token to expire..."
 sleep 2
 
-gateway_request "$DEFAULT_SPIFFE_ID" "read" \
-    "{\"file_path\": \"/tmp/test\", \"api_key\": \"${EXPIRED_TOKEN}\"}"
+gateway_request "$DEFAULT_SPIFFE_ID" "tavily_search" \
+    "{\"query\": \"${EXPIRED_TOKEN}\"}"
 
 log_info "Response code: $RESP_CODE"
 log_info "Response body: ${RESP_BODY:0:200}"
@@ -313,8 +273,8 @@ log_subheader "S7: Invalid token format is rejected"
 # Test with a valid-looking but nonexistent ref instead.
 INVALID_TOKEN="\$SPIKE{ref:0000000000}"
 
-gateway_request "$DEFAULT_SPIFFE_ID" "read" \
-    "{\"file_path\": \"/tmp/test\", \"api_key\": \"${INVALID_TOKEN}\"}"
+gateway_request "$DEFAULT_SPIFFE_ID" "tavily_search" \
+    "{\"query\": \"${INVALID_TOKEN}\"}"
 
 log_info "Response code: $RESP_CODE"
 log_info "Response body: ${RESP_BODY:0:200}"
@@ -353,8 +313,8 @@ log_subheader "S8: Token scope validation -- wrong SPIFFE ID"
 SCOPE_TOKEN="\$SPIKE{ref:${TEST_SECRET_REF2},scope:tools.docker.read}"
 
 # First request establishes ownership (if OwnerID not pre-set)
-gateway_request "$DEFAULT_SPIFFE_ID" "read" \
-    "{\"file_path\": \"/tmp/test\", \"api_key\": \"${SCOPE_TOKEN}\"}"
+gateway_request "$DEFAULT_SPIFFE_ID" "tavily_search" \
+    "{\"query\": \"${SCOPE_TOKEN}\"}"
 
 FIRST_CODE="$RESP_CODE"
 log_info "First request (owner binding): HTTP $FIRST_CODE"
@@ -362,8 +322,8 @@ log_info "First request (owner binding): HTTP $FIRST_CODE"
 # Second request with a different SPIFFE ID should fail ownership check
 # (if the token retained its OwnerID from the first request)
 ATTACKER_SPIFFE="spiffe://poc.local/agents/mcp-client/malicious-agent/dev"
-gateway_request "$ATTACKER_SPIFFE" "read" \
-    "{\"file_path\": \"/tmp/test\", \"api_key\": \"${SCOPE_TOKEN}\"}"
+gateway_request "$ATTACKER_SPIFFE" "tavily_search" \
+    "{\"query\": \"${SCOPE_TOKEN}\"}"
 
 log_info "Cross-agent response code: $RESP_CODE"
 log_info "Cross-agent response body: ${RESP_BODY:0:200}"
@@ -391,8 +351,8 @@ else
 fi
 
 # Also test with a completely unregistered SPIFFE ID (should be denied by OPA, not token)
-gateway_request "spiffe://poc.local/agents/unauthorized/evil" "read" \
-    "{\"file_path\": \"/tmp/test\", \"api_key\": \"${SCOPE_TOKEN}\"}"
+gateway_request "spiffe://poc.local/agents/unauthorized/evil" "tavily_search" \
+    "{\"query\": \"${SCOPE_TOKEN}\"}"
 
 log_info "Unregistered SPIFFE response: HTTP $RESP_CODE"
 

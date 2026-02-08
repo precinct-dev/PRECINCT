@@ -23,8 +23,8 @@ const (
 
 	// DLP (step 7) -- 403 Forbidden
 	ErrDLPCredentialsDetected = "dlp_credentials_detected"
-	ErrDLPInjectionBlocked    = "dlp_injection_blocked"   // RFA-sd7: injection blocked by policy
-	ErrDLPPIIBlocked          = "dlp_pii_blocked"         // RFA-sd7: PII blocked by policy
+	ErrDLPInjectionBlocked    = "dlp_injection_blocked" // RFA-sd7: injection blocked by policy
+	ErrDLPPIIBlocked          = "dlp_pii_blocked"       // RFA-sd7: PII blocked by policy
 
 	// Step-Up Gating (step 9) -- 403 Forbidden
 	ErrStepUpDenied             = "stepup_denied"
@@ -53,7 +53,7 @@ const (
 	ErrUIResourceBlocked  = "ui_resource_blocked"
 
 	// MCP Transport (proxy handler) -- 502/503
-	ErrMCPTransportFailed = "mcp_transport_failed"  // transport-level failure (connection, timeout)
-	ErrMCPRequestFailed   = "mcp_request_failed"    // MCP server returned JSON-RPC error
-	ErrMCPInvalidResponse = "mcp_invalid_response"  // malformed response from MCP server
+	ErrMCPTransportFailed = "mcp_transport_failed" // transport-level failure (connection, timeout)
+	ErrMCPRequestFailed   = "mcp_request_failed"   // MCP server returned JSON-RPC error
+	ErrMCPInvalidResponse = "mcp_invalid_response" // malformed response from MCP server
 )

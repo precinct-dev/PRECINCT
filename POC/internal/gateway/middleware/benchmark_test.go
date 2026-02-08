@@ -119,7 +119,7 @@ allow { input.tool == "tools/list" }
 	handler := ResponseFirewall(terminal, registry, handleStore, 300)
 
 	// Apply middleware in reverse order (innermost first) -- same as gateway.go
-	handler = TokenSubstitution(handler, spikeRedeemer, auditor, nil)                                 // 13
+	handler = TokenSubstitution(handler, spikeRedeemer, auditor, nil)                      // 13
 	handler = CircuitBreakerMiddleware(handler, circuitBreaker)                            // 12
 	handler = RateLimitMiddleware(handler, rateLimiter)                                    // 11
 	handler = DeepScanMiddleware(handler, deepScanner)                                     // 10
