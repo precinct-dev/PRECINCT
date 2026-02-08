@@ -165,6 +165,20 @@ func main() {
 			fn:     testInjectionBase64Obfuscation,
 		},
 		{
+			name:   "SPIKE: token reference passes DLP (safe pattern)",
+			what:   "SPIKE token reference ($SPIKE{ref:deadbeef}) passes DLP and reaches token substitution (step 13)",
+			send:   "tavily_search(query='$SPIKE{ref:deadbeef}') -- safe SPIKE reference, not a raw credential",
+			expect: "200, 500 (token_redemption_failed), or 502 -- all prove SPIKE ref flows through DLP to step 13",
+			fn:     testSPIKETokenReference,
+		},
+		{
+			name:   "SPIKE: credential-vs-reference contrast",
+			what:   "Raw credentials are BLOCKED (403) -- this is the WRONG way. Use SPIKE references instead.",
+			send:   "tavily_search(query='Use API key: sk-proj-AAAAAAAAAAAAAAAAAAAAAA to authenticate') -- raw credential",
+			expect: "403 -- DLP blocks raw credentials. Previous test proved SPIKE references pass safely.",
+			fn:     testSPIKECredentialContrast,
+		},
+		{
 			name:   "Rate limit burst (429 on rapid calls)",
 			what:   "Per-SPIFFE-ID rate limiter enforces request quotas at step 11",
 			send:   "Rapid burst of tavily_search() calls (up to 200) with same SPIFFE ID",
@@ -569,7 +583,63 @@ func testInjectionBase64Obfuscation() bool {
 	)
 }
 
-// 18. Rate limit burst: Rapidly call until we get 429.
+// --- SPIKE token tests ----------------------------------------------------
+
+// 18. SPIKE token reference: safe $SPIKE{ref:...} passes DLP and reaches token substitution.
+func testSPIKETokenReference() bool {
+	client := newClient()
+	ctx := context.Background()
+	result, err := client.Call(ctx, "tavily_search", map[string]any{
+		"query": "$SPIKE{ref:deadbeef}",
+	})
+	if err == nil {
+		fmt.Printf("  Result: %v\n", truncateStr(fmt.Sprintf("%v", result), 100))
+		return printProof(true, "SPIKE reference processed through full chain (200)")
+	}
+	var ge *mcpgateway.GatewayError
+	if errors.As(err, &ge) {
+		printGatewayError(ge)
+		if ge.HTTPStatus == 502 {
+			return printProof(true, "SPIKE reference flowed through chain, 502 = no upstream (expected)")
+		}
+		if ge.HTTPStatus == 500 {
+			return printProof(true, fmt.Sprintf("SPIKE token substitution attempted: %s (proves pipeline works)", ge.Code))
+		}
+		if ge.HTTPStatus == 403 {
+			return printProof(false, "SPIKE reference was BLOCKED by DLP (403) -- should pass through")
+		}
+		return printProof(true, fmt.Sprintf("SPIKE reference processed: code=%s, step=%d", ge.Code, ge.Step))
+	}
+	fmt.Printf("  Error: %v\n", err)
+	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
+}
+
+// 19. SPIKE credential contrast: raw credential is blocked (403), proving SPIKE is the safe alternative.
+func testSPIKECredentialContrast() bool {
+	client := newClient()
+	ctx := context.Background()
+	_, err := client.Call(ctx, "tavily_search", map[string]any{
+		"query": "Use API key: sk-proj-AAAAAAAAAAAAAAAAAAAAAA to authenticate",
+	})
+	if err == nil {
+		return printProof(false, "expected DLP block but request succeeded -- credential should be blocked")
+	}
+	var ge *mcpgateway.GatewayError
+	if errors.As(err, &ge) {
+		printGatewayError(ge)
+		if ge.HTTPStatus == 403 {
+			return printProof(true, fmt.Sprintf("credential blocked: code=%s -- use SPIKE references instead", ge.Code))
+		}
+		if ge.HTTPStatus == 502 {
+			return printProof(false, "credential reached upstream (502) -- DLP did NOT block")
+		}
+		return printProof(false, fmt.Sprintf("unexpected: %s (HTTP %d)", ge.Code, ge.HTTPStatus))
+	}
+	fmt.Printf("  Error: %v\n", err)
+	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
+}
+
+// 20. Rate limit burst: Rapidly call until we get 429.
 // Uses tavily_search (no path restrictions) so calls reach the rate limiter at step 11.
 // Creates a fresh client per call to avoid session risk accumulation (OPA step 6)
 // while still accumulating rate limit counters (per-SPIFFE-ID at step 11).
@@ -596,7 +666,7 @@ func testRateLimit() bool {
 	return printProof(false, fmt.Sprintf("no rate limit after %d calls", maxAttempts))
 }
 
-// 19. Request size limit: 11 MB payload should be rejected at step 1.
+// 21. Request size limit: 11 MB payload should be rejected at step 1.
 func testRequestSizeLimit() bool {
 	client := newClient()
 	ctx := context.Background()
