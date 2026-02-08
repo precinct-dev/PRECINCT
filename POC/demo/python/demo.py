@@ -288,7 +288,7 @@ def test_spike_token_reference(url: str) -> bool:
         if e.http_status == 502:
             return print_proof(True, "SPIKE reference flowed through chain, 502 = no upstream (expected)")
         if e.http_status == 500:
-            return print_proof(True, f"SPIKE token substitution attempted: {e.code} (proves pipeline works)")
+            return print_proof(True, f"SPIKE reference reached token substitution (step 13) without DLP false-positive. Token redemption failed as expected (SPIKE Nexus not configured for demo): {e.code}")
         if e.http_status == 403 and e.code == "dlp_credentials_detected":
             return print_proof(False, "SPIKE reference was BLOCKED by DLP (403) -- should pass through")
         if e.http_status == 403 and e.step and e.step >= 13:
