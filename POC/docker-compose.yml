@@ -334,6 +334,8 @@ services:
       - GUARD_MODEL_NAME=${GUARD_MODEL_NAME:-}  # RFA-j6c: Guard model identifier (default: llama-prompt-guard-2-86m)
       - GUARD_API_KEY=${GUARD_API_KEY:-}  # RFA-j6c: Guard model API key (default: falls back to GROQ_API_KEY)
       - DLP_INJECTION_POLICY=${DLP_INJECTION_POLICY:-}  # RFA-sd7: Override DLP injection policy ("block" or "flag", default: use YAML config)
+      - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}    # RFA-8ak: Demo-friendly rate limit (code default 600 is too generous for burst test)
+      - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}  # RFA-8ak: Small burst bucket so 200-call test triggers 429 quickly
     networks:
       - agentic-net
     labels:

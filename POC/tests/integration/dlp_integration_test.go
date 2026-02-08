@@ -1,4 +1,8 @@
+//go:build integration
 // +build integration
+
+// DLP integration tests -- require a running gateway (make up).
+// Tests are skipped gracefully when the gateway is not available.
 
 package integration
 
@@ -79,6 +83,7 @@ func findEventWithoutFlags(events []middleware.AuditEvent) *middleware.AuditEven
 
 // TestDLPIntegration_PIIFlaggedNotBlocked verifies that PII is flagged in audit but request succeeds
 func TestDLPIntegration_PIIFlaggedNotBlocked(t *testing.T) {
+	requireGateway(t)
 	cleanup := setupAuditLogFile(t)
 	defer cleanup()
 
@@ -126,6 +131,7 @@ func TestDLPIntegration_PIIFlaggedNotBlocked(t *testing.T) {
 
 // TestDLPIntegration_CredentialsBlocked verifies that credentials are blocked with 403
 func TestDLPIntegration_CredentialsBlocked(t *testing.T) {
+	requireGateway(t)
 	cleanup := setupAuditLogFile(t)
 	defer cleanup()
 
@@ -174,6 +180,7 @@ func TestDLPIntegration_CredentialsBlocked(t *testing.T) {
 
 // TestDLPIntegration_SuspiciousInjectionFlagged verifies suspicious patterns trigger flags
 func TestDLPIntegration_SuspiciousInjectionFlagged(t *testing.T) {
+	requireGateway(t)
 	cleanup := setupAuditLogFile(t)
 	defer cleanup()
 
@@ -219,6 +226,7 @@ func TestDLPIntegration_SuspiciousInjectionFlagged(t *testing.T) {
 
 // TestDLPIntegration_CleanRequest verifies clean requests pass through with no flags
 func TestDLPIntegration_CleanRequest(t *testing.T) {
+	requireGateway(t)
 	cleanup := setupAuditLogFile(t)
 	defer cleanup()
 
@@ -264,6 +272,7 @@ func TestDLPIntegration_CleanRequest(t *testing.T) {
 
 // TestDLPIntegration_MultiplePatterns verifies multiple pattern types in single request
 func TestDLPIntegration_MultiplePatterns(t *testing.T) {
+	requireGateway(t)
 	cleanup := setupAuditLogFile(t)
 	defer cleanup()
 
@@ -332,6 +341,7 @@ func TestDLPIntegration_MultiplePatterns(t *testing.T) {
 
 // TestDLPIntegration_NewPatterns verifies new patterns from SafeZone are detected
 func TestDLPIntegration_NewPatterns(t *testing.T) {
+	requireGateway(t)
 	testCases := []struct {
 		name        string
 		body        string

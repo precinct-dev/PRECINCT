@@ -647,6 +647,81 @@ func TestSecurityFlagsContext(t *testing.T) {
 	}
 }
 
+// TestSecurityFlagsCollector_UpstreamPropagation verifies that security flags set by
+// downstream middleware (e.g., DLP at step 7) propagate upstream to the audit middleware
+// (step 4) via the mutable SecurityFlagsCollector. RFA-9i2: This was the root cause of
+// empty safezone_flags in audit logs -- Go's context.WithValue creates child contexts
+// invisible to parent middleware.
+func TestSecurityFlagsCollector_UpstreamPropagation(t *testing.T) {
+	// Simulate audit middleware creating a collector
+	collector := &SecurityFlagsCollector{}
+	ctx := context.Background()
+	ctx = WithFlagsCollector(ctx, collector)
+
+	// Simulate DLP middleware adding flags via WithSecurityFlags.
+	// WithSecurityFlags now also appends to the collector.
+	childCtx := WithSecurityFlags(ctx, []string{"potential_injection"})
+
+	// The parent context (ctx) should NOT have the flags via GetSecurityFlags
+	// (that's Go's context limitation), but the collector IS shared.
+	parentFlags := GetSecurityFlags(ctx)
+	if parentFlags != nil {
+		t.Errorf("Expected nil flags on parent context, got %v", parentFlags)
+	}
+
+	// The child context SHOULD have the flags
+	childFlags := GetSecurityFlags(childCtx)
+	if len(childFlags) != 1 || childFlags[0] != "potential_injection" {
+		t.Errorf("Expected [potential_injection] on child, got %v", childFlags)
+	}
+
+	// The collector should have the flags -- this is how audit reads them
+	if len(collector.Flags) != 1 || collector.Flags[0] != "potential_injection" {
+		t.Errorf("Expected collector to have [potential_injection], got %v", collector.Flags)
+	}
+}
+
+func TestSecurityFlagsCollector_Deduplication(t *testing.T) {
+	collector := &SecurityFlagsCollector{}
+
+	collector.Append("potential_injection")
+	collector.Append("potential_injection") // duplicate
+	collector.Append("blocked_content")
+
+	if len(collector.Flags) != 2 {
+		t.Errorf("Expected 2 flags (deduplicated), got %d: %v", len(collector.Flags), collector.Flags)
+	}
+}
+
+func TestSecurityFlagsCollector_MultipleDownstreamMiddleware(t *testing.T) {
+	// Simulate audit middleware creating a collector
+	collector := &SecurityFlagsCollector{}
+	ctx := context.Background()
+	ctx = WithFlagsCollector(ctx, collector)
+
+	// DLP middleware flags injection
+	ctx1 := WithSecurityFlags(ctx, []string{"potential_injection"})
+
+	// Deep scan middleware flags blocked_content (on a different child context)
+	_ = WithSecurityFlags(ctx1, []string{"blocked_content"})
+
+	// The collector should have BOTH flags from both middleware
+	if len(collector.Flags) != 2 {
+		t.Errorf("Expected 2 flags from two middleware, got %d: %v", len(collector.Flags), collector.Flags)
+	}
+}
+
+func TestSecurityFlagsCollector_NilCollector(t *testing.T) {
+	// When no collector in context, WithSecurityFlags should still work
+	// (backward compatibility with tests that don't set up a collector)
+	ctx := context.Background()
+	ctx = WithSecurityFlags(ctx, []string{"test_flag"})
+	flags := GetSecurityFlags(ctx)
+	if len(flags) != 1 || flags[0] != "test_flag" {
+		t.Errorf("Expected [test_flag], got %v", flags)
+	}
+}
+
 func TestValidateABAChecksum(t *testing.T) {
 	tests := []struct {
 		name   string
