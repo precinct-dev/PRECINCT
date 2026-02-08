@@ -60,6 +60,12 @@ reg "spiffe://$DOMAIN/agents/mcp-client/pydantic-researcher/dev" \
 reg "spiffe://$DOMAIN/spike/nexus" \
     -selector docker:label:spiffe-id:spike-nexus
 
+# SPIKE Nexus only authorizes Pilot-role SPIFFE IDs for secret writes.
+# The seeder uses /spike/pilot/role/superuser/seeder which matches the
+# IsPilotOperator() check (base path + optional suffix).
+reg "spiffe://$DOMAIN/spike/pilot/role/superuser/seeder" \
+    -selector docker:label:spiffe-id:spike-seeder
+
 reg "spiffe://$DOMAIN/keydb" \
     -selector docker:label:spiffe-id:keydb
 

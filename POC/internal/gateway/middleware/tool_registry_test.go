@@ -2499,12 +2499,12 @@ func TestToolRegistryScopeResolver_ResolveScope(t *testing.T) {
 	resolver := NewToolRegistryScopeResolver(registry)
 
 	tests := []struct {
-		name         string
-		toolName     string
-		wantLoc      string
-		wantOp       string
-		wantDest     string
-		wantFound    bool
+		name      string
+		toolName  string
+		wantLoc   string
+		wantOp    string
+		wantDest  string
+		wantFound bool
 	}{
 		{
 			name:      "tool with scope - docker",

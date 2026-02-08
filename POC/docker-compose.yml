@@ -122,6 +122,10 @@ services:
       - SPIKE_SYSTEM_LOG_LEVEL=INFO
       - SPIKE_TRUST_ROOT=poc.local
       - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+      - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
+      - SPIKE_TRUST_ROOT_KEEPER=poc.local
+      - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - HEALTHCHECK_URL=https://localhost:8443/
     networks:
@@ -149,6 +153,31 @@ services:
       - agentic-net
     labels:
       - "spiffe-id=spike-bootstrap"
+    restart: "no"
+
+  # SPIKE Secret Seeder - One-shot init to pre-seed test secrets via mTLS (RFA-uln)
+  # Seeds ref "deadbeef" with a test value so demo test 18 can prove full
+  # SPIKE token redemption end-to-end. Uses SPIRE X509Source for mTLS.
+  spike-secret-seeder:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spike-seeder
+    image: spike-secret-seeder:latest
+    container_name: spike-secret-seeder
+    depends_on:
+      spike-nexus:
+        condition: service_healthy  # Nexus must be healthy and serving mTLS
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - SPIKE_NEXUS_URL=https://spike-nexus:8443
+      - SEED_REF=deadbeef
+      - SEED_VALUE=test-secret-value-12345
+    networks:
+      - agentic-net
+    labels:
+      - "spiffe-id=spike-seeder"
     restart: "no"
 
   # KeyDB - Redis-compatible session persistence store (RFA-hh5.1)
@@ -292,6 +321,8 @@ services:
         condition: service_healthy  # Zero Trust: gateway must not start until SPIKE Nexus
                                     # is serving mTLS on port 8443.  The mTLS healthcheck
                                     # binary verifies end-to-end SPIRE SVID + TLS readiness.
+      spike-secret-seeder:
+        condition: service_completed_successfully  # RFA-uln: test secret must be seeded before gateway starts
       keydb:
         condition: service_healthy
       otel-collector:

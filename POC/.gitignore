@@ -8,6 +8,7 @@ data/
 /s3-mcp-server
 /spike-cli
 /mtls-healthcheck
+/spike-seeder
 demo/go/demo
 demo/mock-mcp-server/mock-mcp-server
 *.exe
