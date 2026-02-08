@@ -327,6 +327,9 @@ services:
       - OTEL_SERVICE_NAME=mcp-security-gateway
       - KEYDB_URL=redis://keydb:6379  # RFA-hh5.1: KeyDB session persistence (auto-converts to rediss://keydb:6380 in prod mode per RFA-8z8.2)
       - MCP_TRANSPORT_MODE=${MCP_TRANSPORT_MODE:-mcp}  # RFA-5u9: "mcp" (default) or "proxy" (backward compat reverse proxy)
+      - GROQ_API_KEY=${GROQ_API_KEY:-}  # RFA-o9z: Deep scan LLM guard (Groq Prompt Guard 2)
+      - DEEP_SCAN_TIMEOUT=${DEEP_SCAN_TIMEOUT:-5}  # RFA-o9z: Deep scan API timeout in seconds
+      - DEEP_SCAN_FALLBACK=${DEEP_SCAN_FALLBACK:-fail_closed}  # RFA-o9z: "fail_closed" (default) or "fail_open"
     networks:
       - agentic-net
     labels:
