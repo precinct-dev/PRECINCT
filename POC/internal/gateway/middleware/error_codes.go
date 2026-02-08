@@ -49,4 +49,9 @@ const (
 	// UI Capability Gating -- 403 Forbidden
 	ErrUICapabilityDenied = "ui_capability_denied"
 	ErrUIResourceBlocked  = "ui_resource_blocked"
+
+	// MCP Transport (proxy handler) -- 502/503
+	ErrMCPTransportFailed = "mcp_transport_failed"  // transport-level failure (connection, timeout)
+	ErrMCPRequestFailed   = "mcp_request_failed"    // MCP server returned JSON-RPC error
+	ErrMCPInvalidResponse = "mcp_invalid_response"  // malformed response from MCP server
 )

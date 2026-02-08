@@ -11,8 +11,10 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 
+	"github.com/example/agentic-security-poc/internal/gateway/mcpclient"
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -42,6 +44,8 @@ type Gateway struct {
 	sessionStore         middleware.SessionStore          // RFA-hh5.1: session persistence store (InMemory or KeyDB)
 	spiffeTLS            *SPIFFETLSConfig                 // RFA-8z8.1: SPIFFE mTLS config (nil in dev mode)
 	registryStop         func()                           // RFA-dh9: stop function for registry fsnotify watcher
+	mcpTransport         mcpclient.Transport // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
+	mcpTransportMu       sync.Mutex         // RFA-9ol: protects lazy initialization of mcpTransport
 }
 
 // New creates a new gateway instance
@@ -222,6 +226,12 @@ func New(cfg *Config) (*Gateway, error) {
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
 
+	// RFA-0dz: MCP transport creation is deferred to first request (lazy init).
+	// DetectTransport will try Streamable HTTP first, then fall back to
+	// Legacy SSE, with a deprecation warning for SSE.
+	// No transport is created at startup to handle Docker Compose ordering
+	// where upstream may not be ready yet.
+
 	return &Gateway{
 		config:               cfg,
 		proxy:                proxy,
@@ -348,8 +358,17 @@ func (g *Gateway) proxyHandler() http.Handler {
 		// Wrap response writer to capture status code for span
 		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
-		// RFA-j2d.6: Route through processUpstreamResponse based on request type
-		g.processUpstreamResponse(proxyRW, r.WithContext(ctx), reqInfo, server, tenant)
+		// RFA-9ol: Branch on transport mode.
+		// "mcp" uses the MCP Streamable HTTP transport for JSON-RPC.
+		// Any other value (including "proxy" and empty string) uses the legacy
+		// httputil.ReverseProxy path with full UI processing for backward compat.
+		if g.config.MCPTransportMode == "mcp" {
+			// MCP path: translate SDK request -> MCP JSON-RPC -> upstream -> response
+			g.handleMCPRequest(proxyRW, r.WithContext(ctx), mcpMethod, mcpParams)
+		} else {
+			// Legacy path: full UI response processing pipeline
+			g.processUpstreamResponse(proxyRW, r.WithContext(ctx), reqInfo, server, tenant)
+		}
 
 		span.SetAttributes(
 			attribute.Int("status_code", proxyRW.statusCode),
@@ -380,6 +399,170 @@ func (prw *proxyResponseWriter) Write(b []byte) (int, error) {
 		prw.written = true
 	}
 	return prw.ResponseWriter.Write(b)
+}
+
+// handleMCPRequest translates an SDK-format request into an MCP JSON-RPC request,
+// sends it via the auto-detected Transport, and writes the response back as JSON.
+// RFA-9ol: Walking skeleton -- handles tools/call and any other MCP method.
+// RFA-0dz: Uses Transport interface (Streamable HTTP or Legacy SSE).
+// RFA-xhr: Adds per-request timeouts, retry with backoff on session loss,
+// response validation, and size limits.
+//
+// Lazy initialization: the MCP transport is initialized on the first request,
+// not at startup, to handle Docker Compose ordering where upstream may not be
+// ready yet.
+//
+// ALL errors use middleware.WriteGatewayError() with proper GatewayError structs.
+func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, method string, params map[string]interface{}) {
+	ctx := r.Context()
+
+	// Lazy init: ensure MCP transport is initialized
+	if err := g.ensureMCPTransportInitialized(ctx); err != nil {
+		middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
+			Code:        middleware.ErrMCPTransportFailed,
+			Message:     fmt.Sprintf("MCP transport initialization failed: %v", err),
+			Middleware:  "mcp_transport",
+			Remediation: "Ensure the upstream MCP server is running and accessible at " + g.config.UpstreamURL,
+		})
+		return
+	}
+
+	// Build JSON-RPC request from the extracted method and params
+	rpcReq := &mcpclient.JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1, // Walking skeleton uses a fixed ID; session story will add proper ID tracking
+		Method:  method,
+		Params:  params,
+	}
+
+	// RFA-xhr: Apply per-request timeout (default 30s when config is zero)
+	requestTimeoutSec := g.config.MCPRequestTimeout
+	if requestTimeoutSec <= 0 {
+		requestTimeoutSec = 30
+	}
+	requestTimeout := time.Duration(requestTimeoutSec) * time.Second
+	sendCtx, sendCancel := context.WithTimeout(ctx, requestTimeout)
+	defer sendCancel()
+
+	// RFA-xhr: Send with retry and backoff on session loss.
+	// The reinitFn re-initializes the transport after session loss.
+	retryCfg := mcpclient.DefaultRetryConfig()
+	reinitFn := func(retryCtx context.Context) error {
+		g.mcpTransportMu.Lock()
+		g.mcpTransport = nil
+		g.mcpTransportMu.Unlock()
+		return g.ensureMCPTransportInitialized(retryCtx)
+	}
+
+	rpcResp, err := mcpclient.SendWithRetry(sendCtx, g.mcpTransport, rpcReq, retryCfg, reinitFn)
+	if err != nil {
+		middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
+			Code:        middleware.ErrMCPTransportFailed,
+			Message:     fmt.Sprintf("MCP request failed: %v", err),
+			Middleware:  "mcp_transport",
+			Remediation: "Check upstream MCP server availability and network connectivity.",
+		})
+		return
+	}
+
+	// RFA-xhr: Validate response structure
+	if validationErr := mcpclient.ValidateResponse(rpcReq, rpcResp); validationErr != nil {
+		middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
+			Code:        middleware.ErrMCPInvalidResponse,
+			Message:     fmt.Sprintf("Invalid MCP response: %v", validationErr),
+			Middleware:  "mcp_transport",
+			Remediation: "The upstream MCP server returned an invalid JSON-RPC response.",
+		})
+		return
+	}
+
+	// Check for JSON-RPC error in the response
+	if rpcResp.Error != nil {
+		middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
+			Code:    middleware.ErrMCPRequestFailed,
+			Message: fmt.Sprintf("MCP server error: code=%d message=%s", rpcResp.Error.Code, rpcResp.Error.Message),
+			Details: map[string]any{
+				"jsonrpc_error_code": rpcResp.Error.Code,
+				"jsonrpc_error_msg":  rpcResp.Error.Message,
+			},
+			Middleware:  "mcp_transport",
+			Remediation: "The upstream MCP server returned an error. Check the error details.",
+		})
+		return
+	}
+
+	// RFA-xhr: Enforce response size limit using MaxRequestSizeBytes
+	if rpcResp.Result != nil && int64(len(rpcResp.Result)) > g.config.MaxRequestSizeBytes {
+		middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
+			Code:    middleware.ErrMCPInvalidResponse,
+			Message: fmt.Sprintf("MCP response result exceeds maximum size of %d bytes (got %d bytes)", g.config.MaxRequestSizeBytes, len(rpcResp.Result)),
+			Details: map[string]any{
+				"max_bytes":    g.config.MaxRequestSizeBytes,
+				"actual_bytes": len(rpcResp.Result),
+			},
+			Middleware:  "mcp_transport",
+			Remediation: "The upstream MCP server returned a response larger than MAX_REQUEST_SIZE_BYTES.",
+		})
+		return
+	}
+
+	// Write the JSON-RPC response back to the client
+	w.Header().Set("Content-Type", "application/json")
+	respBytes, err := json.Marshal(rpcResp)
+	if err != nil {
+		middleware.WriteGatewayError(w, r, http.StatusInternalServerError, middleware.GatewayError{
+			Code:        middleware.ErrMCPInvalidResponse,
+			Message:     fmt.Sprintf("Failed to serialize MCP response: %v", err),
+			Middleware:  "mcp_transport",
+			Remediation: "This is an internal error. Check gateway logs for details.",
+		})
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(respBytes)
+}
+
+// ensureMCPTransportInitialized performs lazy initialization of the MCP transport.
+// Thread-safe: only the first caller initializes; subsequent callers wait.
+//
+// RFA-0dz: Uses DetectTransport for auto-detection. On first request, tries
+// Streamable HTTP first, falls back to Legacy SSE with deprecation warning.
+// RFA-xhr: Uses DetectTransportWithConfig for per-probe and overall timeouts.
+func (g *Gateway) ensureMCPTransportInitialized(ctx context.Context) error {
+	if g.config.MCPTransportMode != "mcp" {
+		return fmt.Errorf("MCP transport not configured (MCPTransportMode=%q)", g.config.MCPTransportMode)
+	}
+
+	// Fast path: already initialized
+	if g.mcpTransport != nil {
+		return nil
+	}
+
+	g.mcpTransportMu.Lock()
+	defer g.mcpTransportMu.Unlock()
+
+	// Double-check after acquiring lock
+	if g.mcpTransport != nil {
+		return nil
+	}
+
+	// RFA-xhr: Use configured timeouts for detection, with safe defaults
+	// when config values are zero (e.g., tests that create Config{} directly).
+	detectCfg := mcpclient.DefaultDetectConfig()
+	if g.config.MCPProbeTimeout > 0 {
+		detectCfg.ProbeTimeout = time.Duration(g.config.MCPProbeTimeout) * time.Second
+	}
+	if g.config.MCPDetectTimeout > 0 {
+		detectCfg.OverallTimeout = time.Duration(g.config.MCPDetectTimeout) * time.Second
+	}
+
+	transport, err := mcpclient.DetectTransportWithConfig(ctx, g.config.UpstreamURL, nil, detectCfg)
+	if err != nil {
+		return err
+	}
+
+	g.mcpTransport = transport
+	return nil
 }
 
 // processUpstreamResponse routes MCP responses through the appropriate UI
@@ -643,6 +826,10 @@ func (g *Gateway) checkUIResourceReadAllowed(server, tenant, resourceURI string)
 
 // Close cleans up gateway resources
 func (g *Gateway) Close() error {
+	// RFA-9ol: Close MCP transport session
+	if g.mcpTransport != nil {
+		_ = g.mcpTransport.Close(context.Background())
+	}
 	// RFA-dh9: Stop the registry file watcher
 	if g.registryStop != nil {
 		g.registryStop()

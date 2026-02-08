@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"fmt"
 	"io"
 	"math/big"
@@ -69,16 +70,29 @@ func TestMiddlewareChainOrder(t *testing.T) {
 	}
 }
 
-// TestRequestSizeLimit verifies size limit enforcement
+// TestRequestSizeLimit verifies size limit enforcement at step 1.
+// RFA-zxf: The size check must happen in this middleware (step 1), not in
+// body_capture (step 2). The middleware returns a GatewayError JSON response
+// with middleware="request_size_limit" and middleware_step=1.
 func TestRequestSizeLimit(t *testing.T) {
 	maxBytes := int64(100)
+	nextCalled := false
 	handler := RequestSizeLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = io.ReadAll(r.Body)
+		nextCalled = true
+		// Verify body is still readable downstream
+		bodyBytes, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("Downstream handler failed to read body: %v", err)
+		}
+		if len(bodyBytes) == 0 {
+			t.Error("Downstream handler received empty body")
+		}
 		w.WriteHeader(http.StatusOK)
 	}), maxBytes)
 
-	// Test under limit
+	// Test under limit: body passes through to next handler
 	t.Run("UnderLimit", func(t *testing.T) {
+		nextCalled = false
 		body := bytes.Repeat([]byte("a"), 50)
 		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
 		rec := httptest.NewRecorder()
@@ -87,29 +101,70 @@ func TestRequestSizeLimit(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Errorf("Expected 200, got %d", rec.Code)
 		}
+		if !nextCalled {
+			t.Error("Next handler should have been called for body under limit")
+		}
 	})
 
-	// Test over limit
+	// Test over limit: returns 413 GatewayError at step 1, next handler NOT called
 	t.Run("OverLimit", func(t *testing.T) {
+		nextCalled = false
 		body := bytes.Repeat([]byte("a"), 150)
 		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
 		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
 
-		// Create a handler that explicitly reads all bytes to trigger the limit
-		testHandler := RequestSizeLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			_, err := io.ReadAll(r.Body)
-			if err != nil {
-				http.Error(w, "Request body too large", http.StatusRequestEntityTooLarge)
-				return
-			}
+		if rec.Code != http.StatusRequestEntityTooLarge {
+			t.Errorf("Expected 413, got %d", rec.Code)
+		}
+		if nextCalled {
+			t.Error("Next handler should NOT have been called for oversized body")
+		}
+
+		// Verify GatewayError JSON response attributes
+		var ge GatewayError
+		if err := json.Unmarshal(rec.Body.Bytes(), &ge); err != nil {
+			t.Fatalf("Failed to parse GatewayError response: %v", err)
+		}
+		if ge.Code != ErrRequestTooLarge {
+			t.Errorf("Expected code %q, got %q", ErrRequestTooLarge, ge.Code)
+		}
+		if ge.Middleware != "request_size_limit" {
+			t.Errorf("Expected middleware 'request_size_limit', got %q", ge.Middleware)
+		}
+		if ge.MiddlewareStep != 1 {
+			t.Errorf("Expected middleware_step=1, got %d", ge.MiddlewareStep)
+		}
+	})
+
+	// Test exactly at limit: should pass through
+	t.Run("ExactLimit", func(t *testing.T) {
+		nextCalled = false
+		body := bytes.Repeat([]byte("a"), int(maxBytes))
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200, got %d", rec.Code)
+		}
+		if !nextCalled {
+			t.Error("Next handler should have been called for body exactly at limit")
+		}
+	})
+
+	// Test nil body: should pass through without error
+	t.Run("NilBody", func(t *testing.T) {
+		nilHandler := RequestSizeLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}), maxBytes)
 
-		testHandler.ServeHTTP(rec, req)
+		req := httptest.NewRequest("GET", "/", nil)
+		rec := httptest.NewRecorder()
+		nilHandler.ServeHTTP(rec, req)
 
-		// Should fail with 413 when body exceeds limit
-		if rec.Code != http.StatusRequestEntityTooLarge {
-			t.Errorf("Expected 413, got %d", rec.Code)
+		if rec.Code != http.StatusOK {
+			t.Errorf("Expected 200 for nil body, got %d", rec.Code)
 		}
 	})
 }

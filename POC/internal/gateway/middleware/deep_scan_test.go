@@ -623,6 +623,10 @@ func TestDeepScanMiddleware_AuditEvent(t *testing.T) {
 	w := httptest.NewRecorder()
 	middleware.ServeHTTP(w, req)
 
+	// Flush the auditor to ensure the async writer has written all queued
+	// events to disk before we read the file.
+	auditor.Flush()
+
 	// Read the audit log to verify event was emitted
 	auditData, err := os.ReadFile(auditPath)
 	if err != nil {
@@ -691,6 +695,12 @@ func TestDeepScanMiddleware_AuditEvent_OnError(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	middleware.ServeHTTP(w, req)
+
+	// Flush the auditor to ensure the async writer has written all queued
+	// events to disk before we read the file. Without this, the test is
+	// racy: Log() queues the event on a channel and the async writer
+	// goroutine may not have drained it yet.
+	auditor.Flush()
 
 	// Read the audit log to verify error event was emitted
 	auditData, err := os.ReadFile(auditPath)
@@ -1550,6 +1560,10 @@ func TestChunkAuditEvent(t *testing.T) {
 
 	w := httptest.NewRecorder()
 	middleware.ServeHTTP(w, req)
+
+	// Flush the auditor to ensure the async writer has written all queued
+	// events to disk before we read the file.
+	auditor.Flush()
 
 	auditData, err := os.ReadFile(auditPath)
 	if err != nil {

@@ -3,12 +3,15 @@ package gateway
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
@@ -344,7 +347,7 @@ func TestMiddlewareChainIntegration(t *testing.T) {
 	// Test valid request through full chain
 	body := []byte(`{"jsonrpc":"2.0","method":"file_read","params":{"path":"/test"},"id":1}`)
 	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/test/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -398,7 +401,7 @@ func TestTokenSubstitutionOrderingInRealHandler(t *testing.T) {
 	requestBody := `{"api_key":"` + tokenString + `"}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/test/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -977,4 +980,1594 @@ ui_capability_grants:
 
 	t.Logf("PASS: ui:// resource read proxied to upstream for allowed server (status=%d, upstream_called=%v)",
 		rec.Code, upstreamCalled)
+}
+
+// --- RFA-9ol: MCP Transport Integration Tests ---
+// These tests prove MCP Streamable HTTP transport works through the full gateway
+// middleware chain (all 13 layers).
+
+// newMockMCPServer creates an httptest server that simulates a Streamable HTTP MCP
+// server, responding to initialize, notifications/initialized, and tools/call.
+// Records received methods and Mcp-Session-Id headers for verification.
+func newMockMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
+	t.Helper()
+
+	log := &mcpServerLog{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			var rpcReq map[string]interface{}
+			if err := json.Unmarshal(body, &rpcReq); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			method, _ := rpcReq["method"].(string)
+			log.RecordCall(method, r.Header.Get("Mcp-Session-Id"), body)
+
+			switch method {
+			case "initialize":
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Mcp-Session-Id", "integration-session-42")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock-mcp","version":"1.0"}}}`))
+
+			case "notifications/initialized":
+				w.WriteHeader(http.StatusOK)
+
+			case "tools/call", "tavily_search":
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"search result: MCP gateway integration test passed"}]}}`))
+
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}`))
+			}
+
+		case http.MethodDelete:
+			log.RecordCall("DELETE", r.Header.Get("Mcp-Session-Id"), nil)
+			w.WriteHeader(http.StatusOK)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	t.Cleanup(server.Close)
+	return server, log
+}
+
+// mcpServerLog records calls received by the mock MCP server.
+type mcpServerLog struct {
+	calls []mcpCall
+}
+
+type mcpCall struct {
+	Method    string
+	SessionID string
+	Body      []byte
+}
+
+func (l *mcpServerLog) RecordCall(method, sessionID string, body []byte) {
+	l.calls = append(l.calls, mcpCall{Method: method, SessionID: sessionID, Body: body})
+}
+
+func (l *mcpServerLog) MethodCalls(method string) []mcpCall {
+	var result []mcpCall
+	for _, c := range l.calls {
+		if c.Method == method {
+			result = append(result, c)
+		}
+	}
+	return result
+}
+
+// TestMCPTransport_ToolsCall_ThroughAll13Layers proves that a tools/call request
+// flows through ALL 13 middleware layers and reaches the upstream MCP server as
+// proper JSON-RPC when MCPTransportMode="mcp".
+func TestMCPTransport_ToolsCall_ThroughAll13Layers(t *testing.T) {
+	mcpServer, serverLog := newMockMCPServer(t)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp", // Use MCP transport
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	// Build a tools/call request. Using "tavily_search" as the method so it passes
+	// all middleware checks (tool registry, OPA destination_allowed).
+	// The MCP transport translates this to a JSON-RPC request to the upstream.
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"MCP test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// --- Verify response ---
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	var rpcResp map[string]interface{}
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		t.Fatalf("Response is not valid JSON: %v. Body: %s", err, string(respBody))
+	}
+
+	if rpcResp["jsonrpc"] != "2.0" {
+		t.Errorf("Expected jsonrpc=2.0, got %v", rpcResp["jsonrpc"])
+	}
+
+	result, ok := rpcResp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected result in response, got: %s", string(respBody))
+	}
+
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		t.Fatal("Expected non-empty content array in result")
+	}
+
+	firstContent := content[0].(map[string]interface{})
+	if text, ok := firstContent["text"].(string); !ok || !strings.Contains(text, "integration test passed") {
+		t.Errorf("Expected text containing 'integration test passed', got: %v", firstContent["text"])
+	}
+
+	// --- Verify MCP server received proper requests ---
+	// Should have: initialize, notifications/initialized, tavily_search (in order)
+	initCalls := serverLog.MethodCalls("initialize")
+	if len(initCalls) != 1 {
+		t.Errorf("Expected 1 initialize call, got %d", len(initCalls))
+	}
+
+	notifCalls := serverLog.MethodCalls("notifications/initialized")
+	if len(notifCalls) != 1 {
+		t.Errorf("Expected 1 notifications/initialized call, got %d", len(notifCalls))
+	}
+
+	toolsCalls := serverLog.MethodCalls("tavily_search")
+	if len(toolsCalls) != 1 {
+		t.Fatalf("Expected 1 tavily_search call, got %d", len(toolsCalls))
+	}
+
+	// Verify tavily_search had Mcp-Session-Id header
+	if toolsCalls[0].SessionID != "integration-session-42" {
+		t.Errorf("Expected Mcp-Session-Id 'integration-session-42', got '%s'", toolsCalls[0].SessionID)
+	}
+
+	// Verify tavily_search body is proper JSON-RPC
+	var toolsCallBody map[string]interface{}
+	if err := json.Unmarshal(toolsCalls[0].Body, &toolsCallBody); err != nil {
+		t.Fatalf("tavily_search body is not JSON: %v", err)
+	}
+	if toolsCallBody["jsonrpc"] != "2.0" {
+		t.Errorf("Expected tavily_search body jsonrpc=2.0, got %v", toolsCallBody["jsonrpc"])
+	}
+	if toolsCallBody["method"] != "tavily_search" {
+		t.Errorf("Expected tavily_search method, got %v", toolsCallBody["method"])
+	}
+
+	t.Logf("PASS: tools/call flowed through all 13 middleware layers to MCP server and back (status=%d)", rec.Code)
+}
+
+// TestMCPTransport_ProxyMode_BypassesMCPPath verifies that MCPTransportMode="proxy"
+// uses the legacy httputil.ReverseProxy path, completely bypassing MCP transport.
+func TestMCPTransport_ProxyMode_BypassesMCPPath(t *testing.T) {
+	// Create a plain HTTP upstream (not MCP-aware)
+	upstreamCalled := false
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"result":"proxied-unchanged"}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	cfg := &Config{
+		UpstreamURL:            upstream.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "proxy", // Legacy proxy mode
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if !upstreamCalled {
+		t.Error("Expected upstream to be called in proxy mode")
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	if rec.Code != http.StatusOK {
+		t.Errorf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	if !strings.Contains(string(respBody), "proxied-unchanged") {
+		t.Errorf("Expected proxied-unchanged in response, got: %s", string(respBody))
+	}
+
+	t.Logf("PASS: proxy mode uses reverse proxy (status=%d, upstream_called=%v)", rec.Code, upstreamCalled)
+}
+
+// TestMCPTransport_MCPMode_UpstreamError verifies that when the MCP server returns
+// a JSON-RPC error, the gateway returns a proper GatewayError using WriteGatewayError.
+func TestMCPTransport_MCPMode_UpstreamError(t *testing.T) {
+	requestCount := 0
+	mcpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		switch method {
+		case "initialize":
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "error-session")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26"}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		default:
+			requestCount++
+			// Return JSON-RPC error
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"error":{"code":-32601,"message":"Method not found"}}`))
+		}
+	}))
+	t.Cleanup(mcpServer.Close)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"error test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	respBody, _ := io.ReadAll(rec.Body)
+
+	// Should return 502 (Bad Gateway) with GatewayError envelope
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("Expected 502 for JSON-RPC error, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	// Verify GatewayError envelope
+	var gatewayErr middleware.GatewayError
+	if err := json.Unmarshal(respBody, &gatewayErr); err != nil {
+		t.Fatalf("Failed to parse GatewayError: %v. Body: %s", err, string(respBody))
+	}
+
+	if gatewayErr.Code != middleware.ErrMCPRequestFailed {
+		t.Errorf("Expected error code '%s', got '%s'", middleware.ErrMCPRequestFailed, gatewayErr.Code)
+	}
+
+	if gatewayErr.Middleware != "mcp_transport" {
+		t.Errorf("Expected middleware='mcp_transport', got '%s'", gatewayErr.Middleware)
+	}
+
+	t.Logf("PASS: JSON-RPC error returned as proper GatewayError (code=%s, status=%d)", gatewayErr.Code, rec.Code)
+}
+
+// TestMCPTransport_LazyInit_NotAtStartup verifies AC9: transport.Initialize() is
+// called on first request, not at startup.
+func TestMCPTransport_LazyInit_NotAtStartup(t *testing.T) {
+	initCalled := false
+	mcpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		if method == "initialize" {
+			initCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "lazy-session")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26"}}`))
+			return
+		}
+		if method == "notifications/initialized" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"lazy init worked"}]}}`))
+	}))
+	t.Cleanup(mcpServer.Close)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	// VERIFY: Initialize NOT called at startup
+	if initCalled {
+		t.Fatal("Initialize() was called at startup -- should be lazy (first request)")
+	}
+
+	handler := gw.Handler()
+
+	// Send first request -- this should trigger lazy init
+	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"lazy init test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	// NOW initialize should have been called
+	if !initCalled {
+		t.Error("Initialize() was NOT called on first request -- lazy init is broken")
+	}
+
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	t.Logf("PASS: lazy init verified (init_at_startup=false, init_on_first_request=true, status=%d)", rec.Code)
+}
+
+// TestMCPTransport_ConfigDefault verifies AC4: MCP_TRANSPORT_MODE defaults to "mcp"
+// when loaded via ConfigFromEnv.
+func TestMCPTransport_ConfigDefault(t *testing.T) {
+	t.Setenv("MCP_TRANSPORT_MODE", "")
+	cfg := ConfigFromEnv()
+	if cfg.MCPTransportMode != "mcp" {
+		t.Errorf("Expected default MCPTransportMode='mcp', got '%s'", cfg.MCPTransportMode)
+	}
+
+	t.Setenv("MCP_TRANSPORT_MODE", "proxy")
+	cfg = ConfigFromEnv()
+	if cfg.MCPTransportMode != "proxy" {
+		t.Errorf("Expected MCPTransportMode='proxy', got '%s'", cfg.MCPTransportMode)
+	}
+
+	t.Setenv("MCP_TRANSPORT_MODE", "mcp")
+	cfg = ConfigFromEnv()
+	if cfg.MCPTransportMode != "mcp" {
+		t.Errorf("Expected MCPTransportMode='mcp', got '%s'", cfg.MCPTransportMode)
+	}
+}
+
+// TestMCPTransport_ErrorUsesWriteGatewayError verifies AC7: ALL errors from
+// handleMCPRequest use WriteGatewayError() with proper GatewayError structs.
+func TestMCPTransport_ErrorUsesWriteGatewayError(t *testing.T) {
+	// Use unreachable upstream to trigger transport error
+	cfg := &Config{
+		UpstreamURL:            "http://127.0.0.1:1", // unreachable
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"error test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	respBody, _ := io.ReadAll(rec.Body)
+
+	// Should return 502 with GatewayError envelope (not bare http.Error text)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("Expected 502, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	// Verify it's a proper GatewayError JSON envelope
+	var gatewayErr middleware.GatewayError
+	if err := json.Unmarshal(respBody, &gatewayErr); err != nil {
+		t.Fatalf("Response is NOT a valid GatewayError JSON (violates AC7). Parse error: %v. Body: %s", err, string(respBody))
+	}
+
+	if gatewayErr.Code != middleware.ErrMCPTransportFailed {
+		t.Errorf("Expected error code '%s', got '%s'", middleware.ErrMCPTransportFailed, gatewayErr.Code)
+	}
+
+	if gatewayErr.Middleware != "mcp_transport" {
+		t.Errorf("Expected middleware='mcp_transport', got '%s'", gatewayErr.Middleware)
+	}
+
+	if gatewayErr.Remediation == "" {
+		t.Error("Expected non-empty remediation in GatewayError")
+	}
+
+	// Verify Content-Type is application/json (not text/plain from http.Error)
+	contentType := rec.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("Expected Content-Type application/json, got '%s' (suggests http.Error was used)", contentType)
+	}
+
+	t.Logf("PASS: transport error uses WriteGatewayError (code=%s, content-type=%s)", gatewayErr.Code, contentType)
+}
+
+// --- RFA-8rd: Full Streamable HTTP Integration Tests ---
+
+// newMockMCPServerSSE creates an httptest server that simulates a Streamable HTTP
+// MCP server responding with text/event-stream for tools/call (SSE mode).
+// Records received methods and session IDs for verification.
+func newMockMCPServerSSE(t *testing.T) (*httptest.Server, *mcpServerLog) {
+	t.Helper()
+
+	log := &mcpServerLog{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			var rpcReq map[string]interface{}
+			if err := json.Unmarshal(body, &rpcReq); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			method, _ := rpcReq["method"].(string)
+			log.RecordCall(method, r.Header.Get("Mcp-Session-Id"), body)
+
+			switch method {
+			case "initialize":
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Mcp-Session-Id", "sse-integration-session")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{"tools":{"listChanged":true}},"serverInfo":{"name":"mock-mcp-sse","version":"1.0"}}}`))
+
+			case "notifications/initialized":
+				w.WriteHeader(http.StatusOK)
+
+			case "tools/call", "tavily_search":
+				// Respond with SSE instead of JSON
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte("event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"SSE integration test passed through all 13 layers\"}]}}\n\n"))
+
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}`))
+			}
+
+		case http.MethodDelete:
+			log.RecordCall("DELETE", r.Header.Get("Mcp-Session-Id"), nil)
+			w.WriteHeader(http.StatusOK)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	t.Cleanup(server.Close)
+	return server, log
+}
+
+// TestMCPTransport_SSEResponse_ThroughAll13Layers proves AC9: an SSE response
+// from the upstream MCP server flows through all 13 middleware layers and is
+// correctly parsed back to JSON-RPC for the client.
+func TestMCPTransport_SSEResponse_ThroughAll13Layers(t *testing.T) {
+	mcpServer, serverLog := newMockMCPServerSSE(t)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	// Build a tools/call request that passes all middleware checks
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"SSE integration test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// --- Verify response ---
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	var rpcResp map[string]interface{}
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		t.Fatalf("Response is not valid JSON: %v. Body: %s", err, string(respBody))
+	}
+
+	if rpcResp["jsonrpc"] != "2.0" {
+		t.Errorf("Expected jsonrpc=2.0, got %v", rpcResp["jsonrpc"])
+	}
+
+	result, ok := rpcResp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected result in response, got: %s", string(respBody))
+	}
+
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		t.Fatal("Expected non-empty content array in result")
+	}
+
+	firstContent := content[0].(map[string]interface{})
+	if text, ok := firstContent["text"].(string); !ok || !strings.Contains(text, "SSE integration test passed through all 13 layers") {
+		t.Errorf("Expected text containing 'SSE integration test passed through all 13 layers', got: %v", firstContent["text"])
+	}
+
+	// --- Verify MCP server received proper requests ---
+	initCalls := serverLog.MethodCalls("initialize")
+	if len(initCalls) != 1 {
+		t.Errorf("Expected 1 initialize call, got %d", len(initCalls))
+	}
+
+	toolsCalls := serverLog.MethodCalls("tavily_search")
+	if len(toolsCalls) != 1 {
+		t.Fatalf("Expected 1 tavily_search call, got %d", len(toolsCalls))
+	}
+
+	// Verify session ID was sent with the tools call
+	if toolsCalls[0].SessionID != "sse-integration-session" {
+		t.Errorf("Expected Mcp-Session-Id 'sse-integration-session', got '%s'", toolsCalls[0].SessionID)
+	}
+
+	t.Logf("PASS: SSE response flowed through all 13 middleware layers (status=%d)", rec.Code)
+}
+
+// TestMCPTransport_404_SessionExpiry_ThroughGateway proves AC3 at the
+// gateway level: a 404 from upstream triggers re-initialize + retry,
+// all flowing through the full middleware chain.
+func TestMCPTransport_404_SessionExpiry_ThroughGateway(t *testing.T) {
+	requestCount := 0
+	initCount := 0
+
+	mcpServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			if r.Method == http.MethodDelete {
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		switch method {
+		case "initialize":
+			initCount++
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "renewed-session")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock-mcp","version":"1.0"}}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		default:
+			requestCount++
+			if requestCount == 1 {
+				// First request: 404 (session expired)
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte("session expired"))
+				return
+			}
+			// After re-init: success
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"recovered from 404"}]}}`))
+		}
+	}))
+	t.Cleanup(mcpServer.Close)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"session recovery test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	if !strings.Contains(string(respBody), "recovered from 404") {
+		t.Errorf("Expected 'recovered from 404' in response, got: %s", string(respBody))
+	}
+
+	// Verify re-initialization happened: 2 init calls (original + re-init)
+	if initCount != 2 {
+		t.Errorf("Expected 2 initialize calls (original + re-init), got %d", initCount)
+	}
+
+	t.Logf("PASS: 404 session expiry recovery through gateway (init_count=%d, status=%d)", initCount, rec.Code)
+}
+
+// --- RFA-0dz: Legacy SSE Transport + Auto-Detection Integration Tests ---
+
+// newMockLegacySSEMCPServer creates an httptest server that simulates a legacy SSE
+// MCP server (pre-2025-03-26). It handles:
+//   - GET /sse: sends "endpoint" event pointing to /message, then streams responses
+//   - POST /message: accepts JSON-RPC requests, sends responses via the SSE stream
+//   - POST / (initialize): responds to Streamable HTTP initialize with 405 to force SSE fallback
+//
+// This server rejects Streamable HTTP (POST to /) so that DetectTransport
+// falls back to Legacy SSE.
+func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
+	t.Helper()
+
+	sseLog := &mcpServerLog{}
+
+	// mu protects sseWriters
+	var mu sync.Mutex
+	type sseConn struct {
+		w http.ResponseWriter
+		f http.Flusher
+	}
+	var sseConns []sseConn
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/sse":
+			// Legacy SSE endpoint
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Connection", "keep-alive")
+			w.WriteHeader(http.StatusOK)
+
+			// Send the endpoint event
+			fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			flusher.Flush()
+
+			// Register this SSE connection
+			mu.Lock()
+			sseConns = append(sseConns, sseConn{w: w, f: flusher})
+			mu.Unlock()
+
+			// Keep connection open until client disconnects
+			<-r.Context().Done()
+
+		case r.Method == http.MethodPost && r.URL.Path == "/message":
+			// Message endpoint: handle JSON-RPC requests
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+
+			var rpcReq map[string]interface{}
+			if err := json.Unmarshal(body, &rpcReq); err != nil {
+				http.Error(w, "invalid JSON", http.StatusBadRequest)
+				return
+			}
+
+			method, _ := rpcReq["method"].(string)
+			sseLog.RecordCall(method, "", body)
+
+			var respJSON []byte
+			switch method {
+			case "tools/call", "tavily_search":
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      rpcReq["id"],
+					"result": map[string]interface{}{
+						"content": []map[string]interface{}{
+							{"type": "text", "text": "legacy SSE integration test passed through all 13 layers"},
+						},
+					},
+				}
+				respJSON, _ = json.Marshal(resp)
+			default:
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      rpcReq["id"],
+					"result":  map[string]interface{}{"status": "ok"},
+				}
+				respJSON, _ = json.Marshal(resp)
+			}
+
+			// Acknowledge the POST
+			w.WriteHeader(http.StatusAccepted)
+
+			// Send response via all SSE connections
+			mu.Lock()
+			for _, conn := range sseConns {
+				fmt.Fprintf(conn.w, "event: message\ndata: %s\n\n", string(respJSON))
+				conn.f.Flush()
+			}
+			mu.Unlock()
+
+		case r.Method == http.MethodPost && r.URL.Path == "/":
+			// Reject Streamable HTTP initialize to force SSE fallback
+			body, _ := io.ReadAll(r.Body)
+			var rpcReq map[string]interface{}
+			_ = json.Unmarshal(body, &rpcReq)
+			method, _ := rpcReq["method"].(string)
+
+			if method == "initialize" {
+				sseLog.RecordCall("initialize-rejected", "", body)
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				return
+			}
+			w.WriteHeader(http.StatusMethodNotAllowed)
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+
+	t.Cleanup(server.Close)
+	return server, sseLog
+}
+
+// TestMCPTransport_LegacySSE_ThroughAll13Layers proves that a legacy SSE
+// upstream is auto-detected and requests flow through all 13 middleware layers.
+// This is the primary integration test for AC9.
+func TestMCPTransport_LegacySSE_ThroughAll13Layers(t *testing.T) {
+	mcpServer, serverLog := newMockLegacySSEMCPServer(t)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	// Build a tools/call request using "tavily_search" to pass middleware checks
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"legacy SSE test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// --- Verify response ---
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	var rpcResp map[string]interface{}
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		t.Fatalf("Response is not valid JSON: %v. Body: %s", err, string(respBody))
+	}
+
+	if rpcResp["jsonrpc"] != "2.0" {
+		t.Errorf("Expected jsonrpc=2.0, got %v", rpcResp["jsonrpc"])
+	}
+
+	result, ok := rpcResp["result"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("Expected result in response, got: %s", string(respBody))
+	}
+
+	content, ok := result["content"].([]interface{})
+	if !ok || len(content) == 0 {
+		t.Fatal("Expected non-empty content array in result")
+	}
+
+	firstContent := content[0].(map[string]interface{})
+	if text, ok := firstContent["text"].(string); !ok || !strings.Contains(text, "legacy SSE integration test passed through all 13 layers") {
+		t.Errorf("Expected text containing 'legacy SSE integration test passed through all 13 layers', got: %v", firstContent["text"])
+	}
+
+	// --- Verify the server received the tavily_search request ---
+	toolsCalls := serverLog.MethodCalls("tavily_search")
+	if len(toolsCalls) != 1 {
+		t.Fatalf("Expected 1 tavily_search call, got %d", len(toolsCalls))
+	}
+
+	// Verify Streamable HTTP was rejected (forcing SSE fallback)
+	rejectCalls := serverLog.MethodCalls("initialize-rejected")
+	if len(rejectCalls) < 1 {
+		t.Error("Expected Streamable HTTP initialize to be rejected (405) before SSE fallback")
+	}
+
+	t.Logf("PASS: legacy SSE transport detected and tools/call flowed through all 13 middleware layers (status=%d)", rec.Code)
+}
+
+// TestMCPTransport_AutoDetect_StreamableHTTP verifies that auto-detection
+// correctly selects Streamable HTTP when the server supports it.
+func TestMCPTransport_AutoDetect_StreamableHTTP(t *testing.T) {
+	mcpServer, serverLog := newMockMCPServer(t)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"auto-detect test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	// Verify the server received proper Streamable HTTP handshake
+	initCalls := serverLog.MethodCalls("initialize")
+	if len(initCalls) != 1 {
+		t.Errorf("Expected 1 initialize call (Streamable HTTP detected), got %d", len(initCalls))
+	}
+
+	notifCalls := serverLog.MethodCalls("notifications/initialized")
+	if len(notifCalls) != 1 {
+		t.Errorf("Expected 1 notifications/initialized call, got %d", len(notifCalls))
+	}
+
+	t.Logf("PASS: auto-detection correctly selected Streamable HTTP (init_calls=%d)", len(initCalls))
+}
+
+// TestMCPTransport_AutoDetect_SSEFallback verifies that auto-detection
+// falls back to SSE when Streamable HTTP fails, and emits a deprecation log.
+func TestMCPTransport_AutoDetect_SSEFallback(t *testing.T) {
+	mcpServer, serverLog := newMockLegacySSEMCPServer(t)
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"fallback test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	// Verify Streamable HTTP was attempted first (rejected)
+	rejectCalls := serverLog.MethodCalls("initialize-rejected")
+	if len(rejectCalls) < 1 {
+		t.Error("Expected Streamable HTTP initialize to be rejected before SSE fallback")
+	}
+
+	// Verify SSE was used for the actual request
+	toolsCalls := serverLog.MethodCalls("tavily_search")
+	if len(toolsCalls) != 1 {
+		t.Fatalf("Expected 1 tavily_search call via SSE, got %d", len(toolsCalls))
+	}
+
+	// Verify the response came back correctly
+	respBody, _ := io.ReadAll(rec.Body)
+	var rpcResp map[string]interface{}
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		t.Fatalf("Response is not valid JSON: %v", err)
+	}
+	if rpcResp["jsonrpc"] != "2.0" {
+		t.Errorf("Expected jsonrpc=2.0, got %v", rpcResp["jsonrpc"])
+	}
+
+	t.Logf("PASS: auto-detection fell back to SSE after Streamable HTTP rejected (reject_calls=%d, tool_calls=%d)",
+		len(rejectCalls), len(toolsCalls))
+}
+
+// TestMCPTransport_GatewayUsesTransportInterface verifies AC5: the gateway
+// struct uses the Transport interface (not concrete type) for mcpTransport.
+func TestMCPTransport_GatewayUsesTransportInterface(t *testing.T) {
+	cfg := &Config{
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	// At startup, mcpTransport should be nil (lazy init via DetectTransport)
+	if gw.mcpTransport != nil {
+		t.Error("Expected mcpTransport to be nil at startup (lazy init)")
+	}
+
+	t.Log("PASS: gateway uses Transport interface with lazy initialization")
+}
+
+// --- RFA-xhr: Transport Resilience Integration Tests ---
+// These tests prove resilience features work through the full gateway.
+
+// TestMCPTransport_UpstreamDropsMidStream verifies AC5: upstream drops mid-stream
+// results in ErrMCPTransportFailed error through the gateway.
+func TestMCPTransport_UpstreamDropsMidStream(t *testing.T) {
+	var initCount int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		switch method {
+		case "initialize":
+			atomic.AddInt32(&initCount, 1)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "drop-test-session")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"drop-test","version":"1.0"}}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		default:
+			// Write partial JSON then drop connection
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"res`))
+			if hijacker, ok := w.(http.Hijacker); ok {
+				conn, _, _ := hijacker.Hijack()
+				if conn != nil {
+					conn.Close()
+				}
+			}
+		}
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		UpstreamURL:            server.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		MCPProbeTimeout:        5,
+		MCPDetectTimeout:       15,
+		MCPRequestTimeout:      5,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"drop test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// Should get a 502 with ErrMCPTransportFailed
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("Expected 502 Bad Gateway for mid-stream drop, got %d", rec.Code)
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	var gatewayErr map[string]interface{}
+	if err := json.Unmarshal(respBody, &gatewayErr); err == nil {
+		code, _ := gatewayErr["code"].(string)
+		if code != middleware.ErrMCPTransportFailed {
+			t.Errorf("Expected error code %q, got %q", middleware.ErrMCPTransportFailed, code)
+		}
+	}
+
+	t.Logf("PASS: upstream mid-stream drop produces correct error (status=%d)", rec.Code)
+}
+
+// TestMCPTransport_OversizedResponse verifies AC8: response size is limited
+// by MaxRequestSizeBytes. An oversized response returns ErrMCPInvalidResponse.
+func TestMCPTransport_OversizedResponse(t *testing.T) {
+	// Create a server that returns a very large result
+	largeResult := strings.Repeat("x", 2*1024*1024) // 2MB
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		switch method {
+		case "initialize":
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "oversize-session")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"oversize-test","version":"1.0"}}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			resp := fmt.Sprintf(`{"jsonrpc":"2.0","id":1,"result":{"data":"%s"}}`, largeResult)
+			_, _ = w.Write([]byte(resp))
+		}
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		UpstreamURL:            server.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024, // 1MB limit
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		MCPProbeTimeout:        5,
+		MCPDetectTimeout:       15,
+		MCPRequestTimeout:      10,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"oversize test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// Should get 502 with ErrMCPInvalidResponse (oversized)
+	if rec.Code != http.StatusBadGateway {
+		t.Errorf("Expected 502 for oversized response, got %d", rec.Code)
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	var gatewayErr map[string]interface{}
+	if err := json.Unmarshal(respBody, &gatewayErr); err == nil {
+		code, _ := gatewayErr["code"].(string)
+		if code != middleware.ErrMCPInvalidResponse {
+			t.Errorf("Expected error code %q, got %q", middleware.ErrMCPInvalidResponse, code)
+		}
+	}
+
+	t.Logf("PASS: oversized response produces correct error (status=%d)", rec.Code)
+}
+
+// TestMCPTransport_404MidConversation verifies AC7: session expiry (404) during
+// tools/call triggers re-initialize + retry with backoff.
+func TestMCPTransport_404MidConversation(t *testing.T) {
+	var initCount int32
+	var requestCount int32
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		switch method {
+		case "initialize":
+			n := atomic.AddInt32(&initCount, 1)
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", fmt.Sprintf("session-%d", n))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"404-test","version":"1.0"}}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		default:
+			n := atomic.AddInt32(&requestCount, 1)
+			if n <= 2 {
+				// First 2 attempts return 404 (session expired)
+				w.WriteHeader(http.StatusNotFound)
+				_, _ = w.Write([]byte("session not found"))
+				return
+			}
+			// After retry succeeds
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"recovered after 404"}]}}`))
+		}
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		UpstreamURL:            server.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		MCPProbeTimeout:        5,
+		MCPDetectTimeout:       15,
+		MCPRequestTimeout:      10,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"404 recovery test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// Should eventually succeed after retry with re-init
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Logf("Response body: %s", string(respBody))
+		t.Errorf("Expected 200 OK after recovery from 404, got %d", rec.Code)
+	}
+
+	// Verify re-initialization happened (more than the initial init)
+	totalInits := atomic.LoadInt32(&initCount)
+	if totalInits < 2 {
+		t.Errorf("Expected at least 2 init calls (original + re-init on 404), got %d", totalInits)
+	}
+
+	t.Logf("PASS: 404 mid-conversation triggers re-init + retry (inits=%d, requests=%d)",
+		totalInits, atomic.LoadInt32(&requestCount))
+}
+
+// TestMCPTransport_SessionIsolation verifies AC9: concurrent requests use
+// the same session but are isolated from each other.
+func TestMCPTransport_SessionIsolation(t *testing.T) {
+	var mu sync.Mutex
+	sessionIDs := make(map[string]int)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		switch method {
+		case "initialize":
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "shared-session-xyz")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"isolation-test","version":"1.0"}}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		default:
+			// Record the session ID for each request
+			sid := r.Header.Get("Mcp-Session-Id")
+			mu.Lock()
+			sessionIDs[sid]++
+			mu.Unlock()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"isolated response"}]}}`))
+		}
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		UpstreamURL:            server.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		MCPProbeTimeout:        5,
+		MCPDetectTimeout:       15,
+		MCPRequestTimeout:      10,
+		RateLimitRPM:           1000, // High rate limit for concurrency test
+		RateLimitBurst:         100,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	// Send 5 concurrent requests
+	const concurrency = 5
+	var wg sync.WaitGroup
+	results := make([]int, concurrency)
+
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+
+			requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"concurrent test"},"id":1}`
+			req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+			results[idx] = rec.Code
+		}(i)
+	}
+
+	wg.Wait()
+
+	// All requests should succeed
+	for i, code := range results {
+		if code != http.StatusOK {
+			t.Errorf("Request %d got status %d, expected 200", i, code)
+		}
+	}
+
+	// All requests should use the same session ID
+	mu.Lock()
+	defer mu.Unlock()
+	if len(sessionIDs) > 1 {
+		t.Errorf("Expected all requests to use the same session ID, but got %d different IDs: %v",
+			len(sessionIDs), sessionIDs)
+	}
+	if count, ok := sessionIDs["shared-session-xyz"]; ok {
+		if count < concurrency {
+			t.Errorf("Expected at least %d requests with session ID, got %d", concurrency, count)
+		}
+	}
+
+	t.Logf("PASS: session isolation verified (concurrent=%d, session_ids=%v)", concurrency, sessionIDs)
+}
+
+// TestMCPTransport_ConfigDefaults verifies AC1/AC2/AC3: timeout config fields
+// have correct defaults and are parsed from environment variables.
+func TestMCPTransport_ConfigDefaults(t *testing.T) {
+	// Clear any existing env vars
+	for _, key := range []string{"MCP_PROBE_TIMEOUT", "MCP_DETECT_TIMEOUT", "MCP_REQUEST_TIMEOUT"} {
+		t.Setenv(key, "")
+	}
+
+	cfg := ConfigFromEnv()
+
+	if cfg.MCPProbeTimeout != 5 {
+		t.Errorf("Expected MCPProbeTimeout=5, got %d", cfg.MCPProbeTimeout)
+	}
+	if cfg.MCPDetectTimeout != 15 {
+		t.Errorf("Expected MCPDetectTimeout=15, got %d", cfg.MCPDetectTimeout)
+	}
+	if cfg.MCPRequestTimeout != 30 {
+		t.Errorf("Expected MCPRequestTimeout=30, got %d", cfg.MCPRequestTimeout)
+	}
+}
+
+// TestMCPTransport_ConfigFromEnv verifies timeout config can be overridden by env vars.
+func TestMCPTransport_ConfigFromEnv(t *testing.T) {
+	t.Setenv("MCP_PROBE_TIMEOUT", "10")
+	t.Setenv("MCP_DETECT_TIMEOUT", "20")
+	t.Setenv("MCP_REQUEST_TIMEOUT", "60")
+
+	cfg := ConfigFromEnv()
+
+	if cfg.MCPProbeTimeout != 10 {
+		t.Errorf("Expected MCPProbeTimeout=10, got %d", cfg.MCPProbeTimeout)
+	}
+	if cfg.MCPDetectTimeout != 20 {
+		t.Errorf("Expected MCPDetectTimeout=20, got %d", cfg.MCPDetectTimeout)
+	}
+	if cfg.MCPRequestTimeout != 60 {
+		t.Errorf("Expected MCPRequestTimeout=60, got %d", cfg.MCPRequestTimeout)
+	}
+}
+
+// TestMCPTransport_ConfigInvalidEnvIgnored verifies invalid env values keep defaults.
+func TestMCPTransport_ConfigInvalidEnvIgnored(t *testing.T) {
+	t.Setenv("MCP_PROBE_TIMEOUT", "not-a-number")
+	t.Setenv("MCP_DETECT_TIMEOUT", "-5")
+	t.Setenv("MCP_REQUEST_TIMEOUT", "0")
+
+	cfg := ConfigFromEnv()
+
+	if cfg.MCPProbeTimeout != 5 {
+		t.Errorf("Expected MCPProbeTimeout=5 for invalid env, got %d", cfg.MCPProbeTimeout)
+	}
+	if cfg.MCPDetectTimeout != 15 {
+		t.Errorf("Expected MCPDetectTimeout=15 for negative env, got %d", cfg.MCPDetectTimeout)
+	}
+	if cfg.MCPRequestTimeout != 30 {
+		t.Errorf("Expected MCPRequestTimeout=30 for zero env, got %d", cfg.MCPRequestTimeout)
+	}
+}
+
+// TestMCPTransport_AllErrorsUseWriteGatewayError verifies AC11: all MCP transport
+// errors use WriteGatewayError (never http.Error). This is verified by checking
+// the response is valid JSON with the expected error envelope structure.
+func TestMCPTransport_AllErrorsUseWriteGatewayError(t *testing.T) {
+	// Server that always fails after init
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		switch method {
+		case "initialize":
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "error-test-session")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"err-test","version":"1.0"}}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		default:
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte("service unavailable"))
+		}
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		UpstreamURL:            server.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		MCPProbeTimeout:        5,
+		MCPDetectTimeout:       15,
+		MCPRequestTimeout:      5,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"error test"},"id":1}`
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	// Verify response is JSON (not plain text from http.Error)
+	contentType := rec.Header().Get("Content-Type")
+	if !strings.Contains(contentType, "application/json") {
+		t.Errorf("Expected Content-Type application/json, got %q (http.Error uses text/plain)", contentType)
+	}
+
+	// Verify the response has the GatewayError structure
+	respBody, _ := io.ReadAll(rec.Body)
+	var gatewayErr map[string]interface{}
+	if err := json.Unmarshal(respBody, &gatewayErr); err != nil {
+		t.Fatalf("Response is not valid JSON (suggests http.Error was used): %v\nBody: %s", err, string(respBody))
+	}
+
+	// Check required GatewayError fields
+	if _, ok := gatewayErr["code"]; !ok {
+		t.Error("Missing 'code' field in error response")
+	}
+	if _, ok := gatewayErr["message"]; !ok {
+		t.Error("Missing 'message' field in error response")
+	}
+	if _, ok := gatewayErr["middleware"]; !ok {
+		t.Error("Missing 'middleware' field in error response")
+	}
+
+	t.Logf("PASS: error response uses WriteGatewayError envelope (status=%d, code=%v)", rec.Code, gatewayErr["code"])
 }
