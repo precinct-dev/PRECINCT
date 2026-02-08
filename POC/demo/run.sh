@@ -158,6 +158,60 @@ collect_mcp_transport_proof_compose() {
     echo ""
 }
 
+collect_dlp_injection_proof_compose() {
+    log "DLP injection detection proof (Docker Compose logs)"
+    echo ""
+    docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+        | grep -i -E "potential_injection|injection.*detected|injection.*flagged" | tail -10 \
+        || echo "  (no injection detection entries found in logs)"
+    echo ""
+}
+
+collect_dlp_credential_proof_compose() {
+    log "DLP credential blocking proof (Docker Compose logs)"
+    echo ""
+    docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+        | grep -i -E "credential.*block|secret.*block|dlp.*block|sensitive.*data" | tail -10 \
+        || echo "  (no credential blocking entries found in logs)"
+    echo ""
+}
+
+collect_spike_token_proof_compose() {
+    log "SPIKE token processing proof (Docker Compose logs)"
+    echo ""
+    docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+        | grep -i -E "token_substitution|spike.*ref|spike.*redeem|token.*redeem" | tail -10 \
+        || echo "  (no SPIKE token processing entries found in logs)"
+    echo ""
+}
+
+collect_dlp_injection_proof_k8s() {
+    log "DLP injection detection proof (K8s logs)"
+    echo ""
+    kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
+        | grep -i -E "potential_injection|injection.*detected|injection.*flagged" | tail -10 \
+        || echo "  (no injection detection entries found in logs)"
+    echo ""
+}
+
+collect_dlp_credential_proof_k8s() {
+    log "DLP credential blocking proof (K8s logs)"
+    echo ""
+    kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
+        | grep -i -E "credential.*block|secret.*block|dlp.*block|sensitive.*data" | tail -10 \
+        || echo "  (no credential blocking entries found in logs)"
+    echo ""
+}
+
+collect_spike_token_proof_k8s() {
+    log "SPIKE token processing proof (K8s logs)"
+    echo ""
+    kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
+        | grep -i -E "token_substitution|spike.*ref|spike.*redeem|token.*redeem" | tail -10 \
+        || echo "  (no SPIKE token processing entries found in logs)"
+    echo ""
+}
+
 print_otel_proof() {
     log "OpenTelemetry traces"
     echo "  Phoenix UI: http://localhost:6006"
@@ -234,8 +288,14 @@ run_demo_cycle() {
     if [ "$mode" = "compose" ]; then
         collect_audit_proof_compose
         collect_mcp_transport_proof_compose
+        collect_dlp_injection_proof_compose
+        collect_dlp_credential_proof_compose
+        collect_spike_token_proof_compose
     else
         collect_audit_proof_k8s
+        collect_dlp_injection_proof_k8s
+        collect_dlp_credential_proof_k8s
+        collect_spike_token_proof_k8s
     fi
     print_otel_proof
 
