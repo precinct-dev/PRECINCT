@@ -605,7 +605,7 @@ func testSPIKETokenReference() bool {
 			return printProof(true, "SPIKE reference flowed through chain, 502 = no upstream (expected)")
 		}
 		if ge.HTTPStatus == 500 {
-			return printProof(true, fmt.Sprintf("SPIKE token substitution attempted: %s (proves pipeline works)", ge.Code))
+			return printProof(true, fmt.Sprintf("SPIKE reference reached token substitution (step 13) without DLP false-positive. Token redemption failed as expected (SPIKE Nexus not configured for demo): %s", ge.Code))
 		}
 		if ge.HTTPStatus == 403 && ge.Code == "dlp_credentials_detected" {
 			return printProof(false, "SPIKE reference was BLOCKED by DLP (403) -- should pass through")
