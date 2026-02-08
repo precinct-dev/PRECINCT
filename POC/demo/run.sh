@@ -182,7 +182,7 @@ collect_dlp_injection_proof_compose() {
     log "DLP injection detection proof (Docker Compose logs)"
     echo ""
     docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
-        | grep -i -E "potential_injection|injection.*detected|injection.*flagged" | tail -10 \
+        | grep -E '"safezone_flags".*"potential_injection"|"potential_injection"' | tail -5 \
         || echo "  (no injection detection entries found in logs)"
     echo ""
 }
@@ -191,7 +191,7 @@ collect_dlp_credential_proof_compose() {
     log "DLP credential blocking proof (Docker Compose logs)"
     echo ""
     docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
-        | grep -i -E "credential.*block|secret.*block|dlp.*block|sensitive.*data" | tail -10 \
+        | grep -E '"safezone_flags".*"blocked_content"|dlp_credentials_detected' | tail -5 \
         || echo "  (no credential blocking entries found in logs)"
     echo ""
 }
