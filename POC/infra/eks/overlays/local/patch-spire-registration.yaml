@@ -83,7 +83,7 @@ data:
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
       -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/ns/spike-system/sa/spike-nexus \
+      -spiffeID spiffe://agentic-ref-arch.poc/spike/nexus \
       -selector k8s:ns:spike-system \
       -selector k8s:sa:spike-nexus \
       -dns spike-nexus \

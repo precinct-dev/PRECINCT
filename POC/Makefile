@@ -1,19 +1,39 @@
-.PHONY: help setup up down build test test-integration lint demo-walking-skeleton logs clean clean-logs register-spire tool-register ci build-images sign-images sbom test-opa compliance-report test-compliance gdpr-delete gdpr-ropa k8s-local-up k8s-local-down k8s-local-validate k8s-register-spire validate-setup-time benchmark security-scan demo demo-compose demo-k8s
+.PHONY: help up down test lint clean logs demo demo-compose demo-k8s k8s-up k8s-down ci benchmark security-scan \
+       setup register-spire k8s-register-spire test-integration test-opa build build-images \
+       compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time \
+       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry
+
+# Container image config
+REGISTRY ?= ghcr.io
+IMAGE_PREFIX ?= $(REGISTRY)/$(shell git config --get remote.origin.url 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|' | tr '[:upper:]' '[:lower:]')/agentic-ref-arch
+GATEWAY_IMAGE ?= $(IMAGE_PREFIX)/mcp-security-gateway
+S3_MCP_IMAGE ?= $(IMAGE_PREFIX)/s3-mcp-server
+IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
+
+# Local registry (CNCF Distribution) for Docker Desktop K8s
+LOCAL_REGISTRY ?= localhost:5050
+K8S_REGISTRY ?= registry:5000
+
+# Compliance tooling
+AUDIT_LOG ?= /tmp/audit.jsonl
+COMPLIANCE_VENV := tools/compliance/.venv
+COMPLIANCE_PYTHON := $(COMPLIANCE_VENV)/bin/python3
 
 # Default target
-help: ## Show this help message
-	@echo "Available targets:"
+help: ## Show available targets
+	@echo "Usage: make <target>"
 	@echo ""
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-25s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
-setup: ## Interactive setup wizard with prerequisite checks and security posture summary (RFA-tj9.2)
-	@bash scripts/setup.sh
+# ---------------------------------------------------------------------------
+# Core
+# ---------------------------------------------------------------------------
 
-up: ## Start all services with docker compose and register SPIRE entries
-	@echo "Starting services with docker compose..."
+up: ## Start Docker Compose stack
+	@echo "Starting services..."
 	docker compose up -d
-	@echo "Waiting for SPIRE server to be healthy..."
+	@echo "Waiting for SPIRE server..."
 	@timeout=60; \
 	while ! docker compose exec -T spire-server wget --spider -q http://localhost:8080/ready 2>/dev/null; do \
 		timeout=$$((timeout - 1)); \
@@ -23,443 +43,325 @@ up: ## Start all services with docker compose and register SPIRE entries
 		fi; \
 		sleep 1; \
 	done
-	@echo "SPIRE server is ready. Registering workload entries..."
+	@echo "SPIRE server ready. Registering workload entries..."
 	$(MAKE) register-spire
 
-down: ## Stop and remove all services
-	@echo "Stopping services..."
+down: ## Stop Docker Compose stack
 	docker compose down
 
-build: ## Build all Go and Python services
-	@echo "==> Building Go services..."
-	@echo "    Building MCP Security Gateway..."
-	docker compose build mcp-security-gateway
-	@echo "    [PLACEHOLDER] Tool registry not yet built - see future stories"
-	@echo ""
-	@echo "==> Building Python services..."
-	@echo "    [PLACEHOLDER] Agent services not yet built - see future stories"
-	@echo ""
-	@echo "Build complete"
-
-test: ## Run unit tests for all services
-	@echo "==> Running unit tests..."
-	@echo "    Testing MCP Security Gateway..."
+test: ## Run all tests (unit + OPA)
+	@echo "Running unit tests..."
 	go test ./internal/gateway/... -v -cover
+	go test ./internal/gateway/middleware/... -v -cover
 	@echo ""
-	@echo "    [PLACEHOLDER] Python tests not yet implemented - see future stories"
-	@echo ""
-	@echo "Unit tests complete"
-
-test-integration: ## Run integration tests against the compose stack
-	@echo "==> Running integration tests..."
-	@echo "    Testing MCP Security Gateway integration..."
-	@echo "    Note: Requires docker compose stack to be running (make up)"
-	go test -tags=integration ./tests/integration/... -v -timeout 60s
-	@echo ""
-	@echo "Integration tests complete"
-
-lint: ## Run linting for Go and Python code
-	@echo "==> Linting Go code..."
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./...; \
-	else \
-		echo "    golangci-lint not installed, using go fmt and go vet"; \
-		go fmt ./...; \
-		go vet ./...; \
-	fi
-	@echo ""
-	@echo "==> Linting Python code..."
-	@echo "    [PLACEHOLDER] Python linting not yet configured - see future stories"
-	@echo ""
-	@echo "Linting complete"
-
-demo-walking-skeleton: ## Run the walking skeleton demo (RFA-qq0.13)
-	@echo "==> Running walking skeleton demo..."
-	@bash scripts/demo-walking-skeleton.sh
-
-logs: ## Tail gateway audit logs
-	@echo "==> Tailing MCP Security Gateway logs..."
-	@echo "    Note: Gateway is currently a placeholder container (golang:1.23 with sleep infinity)"
-	@echo "    Once implemented (story RFA-qq0.3), this will show audit logs"
-	@echo ""
-	docker compose logs -f mcp-security-gateway
-
-clean-logs: ## Truncate .beads/daemon.log to prevent unbounded growth
-	@if [ -f .beads/daemon.log ]; then \
-		SIZE=$$(wc -c < .beads/daemon.log | tr -d ' '); \
-		echo "==> Truncating .beads/daemon.log ($${SIZE} bytes -> 0)"; \
-		: > .beads/daemon.log; \
-		echo "    Done."; \
-	else \
-		echo "==> .beads/daemon.log not found (nothing to clean)"; \
-	fi
-
-clean: clean-logs ## Remove built artifacts, Docker volumes, and daemon logs
-	@echo "==> Cleaning Docker volumes..."
-	docker compose down -v
-	@echo ""
-	@echo "==> Cleaning build artifacts..."
-	rm -rf build/
-	@echo ""
-	@echo "Clean complete"
-
-register-spire: ## Run SPIRE registration script to register workload entries
-	@echo "==> Registering SPIRE workload entries..."
-	docker compose exec -T spire-server /bin/bash < scripts/register-spire-entries.sh
-	@echo ""
-	@echo "SPIRE registration complete"
-
-tool-register: ## Register a new MCP tool (RFA-fu1). Usage: make tool-register TOOL_NAME=name TOOL_DESCRIPTION="desc" TOOL_SCHEMA='{"type":"object",...}'
-	@if [ -z "$(TOOL_NAME)" ]; then echo "ERROR: TOOL_NAME is required"; echo "Usage: make tool-register TOOL_NAME=name TOOL_DESCRIPTION=\"desc\" TOOL_SCHEMA='{\"type\":\"object\"}'"; exit 1; fi
-	@if [ -z "$(TOOL_DESCRIPTION)" ]; then echo "ERROR: TOOL_DESCRIPTION is required"; exit 1; fi
-	@test -n '$(TOOL_SCHEMA)' || { echo "ERROR: TOOL_SCHEMA is required"; exit 1; }
-	@go run scripts/tool_register/main.go \
-		--name "$(TOOL_NAME)" \
-		--description "$(TOOL_DESCRIPTION)" \
-		--schema '$(TOOL_SCHEMA)' \
-		$(if $(RISK_LEVEL),--risk-level "$(RISK_LEVEL)") \
-		$(if $(ALLOWED_DESTINATIONS),--allowed-destinations "$(ALLOWED_DESTINATIONS)") \
-		$(if $(filter true,$(REQUIRES_STEP_UP)),--requires-step-up)
-
-# ==============================================================================
-# CI/CD Targets (RFA-9fv.6)
-# ==============================================================================
-
-# Container image names
-REGISTRY ?= ghcr.io
-IMAGE_PREFIX ?= $(REGISTRY)/$(shell git config --get remote.origin.url 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|' | tr '[:upper:]' '[:lower:]')/agentic-ref-arch
-GATEWAY_IMAGE ?= $(IMAGE_PREFIX)/mcp-security-gateway
-S3_MCP_IMAGE ?= $(IMAGE_PREFIX)/s3-mcp-server
-IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
-
-ci: lint test test-opa build-images ## Run full CI locally (lint, test, OPA tests, build images)
-	@echo ""
-	@echo "==> CI pipeline complete"
-
-build-images: ## Build all container images
-	@echo "==> Building container images..."
-	@echo "    Building MCP Security Gateway..."
-	docker build -f build/docker/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
-	docker tag $(GATEWAY_IMAGE):$(IMAGE_TAG) $(GATEWAY_IMAGE):dev
-	@echo ""
-	@echo "    Building S3 MCP Server..."
-	docker build -f build/docker/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
-	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
-	@echo ""
-	@echo "Container images built successfully"
-	@echo "  $(GATEWAY_IMAGE):$(IMAGE_TAG)"
-	@echo "  $(S3_MCP_IMAGE):$(IMAGE_TAG)"
-
-sign-images: ## Sign container images with cosign (keyless OIDC)
-	@echo "==> Signing container images with cosign..."
-	@if ! command -v cosign >/dev/null 2>&1; then \
-		echo "ERROR: cosign not installed. Install from https://docs.sigstore.dev/cosign/system_config/installation/"; \
-		exit 1; \
-	fi
-	@echo "    Signing $(GATEWAY_IMAGE):$(IMAGE_TAG)..."
-	cosign sign --yes $(GATEWAY_IMAGE):$(IMAGE_TAG)
-	@echo "    Signing $(S3_MCP_IMAGE):$(IMAGE_TAG)..."
-	cosign sign --yes $(S3_MCP_IMAGE):$(IMAGE_TAG)
-	@echo ""
-	@echo "Images signed successfully"
-
-sbom: build-images ## Generate SBOMs for all container images
-	@echo "==> Generating SBOMs..."
-	@if ! command -v syft >/dev/null 2>&1; then \
-		echo "ERROR: syft not installed. Install from https://github.com/anchore/syft"; \
-		exit 1; \
-	fi
-	@mkdir -p build/sbom
-	@echo "    Generating SBOM for MCP Security Gateway..."
-	syft $(GATEWAY_IMAGE):$(IMAGE_TAG) -o spdx-json > build/sbom/mcp-security-gateway.spdx.json
-	@echo "    Generating SBOM for S3 MCP Server..."
-	syft $(S3_MCP_IMAGE):$(IMAGE_TAG) -o spdx-json > build/sbom/s3-mcp-server.spdx.json
-	@echo ""
-	@echo "SBOMs generated in build/sbom/"
-
-test-opa: ## Run OPA policy tests
-	@echo "==> Running OPA policy tests..."
+	@echo "Running OPA policy tests..."
 	@if command -v opa >/dev/null 2>&1; then \
 		opa test config/opa/ -v; \
 	else \
-		echo "    WARNING: opa not installed. Skipping OPA tests."; \
-		echo "    Install from: https://www.openpolicyagent.org/docs/latest/#running-opa"; \
+		echo "WARNING: opa not installed, skipping OPA tests"; \
+	fi
+
+lint: ## Run linters
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./...; \
+	else \
+		go fmt ./...; \
+		go vet ./...; \
+	fi
+
+clean: ## Full cleanup (containers, volumes, build artifacts, logs)
+	docker compose down -v
+	rm -rf build/
+	@if [ -f .beads/daemon.log ]; then \
+		: > .beads/daemon.log; \
+	fi
+
+logs: ## Tail gateway logs
+	docker compose logs -f mcp-security-gateway
+
+# ---------------------------------------------------------------------------
+# Demos
+# ---------------------------------------------------------------------------
+
+demo: ## Run E2E demo (Docker Compose + K8s)
+	@bash demo/run.sh compose
+	@bash demo/run.sh k8s
+
+demo-compose: ## Run E2E demo (Docker Compose)
+	@bash demo/run.sh compose
+
+demo-k8s: ## Run E2E demo (K8s)
+	@bash demo/run.sh k8s
+
+# ---------------------------------------------------------------------------
+# Kubernetes (Docker Desktop K8s + local registry)
+# ---------------------------------------------------------------------------
+
+k8s-up: ## Deploy to local K8s (Docker Desktop)
+	@if ! kubectl cluster-info 2>/dev/null | grep -q 'Kubernetes control plane'; then \
+		echo "ERROR: No Kubernetes cluster. Enable in Docker Desktop: Settings -> Kubernetes"; \
+		exit 1; \
+	fi
+	$(MAKE) k8s-registry
+	@echo "Building and pushing local images..."
+	docker build -f build/docker/Dockerfile.gateway -t mcp-security-gateway:latest .
+	docker build -f demo/mock-mcp-server/Dockerfile -t poc-mock-mcp-server:latest demo/mock-mcp-server/
+	docker build -f build/docker/Dockerfile.spire-agent -t spire-agent-wrapper:latest .
+	docker tag mcp-security-gateway:latest $(LOCAL_REGISTRY)/mcp-security-gateway:latest
+	docker push $(LOCAL_REGISTRY)/mcp-security-gateway:latest
+	docker tag poc-mock-mcp-server:latest $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
+	docker push $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
+	docker tag spire-agent-wrapper:latest $(LOCAL_REGISTRY)/spire-agent-wrapper:latest
+	docker push $(LOCAL_REGISTRY)/spire-agent-wrapper:latest
+	$(MAKE) k8s-prereqs
+	@echo "Applying overlay (pass 1: namespaces, CRDs, services)..."
+	-kubectl apply -k infra/eks/overlays/local/ 2>&1 | grep -v 'ensure CRDs are installed first'
+	@echo "Waiting for Gatekeeper to process ConstraintTemplates..."
+	@sleep 10
+	@echo "Applying overlay (pass 2: constraints, policies)..."
+	-kubectl apply -k infra/eks/overlays/local/ 2>&1
+	@echo "Generating TLS certs for policy-controller webhook..."
+	@bash scripts/k8s-generate-webhook-tls.sh
+	@echo "Waiting for SPIRE infrastructure..."
+	-kubectl -n spire-system rollout status statefulset/spire-server --timeout=120s 2>/dev/null || \
+		echo "WARNING: SPIRE Server not yet ready"
+	-kubectl -n spire-system rollout status daemonset/spire-agent --timeout=120s 2>/dev/null || \
+		echo "WARNING: SPIRE Agent not yet ready"
+	@echo "Registering SPIRE workload entries..."
+	$(MAKE) k8s-register-spire
+	@echo "Waiting for remaining pods..."
+	-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=120s 2>/dev/null || \
+		echo "WARNING: SPIKE Nexus not yet ready"
+	-kubectl -n data rollout status deployment/keydb --timeout=60s 2>/dev/null || \
+		echo "WARNING: KeyDB not yet ready"
+	-kubectl -n tools rollout status deployment/mcp-server --timeout=60s 2>/dev/null || \
+		echo "WARNING: MCP Server not yet ready"
+	-kubectl -n gateway rollout status deployment/mcp-security-gateway --timeout=120s 2>/dev/null || \
+		echo "WARNING: Gateway not yet ready"
+	-kubectl -n cosign-system rollout status deployment/policy-controller-webhook --timeout=60s 2>/dev/null || \
+		echo "WARNING: policy-controller webhook not yet ready"
+	@echo ""
+	@echo "Gateway: http://localhost:30090"
+	@echo "Health:  curl -s http://localhost:30090/health"
+
+k8s-down: ## Tear down local K8s deployment
+	-kubectl delete -k infra/eks/overlays/local/ --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
+	@echo "Cleaning up Gatekeeper cluster-scoped resources..."
+	-kubectl delete validatingwebhookconfigurations gatekeeper-validating-webhook-configuration --ignore-not-found 2>/dev/null
+	-kubectl delete mutatingwebhookconfigurations gatekeeper-mutating-webhook-configuration --ignore-not-found 2>/dev/null
+	-kubectl -n spire-system delete pvc -l app.kubernetes.io/name=spire-server --ignore-not-found 2>/dev/null
+
+# ---------------------------------------------------------------------------
+# CI / Quality
+# ---------------------------------------------------------------------------
+
+ci: lint test build-images ## Full CI pipeline (lint + test + build)
+	@echo "CI pipeline complete"
+
+benchmark: ## Run performance benchmarks
+	@echo "Phase 1: Go Benchmarks (13-middleware chain)"
+	go test -bench=BenchmarkFullMiddlewareChain -benchmem -run=^$$ ./internal/gateway/middleware/ -count=3
+	@echo ""
+	go test -bench=BenchmarkMinimalChain -benchmem -run=^$$ ./internal/gateway/middleware/ -count=3
+	@echo ""
+	@echo "Phase 2: Latency Percentiles (P50/P95/P99)"
+	go test -bench=BenchmarkLatencyPercentiles -benchmem -run=^$$ ./internal/gateway/middleware/ -v
+	@echo ""
+	@echo "Phase 3: Per-Middleware Breakdown"
+	go test -bench=BenchmarkPerMiddlewareLatency -benchmem -run=^$$ ./internal/gateway/middleware/ -v
+	@echo ""
+	@echo "Phase 4: Full vs Minimal Comparison"
+	go test -bench=BenchmarkCompareFullVsMinimal -benchmem -run=^$$ ./internal/gateway/middleware/ -v
+	@echo ""
+	@echo "Phase 5: Benchmark Report"
+	BENCHMARK_REPORT=1 go test -run=TestPrintBenchmarkReport -v ./internal/gateway/middleware/
+	@echo ""
+	@echo "Phase 6: Load Test (Docker Compose)"
+	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
+		if command -v hey >/dev/null 2>&1; then \
+			bash tests/benchmark/load_test.sh; \
+		else \
+			echo "WARNING: 'hey' not installed, skipping load test"; \
+		fi; \
+	else \
+		echo "Docker Compose stack not running, skipping load test"; \
+	fi
+
+security-scan: ## Run security scans (gosec, trivy)
+	@echo "Scanning Go source with gosec..."
+	@if command -v gosec >/dev/null 2>&1; then \
+		gosec ./...; \
+	else \
+		echo "WARNING: gosec not installed, skipping"; \
 	fi
 	@echo ""
-	@echo "OPA policy tests complete"
+	@echo "Scanning container image with trivy..."
+	@if command -v trivy >/dev/null 2>&1; then \
+		if docker images -q $(GATEWAY_IMAGE):$(IMAGE_TAG) 2>/dev/null | grep -q .; then \
+			trivy image $(GATEWAY_IMAGE):$(IMAGE_TAG); \
+		else \
+			echo "WARNING: Image $(GATEWAY_IMAGE):$(IMAGE_TAG) not found (run make build-images)"; \
+		fi; \
+	else \
+		echo "WARNING: trivy not installed, skipping"; \
+	fi
+	@echo ""
+	@echo "Scanning filesystem with trivy..."
+	@if command -v trivy >/dev/null 2>&1; then \
+		trivy fs --skip-dirs .beads .; \
+	else \
+		echo "WARNING: trivy not installed, skipping"; \
+	fi
 
-# ==============================================================================
-# Compliance Automation (RFA-8jl)
-# ==============================================================================
+# ---------------------------------------------------------------------------
+# Hidden targets (functional but not shown in make help)
+# ---------------------------------------------------------------------------
 
-AUDIT_LOG ?= /tmp/audit.jsonl
+GATEKEEPER_VERSION ?= v3.16.0
+GATEKEEPER_URL := https://raw.githubusercontent.com/open-policy-agent/gatekeeper/$(GATEKEEPER_VERSION)/deploy/gatekeeper.yaml
 
-COMPLIANCE_VENV := tools/compliance/.venv
-COMPLIANCE_PYTHON := $(COMPLIANCE_VENV)/bin/python3
+k8s-registry:
+	@if ! docker ps --filter name=registry --format '{{.Names}}' 2>/dev/null | grep -q '^registry$$'; then \
+		echo "Starting local registry (registry:2 on port 5050)..."; \
+		docker rm -f registry 2>/dev/null || true; \
+		docker run -d --name registry --restart always -p 5050:5000 registry:2; \
+	else \
+		echo "Local registry already running"; \
+	fi
+	@if ! docker network inspect kind --format '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null | grep -q 'registry'; then \
+		echo "Connecting registry to kind network..."; \
+		docker network connect kind registry 2>/dev/null || true; \
+	fi
+	@if ! docker exec desktop-control-plane test -f "/etc/containerd/certs.d/registry:5000/hosts.toml" 2>/dev/null; then \
+		echo "Configuring K8s containerd for local registry (HTTP)..."; \
+		docker exec desktop-control-plane mkdir -p "/etc/containerd/certs.d/registry:5000"; \
+		docker exec desktop-control-plane sh -c 'printf "server = \"http://registry:5000\"\n\n[host.\"http://registry:5000\"]\ncapabilities = [\"pull\", \"resolve\", \"push\"]\nskip_verify = true\n" > /etc/containerd/certs.d/registry:5000/hosts.toml'; \
+	fi
+
+k8s-prereqs:
+	@echo "Installing CRD prerequisites..."
+	@if ! kubectl -n gatekeeper-system get deployment gatekeeper-controller-manager -o jsonpath='{.status.availableReplicas}' 2>/dev/null | grep -q '[0-9]'; then \
+		echo "  Cleaning up orphaned Gatekeeper webhooks (if any)..."; \
+		kubectl delete validatingwebhookconfigurations gatekeeper-validating-webhook-configuration --ignore-not-found 2>/dev/null || true; \
+		kubectl delete mutatingwebhookconfigurations gatekeeper-mutating-webhook-configuration --ignore-not-found 2>/dev/null || true; \
+		echo "  Installing OPA Gatekeeper $(GATEKEEPER_VERSION)..."; \
+		kubectl apply -f $(GATEKEEPER_URL); \
+		echo "  Waiting for Gatekeeper deployments..."; \
+		kubectl -n gatekeeper-system rollout status deployment/gatekeeper-controller-manager --timeout=120s; \
+		kubectl -n gatekeeper-system rollout status deployment/gatekeeper-audit --timeout=120s; \
+	else \
+		echo "  OPA Gatekeeper already running"; \
+	fi
+	@if ! kubectl get crd clusterimagepolicies.policy.sigstore.dev >/dev/null 2>&1; then \
+		echo "  Installing sigstore policy-controller CRDs..."; \
+		kubectl apply -f infra/eks/crds/policy-controller-crds.yaml; \
+	else \
+		echo "  sigstore policy-controller CRDs already installed"; \
+	fi
+
+setup:
+	@bash scripts/setup.sh
+
+register-spire:
+	@echo "Registering SPIRE workload entries..."
+	docker compose exec -T spire-server /bin/bash < scripts/register-spire-entries.sh
+
+test-integration:
+	go test -tags=integration ./tests/integration/... -v -timeout 60s
+
+test-opa:
+	@if command -v opa >/dev/null 2>&1; then \
+		opa test config/opa/ -v; \
+	else \
+		echo "WARNING: opa not installed"; \
+	fi
+
+build:
+	@echo "Building MCP Security Gateway..."
+	docker compose build mcp-security-gateway
+
+build-images:
+	@echo "Building container images..."
+	docker build -f build/docker/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
+	docker tag $(GATEWAY_IMAGE):$(IMAGE_TAG) $(GATEWAY_IMAGE):dev
+	docker build -f build/docker/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
+	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
+	@echo "Built: $(GATEWAY_IMAGE):$(IMAGE_TAG), $(S3_MCP_IMAGE):$(IMAGE_TAG)"
 
 $(COMPLIANCE_VENV): tools/compliance/requirements.txt
-	@echo "    Setting up compliance venv..."
 	python3 -m venv $(COMPLIANCE_VENV)
 	$(COMPLIANCE_PYTHON) -m pip install --quiet -r tools/compliance/requirements.txt
 
-compliance-report: test-compliance ## Generate compliance CSV report (runs E2E suite first if docker stack is up)
-	@echo "==> Compliance Report Generation (RFA-8jl)"
-	@echo ""
+compliance-report: test-compliance
 	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
-		echo "    Docker stack detected. Running E2E suite to generate fresh audit logs..."; \
+		echo "Running E2E suite for fresh audit logs..."; \
 		bash tests/e2e/run_all.sh 2>&1 || true; \
-		echo "    Extracting audit logs from gateway container..."; \
 		docker compose logs --no-log-prefix mcp-security-gateway 2>/dev/null | grep '{' > $(AUDIT_LOG) || true; \
-		echo ""; \
 	else \
-		echo "    Docker stack not running. Using existing audit log at $(AUDIT_LOG)"; \
-		echo "    (Run 'make up' first for fresh audit data)"; \
-		echo ""; \
+		echo "Docker stack not running, using existing audit log at $(AUDIT_LOG)"; \
 	fi
-	@echo "    Generating compliance report..."
 	$(COMPLIANCE_PYTHON) tools/compliance/generate.py --audit-log $(AUDIT_LOG) --project-root .
-	@echo ""
-	@echo "==> Compliance report generation complete"
 
-test-compliance: $(COMPLIANCE_VENV) ## Run compliance tooling tests (unit + integration)
-	@echo "==> Running compliance tooling tests..."
+test-compliance: $(COMPLIANCE_VENV)
 	cd tools/compliance && $(CURDIR)/$(COMPLIANCE_PYTHON) -m pytest test_generate.py -v
-	@echo ""
-	@echo "Compliance tests complete"
 
-# ==============================================================================
-# GDPR/CCPA Right-to-Deletion (RFA-hh5.3)
-# ==============================================================================
-
-gdpr-ropa: ## Output GDPR Article 30 Records of Processing Activities (ROPA) to stdout
+gdpr-ropa:
 	@cat docs/compliance/gdpr-article-30-ropa.md
 
-gdpr-delete: ## Delete all session/rate-limit data for a SPIFFE ID. Usage: make gdpr-delete SPIFFE_ID=spiffe://poc.local/agents/example
+gdpr-delete:
 	@if [ -z "$(SPIFFE_ID)" ]; then \
-		echo "ERROR: SPIFFE_ID is required"; \
 		echo "Usage: make gdpr-delete SPIFFE_ID=spiffe://poc.local/agents/example"; \
 		exit 1; \
 	fi
 	go run ./cmd/gdpr-delete/ "$(SPIFFE_ID)"
 
-# ==============================================================================
-# Local Kubernetes (Docker Desktop kubeadm) -- RFA-7bh.1
-# ==============================================================================
-# Minimum hardware: 4 CPU cores, 8GB RAM allocated to Docker Desktop
-# Requires: kubectl, kustomize, Docker Desktop with Kubernetes enabled
+SPIRE_SOCK := /tmp/spire-server/private/api.sock
+SPIRE_EXEC := kubectl -n spire-system exec spire-server-0 -- /opt/spire/bin/spire-server
 
-k8s-local-up: ## Deploy full stack to Docker Desktop K8s via Kustomize overlay
-	@echo "==> Deploying to local K8s (Docker Desktop kubeadm)..."
-	@echo "    Minimum hardware: 4 CPU cores, 8GB RAM"
-	@echo ""
-	@if ! kubectl cluster-info 2>/dev/null | grep -q 'Kubernetes control plane'; then \
-		echo "ERROR: No Kubernetes cluster available."; \
-		echo "Enable Kubernetes in Docker Desktop: Settings -> Kubernetes -> Enable Kubernetes"; \
-		exit 1; \
-	fi
-	@echo "    Cluster detected. Applying Kustomize overlay..."
-	kubectl apply -k infra/eks/overlays/local/
-	@echo ""
-	@echo "    Waiting for pods to be ready (timeout: 5 minutes)..."
-	@echo "    Checking SPIRE Server..."
-	-kubectl -n spire-system rollout status statefulset/spire-server --timeout=120s 2>/dev/null || \
-		echo "    WARNING: SPIRE Server rollout not yet complete"
-	@echo "    Checking SPIRE Agent..."
-	-kubectl -n spire-system rollout status daemonset/spire-agent --timeout=120s 2>/dev/null || \
-		echo "    WARNING: SPIRE Agent rollout not yet complete"
-	@echo "    Checking SPIKE Nexus..."
-	-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=120s 2>/dev/null || \
-		echo "    WARNING: SPIKE Nexus rollout not yet complete"
-	@echo "    Checking KeyDB..."
-	-kubectl -n data rollout status deployment/keydb --timeout=60s 2>/dev/null || \
-		echo "    WARNING: KeyDB rollout not yet complete"
-	@echo "    Checking MCP Server..."
-	-kubectl -n tools rollout status deployment/mcp-server --timeout=60s 2>/dev/null || \
-		echo "    WARNING: MCP Server rollout not yet complete"
-	@echo "    Checking Gateway..."
-	-kubectl -n gateway rollout status deployment/mcp-security-gateway --timeout=120s 2>/dev/null || \
-		echo "    WARNING: Gateway rollout not yet complete"
-	@echo "    Checking policy-controller webhook..."
-	-kubectl -n cosign-system rollout status deployment/policy-controller-webhook --timeout=60s 2>/dev/null || \
-		echo "    WARNING: policy-controller webhook rollout not yet complete"
-	@echo ""
-	@echo "==> Deployment complete."
-	@echo "    Gateway: http://localhost:30090"
-	@echo "    Health check: curl -s http://localhost:30090/health"
-	@echo ""
-	@echo "    Admission control:"
-	@echo "      OPA Gatekeeper: digest pinning + registry allowlist"
-	@echo "      sigstore/policy-controller: cosign signature verification"
-	@echo "      Dev namespace (dev): exempt from signature verification"
-
-k8s-local-down: ## Tear down all services from Docker Desktop K8s
-	@echo "==> Tearing down local K8s deployment..."
-	kubectl delete -k infra/eks/overlays/local/ --ignore-not-found
-	@echo ""
-	@echo "    Cleaning up PVCs..."
-	-kubectl -n spire-system delete pvc -l app.kubernetes.io/name=spire-server --ignore-not-found 2>/dev/null
-	@echo ""
-	@echo "==> Tear down complete."
-
-k8s-local-validate: ## Validate local K8s Kustomize overlay (offline, no cluster needed)
-	@echo "==> Validating local K8s Kustomize overlay..."
-	@echo "    Building Kustomize manifests..."
-	kustomize build infra/eks/overlays/local/ > /dev/null
-	@echo "    Kustomize build: PASS"
-	@echo ""
-	@echo "    Running kubeconform validation..."
-	kustomize build infra/eks/overlays/local/ | kubeconform -summary -strict -ignore-missing-schemas
-	@echo ""
-	@echo "==> Validation complete."
-
-k8s-register-spire: ## Register SPIRE workload entries via kubectl exec into server pod (RFA-38s)
-	@echo "==> Registering SPIRE workload entries (kubectl exec)..."
+k8s-register-spire:
 	@if ! kubectl -n spire-system get pod spire-server-0 -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Running; then \
-		echo "ERROR: spire-server-0 is not running in spire-system namespace."; \
-		echo "Deploy SPIRE first: make k8s-local-up"; \
+		echo "ERROR: spire-server-0 not running. Deploy first: make k8s-up"; \
 		exit 1; \
 	fi
-	@echo "    SPIRE Server pod is running. Executing registration..."
-	kubectl -n spire-system exec spire-server-0 -- sh -c '\
-		SOCK="/tmp/spire-server/private/api.sock" && \
-		echo "=== Waiting for SPIRE Server ===" && \
-		until /opt/spire/bin/spire-server healthcheck -socketPath $$SOCK 2>/dev/null; do \
-			echo "  Server not ready, retrying in 5s..."; \
-			sleep 5; \
-		done && \
-		echo "SPIRE Server is ready." && \
-		echo "" && \
-		echo "=== Registering entries ===" && \
-		/opt/spire/bin/spire-server entry create -socketPath $$SOCK -node \
-			-spiffeID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
-			-selector k8s_psat:cluster:agentic-ref-arch-poc \
-			-selector k8s_psat:agent_ns:spire-system \
-			-selector k8s_psat:agent_sa:spire-agent 2>/dev/null || true && \
-		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
-			-parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
-			-spiffeID spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway \
-			-selector k8s:ns:gateway -selector k8s:sa:mcp-security-gateway \
-			-dns mcp-security-gateway \
-			-dns mcp-security-gateway.gateway.svc.cluster.local 2>/dev/null || true && \
-		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
-			-parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
-			-spiffeID spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool \
-			-selector k8s:ns:tools -selector k8s:sa:mcp-tool 2>/dev/null || true && \
-		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
-			-parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
-			-spiffeID spiffe://agentic-ref-arch.poc/ns/spike-system/sa/spike-nexus \
-			-selector k8s:ns:spike-system -selector k8s:sa:spike-nexus \
-			-dns spike-nexus \
-			-dns spike-nexus.spike-system.svc.cluster.local 2>/dev/null || true && \
-		echo "" && echo "=== Current entries ===" && \
-		/opt/spire/bin/spire-server entry show -socketPath $$SOCK'
-	@echo ""
-	@echo "==> SPIRE registration complete."
+	@echo "  Detecting SPIRE agent identity..."
+	@PARENT_ID=$$($(SPIRE_EXEC) entry show -socketPath $(SPIRE_SOCK) 2>/dev/null | \
+		grep 'SPIFFE ID' | head -1 | awk '{print $$NF}'); \
+	if [ -z "$$PARENT_ID" ]; then \
+		echo "ERROR: No SPIRE node entry found. Is the agent attested?"; \
+		exit 1; \
+	fi; \
+	echo "  Agent SPIFFE ID: $$PARENT_ID"; \
+	echo "  Registering gateway workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway \
+		-selector k8s:ns:gateway -selector k8s:sa:mcp-security-gateway \
+		-dns mcp-security-gateway \
+		-dns mcp-security-gateway.gateway.svc.cluster.local 2>/dev/null || true; \
+	echo "  Registering mcp-tool workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool \
+		-selector k8s:ns:tools -selector k8s:sa:mcp-tool 2>/dev/null || true; \
+	echo "  Registering spike-nexus workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://agentic-ref-arch.poc/spike/nexus \
+		-selector k8s:ns:spike-system -selector k8s:sa:spike-nexus \
+		-dns spike-nexus \
+		-dns spike-nexus.spike-system.svc.cluster.local 2>/dev/null || true; \
+	echo "  Current entries:"; \
+	$(SPIRE_EXEC) entry show -socketPath $(SPIRE_SOCK)
 
-# ==============================================================================
-# Setup Time Validation (RFA-t07)
-# ==============================================================================
-
-validate-setup-time: ## Validate 30-minute git-clone-to-running claim. Usage: make validate-setup-time MODE=compose|k8s
+validate-setup-time:
 	@if [ -z "$(MODE)" ]; then \
-		echo "ERROR: MODE is required"; \
-		echo "Usage: make validate-setup-time MODE=compose"; \
-		echo "       make validate-setup-time MODE=k8s"; \
+		echo "Usage: make validate-setup-time MODE=compose|k8s"; \
 		exit 1; \
 	fi
 	@bash tests/e2e/validate_setup_time.sh $(MODE)
 
-# ==============================================================================
-# Performance Benchmarking (RFA-lo1.2)
-# ==============================================================================
-
-benchmark: ## Run performance benchmarks (Go benchmarks + optional load test against Docker Compose stack)
-	@echo "==> Performance Benchmarking (RFA-lo1.2)"
-	@echo ""
-	@echo "    Phase 1: Go Benchmarks (13-middleware chain, in-process)"
-	@echo "    --------------------------------------------------------"
-	go test -bench=BenchmarkFullMiddlewareChain -benchmem -run=^$$ ./internal/gateway/middleware/ -count=3
-	@echo ""
-	go test -bench=BenchmarkMinimalChain -benchmem -run=^$$ ./internal/gateway/middleware/ -count=3
-	@echo ""
-	@echo "    Phase 2: Latency Percentiles (P50/P95/P99)"
-	@echo "    -------------------------------------------"
-	go test -bench=BenchmarkLatencyPercentiles -benchmem -run=^$$ ./internal/gateway/middleware/ -v
-	@echo ""
-	@echo "    Phase 3: Per-Middleware Breakdown (OTel Span Timing)"
-	@echo "    ----------------------------------------------------"
-	go test -bench=BenchmarkPerMiddlewareLatency -benchmem -run=^$$ ./internal/gateway/middleware/ -v
-	@echo ""
-	@echo "    Phase 4: Full vs Minimal Comparison"
-	@echo "    ------------------------------------"
-	go test -bench=BenchmarkCompareFullVsMinimal -benchmem -run=^$$ ./internal/gateway/middleware/ -v
-	@echo ""
-	@echo "    Phase 5: Benchmark Report"
-	@echo "    -------------------------"
-	BENCHMARK_REPORT=1 go test -run=TestPrintBenchmarkReport -v ./internal/gateway/middleware/
-	@echo ""
-	@echo "    Phase 6: Load Test (Docker Compose stack)"
-	@echo "    ------------------------------------------"
-	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
-		if command -v hey >/dev/null 2>&1; then \
-			bash tests/benchmark/load_test.sh; \
-		else \
-			echo "    WARNING: 'hey' not installed. Skipping load test."; \
-			echo "    Install with: go install github.com/rakyll/hey@latest"; \
-		fi; \
-	else \
-		echo "    Docker Compose stack not running. Skipping load test."; \
-		echo "    Run 'make up' first, then 'make benchmark' to include load testing."; \
-	fi
-	@echo ""
-	@echo "==> Benchmarking complete. Results documented in docs/operations/performance.md"
-
-# ==============================================================================
-# Security Scanning (RFA-lo1.1)
-# ==============================================================================
-
-security-scan: ## Run security scans (gosec, trivy image, trivy fs)
-	@echo "==> Security Scanning"
-	@echo ""
-	@echo "    Scanning Go source code with gosec..."
-	@if command -v gosec >/dev/null 2>&1; then \
-		gosec ./...; \
-	else \
-		echo "    WARNING: gosec not installed. Skipping Go security scan."; \
-		echo "    Install from: https://github.com/securego/gosec#install"; \
-	fi
-	@echo ""
-	@echo "    Scanning container image with trivy..."
-	@if command -v trivy >/dev/null 2>&1; then \
-		if docker images -q $(GATEWAY_IMAGE):$(IMAGE_TAG) 2>/dev/null | grep -q .; then \
-			trivy image $(GATEWAY_IMAGE):$(IMAGE_TAG); \
-		else \
-			echo "    WARNING: Container image $(GATEWAY_IMAGE):$(IMAGE_TAG) not found."; \
-			echo "    Run 'make build-images' first."; \
-		fi; \
-	else \
-		echo "    WARNING: trivy not installed. Skipping container image scan."; \
-		echo "    Install from: https://aquasecurity.github.io/trivy/latest/getting-started/installation/"; \
-	fi
-	@echo ""
-	@echo "    Scanning filesystem for dependency vulnerabilities with trivy..."
-	@if command -v trivy >/dev/null 2>&1; then \
-		trivy fs --skip-dirs .beads .; \
-	else \
-		echo "    WARNING: trivy not installed. Skipping filesystem scan."; \
-		echo "    Install from: https://aquasecurity.github.io/trivy/latest/getting-started/installation/"; \
-	fi
-	@echo ""
-	@echo "==> Security scanning complete"
-
-# --------------------------------------------------------------------------
-# E2E Demo (Go + Python SDKs exercising all 13 middleware layers)
-# --------------------------------------------------------------------------
-
-demo: demo-compose demo-k8s ## Run E2E demo against both Docker Compose and K8s
-
-demo-compose: ## Run E2E demo against Docker Compose (localhost:9090)
-	@bash demo/run.sh compose
-
-demo-k8s: ## Run E2E demo against Docker Desktop K8s (localhost:30090)
-	@bash demo/run.sh k8s
+# Aliases (hidden, for backwards compatibility)
+k8s-local-up: k8s-up
+k8s-local-down: k8s-down
+clean-logs:
+	@if [ -f .beads/daemon.log ]; then : > .beads/daemon.log; fi
