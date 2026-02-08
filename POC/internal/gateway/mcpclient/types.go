@@ -1,8 +1,25 @@
 // Package mcpclient provides an MCP Streamable HTTP client.
 // RFA-9ol: Walking skeleton. RFA-8rd: Full session management, SSE, lifecycle.
+// RFA-0dz: Transport interface + Legacy SSE transport + auto-detection.
 package mcpclient
 
-import "encoding/json"
+import (
+	"context"
+	"encoding/json"
+)
+
+// Transport is the common interface implemented by both StreamableHTTPTransport
+// and LegacySSETransport. It abstracts the MCP transport layer so the gateway
+// can use either transport interchangeably.
+//
+// RFA-0dz: Introduced for auto-detection -- the gateway uses Transport rather
+// than a concrete type, and DetectTransport chooses the right implementation.
+type Transport interface {
+	// Send sends a JSON-RPC request and returns the response.
+	Send(ctx context.Context, req *JSONRPCRequest) (*JSONRPCResponse, error)
+	// Close terminates the transport connection and cleans up resources.
+	Close(ctx context.Context) error
+}
 
 // SessionState tracks the lifecycle of an MCP session.
 type SessionState int
