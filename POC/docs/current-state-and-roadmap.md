@@ -22,9 +22,9 @@ All identified Phase 1 gaps (SPIKE Nexus, deep scan, session persistence, mTLS, 
 
 | Metric | Value |
 |--------|-------|
-| Issues tracked (beads) | 234 total (224 closed, 10 active in documentation epic) |
+| Issues tracked (beads) | 234 total (230 closed, 4 active in documentation epic) |
 | Closed epics | 29 |
-| Commits on main | 231 |
+| Commits on main | 233 |
 | Go source lines | ~16,700 |
 | Go test lines | ~43,300 |
 | Go test functions | 1,002 |
@@ -189,7 +189,7 @@ Implements SEP-1865 (Apps Extension) security:
 
 ## 4. Current Status
 
-All Phase 1 functional gaps have been addressed. The project has 224 closed issues across 29 completed epics. One documentation epic (RFA-2irf) is in progress. No open functional work remains.
+All Phase 1 functional gaps have been addressed. The project has 230 closed issues across 29 completed epics. One documentation epic (RFA-2irf) is in progress. No open functional work remains.
 
 ### 4.1 Rego Cannot Do Cryptographic Signature Verification
 
