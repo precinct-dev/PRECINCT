@@ -1,7 +1,8 @@
 .PHONY: help up down test lint clean logs demo demo-compose demo-k8s k8s-up k8s-down ci benchmark security-scan \
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
        compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time \
-       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry
+       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry \
+       phoenix-up phoenix-down phoenix-reset
 
 # Container image config
 REGISTRY ?= ghcr.io
@@ -31,6 +32,11 @@ help: ## Show available targets
 # ---------------------------------------------------------------------------
 
 up: ## Start Docker Compose stack (waits for all services healthy)
+	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
+		echo "ERROR: phoenix-observability-network not found."; \
+		echo "Start the Phoenix stack first: make phoenix-up"; \
+		exit 1; \
+	fi
 	@echo "Building and starting services (waiting for all health checks)..."
 	docker compose up -d --build --wait --wait-timeout 180
 	@echo "All services healthy."
@@ -69,6 +75,22 @@ clean: ## Full cleanup (containers, volumes, build artifacts, logs)
 
 logs: ## Tail gateway logs
 	docker compose logs -f mcp-security-gateway
+
+# ---------------------------------------------------------------------------
+# Phoenix Observability (standalone, persistent across demo runs)
+# ---------------------------------------------------------------------------
+
+phoenix-up: ## Start standalone Phoenix + OTel collector (persistent traces)
+	@docker network inspect phoenix-observability-network >/dev/null 2>&1 || \
+		docker network create phoenix-observability-network
+	docker compose -f docker-compose.phoenix.yml up -d --build --wait --wait-timeout 60
+	@echo "Phoenix UI: http://localhost:6006"
+
+phoenix-down: ## Stop Phoenix stack (preserves trace data)
+	docker compose -f docker-compose.phoenix.yml down
+
+phoenix-reset: ## Stop Phoenix stack and destroy trace data
+	docker compose -f docker-compose.phoenix.yml down -v
 
 # ---------------------------------------------------------------------------
 # Demos

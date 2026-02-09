@@ -314,54 +314,9 @@ services:
       - "spiffe-id=keydb"
     restart: "no"
 
-  # OpenTelemetry Collector - Observability data pipeline
-  #
-  # RFA-8z8.2 AC4: EXPLICIT mTLS EXCEPTION. The OTel Collector receives telemetry
-  # data (spans, metrics) over plain HTTP/gRPC. It does NOT require mTLS because:
-  # 1. It never receives or transmits secrets (only observability data)
-  # 2. Telemetry data is not sensitive under SOC 2 CC6.6 / ISO 27001 A.13.1.1
-  # 3. Adding mTLS to the telemetry pipeline adds latency to every span export
-  # This exception is documented in ADR-003 and verified in tcpdump tests.
-  otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
-    container_name: otel-collector
-    hostname: otel-collector
-    volumes:
-      - ./config/otel-collector.yaml:/etc/otel-collector-config.yaml:ro
-    command: ["--config=/etc/otel-collector-config.yaml"]
-    ports:
-      - "4317:4317"  # OTLP gRPC receiver (plain, no TLS -- see mTLS exception above)
-      - "4318:4318"  # OTLP HTTP receiver (plain, no TLS -- see mTLS exception above)
-    depends_on:
-      phoenix:
-        condition: service_healthy
-    networks:
-      - agentic-net
-    # Health provided by health_check extension on :13133 (configured in otel-collector.yaml).
-    # No Docker healthcheck defined: the otel-collector-contrib image is FROM scratch and
-    # lacks wget/curl/shell for a Docker HEALTHCHECK command. The gateway depends on this
-    # service with condition: service_started (not service_healthy) for this reason.
-
-  # Phoenix - Trace visualization and analysis
-  phoenix:
-    image: arizephoenix/phoenix:latest
-    container_name: phoenix
-    hostname: phoenix
-    ports:
-      - "6006:6006"  # Phoenix UI
-    expose:
-      - "4317"  # Phoenix gRPC (OTLP) - internal only, otel-collector connects via docker network
-    environment:
-      - PHOENIX_PORT=6006
-      - PHOENIX_HOST=0.0.0.0
-      - PHOENIX_GRPC_PORT=4317
-    networks:
-      - agentic-net
-    healthcheck:
-      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:6006/')"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+  # OpenTelemetry Collector and Phoenix are now in docker-compose.phoenix.yml (RFA-80d)
+  # The gateway reaches otel-collector via the shared phoenix-observability-network.
+  # Start Phoenix first: make phoenix-up
 
   # Mock MCP Server - Canned Streamable HTTP MCP server for E2E demo (RFA-71u)
   # Speaks MCP Streamable HTTP per spec 2025-03-26. Returns canned tool results
@@ -402,12 +357,6 @@ services:
         condition: service_completed_successfully  # RFA-uln: test secret must be seeded before gateway starts
       keydb:
         condition: service_healthy
-      otel-collector:
-        condition: service_started  # service_started (not service_healthy) because the
-                                    # otel-collector-contrib image is FROM scratch and has
-                                    # no shell/curl/wget for a Docker healthcheck.
-                                    # The OTel gRPC exporter uses lazy connection with
-                                    # automatic retries, so startup ordering is sufficient.
       mock-mcp-server:
         condition: service_healthy  # RFA-71u: Gateway needs mock MCP server ready before
                                     # MCP transport auto-detection on first request.
@@ -446,6 +395,7 @@ services:
       - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}  # RFA-8ak: Small burst bucket so 200-call test triggers 429 quickly
     networks:
       - agentic-net
+      - phoenix-net  # RFA-80d: Reach otel-collector on phoenix-observability-network
     labels:
       - "spiffe-id=mcp-security-gateway"
       - "component=gateway"
@@ -460,6 +410,9 @@ networks:
   agentic-net:
     driver: bridge
     name: agentic-security-network
+  phoenix-net:
+    external: true
+    name: phoenix-observability-network
 
 volumes:
   # SPIRE Server persistent data
