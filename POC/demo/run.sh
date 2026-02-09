@@ -46,12 +46,17 @@ cleanup() { [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null; true; }
 RESET="\033[0m"
 GREEN="\033[32m"
 RED="\033[31m"
+YELLOW="\033[33m"
 CYAN="\033[36m"
 BOLD="\033[1m"
 
-log() { echo -e "${CYAN}==> $1${RESET}"; }
-err() { echo -e "${RED}ERROR: $1${RESET}" >&2; }
-ok()  { echo -e "${GREEN}OK:  $1${RESET}"; }
+log()  { echo -e "${CYAN}==> $1${RESET}"; }
+err()  { echo -e "${RED}ERROR: $1${RESET}" >&2; }
+warn() { echo -e "${YELLOW}WARNING: $1${RESET}"; }
+ok()   { echo -e "${GREEN}OK:  $1${RESET}"; }
+
+# Track Phoenix availability for proof collection (set by check_phoenix).
+PHOENIX_AVAILABLE=false
 
 # --------------------------------------------------------------------------
 # Pre-flight checks
@@ -69,6 +74,30 @@ preflight() {
         exit 1
     fi
     ok "All prerequisites found (docker)"
+}
+
+# --------------------------------------------------------------------------
+# Phoenix availability check (non-fatal -- OTEL export is non-blocking)
+# --------------------------------------------------------------------------
+check_phoenix() {
+    log "Checking Phoenix observability stack"
+
+    # Check 1: Does the phoenix-observability-network Docker network exist?
+    if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
+        warn "Phoenix stack not running. Traces will not be collected. Run 'make phoenix-up' to enable observability."
+        PHOENIX_AVAILABLE=false
+        return 0
+    fi
+
+    # Check 2: Is the phoenix container running?
+    if ! docker ps --filter name=phoenix --filter status=running --format '{{.Names}}' 2>/dev/null | grep -q phoenix; then
+        warn "Phoenix stack not running. Traces will not be collected. Run 'make phoenix-up' to enable observability."
+        PHOENIX_AVAILABLE=false
+        return 0
+    fi
+
+    ok "Phoenix stack is running (traces will be collected)"
+    PHOENIX_AVAILABLE=true
 }
 
 # --------------------------------------------------------------------------
@@ -294,8 +323,13 @@ collect_mcp_transport_proof_k8s() {
 
 print_otel_proof() {
     log "OpenTelemetry traces"
-    echo "  Phoenix UI: http://localhost:6006"
-    echo "  Open in browser to inspect distributed traces from the demo calls."
+    if [ "$PHOENIX_AVAILABLE" = true ]; then
+        echo "  Phoenix UI: http://localhost:6006"
+        echo "  Open in browser to inspect distributed traces from the demo calls."
+    else
+        echo "  Phoenix was not running during this demo. Traces were not collected."
+        echo "  Run 'make phoenix-up' before the demo to enable trace collection."
+    fi
     echo ""
 }
 
@@ -306,6 +340,11 @@ run_demo_cycle() {
     local mode="$1"
     local url
     local network
+
+    # Check Phoenix availability before any mode-specific setup.
+    # This runs for both compose and k8s modes. Non-fatal -- demo
+    # proceeds without traces if Phoenix is not running.
+    check_phoenix
 
     if [ "$mode" = "compose" ]; then
         # Inside the Docker network, gateway is at service name:port
@@ -420,13 +459,21 @@ run_demo_cycle() {
 
 # --------------------------------------------------------------------------
 # Teardown
+# Phoenix isolation (RFA-fsa): Both teardown paths are safe for Phoenix.
+# - Compose: Only tears down docker-compose.yml. Phoenix services live in
+#   docker-compose.phoenix.yml and are unaffected. The -v flag only removes
+#   volumes defined in docker-compose.yml, not Phoenix volumes.
+# - K8s: k8s-down removes K8s resources only. Docker containers (Phoenix)
+#   are unaffected.
 # --------------------------------------------------------------------------
 teardown() {
     local mode="$1"
     log "Tearing down environment ($mode)"
     if [ "$mode" = "compose" ]; then
+        # Only tears down services in docker-compose.yml -- Phoenix is safe.
         docker compose -f "$POC_DIR/docker-compose.yml" down -v 2>/dev/null || true
     elif [ "$mode" = "k8s" ]; then
+        # Only tears down K8s namespaces -- Phoenix Docker containers are safe.
         make -C "$POC_DIR" k8s-down 2>/dev/null || true
     fi
 }
