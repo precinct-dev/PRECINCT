@@ -90,6 +90,38 @@ data:
       -dns spike-nexus.spike-system.svc.cluster.local \
     || echo "  (entry may already exist, continuing)"
 
+    # SPIKE Keeper 1
+    echo "  Workload: spike-keeper..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://agentic-ref-arch.poc/agent/local \
+      -spiffeID spiffe://agentic-ref-arch.poc/spike/keeper/1 \
+      -selector k8s:ns:spike-system \
+      -selector k8s:sa:spike-keeper \
+      -dns spike-keeper-1 \
+      -dns spike-keeper-1.spike-system.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
+    # SPIKE Bootstrap
+    echo "  Workload: spike-bootstrap..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://agentic-ref-arch.poc/agent/local \
+      -spiffeID spiffe://agentic-ref-arch.poc/spike/bootstrap \
+      -selector k8s:ns:spike-system \
+      -selector k8s:sa:spike-bootstrap \
+    || echo "  (entry may already exist, continuing)"
+
+    # SPIKE Secret Seeder (Pilot superuser)
+    echo "  Workload: spike-seeder..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://agentic-ref-arch.poc/agent/local \
+      -spiffeID spiffe://agentic-ref-arch.poc/spike/pilot/role/superuser/seeder \
+      -selector k8s:ns:spike-system \
+      -selector k8s:sa:spike-seeder \
+    || echo "  (entry may already exist, continuing)"
+
     echo ""
     echo "=== Current entries ==="
     /opt/spire/bin/spire-server entry show -socketPath "$SOCK"

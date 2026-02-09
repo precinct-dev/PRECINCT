@@ -1,0 +1,18 @@
+# ------------------------------------------------------------------------------
+# SPIKE Keeper RBAC
+# Story: RFA-9k2
+#
+# SPIKE Keeper ServiceAccount: used for SPIFFE identity (k8s workload attestor
+# matches namespace + service account to issue the correct SVID).
+#
+# SPIKE Keeper does not need Kubernetes API access beyond its own identity,
+# so no ClusterRole is needed.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spike-keeper
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-keeper
+    app.kubernetes.io/part-of: spike

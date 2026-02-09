@@ -104,6 +104,9 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	docker push $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
 	docker tag spire-agent-wrapper:latest $(LOCAL_REGISTRY)/spire-agent-wrapper:latest
 	docker push $(LOCAL_REGISTRY)/spire-agent-wrapper:latest
+	docker build -f docker/Dockerfile.spike-keeper -t spike-keeper:latest .
+	docker tag spike-keeper:latest $(LOCAL_REGISTRY)/spike-keeper:latest
+	docker push $(LOCAL_REGISTRY)/spike-keeper:latest
 	$(MAKE) k8s-prereqs
 	@echo "Applying overlay (pass 1: namespaces, CRDs, services)..."
 	-kubectl apply -k infra/eks/overlays/local/ 2>&1 | grep -v 'ensure CRDs are installed first'
@@ -123,6 +126,8 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo "Waiting for remaining pods..."
 	-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIKE Nexus not yet ready"
+	-kubectl -n spike-system rollout status deployment/spike-keeper --timeout=120s 2>/dev/null || \
+		echo "WARNING: SPIKE Keeper not yet ready"
 	-kubectl -n data rollout status deployment/keydb --timeout=60s 2>/dev/null || \
 		echo "WARNING: KeyDB not yet ready"
 	-kubectl -n tools rollout status deployment/mcp-server --timeout=60s 2>/dev/null || \
@@ -381,6 +386,23 @@ k8s-register-spire:
 		-selector k8s:ns:spike-system -selector k8s:sa:spike-nexus \
 		-dns spike-nexus \
 		-dns spike-nexus.spike-system.svc.cluster.local 2>/dev/null || true; \
+	echo "  Registering spike-keeper workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://agentic-ref-arch.poc/spike/keeper/1 \
+		-selector k8s:ns:spike-system -selector k8s:sa:spike-keeper \
+		-dns spike-keeper-1 \
+		-dns spike-keeper-1.spike-system.svc.cluster.local 2>/dev/null || true; \
+	echo "  Registering spike-bootstrap workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://agentic-ref-arch.poc/spike/bootstrap \
+		-selector k8s:ns:spike-system -selector k8s:sa:spike-bootstrap 2>/dev/null || true; \
+	echo "  Registering spike-seeder workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://agentic-ref-arch.poc/spike/pilot/role/superuser/seeder \
+		-selector k8s:ns:spike-system -selector k8s:sa:spike-seeder 2>/dev/null || true; \
 	echo "  Current entries:"; \
 	$(SPIRE_EXEC) entry show -socketPath $(SPIRE_SOCK)
 
