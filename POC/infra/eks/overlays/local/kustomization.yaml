@@ -40,6 +40,7 @@ resources:
   - ../../policies
   # Local-only resources
   - keydb.yaml
+  - data-networkpolicies.yaml
   - spire-token-generator.yaml
   - gateway-secrets.yaml
   # Development namespace with policy-controller exemption
