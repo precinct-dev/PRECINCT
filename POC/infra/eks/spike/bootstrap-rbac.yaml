@@ -1,0 +1,18 @@
+# ------------------------------------------------------------------------------
+# SPIKE Bootstrap RBAC
+# Story: RFA-9k2
+#
+# SPIKE Bootstrap ServiceAccount: used for SPIFFE identity (k8s workload
+# attestor matches namespace + service account to issue the correct SVID).
+#
+# Bootstrap is a one-shot Job that delivers Shamir key shards to Keepers.
+# It does not need Kubernetes API access beyond its own identity.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spike-bootstrap
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-bootstrap
+    app.kubernetes.io/part-of: spike

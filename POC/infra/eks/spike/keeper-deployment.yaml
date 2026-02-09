@@ -1,0 +1,115 @@
+# ------------------------------------------------------------------------------
+# SPIKE Keeper Deployment
+# Story: RFA-9k2
+#
+# Single-replica deployment of SPIKE Keeper.
+# Keeper stores Shamir key shards delivered by Bootstrap and serves root key
+# material to Nexus for SQLite AES-256-GCM encryption.
+#
+# Key design decisions:
+#   - tcpSocket probes: Keeper's PeerCanTalkToKeeper() rejects its own SVID,
+#     so mTLS health checks are impossible. TCP dial proves the TLS listener
+#     is up without requiring authorization.
+#   - hostPath mount for SPIRE agent socket (matches DaemonSet socket path)
+#   - Non-root, read-only root filesystem, restricted security context
+#   - HTTPS on port 8443 (TLS material from SVID)
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spike-keeper
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-keeper
+    app.kubernetes.io/part-of: spike
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spike-keeper
+      app.kubernetes.io/instance: keeper-1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spike-keeper
+        app.kubernetes.io/instance: keeper-1
+        app.kubernetes.io/part-of: spike
+    spec:
+      serviceAccountName: spike-keeper
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: spike-keeper
+          image: ghcr.io/spiffe/spike-keeper:0.8.0
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          env:
+            - name: SPIKE_KEEPER_TLS_PORT
+              value: ':8443'
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: 'unix:///run/spire/sockets/agent.sock'
+            - name: SPIKE_TRUST_ROOT
+              value: 'agentic-ref-arch.poc'
+            - name: SPIKE_TRUST_ROOT_KEEPER
+              value: 'agentic-ref-arch.poc'
+            - name: SPIKE_TRUST_ROOT_NEXUS
+              value: 'agentic-ref-arch.poc'
+            - name: SPIKE_TRUST_ROOT_PILOT
+              value: 'agentic-ref-arch.poc'
+            - name: SPIKE_TRUST_ROOT_BOOTSTRAP
+              value: 'agentic-ref-arch.poc'
+            - name: SPIKE_TRUST_ROOT_LITE_WORKLOAD
+              value: 'agentic-ref-arch.poc'
+            - name: SPIKE_SYSTEM_LOG_LEVEL
+              value: 'INFO'
+          livenessProbe:
+            tcpSocket:
+              port: 8443
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 8443
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            # SPIRE Agent Workload API socket (from host via DaemonSet)
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            # Writable tmp directory for SPIKE runtime data
+            - name: spike-tmp
+              mountPath: /tmp
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        # SPIRE Agent socket from the host (populated by SPIRE Agent DaemonSet)
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: Directory
+        # Writable tmp for SPIKE runtime
+        - name: spike-tmp
+          emptyDir:
+            sizeLimit: 10Mi

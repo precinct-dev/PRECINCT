@@ -359,6 +359,34 @@ patches:
                     cpu: 100m
                     memory: 256Mi
 
+  # --------------------------------------------------------------------------
+  # SPIKE Keeper: local registry image, reduced resources
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Deployment
+      name: spike-keeper
+      namespace: spike-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: spike-keeper
+        namespace: spike-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: spike-keeper
+                image: registry:5000/spike-keeper:latest
+                imagePullPolicy: Always
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 256Mi
+
   # SPIKE Nexus: replace HTTPS probes with TCP socket (JSON patch)
   # SPIKE requires mTLS; kubelet can't provide SPIFFE client certs.
   - target:
