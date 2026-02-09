@@ -39,8 +39,7 @@ function `ConfigFromEnv()`.
 | `SPIFFE_MODE` | `dev` | SPIFFE operating mode: `dev` (HTTP, no mTLS) or `prod` (HTTPS with SPIRE mTLS) |
 | `SPIFFE_TRUST_DOMAIN` | `poc.local` | SPIFFE trust domain for workload identity |
 | `SPIFFE_LISTEN_PORT` | `9443` | HTTPS listen port when `SPIFFE_MODE=prod` |
-| `SPIFFE_ENDPOINT_SOCKET` | _(none)_ | SPIRE Workload API socket URI (e.g., `unix:///tmp/spire-agent/public/api.sock`) |
-| `SPIRE_AGENT_SOCKET` | _(none)_ | SPIRE agent socket filesystem path (e.g., `/tmp/spire-agent/public/api.sock`) |
+| `SPIFFE_ENDPOINT_SOCKET` | _(none)_ | SPIRE Workload API socket URI (e.g., `unix:///tmp/spire-agent/public/api.sock`). This is the only SPIRE socket variable the gateway reads; `SPIRE_AGENT_SOCKET` (set in docker-compose.yml) is not consumed by gateway code |
 | `MCP_TRANSPORT_MODE` | `mcp` | Transport mode: `mcp` (MCP Streamable HTTP) or `proxy` (reverse proxy, backward compatible) |
 | `ALLOWED_BASE_PATH` | Current working directory | Base directory for OPA path-based access control (read/grep tools). All file access is restricted to paths under this directory |
 
@@ -427,8 +426,9 @@ camera access when `permissions_hard_constraints.camera_allowed=false`.
 
 ### config/otel-collector.yaml / config/otel-collector-phoenix.yaml
 
-**Purpose**: OpenTelemetry Collector pipeline configuration. Both files have
-identical content. The Phoenix variant is mounted by `docker-compose.phoenix.yml`.
+**Purpose**: OpenTelemetry Collector pipeline configuration. The Phoenix variant
+(`config/otel-collector-phoenix.yaml`) includes a 6-line header comment but is
+functionally identical to the base config. It is mounted by `docker-compose.phoenix.yml`.
 
 **Pipeline structure**:
 ```
