@@ -24,7 +24,7 @@ All identified Phase 1 gaps (SPIKE Nexus, deep scan, session persistence, mTLS, 
 |--------|-------|
 | Issues tracked (beads) | 234 total (230 closed, 4 active in documentation epic) |
 | Closed epics | 29 |
-| Commits on main | 233 |
+| Commits on main | ~235 |
 | Go source lines | ~16,700 |
 | Go test lines | ~43,300 |
 | Go test functions | 1,002 |
