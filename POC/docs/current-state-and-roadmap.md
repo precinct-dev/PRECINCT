@@ -1,7 +1,7 @@
 # Current State and Roadmap
 
-**Last Updated:** 2026-02-07
-**Branch:** main (merged from epic/RFA-qq0-poc-docker-compose)
+**Last Updated:** 2026-02-09
+**Branch:** main (all epic branches merged and deleted)
 **Reference Architecture Version:** 2.2
 
 ---
@@ -22,37 +22,56 @@ All identified Phase 1 gaps (SPIKE Nexus, deep scan, session persistence, mTLS, 
 
 | Metric | Value |
 |--------|-------|
-| Issues tracked (beads) | 158 (all closed) |
-| Commits on main | 143 |
-| Go source lines | ~13,400 |
-| Go test lines | ~28,300 |
-| Test functions | 675 |
-| OPA Rego lines | ~1,200 (67 policy tests) |
-| OpenTofu (HCL) lines | ~29,000 |
-| Kubernetes YAML lines | ~24,000 |
-| Shell scripts | ~3,400 lines |
-| Python (compliance + setup) | ~2,000 lines |
-| E2E test suites | 7 (65 PASS / 0 FAIL / 1 SKIP) |
+| Issues tracked (beads) | 234 total (230 closed, 4 active in documentation epic) |
+| Closed epics | 29 |
+| Commits on main | ~235 |
+| Go source lines | ~16,700 |
+| Go test lines | ~43,300 |
+| Go test functions | 1,002 |
+| OPA Rego lines | ~2,000 (67 policy tests) |
+| OpenTofu (HCL) lines | ~29,400 |
+| Kubernetes YAML lines | ~28,400 |
+| Shell scripts | ~6,500 lines |
+| Python (compliance + SDK + agents) | ~6,800 lines |
+| E2E demo suites | 2 (Go: 21 tests, Python: 22 tests) |
+| K8s NetworkPolicies | 26 across 6 namespaces |
 
 ### 2.2 Epics Completed
 
 | Epic | Scope | Stories |
 |------|-------|---------|
-| RFA-qq0 | Docker Compose POC -- full 13-middleware chain | 28 stories |
+| RFA-qq0 | Docker Compose POC -- full 13-middleware chain | 18 stories |
 | RFA-d13 | Embed OPA as Go library (eliminate sidecar) | 1 story |
-| RFA-j2d | MCP-UI / Apps Extension security (SEP-1865) | 9 stories |
-| RFA-9fv | EKS v2 -- production-grade Kubernetes manifests | 9 stories |
+| RFA-eu8 | Phase 2 Walking Skeleton -- SPIKE Nexus + OTel E2E vertical slice | 2 stories |
+| RFA-9wg | MCP Transport Support -- Streamable HTTP + Legacy SSE | 7 stories |
+| RFA-j2d | MCP-UI / Apps Extension security (SEP-1865) | 10 stories |
+| RFA-9fv | EKS v2 -- production-grade Kubernetes manifests | 2 stories |
 | RFA-a2y | SPIKE Nexus E2E -- late-binding secrets proven | 2 stories |
 | RFA-pkm | Deep Scan & Guard Model -- Groq E2E with fallback | 2 stories |
+| RFA-7sh | Deep Scan Hardening -- Groq E2E, chunking, and fallback policy | 2 stories |
 | RFA-hh5 | Session Persistence & KeyDB -- cross-request detection | 3 stories |
 | RFA-8z8 | mTLS Enforcement -- SPIRE SVID-based encryption | 2 stories |
 | RFA-m6j | Observability -- OTel spans across all middleware | 3 stories |
 | RFA-8jl | Compliance Automation -- one-button 4-framework report | 3 stories |
-| RFA-tj9 | CLI Setup & Developer Experience | 3 stories |
-| RFA-62e | Registry Hot-Reload with Attestation | 4 stories |
-| RFA-7bh | Production Hardening -- cosign, K8s validation, pattern audit | 2 stories |
-| RFA-lo1 | CI/CD Security & Performance Benchmarking | 4 stories |
-| Discovery bugs & cleanup | Port conflicts, dead code, protocol methods, KeyDB fixes | ~40+ stories |
+| RFA-h3c | Compliance Automation (follow-up) -- 4-framework report | 2 stories |
+| RFA-28q | CLI Setup Wizard -- guided configuration for non-security-experts | 2 stories |
+| RFA-tj9 | CLI Setup & Developer Experience | 6 stories |
+| RFA-62b | Agent SDK -- framework-independent gateway client (Go + Python) | 2 stories |
+| RFA-62e | Registry Hot-Reload with Attestation | 2 stories |
+| RFA-5kv | Production Hardening -- cosign, local K8s validation, pattern audit, CI security | 3 stories |
+| RFA-7bh | Local K8s -- full stack on Docker Desktop kubeadm | 2 stories |
+| RFA-lo1 | Hardening & CI -- security scanning, benchmarks, pattern audit | 3 stories |
+| RFA-ppz | Documentation and DX -- audience-oriented docs, error pages, benchmarks | 2 stories |
+| RFA-ev6 | E2E Demo Output Enrichment + prompt injection + secrets/SPIKE tests | 5 stories |
+| RFA-oyg | SPIKE Nexus Production Parity -- Pilot Seeder + SQLite backend | 4 stories |
+| RFA-eiy | K8s SPIKE Production Parity -- full secret management stack on Docker Desktop K8s | 7 stories |
+| RFA-4zz | K8s NetworkPolicy Full Coverage -- default-deny + explicit allow for all namespaces | 5 stories |
+| RFA-4m9 | Standalone Persistent Phoenix Observability | 7 stories |
+| RFA-a6z | DLP & Guard Model Hardening -- GROQ wiring, configurable guard model, DLP policy | 7 stories |
+| RFA-keg | Demo E2E Reliability -- deep scan integration, rate limit, proof collection | 4 stories |
+| RFA-50d | SPIKE Nexus Fully Functional in Docker Compose Demo -- token redemption E2E | 1 story |
+| RFA-2irf | Documentation Overhaul and AI Skill Creation | in progress |
+| Discovery bugs & cleanup | Port conflicts, dead code, protocol methods, KeyDB fixes | ~75 stories |
 
 ### 2.3 The 13-Middleware Chain
 
@@ -64,10 +83,10 @@ All identified Phase 1 gaps (SPIKE Nexus, deep scan, session persistence, mTLS, 
 | 4 | Audit Logging | PROVEN | Hash-chained, async (99.2% latency reduction), OTel span |
 | 5 | Tool Registry Verify | PROVEN | SHA-256 hash verification, hot-reload with cosign-blob attestation, OTel span |
 | 6 | OPA Policy | PROVEN | Embedded Rego, bundle digest tracking, OTel span |
-| 7 | DLP Scan | PROVEN | Credentials blocked (fail-closed), PII flagged (audit-only), OTel span |
+| 7 | DLP Scan | PROVEN | Credentials blocked (fail-closed), PII flagged (audit-only), injection configurable (block or flag via DLP_INJECTION_POLICY env), OTel span |
 | 8 | Session Context | PROVEN | KeyDB-backed persistence, cross-request exfiltration detection, GDPR delete, OTel span |
 | 9 | Step-Up Gating | PROVEN | Risk scoring, fast-path for low-risk, OTel span |
-| 10 | Deep Scan Dispatch | PROVEN | Groq Prompt Guard 2, prompt chunking (512-token windows), configurable fail-closed/fail-open, OTel span |
+| 10 | Deep Scan Dispatch | PROVEN | Configurable guard model (GUARD_MODEL_ENDPOINT, GUARD_MODEL_NAME, GUARD_API_KEY; defaults to Groq Prompt Guard 2), prompt chunking (512-token windows), configurable fail-closed/fail-open, OTel span |
 | 11 | Rate Limiting | PROVEN | KeyDB-backed distributed token bucket, X-RateLimit headers, OTel span |
 | 12 | Circuit Breaker | PROVEN | closed/open/half-open state tracking, OTel span |
 | 13 | Token Substitution | PROVEN | SPIKE Nexus integration via SPIKENexusRedeemer, scope validation via registry, OTel span |
@@ -78,13 +97,13 @@ All 13 middleware layers are fully instrumented with OTel spans and tested with 
 
 | Service | Image | Status |
 |---------|-------|--------|
-| SPIKE Nexus | ghcr.io/spiffe/spike-nexus:0.8.0 | Active in docker-compose.yml |
-| SPIKE Bootstrap | ghcr.io/spiffe/spike-nexus:0.8.0 | One-shot init for root key |
+| SPIKE Nexus | ghcr.io/spiffe/spike-nexus:0.8.0 | Active in docker-compose.yml, SQLite backend, fully functional token redemption (HTTP 200) |
+| SPIKE Pilot (Secret Seeder) | ghcr.io/spiffe/spike:0.8.0 | One-shot init container for secret seeding via official CLI |
 | KeyDB | eqalpha/keydb:latest | Active with TLS (SVID certs) |
 | SPIRE Server | ghcr.io/spiffe/spire-server:1.10.0 | Active |
 | SPIRE Agent | Custom wrapper | Active with Docker attestor |
 | OTel Collector | otel/opentelemetry-collector-contrib:latest | Active, receives gateway spans |
-| Phoenix | arizephoenix/phoenix:latest | Active, displays trace waterfall |
+| Phoenix | arizephoenix/phoenix:latest | Standalone persistent deployment (docker-compose.phoenix.yml), survives demo teardowns, cross-run trace history |
 
 ### 2.5 EKS Infrastructure (Validated Offline)
 
@@ -95,7 +114,7 @@ All manifests validated with `kubeconform --strict`, `kustomize build`, and `tof
 - Gateway deployment with security context (non-root, read-only rootfs)
 - MCP server placeholder in tools namespace
 - S3 MCP tool server (Go, with bucket/prefix allowlist enforcement)
-- NetworkPolicies (default-deny ingress+egress, explicit allows)
+- NetworkPolicies (26 policies across 6 namespaces: default-deny ingress+egress, explicit allows for all legitimate communication paths)
 - OTEL Collector -> Phoenix, audit to S3 with Object Lock COMPLIANCE
 - CI/CD: GitHub Actions with cosign OIDC signing, SBOM generation, dev/staging/prod overlays
 - Admission control: OPA Gatekeeper + sigstore/policy-controller (cosign signature verification)
@@ -129,6 +148,9 @@ Implements SEP-1865 (Apps Extension) security:
 - **Go SDK** (`mcp-gateway-sdk-go`): Framework-independent gateway client with structured error handling
 - **Python SDK** (`mcp_gateway_sdk`): Unified error parsing and retry logic
 - **Unified JSON Error Envelope**: Standardized error responses across all middleware with error codes, remediation hints, and documentation URLs
+- **Documentation Suite**: README.md (30-second overview), API reference, Go SDK docs, Python SDK docs, deployment guide (Docker Compose + K8s + Phoenix), configuration reference (all env vars by component)
+- **Configurable Guard Model**: GUARD_MODEL_ENDPOINT, GUARD_MODEL_NAME, GUARD_API_KEY env vars allow swapping the deep scan model without code changes
+- **DLP Policy Per Category**: Credentials always block (security invariant); injection policy configurable via DLP_INJECTION_POLICY (block or flag); PII flagged for audit
 
 ---
 
@@ -136,7 +158,7 @@ Implements SEP-1865 (Apps Extension) security:
 
 | Claim | Evidence |
 |-------|----------|
-| 13-middleware chain composes cleanly in Go | E2E suite: 65/66 checks pass across 7 test suites |
+| 13-middleware chain composes cleanly in Go | E2E demo suites: Go 21/21, Python 22/22 (Docker Compose and K8s) |
 | Tool poisoning detection works | SHA-256 hash mismatch returns 403; 7 OPA regex patterns detect description injection |
 | DLP at gateway boundary catches credentials | AWS keys, private keys, passwords blocked fail-closed in E2E |
 | Hash-chained audit is tamper-evident | prev_hash links events; bundle_digest and registry_digest prove policy consistency |
@@ -153,10 +175,21 @@ Implements SEP-1865 (Apps Extension) security:
 | One-button compliance evidence generation | `make compliance-report` produces XLSX/CSV/PDF for 4 frameworks |
 | Registry hot-reload with attestation | fsnotify watcher with cosign-blob Ed25519 signature verification |
 | Async audit logging preserves correctness | Hash chain under mutex (~2-3us), file I/O async via 4096-event buffered channel |
+| Guard model is configurable | GUARD_MODEL_ENDPOINT, GUARD_MODEL_NAME, GUARD_API_KEY env vars; defaults to Groq Prompt Guard 2 |
+| DLP policy per category is configurable | Credentials always block (security invariant), injection block or flag (DLP_INJECTION_POLICY), PII flag |
+| SPIKE Nexus token redemption works E2E | Token substitution returns HTTP 200 with redeemed secret; spike-secret-seeder init container; devMode OwnerID |
+| SPIKE SQLite persistence works | SPIKE Nexus with SQLite backend survives container restarts; secrets persist |
+| K8s NetworkPolicy full coverage | 26 NetworkPolicies across 6 namespaces (gateway, tools, data, spike-system, spire-system, observability); default-deny ingress+egress |
+| Standalone Phoenix survives demo teardowns | docker-compose.phoenix.yml runs independently; both Docker Compose and K8s demos send traces to single persistent instance |
+| K8s SPIKE production parity | Full secret management stack on Docker Desktop kubeadm: Nexus, Pilot, SPIRE entries, gateway env injection |
+| MCP Streamable HTTP transport | Streamable HTTP + legacy SSE support; transport-agnostic middleware chain |
+| Demo E2E reliability under real conditions | Injection tests accept deep scan outcomes; rate limit with demo params (RPM=60, BURST=10); context propagation for proof collection |
 
 ---
 
-## 4. Known Limitations
+## 4. Current Status
+
+All Phase 1 functional gaps have been addressed. The project has 230 closed issues across 29 completed epics. One documentation epic (RFA-2irf) is in progress. No open functional work remains.
 
 ### 4.1 Rego Cannot Do Cryptographic Signature Verification
 
@@ -196,6 +229,13 @@ DSPy, PydanticAI, and other Python agent frameworks run externally and connect t
 | Deep scan fail-closed/fail-open at setup time | Informed consent; users choose security posture explicitly | 2026-02-06 |
 | Compliance reports in Python | openpyxl/fpdf2 maturity; offline tool, zero coupling to Go gateway | 2026-02-06 |
 | Registry hot-reload with cosign-blob attestation | Operational agility with mandatory signature verification | 2026-02-06 |
+| SPIKE Pilot for secret seeding (not custom binary) | Official CLI is maintained upstream; reduces custom code surface | 2026-02-07 |
+| SPIKE SQLite backend for persistence | Secrets survive container restarts; memory-mode insufficient for demo reliability | 2026-02-07 |
+| Standalone Phoenix deployment | Traces persist across demo teardowns; single instance serves both Compose and K8s | 2026-02-07 |
+| Configurable guard model via env vars | Enables swapping deep scan model (e.g., local vs cloud) without code changes | 2026-02-08 |
+| DLP injection policy as flag vs block | Credentials always block (security invariant); injection policy varies by use case | 2026-02-08 |
+| K8s NetworkPolicy default-deny everywhere | Zero-trust network posture; explicit allows for every legitimate path | 2026-02-07 |
+| Context propagation via SecurityFlagsCollector | Mutable struct shared via pointer in Go context; allows downstream middleware to populate upstream audit fields | 2026-02-08 |
 
 ---
 
@@ -205,8 +245,10 @@ DSPy, PydanticAI, and other Python agent frameworks run externally and connect t
 
 | Item | Description | Status |
 |------|-------------|--------|
-| Deploy to running K8s cluster | Validate Docker Desktop kubeadm or EKS with real workloads | Not started |
-| E2E with real external APIs | Test full flow with real Groq API, real external MCP servers | Not started |
+| Docker Desktop K8s | Full stack on Docker Desktop kubeadm with local overlay | Done (RFA-7bh, RFA-eiy) |
+| EKS cloud deployment | Deploy to real EKS cluster with production workloads | Not started |
+| E2E with real Groq API | Deep scan with real Groq Prompt Guard 2 API calls | Done (RFA-pkm, RFA-a6z) |
+| E2E with real external MCP servers | Test full flow with third-party MCP servers | Not started |
 | Load testing | Benchmark combined stack (SPIKE Nexus + KeyDB + OTel) under realistic load | Not started |
 
 ### 6.2 P2 -- Extensions
@@ -235,14 +277,23 @@ DSPy, PydanticAI, and other Python agent frameworks run externally and connect t
 cd POC
 make setup                           # Interactive setup wizard
 make up                              # Start all services
-bash tests/e2e/run_all.sh           # Run full E2E validation (65 PASS / 0 FAIL / 1 SKIP)
+make demo-compose                    # Run full E2E demo (Go 21 + Python 22 tests)
 
-# Individual scenarios
+# K8s local stack (Docker Desktop kubeadm)
+make k8s-local-up                    # Start K8s local overlay
+make demo-k8s                        # Run full E2E demo on K8s
+
+# Phoenix observability (standalone, persistent)
+make phoenix-up                      # Start standalone Phoenix + OTel Collector
+make phoenix-down                    # Stop Phoenix (traces persist)
+
+# Individual E2E scenarios (legacy shell-based)
 bash tests/e2e/scenario_a_happy_path.sh
 bash tests/e2e/scenario_b_security_denial.sh
 bash tests/e2e/scenario_c_exfiltration.sh
 bash tests/e2e/scenario_d_tool_poisoning.sh
 bash tests/e2e/scenario_e_dlp.sh
+bash tests/e2e/scenario_spike_nexus.sh
 bash tests/e2e/readiness_checklist.sh
 bash tests/e2e/middleware_chain_verify.sh
 

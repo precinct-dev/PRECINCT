@@ -1,0 +1,472 @@
+# Deployment Guide
+
+This is the consolidated deployment guide for the Agentic AI Security Reference Architecture POC. It covers Docker Compose (development/evaluation), local Kubernetes (Docker Desktop), and references to EKS production deployment.
+
+For detailed architecture context, see [Deployment Patterns](architecture/deployment-patterns.md).
+For detailed prerequisites, see [Prerequisites](getting-started/prerequisites.md).
+For EKS IaC details, see [EKS IaC Approach](eks-iac.md).
+
+---
+
+## 1. Prerequisites
+
+### Required Tools
+
+| Tool | Minimum Version | Purpose |
+|------|----------------|---------|
+| Docker | 25.0+ | Container runtime |
+| Docker Compose | 2.24+ | Multi-container orchestration |
+| Go | 1.23+ | Building gateway and services |
+| make | Any | Build automation |
+| Bash | 4.0+ | Setup and demo scripts |
+
+### For Local Kubernetes Deployment
+
+All of the above, plus:
+
+| Tool | Minimum Version | Purpose |
+|------|----------------|---------|
+| kubectl | 1.28+ | Kubernetes CLI |
+| kustomize | 5.0+ | Kubernetes manifest templating |
+| Docker Desktop | Latest | Local Kubernetes cluster (enable in Settings > Kubernetes) |
+
+**Minimum hardware for K8s:** 4 CPU cores, 8GB RAM allocated to Docker Desktop.
+
+### For Compliance Reporting
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| Python | 3.11+ | Compliance report generation |
+| uv | Any | Python package management |
+
+### Optional Tools
+
+| Tool | Purpose | Impact if Missing |
+|------|---------|-------------------|
+| opa | OPA Rego policy unit tests | OPA policy tests skipped |
+| golangci-lint | Go linting | Falls back to `go fmt` + `go vet` |
+| cosign | Container image signature verification | Image signing disabled |
+| gosec | Go source code security scanning | Go security scan skipped |
+| trivy | Container image and filesystem CVE scanning | Vulnerability scan skipped |
+| syft | SBOM generation | Supply chain transparency reduced |
+
+---
+
+## 2. Docker Compose Deployment (Step-by-Step)
+
+This is the primary deployment mode for development and evaluation. The full 13-layer security middleware chain runs identically in Docker Compose and Kubernetes.
+
+### Step 1: Start Phoenix Observability Stack
+
+Phoenix must be started first because the gateway needs the `phoenix-observability-network` Docker network to send OpenTelemetry traces.
+
+```bash
+make phoenix-up
+```
+
+This creates the `phoenix-observability-network`, starts the Phoenix trace viewer and the OpenTelemetry collector, and waits for health checks.
+
+**Verify:** Open [http://localhost:6006](http://localhost:6006) in a browser. The Phoenix UI should load.
+
+### Step 2: Start All Services
+
+```bash
+make up
+```
+
+This command:
+1. Verifies that `phoenix-observability-network` exists (fails with a clear error if not)
+2. Builds all container images from source
+3. Starts all services with dependency ordering
+4. Waits for all health checks to pass (`--wait --wait-timeout 180`)
+5. Registers SPIRE workload entries via `make register-spire`
+
+The full startup sequence takes 1-3 minutes depending on hardware. The `--wait` flag ensures the command does not return until every service reports healthy.
+
+### Step 3: Verify
+
+```bash
+# Check all services are healthy
+docker compose ps
+
+# Run the full E2E demo test suite (21 Go + 22 Python = 43 tests)
+make demo-compose
+```
+
+All services should show status `healthy`. The demo suite exercises all 13 middleware layers with real requests through the gateway.
+
+### Step 4: View Traces
+
+Open [http://localhost:6006](http://localhost:6006). All tool calls produce OpenTelemetry spans visible in the Phoenix trace viewer. Each request shows the full middleware chain execution with timing for every layer.
+
+### Step 5: Cleanup
+
+```bash
+# Stop all gateway services (Phoenix keeps running, traces preserved)
+make down
+
+# Stop Phoenix stack (preserves trace data for later analysis)
+make phoenix-down
+
+# Full cleanup: stop everything, remove volumes and build artifacts
+make clean
+```
+
+---
+
+## 3. Service Architecture
+
+The Docker Compose stack runs 11 services plus 3 one-shot init containers. Services start in dependency order enforced by health checks and `service_completed_successfully` conditions.
+
+### Identity Infrastructure
+
+| Service | Role | Notes |
+|---------|------|-------|
+| `spire-server` | SPIFFE identity provider | Issues X.509 SVIDs to all workloads. Trust domain: `poc.local` |
+| `spire-agent` | SVID attestor | Runs with `pid: host` for Docker workload attestation. Uses `use_new_container_locator = true` for cgroupv2 |
+| `spire-token-generator` | One-shot init | Generates a fresh join token for SPIRE agent attestation |
+| `spire-entry-registrar` | One-shot init | Registers SPIFFE IDs for all workloads. Must complete before SPIKE or gateway start |
+
+### Secret Management (SPIKE)
+
+| Service | Role | Notes |
+|---------|------|-------|
+| `spike-nexus` | Secret store | Late-binding token redemption via SPIFFE mTLS. AES-256-GCM encrypted SQLite backend. Port 8443 |
+| `spike-keeper-1` | Key shard holder | Holds Shamir secret shard for Nexus root key recovery. Threshold=1, shares=1 for POC |
+| `spike-bootstrap` | One-shot init | Generates root key, splits via Shamir, sends shards to Keeper(s) |
+| `spike-secret-seeder` | One-shot init | Seeds demo secrets (`ref=deadbeef`) and creates gateway-read ACL policy via SPIKE Pilot CLI |
+
+### Data and Application
+
+| Service | Role | Notes |
+|---------|------|-------|
+| `keydb` | Redis-compatible store | Session persistence and distributed rate limiting. Ports 6379 (plain) and 6380 (mTLS) |
+| `keydb-svid-init` | One-shot init (prod profile) | Fetches SPIRE SVID and writes PEM files for KeyDB mTLS on port 6380. Only runs in `prod` profile |
+| `mock-mcp-server` | Simulated MCP tool server | Speaks MCP Streamable HTTP. Returns canned results for `tavily_search` and `echo` tools. Port 8082 |
+| `mcp-security-gateway` | 13-layer security gateway | The core security enforcement point. Port 9090 (HTTP) and 9443 (mTLS) |
+
+### Service Startup Order
+
+The startup sequence is enforced by Docker Compose `depends_on` conditions:
+
+```
+spire-server (healthy)
+  -> spire-token-generator (completed)
+    -> spire-agent (healthy)
+      -> spire-entry-registrar (completed)
+        -> spike-keeper-1 (healthy)
+          -> spike-nexus (healthy)
+            -> spike-bootstrap (completed)
+              -> spike-secret-seeder (completed)
+                -> mcp-security-gateway
+keydb (healthy) -> mcp-security-gateway
+mock-mcp-server (healthy) -> mcp-security-gateway
+```
+
+The gateway is the last service to start because it requires all identity, secret, session, and upstream services to be operational.
+
+---
+
+## 4. Kubernetes Local Deployment
+
+This deploys the full stack to Docker Desktop's built-in Kubernetes cluster using Kustomize overlays that adapt EKS manifests for a single-node kubeadm environment.
+
+### Step-by-Step
+
+```bash
+# 1. Verify Kubernetes prerequisites (installs OPA Gatekeeper, sigstore CRDs)
+make k8s-prereqs
+
+# 2. Start local container registry (registry:2 on port 5050)
+make k8s-registry
+
+# 3. Deploy full stack to K8s (builds, pushes, applies overlays, waits for rollouts)
+make k8s-up
+# Alias: make k8s-local-up
+
+# 4. Verify
+kubectl get pods -A | grep -E '(gateway|spire|spike|data|tools)'
+
+# 5. Run E2E demo against K8s
+make demo-k8s
+
+# 6. Teardown
+make k8s-down
+# Alias: make k8s-local-down
+```
+
+### What `make k8s-up` Does
+
+1. Starts a local registry (`registry:2` on port 5050) and connects it to the `kind` network
+2. Builds gateway, mock-mcp-server, spire-agent-wrapper, and spike-keeper images
+3. Tags and pushes all images to `localhost:5050`
+4. Installs OPA Gatekeeper and sigstore policy-controller CRDs
+5. Applies the Kustomize local overlay (`infra/eks/overlays/local/`) in two passes:
+   - Pass 1: Namespaces, CRDs, services
+   - Pass 2: Constraints, policies (after Gatekeeper processes ConstraintTemplates)
+6. Generates TLS certs for the policy-controller webhook
+7. Waits for all rollouts: SPIRE server/agent, SPIKE keeper/nexus/bootstrap/seeder, KeyDB, MCP server, gateway
+8. Registers SPIRE workload entries via `make k8s-register-spire`
+
+### Local Overlay Adaptations
+
+The local Kustomize overlay (`infra/eks/overlays/local/kustomization.yaml`) applies these changes to the EKS base manifests:
+
+| EKS Feature | Local Adaptation |
+|-------------|-----------------|
+| ALB Ingress | NodePort Service (port 30090) |
+| IRSA (IAM Roles for Service Accounts) | Hardcoded K8s Secrets (dev only) |
+| EBS CSI StorageClass | Default hostpath StorageClass |
+| Route53 DNS | localhost / *.local |
+| 3-AZ topology | Single node (1 replica) |
+| SPIRE `k8s_psat` node attestor | `join_token` attestor |
+| `restricted` Pod Security Standards | `privileged` (required for hostPath volumes) |
+| sigstore policy-controller (enforcing) | Scaled to 0 replicas, failurePolicy: Ignore |
+| Gatekeeper constraints (deny) | enforcementAction: dryrun |
+
+### Key Notes from Implementation
+
+- **SPIRE 1.10.0 images are distroless** (no `/bin/sh`). The local overlay uses a wrapper image with a shell to read the join token. SPIRE binaries are at `/opt/spire/bin/spire-server`.
+- **Docker Desktop kubeadm needs PSS relaxed to `privileged`** for any namespace with hostPath volumes (SPIRE agent socket, SPIRE data directories).
+- **SPIRE parent ID detection**: Use `agent list` (not `entry show`) to find the agent's SPIFFE ID for parent ID in entry registration.
+- **Docker Desktop K8s does not expose NodePorts to host** via the standard NodePort mechanism in all configurations. Use `kubectl port-forward` if NodePort 30090 is not accessible.
+- **Gateway endpoint in K8s**: `http://localhost:30090` (NodePort) or via port-forward.
+
+---
+
+## 5. EKS Production Deployment
+
+For production deployment on AWS EKS, see [EKS IaC Approach](eks-iac.md).
+
+The production deployment uses OpenTofu (Terraform-compatible) with the `terraform-aws-modules/eks` community module. The IaC covers:
+
+- **VPC**: Subnets, security groups, NAT gateways
+- **EKS cluster**: Managed node groups, OIDC provider
+- **SPIRE**: `k8s_psat` node attestation (OIDC-backed, replacing `join_token`)
+- **Gateway**: ALB Ingress, IRSA for AWS service access
+- **Admission control**: OPA Gatekeeper (enforce mode), sigstore policy-controller (enforce mode)
+- **Storage**: Encrypted PVCs via AWS KMS
+- **Network**: NetworkPolicies for default-deny + explicit allow rules
+
+The production deployment enforces the `restricted` Pod Security Standard, real cosign signature verification, and encrypted persistent volumes -- controls that are relaxed or absent in the local development overlay.
+
+---
+
+## 6. Phoenix Observability Setup
+
+Phoenix is a standalone observability stack that persists traces across demo stack teardowns. It runs in a separate Docker Compose file (`docker-compose.phoenix.yml`) with its own Docker network (`phoenix-observability-network`).
+
+### Commands
+
+```bash
+# Start Phoenix + OTel collector (creates network, waits for health checks)
+make phoenix-up
+
+# Stop Phoenix stack (preserves trace data for later analysis)
+make phoenix-down
+
+# Stop Phoenix stack AND destroy all trace data
+make phoenix-reset
+```
+
+### Architecture
+
+- **Phoenix** ([http://localhost:6006](http://localhost:6006)): Trace visualization and analysis UI. Receives spans from the OTel collector.
+- **OTel Collector** (ports 4317 gRPC, 4318 HTTP): Receives OTLP spans from the gateway and forwards them to Phoenix.
+
+### How It Connects
+
+The gateway reaches the OTel collector via the shared `phoenix-observability-network` Docker network. The gateway's `OTEL_EXPORTER_OTLP_ENDPOINT` is set to `otel-collector:4317`.
+
+Phoenix must be started before the main stack (`make phoenix-up` before `make up`) because the gateway container joins the `phoenix-observability-network` and Docker Compose will fail if that network does not exist.
+
+### Trace Visibility
+
+Every request through the gateway produces spans showing the full 13-middleware chain execution. In Phoenix, you can see:
+- Per-middleware latency
+- Which middleware layers triggered (DLP flags, rate limit decisions, deep scan results)
+- Token substitution timing
+- Upstream MCP server response time
+
+---
+
+## 7. Troubleshooting
+
+### SPIRE Stale SVIDs
+
+**Symptom:** Services fail to start or mTLS handshakes fail after a previous unclean shutdown.
+
+**Fix:** Clear SPIRE data directories for a clean restart:
+```bash
+rm -rf data/spire-server/ data/spire-agent/
+make down && make up
+```
+
+### SVID Fetch Latency on First Call
+
+**Symptom:** First request through the gateway takes 5-10 seconds or times out.
+
+**Cause:** The SPIRE agent needs to attest and deliver SVIDs on the first call. Subsequent calls use cached SVIDs.
+
+**Fix:** Wait for all health checks to pass (the `--wait` flag in `make up` handles this). If sending manual requests, allow 5-10 seconds after `docker compose ps` shows healthy.
+
+### Docker Workload Attestor Not Matching
+
+**Symptom:** SPIRE entries exist but workloads cannot fetch SVIDs. Only `unix:uid` selectors appear in agent logs.
+
+**Fix:** Ensure two settings in the SPIRE agent configuration:
+1. `spire-agent` container must have `pid: host` in `docker-compose.yml` (already configured)
+2. Docker workload attestor must have `use_new_container_locator = true` for cgroupv2 (Docker Desktop, modern Linux)
+
+Without both of these, Docker selectors silently fail and only unix selectors (uid/gid) are produced.
+
+### SPIKE Nexus Trust Root Configuration
+
+**Symptom:** SPIKE Nexus fails to start with validation errors.
+
+**Fix:** `SPIKE_TRUST_ROOT_NEXUS` is required (not just `SPIKE_TRUST_ROOT`). Both must be set to the trust domain (`poc.local` for Docker Compose, `agentic-ref-arch.poc` for K8s).
+
+### SPIKE Nexus SPIFFE ID
+
+**Symptom:** SPIKE Nexus cannot authenticate via SPIRE.
+
+**Fix:** The spike-nexus SPIFFE ID must be `/spike/nexus` (not `/ns/spike-system/sa/spike-nexus`). Verify the SPIRE entry matches this pattern.
+
+### SPIKE Has No /healthz Endpoint
+
+**Symptom:** Kubernetes HTTP health probes fail for SPIKE Nexus.
+
+**Cause:** SPIKE requires mTLS on all endpoints, including health checks. The kubelet cannot present SPIFFE client certificates.
+
+**Fix:** Use TCP socket probes for K8s liveness and readiness checks (already configured in the local overlay). For Docker Compose, the healthcheck uses a custom binary that performs a real mTLS connection.
+
+### Rate Limit Keys Persist Between Demo Runs
+
+**Symptom:** Rate limit tests fail or behave differently on subsequent demo runs because counters are not reset.
+
+**Fix:** Rate limit keys persist in KeyDB. Use targeted Lua cleanup for `ratelimit:*` keys instead of `FLUSHALL` (which would destroy session data). The demo script handles this automatically, but for manual cleanup:
+```bash
+docker exec keydb keydb-cli --scan MATCH 'ratelimit:*' | xargs -r docker exec keydb keydb-cli DEL
+```
+
+### Phoenix Network Must Exist Before `make up`
+
+**Symptom:** `make up` fails with "phoenix-observability-network not found".
+
+**Fix:** Start Phoenix first:
+```bash
+make phoenix-up
+make up
+```
+
+The gateway container joins the `phoenix-observability-network` to send traces to the OTel collector. If this network does not exist, Docker Compose fails at container creation.
+
+### SPIRE Entry Registration Must Happen Before Workloads Start
+
+**Symptom:** SPIKE Nexus or gateway starts before SPIRE entries are registered and cannot fetch SVIDs.
+
+**Fix:** The `spire-entry-registrar` init container must complete before SPIKE or gateway services start. This is enforced by `depends_on: spire-entry-registrar: condition: service_completed_successfully` in `docker-compose.yml`. If manually registering entries, run `make register-spire` before starting dependent services.
+
+### Kubernetes: SPIRE Agent Wrapper for Distroless Images
+
+**Symptom:** SPIRE agent pod fails in K8s because the official `spire-agent:1.10.0` image has no shell.
+
+**Fix:** The local overlay uses a custom wrapper image (`spire-agent-wrapper`) that includes a shell to read the join token from a shared volume. The wrapper calls `/opt/spire/bin/spire-agent` directly. This is built and pushed to the local registry by `make k8s-up`.
+
+### Kubernetes: PSS Violations
+
+**Symptom:** Pods rejected by Pod Security Admission in K8s.
+
+**Fix:** For Docker Desktop local development, the local overlay relaxes PSS to `privileged` on namespaces that need hostPath volumes (spire-system, gateway, tools, spike-system). This is intentional for local dev. Production uses the `restricted` profile.
+
+---
+
+## 8. Environment Variables Quick Reference
+
+The gateway is configured via environment variables. The most commonly needed ones are listed here. For the full list, see the `mcp-security-gateway` service definition in `docker-compose.yml`.
+
+### Gateway Core
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `9090` | Gateway HTTP listen port |
+| `UPSTREAM_URL` | `http://mock-mcp-server:8082` | Target MCP server URL |
+| `LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
+| `MCP_TRANSPORT_MODE` | `mcp` | Transport mode: `mcp` (Streamable HTTP) or `proxy` (reverse proxy) |
+| `MAX_REQUEST_SIZE_BYTES` | `10485760` | Maximum request body size (10MB) |
+
+### SPIFFE/mTLS
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SPIFFE_MODE` | `dev` | SPIFFE mode: `dev` (HTTP) or `prod` (mTLS) |
+| `SPIFFE_TRUST_DOMAIN` | `poc.local` | SPIFFE trust domain |
+| `SPIFFE_LISTEN_PORT` | `9443` | mTLS listen port (prod mode) |
+| `SPIFFE_ENDPOINT_SOCKET` | `unix:///tmp/spire-agent/public/api.sock` | SPIRE agent workload API socket |
+
+### Security Controls
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GROQ_API_KEY` | (empty) | API key for Groq deep scan guard model. Required for deep scan functionality |
+| `GUARD_MODEL_ENDPOINT` | (empty) | Guard model API base URL. Defaults to Groq if empty |
+| `GUARD_MODEL_NAME` | (empty) | Guard model identifier. Defaults to `llama-prompt-guard-2-86m` |
+| `GUARD_API_KEY` | (empty) | Guard model API key. Falls back to `GROQ_API_KEY` if empty |
+| `DEEP_SCAN_TIMEOUT` | `5` | Deep scan API timeout in seconds |
+| `DEEP_SCAN_FALLBACK` | `fail_closed` | Behavior when deep scan fails: `fail_closed` or `fail_open` |
+| `DLP_INJECTION_POLICY` | (empty) | Override DLP injection action: `block` or `flag`. Default uses YAML config |
+
+### Rate Limiting
+
+| Variable | Default (Compose) | Description |
+|----------|-------------------|-------------|
+| `RATE_LIMIT_RPM` | `60` | Requests per minute per agent. Code default is 600; compose default is 60 for demo |
+| `RATE_LIMIT_BURST` | `10` | Burst bucket size. Code default is larger; compose default is 10 for demo |
+
+### Data Stores
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `KEYDB_URL` | `redis://keydb:6379` | KeyDB connection URL. Auto-converts to `rediss://keydb:6380` in prod mode |
+| `SPIKE_NEXUS_URL` | `https://spike-nexus:8443` | SPIKE Nexus API URL for token redemption |
+| `AUDIT_LOG_PATH` | `/tmp/audit.jsonl` | Path for structured JSON audit log output |
+
+### Observability
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel-collector:4317` | OpenTelemetry collector gRPC endpoint |
+| `OTEL_SERVICE_NAME` | `mcp-security-gateway` | Service name in traces |
+
+---
+
+## 9. Make Targets Quick Reference
+
+| Target | Description |
+|--------|-------------|
+| `make help` | Show all documented targets |
+| `make up` | Start Docker Compose stack (waits for all services healthy) |
+| `make down` | Stop Docker Compose stack |
+| `make clean` | Full cleanup (containers, volumes, build artifacts) |
+| `make test` | Run unit tests (Go + OPA) |
+| `make lint` | Run linters |
+| `make build` | Build gateway container image |
+| `make demo-compose` | Run E2E demo against Docker Compose |
+| `make demo-k8s` | Run E2E demo against Kubernetes |
+| `make phoenix-up` | Start Phoenix + OTel collector |
+| `make phoenix-down` | Stop Phoenix (preserves traces) |
+| `make phoenix-reset` | Stop Phoenix + destroy trace data |
+| `make k8s-up` | Deploy full stack to local K8s |
+| `make k8s-down` | Teardown local K8s deployment |
+| `make k8s-prereqs` | Install K8s CRD prerequisites (Gatekeeper, sigstore) |
+| `make k8s-registry` | Start local container registry |
+| `make register-spire` | Register SPIRE workload entries (Docker Compose) |
+| `make k8s-register-spire` | Register SPIRE workload entries (K8s) |
+| `make ci` | Full CI pipeline (lint + test + build) |
+| `make benchmark` | Run performance benchmarks |
+| `make security-scan` | Run security scans (gosec, trivy) |
+| `make compliance-report` | Generate compliance report |
+| `make test-integration` | Run integration tests |
+| `make test-opa` | Run OPA policy tests |
+| `make validate-setup-time` | Validate 30-minute setup claim |
+| `make gdpr-delete` | GDPR right-to-deletion for a SPIFFE ID |
