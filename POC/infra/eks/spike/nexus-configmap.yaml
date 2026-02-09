@@ -1,11 +1,12 @@
 # ------------------------------------------------------------------------------
 # SPIKE Nexus Configuration (ConfigMap)
-# Story: RFA-9fv.3
+# Stories: RFA-9fv.3, RFA-1qx
 #
 # SPIKE Nexus runs in token mode:
 #   - Receives a SPIFFE SVID from the SPIRE Agent Workload API
 #   - Issues short-lived tokens to authenticated workloads
 #   - Validates tokens for service-to-service authorization
+#   - Stores secrets in SQLite with AES-256-GCM encryption (root key via Keeper)
 #
 # Environment variables configure the Nexus runtime behavior.
 # The SPIRE Workload API socket is mounted from the host (via SPIRE Agent).
@@ -23,9 +24,19 @@ data:
   # These are loaded as environment variables by the deployment.
   # See: https://spike.ist/usage/configuration/
   SPIKE_NEXUS_TLS_PORT: ":8443"
-  SPIKE_NEXUS_BACKEND_STORE: "memory"
+  SPIKE_NEXUS_BACKEND_STORE: "sqlite"
+  SPIKE_NEXUS_DATA_DIR: "/opt/spike/data"
+  # Keeper integration for Shamir secret sharing (root encryption key recovery)
+  SPIKE_NEXUS_KEEPER_PEERS: "https://spike-keeper-1.spike-system.svc.cluster.local:8443"
+  SPIKE_NEXUS_SHAMIR_THRESHOLD: "1"
+  SPIKE_NEXUS_SHAMIR_SHARES: "1"
   SPIKE_SYSTEM_LOG_LEVEL: "INFO"
+  # Trust roots for all SPIKE components (must match SPIRE trust domain)
   SPIKE_TRUST_ROOT: "agentic-ref-arch.poc"
   SPIKE_TRUST_ROOT_NEXUS: "agentic-ref-arch.poc"
+  SPIKE_TRUST_ROOT_PILOT: "agentic-ref-arch.poc"
+  SPIKE_TRUST_ROOT_BOOTSTRAP: "agentic-ref-arch.poc"
+  SPIKE_TRUST_ROOT_KEEPER: "agentic-ref-arch.poc"
+  SPIKE_TRUST_ROOT_LITE_WORKLOAD: "agentic-ref-arch.poc"
   # SPIRE Workload API socket path (must match the volume mount)
   SPIFFE_ENDPOINT_SOCKET: "unix:///run/spire/sockets/agent.sock"

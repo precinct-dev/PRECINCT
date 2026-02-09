@@ -39,6 +39,7 @@ resources:
   # Local-only resources
   - keydb.yaml
   - spire-token-generator.yaml
+  - gateway-secrets.yaml
   # Development namespace with policy-controller exemption
   - namespace-dev-exempt.yaml
 
@@ -110,6 +111,38 @@ patches:
                     value: "redis://keydb.data.svc.cluster.local:6379"
                   - name: UPSTREAM_URL
                     value: "http://mcp-server.tools.svc.cluster.local:8081"
+                  - name: SPIKE_NEXUS_URL
+                    value: "https://spike-nexus.spike-system.svc.cluster.local:8443"
+                  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                    value: "otel-collector.observability.svc.cluster.local:4317"
+                  - name: OTEL_SERVICE_NAME
+                    value: "mcp-security-gateway"
+                  - name: GROQ_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: gateway-secrets
+                        key: groq-api-key
+                        optional: true
+                  - name: DEEP_SCAN_TIMEOUT
+                    value: "5"
+                  - name: DEEP_SCAN_FALLBACK
+                    value: "fail_closed"
+                  - name: GUARD_MODEL_ENDPOINT
+                    value: ""
+                  - name: GUARD_MODEL_NAME
+                    value: ""
+                  - name: GUARD_API_KEY
+                    value: ""
+                  - name: DLP_INJECTION_POLICY
+                    value: ""
+                  - name: RATE_LIMIT_RPM
+                    value: "60"
+                  - name: RATE_LIMIT_BURST
+                    value: "10"
+                  - name: MCP_TRANSPORT_MODE
+                    value: "mcp"
+                  - name: SPIFFE_TRUST_DOMAIN
+                    value: "agentic-ref-arch.poc"
                 resources:
                   requests:
                     cpu: 50m
@@ -351,6 +384,34 @@ patches:
           spec:
             containers:
               - name: spike-nexus
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 256Mi
+
+  # --------------------------------------------------------------------------
+  # SPIKE Keeper: local registry image, reduced resources
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Deployment
+      name: spike-keeper
+      namespace: spike-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: spike-keeper
+        namespace: spike-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: spike-keeper
+                image: registry:5000/spike-keeper:latest
+                imagePullPolicy: Always
                 resources:
                   requests:
                     cpu: 25m

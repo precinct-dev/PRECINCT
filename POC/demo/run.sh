@@ -258,6 +258,38 @@ collect_spike_token_proof_k8s() {
         | grep -i -E "token_substitution|spike.*ref|spike.*redeem|token.*redeem" | tail -10 \
         || echo "  (no SPIKE token processing entries found in logs)"
     echo ""
+
+    log "SPIKE Keeper proof (K8s spike-keeper logs)"
+    echo ""
+    kubectl -n spike-system logs deploy/spike-keeper --tail=200 2>/dev/null \
+        | grep -i -E "svid|shard|ready|serving|healthy|keeper" | tail -10 \
+        || echo "  (no spike-keeper log entries found)"
+    echo ""
+
+    log "SPIKE Bootstrap proof (K8s spike-bootstrap logs)"
+    echo ""
+    kubectl -n spike-system logs job/spike-bootstrap --tail=20 2>/dev/null \
+        || echo "  (no spike-bootstrap log entries found)"
+    echo ""
+
+    log "SPIKE Secret Seeder proof (K8s spike-secret-seeder logs)"
+    echo ""
+    kubectl -n spike-system logs job/spike-secret-seeder --tail=20 2>/dev/null \
+        || echo "  (no spike-secret-seeder log entries found)"
+    echo ""
+}
+
+collect_mcp_transport_proof_k8s() {
+    log "MCP transport detection proof (K8s logs)"
+    echo ""
+    kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
+        | grep -i -E "streamable|mcp.*transport|mcp.*session|mock-mcp|transport.*mode" | tail -10 \
+        || echo "  (no MCP transport entries found in logs)"
+    echo ""
+    kubectl -n tools logs deploy/mcp-server --tail=200 2>/dev/null \
+        | grep -i -E "session|tools" | tail -10 \
+        || echo "  (no mock MCP server activity found)"
+    echo ""
 }
 
 print_otel_proof() {
@@ -365,6 +397,7 @@ run_demo_cycle() {
         collect_spike_token_proof_compose
     else
         collect_audit_proof_k8s
+        collect_mcp_transport_proof_k8s
         collect_dlp_injection_proof_k8s
         collect_dlp_credential_proof_k8s
         collect_spike_token_proof_k8s
