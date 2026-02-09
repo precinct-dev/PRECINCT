@@ -135,7 +135,7 @@ Agent                     Gateway                    SPIKE Nexus
 
 **Trade-offs accepted:**
 - SPIKE is at "Development" maturity (not production-ready per SPIFFE lifecycle). Acceptable for a reference architecture POC. Documented as a known limitation.
-- Docker Compose Tier 1 uses in-memory root key (lost on restart). Acceptable for POC; Keepers (Tier 4) solve this for production.
+- Docker Compose Tier 1 uses AES-256-GCM encrypted SQLite with a persistent Docker volume. Root key is delivered via spike-bootstrap and recovered from Keeper(s) via Shamir Secret Sharing on restart. Secrets survive container restarts.
 
 ---
 
