@@ -108,6 +108,9 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	docker tag spike-keeper:latest $(LOCAL_REGISTRY)/spike-keeper:latest
 	docker push $(LOCAL_REGISTRY)/spike-keeper:latest
 	$(MAKE) k8s-prereqs
+	@echo "Cleaning up completed SPIKE jobs for re-apply..."
+	-kubectl -n spike-system delete job spike-bootstrap --ignore-not-found 2>/dev/null
+	-kubectl -n spike-system delete job spike-secret-seeder --ignore-not-found 2>/dev/null
 	@echo "Applying overlay (pass 1: namespaces, CRDs, services)..."
 	-kubectl apply -k infra/eks/overlays/local/ 2>&1 | grep -v 'ensure CRDs are installed first'
 	@echo "Waiting for Gatekeeper to process ConstraintTemplates..."
@@ -123,11 +126,19 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 		echo "WARNING: SPIRE Agent not yet ready"
 	@echo "Registering SPIRE workload entries..."
 	$(MAKE) k8s-register-spire
-	@echo "Waiting for remaining pods..."
-	-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=120s 2>/dev/null || \
-		echo "WARNING: SPIKE Nexus not yet ready"
+	@echo "Waiting for SPIKE Keeper..."
 	-kubectl -n spike-system rollout status deployment/spike-keeper --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIKE Keeper not yet ready"
+	@echo "Waiting for SPIKE Bootstrap job..."
+	-kubectl -n spike-system wait --for=condition=complete job/spike-bootstrap --timeout=120s 2>/dev/null || \
+		echo "WARNING: SPIKE Bootstrap not yet complete"
+	@echo "Waiting for SPIKE Nexus (SQLite mode)..."
+	-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=120s 2>/dev/null || \
+		echo "WARNING: SPIKE Nexus not yet ready"
+	@echo "Waiting for SPIKE Secret Seeder job..."
+	-kubectl -n spike-system wait --for=condition=complete job/spike-secret-seeder --timeout=120s 2>/dev/null || \
+		echo "WARNING: SPIKE Secret Seeder not yet complete"
+	@echo "Waiting for remaining pods..."
 	-kubectl -n data rollout status deployment/keydb --timeout=60s 2>/dev/null || \
 		echo "WARNING: KeyDB not yet ready"
 	-kubectl -n tools rollout status deployment/mcp-server --timeout=60s 2>/dev/null || \
@@ -139,6 +150,10 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo ""
 	@echo "Gateway: http://localhost:30090"
 	@echo "Health:  curl -s http://localhost:30090/health"
+	@echo ""
+	@echo "To enable deep scan (optional):"
+	@echo "  kubectl -n gateway create secret generic gateway-secrets --from-literal=groq-api-key=$$GROQ_API_KEY --dry-run=client -o yaml | kubectl apply -f -"
+	@echo "  kubectl -n gateway rollout restart deploy/mcp-security-gateway"
 
 k8s-down: ## Tear down local K8s deployment
 	-kubectl delete -k infra/eks/overlays/local/ --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
