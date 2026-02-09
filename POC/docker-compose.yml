@@ -112,6 +112,8 @@ services:
     depends_on:
       spire-entry-registrar:
         condition: service_completed_successfully  # Entries must exist before SVID fetch
+      spike-keeper-1:
+        condition: service_healthy  # Keeper must be healthy before Nexus starts
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
     ports:
@@ -119,6 +121,10 @@ services:
     environment:
       - SPIKE_NEXUS_TLS_PORT=:8443
       - SPIKE_NEXUS_BACKEND_STORE=memory
+      # Keeper configuration for Shamir Secret Sharing root key recovery (RFA-oyg)
+      - SPIKE_NEXUS_KEEPER_PEERS=https://spike-keeper-1:8443
+      - SPIKE_NEXUS_SHAMIR_THRESHOLD=1
+      - SPIKE_NEXUS_SHAMIR_SHARES=1
       - SPIKE_SYSTEM_LOG_LEVEL=INFO
       - SPIKE_TRUST_ROOT=poc.local
       - SPIKE_TRUST_ROOT_NEXUS=poc.local
@@ -134,6 +140,41 @@ services:
       - "spiffe-id=spike-nexus"
       - "component=secrets"
       - "service=spike"
+
+  # SPIKE Keeper 1 - Shamir key shard holder for Nexus root key recovery (RFA-oyg)
+  # Single Keeper with threshold=1, shares=1 is minimum viable for POC.
+  # Keeper holds root encryption key shard in memory; Nexus contacts it on startup
+  # to reconstruct the AES-256-GCM root key for SQLite backend encryption.
+  spike-keeper-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spike-keeper
+    image: spike-keeper:latest
+    container_name: spike-keeper-1
+    hostname: spike-keeper-1
+    depends_on:
+      spire-entry-registrar:
+        condition: service_completed_successfully  # SPIRE entry must exist before Keeper fetches SVID
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+    environment:
+      - SPIKE_KEEPER_TLS_PORT=:8443
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_KEEPER=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+      - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
+      - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
+      - SPIKE_SYSTEM_LOG_LEVEL=INFO
+      - HEALTHCHECK_ADDR=localhost:8443
+    networks:
+      - agentic-net
+    labels:
+      - "spiffe-id=spike-keeper-1"
+      - "component=secrets"
+      - "service=spike"
+    restart: "no"
 
   # SPIKE Bootstrap - One-shot init container to generate and deliver root key to Nexus (RFA-a2y.1)
   spike-bootstrap:

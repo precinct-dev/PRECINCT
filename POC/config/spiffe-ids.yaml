@@ -79,6 +79,20 @@ workloads:
     selectors:
       - "docker:label:spiffe-id:spike-nexus"
 
+  # SPIKE Keeper 1 - Shamir key shard holder for root key recovery (RFA-oyg)
+  # Single Keeper deployment for POC. Production would use 3+ Keepers with threshold=2.
+  - spiffe_id: spiffe://poc.local/spike/keeper/1
+    description: SPIKE Keeper 1 (Shamir Key Shard)
+    purpose: >
+      Holds one Shamir shard of the SPIKE Nexus root encryption key.
+      Nexus contacts Keepers on startup to reconstruct the root key
+      for AES-256-GCM SQLite backend encryption. Single Keeper with
+      threshold=1 for POC; production would use 3+ Keepers.
+    agent_class: spike/keeper
+    agent_purpose: "1"
+    selectors:
+      - "docker:label:spiffe-id:spike-keeper-1"
+
   # SPIKE Secret Seeder - Init container that pre-seeds test secrets using SPIKE Pilot CLI
   # Uses the official SPIKE Pilot CLI ('spike secret put' / 'spike policy create')
   # from the ghcr.io/spiffe/spike-pilot:0.8.0 image (RFA-1l2).
