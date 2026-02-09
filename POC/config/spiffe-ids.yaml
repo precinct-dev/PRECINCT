@@ -79,14 +79,17 @@ workloads:
     selectors:
       - "docker:label:spiffe-id:spike-nexus"
 
-  # SPIKE Secret Seeder - Init container that pre-seeds test secrets
+  # SPIKE Secret Seeder - Init container that pre-seeds test secrets using SPIKE Pilot CLI
+  # Uses the official SPIKE Pilot CLI ('spike secret put' / 'spike policy create')
+  # from the ghcr.io/spiffe/spike-pilot:0.8.0 image (RFA-1l2).
   # Uses Pilot superuser SPIFFE ID pattern so SPIKE Nexus authorizes writes.
   # SPIKE's IsPilotOperator() allows /spike/pilot/role/superuser + suffix.
   - spiffe_id: spiffe://poc.local/spike/pilot/role/superuser/seeder
-    description: SPIKE Secret Seeder (POC init container)
+    description: SPIKE Secret Seeder (SPIKE Pilot CLI init container)
     purpose: >
       One-shot init container that seeds test secrets into SPIKE Nexus
-      via mTLS. Uses Pilot superuser SPIFFE ID for write authorization.
+      using the official SPIKE Pilot CLI. Uses Pilot superuser SPIFFE ID
+      for write authorization via SPIRE mTLS.
     agent_class: spike/pilot/role
     agent_purpose: superuser/seeder
     selectors:
