@@ -117,7 +117,7 @@ patches:
                   - name: SPIKE_NEXUS_URL
                     value: "https://spike-nexus.spike-system.svc.cluster.local:8443"
                   - name: OTEL_EXPORTER_OTLP_ENDPOINT
-                    value: "otel-collector.observability.svc.cluster.local:4317"
+                    value: "host.docker.internal:4317"
                   - name: OTEL_SERVICE_NAME
                     value: "mcp-security-gateway"
                   - name: GROQ_API_KEY
