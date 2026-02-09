@@ -16,6 +16,8 @@
 #     - To SPIRE agent on the host (SPIFFE SVID retrieval via Unix socket)
 #     - To kube-dns on port 53 (DNS resolution)
 #     - To SPIKE Nexus in spike-system on port 8443 (token operations)
+#     - To KeyDB in data namespace on port 6379 (rate limiting + sessions)
+#     - To external HTTPS on port 443 (Groq API deep scan / guard model)
 #
 # Reference Architecture Section 9.4: NetworkPolicy enforcement
 # ------------------------------------------------------------------------------
@@ -100,6 +102,24 @@ spec:
       ports:
         - protocol: TCP
           port: 8443
+
+    # Allow egress to KeyDB in data namespace on port 6379 (rate limiting + sessions)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: data
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keydb
+      ports:
+        - protocol: TCP
+          port: 6379
+
+    # Allow egress to external HTTPS (port 443) for Groq API deep scan / guard model
+    # In production, restrict to specific Groq API IP ranges or use an egress proxy.
+    - ports:
+        - protocol: TCP
+          port: 443
 
     # Allow egress to kube-dns for DNS resolution (UDP and TCP port 53)
     - to:

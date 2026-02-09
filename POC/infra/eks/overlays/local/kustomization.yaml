@@ -36,6 +36,8 @@ resources:
   - ../../observability
   # Admission control (OPA Gatekeeper + sigstore/policy-controller)
   - ../../admission
+  # NetworkPolicies (default-deny + explicit allow for gateway and tools)
+  - ../../policies
   # Local-only resources
   - keydb.yaml
   - spire-token-generator.yaml
