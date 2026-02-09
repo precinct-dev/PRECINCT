@@ -93,6 +93,22 @@ workloads:
     selectors:
       - "docker:label:spiffe-id:spike-keeper-1"
 
+  # SPIKE Bootstrap - One-shot init container for root key delivery (RFA-oyg)
+  # Generates a root key, splits via Shamir Secret Sharing, and broadcasts shards
+  # to Keeper(s). Nexus recovers shards on startup to initialize AES-256-GCM encryption.
+  # Uses ghcr.io/spiffe/spike-bootstrap:0.8.0 with the dedicated 'bootstrap' binary.
+  - spiffe_id: spiffe://poc.local/spike/bootstrap
+    description: SPIKE Bootstrap (Root Key Delivery)
+    purpose: >
+      One-shot init container that generates a root encryption key, splits it
+      via Shamir Secret Sharing, and broadcasts shards to Keeper(s) via SPIRE
+      mTLS. SPIKE Nexus recovers shards from Keepers on startup to initialize
+      the AES-256-GCM encrypted SQLite backing store.
+    agent_class: spike
+    agent_purpose: bootstrap
+    selectors:
+      - "docker:label:spiffe-id:spike-bootstrap"
+
   # SPIKE Secret Seeder - Init container that pre-seeds test secrets using SPIKE Pilot CLI
   # Uses the official SPIKE Pilot CLI ('spike secret put' / 'spike policy create')
   # from the ghcr.io/spiffe/spike-pilot:0.8.0 image (RFA-1l2).

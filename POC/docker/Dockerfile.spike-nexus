@@ -25,12 +25,21 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build \
     -o /build/mtls-healthcheck \
     ./cmd/mtls-healthcheck
 
+# RFA-oyg: Create data directory owned by UID 1000 for SQLite backend persistence.
+# Builder stage has shell; create here and COPY --chown to distroless stage.
+RUN mkdir -p /spike-data && chown 1000:1000 /spike-data
+
 # ============================================================================
 # Stage 2: Runtime -- spike-nexus + healthcheck sidecar binary
 # ============================================================================
 FROM ghcr.io/spiffe/spike-nexus:0.8.0
 
 COPY --from=builder /build/mtls-healthcheck /usr/local/bin/mtls-healthcheck
+
+# RFA-oyg: Create /opt/spike/data writable by non-root user (UID 1000).
+# spike-nexus runs as UID 1000 (distroless convention) and SPIKE_NEXUS_DATA_DIR
+# must be writable for SQLite backend persistence.
+COPY --from=builder --chown=1000:1000 /spike-data /opt/spike/data
 
 HEALTHCHECK --interval=5s --timeout=15s --start-period=15s --retries=12 \
     CMD ["/usr/local/bin/mtls-healthcheck"]

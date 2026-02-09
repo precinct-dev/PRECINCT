@@ -65,6 +65,11 @@ reg "spiffe://$DOMAIN/spike/nexus" \
 reg "spiffe://$DOMAIN/spike/keeper/1" \
     -selector docker:label:spiffe-id:spike-keeper-1
 
+# SPIKE Bootstrap - Root key delivery via 'spike init' (RFA-oyg)
+# Bootstrap needs a SPIFFE ID matching IsBootstrap() check for root key operations.
+reg "spiffe://$DOMAIN/spike/bootstrap" \
+    -selector docker:label:spiffe-id:spike-bootstrap
+
 # SPIKE Nexus only authorizes Pilot-role SPIFFE IDs for secret writes.
 # The seeder uses /spike/pilot/role/superuser/seeder which matches the
 # IsPilotOperator() check (base path + optional suffix).
