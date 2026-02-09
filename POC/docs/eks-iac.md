@@ -2,7 +2,7 @@
 
 **Spike:** RFA-9fv.1
 **Date:** 2026-02-05
-**Context:** Agentic Reference Architecture POC -- choose an IaC tool for provisioning an EKS cluster in a single AWS account, us-west-2 (Oregon).
+**Context:** Agentic Reference Architecture -- choose an IaC tool for provisioning an EKS cluster in a single AWS account, us-west-2 (Oregon).
 
 ---
 
@@ -134,7 +134,7 @@ If the team later decides Terraform's BSL is acceptable, switching back requires
 - Smaller community means fewer ready-made examples and modules
 - Default state management requires Pulumi Cloud (SaaS) -- self-hosted backend is possible but adds setup
 - Less hiring pool familiarity compared to Terraform/HCL
-- The POC is Go-based, but Pulumi's Go SDK is less polished than its TypeScript SDK
+- The project is Go-based, but Pulumi's Go SDK is less polished than its TypeScript SDK
 - Risk of over-engineering infrastructure with programming language features (loops, abstractions)
 - Migration path from Pulumi is harder than from Terraform/OpenTofu
 
@@ -158,11 +158,11 @@ If the team later decides Terraform's BSL is acceptable, switching back requires
 
 ---
 
-## POC-Specific Recommendation
+## Project-Specific Recommendation
 
-For the Agentic Reference Architecture POC, OpenTofu/Terraform is the strongest choice because:
+For the Agentic Reference Architecture, OpenTofu/Terraform is the strongest choice because:
 
-1. **The POC will grow.** Beyond EKS, we need VPC with NetworkPolicy-capable CNI, IAM roles for SPIRE workload identity, S3 for state/artifacts, and potentially ALB/NLB for ingress. Terraform handles all of these in one codebase.
+1. **The project will grow.** Beyond EKS, we need VPC with NetworkPolicy-capable CNI, IAM roles for SPIRE workload identity, S3 for state/artifacts, and potentially ALB/NLB for ingress. Terraform handles all of these in one codebase.
 
 2. **SPIRE integration requires precise networking.** SPIRE server/agent communication, workload attestation, and OIDC federation all require careful VPC, security group, and IAM configuration. Terraform's explicit resource model makes this auditable.
 
@@ -187,11 +187,11 @@ POC/infra/eks/
 
 ### Recommended Approach for Cluster
 
-Use **EKS with managed node groups** (not Auto Mode) for the POC:
+Use **EKS with managed node groups** (not Auto Mode) for this project:
 
 - **Managed node groups** give full control over instance types and pricing while AWS handles node lifecycle.
 - **EKS Auto Mode** adds a per-instance surcharge and is better suited for production workloads where operational simplicity outweighs cost control.
-- For a POC, we want cost predictability and the ability to use Spot instances aggressively.
+- For a reference implementation, we want cost predictability and the ability to use Spot instances aggressively.
 
 ---
 
@@ -275,16 +275,16 @@ HTTP_PROXY=http://127.0.0.1:10080 HTTPS_PROXY=http://127.0.0.1:10080 tofu apply
 
 ---
 
-## Baseline Cost Estimate (us-west-2, Minimal POC Cluster)
+## Baseline Cost Estimate (us-west-2, Minimal Development Cluster)
 
-### Scenario: Minimal Development/POC Cluster
+### Scenario: Minimal Development Cluster
 
 | Component | Specification | Monthly Cost (USD) |
 |-----------|--------------|-------------------|
 | **EKS Control Plane** | 1 cluster, standard support | $73.00 |
 | **Worker Nodes** | 3x t3.medium On-Demand (2 vCPU, 4 GiB each) | $91.10 |
 | **EBS Volumes** | 3x 20 GiB gp3 (root volumes) | $4.80 |
-| **NAT Gateway** | 1x NAT Gateway (single AZ for POC) | $32.85 |
+| **NAT Gateway** | 1x NAT Gateway (single AZ for development) | $32.85 |
 | **NAT Data Processing** | ~50 GiB/month estimated | $2.25 |
 | **S3 (Terraform state)** | Negligible | $0.00 |
 | **DynamoDB (state lock)** | On-demand, minimal usage | $0.00 |
@@ -299,7 +299,7 @@ HTTP_PROXY=http://127.0.0.1:10080 HTTPS_PROXY=http://127.0.0.1:10080 tofu apply
 - **t3.medium instances:** $0.0416/hour x 730 hours = $30.37/month per instance. 3 instances across availability zones for basic HA = $91.10/month.
 - **gp3 EBS:** $0.08/GB/month x 20 GiB x 3 nodes = $4.80/month.
 - **NAT Gateway:** $0.045/hour x 730 hours = $32.85/month + $0.045/GiB processed.
-- **ALB:** $0.0225/hour x 730 hours = $16.43/month base + LCU charges (minimal for POC).
+- **ALB:** $0.0225/hour x 730 hours = $16.43/month base + LCU charges (minimal for development).
 
 ### Cost Optimization Strategies
 
@@ -313,12 +313,12 @@ HTTP_PROXY=http://127.0.0.1:10080 HTTPS_PROXY=http://127.0.0.1:10080 tofu apply
 
 ### When to Consider EKS Auto Mode
 
-EKS Auto Mode simplifies node management but adds a surcharge (~$0.012/hour for m5.large, on top of the EC2 cost). For a POC with 3 nodes, this adds ~$26/month. Consider Auto Mode when:
+EKS Auto Mode simplifies node management but adds a surcharge (~$0.012/hour for m5.large, on top of the EC2 cost). For a development cluster with 3 nodes, this adds ~$26/month. Consider Auto Mode when:
 - Operational simplicity is more important than cost
 - The team does not want to manage node groups, AMIs, or scaling policies
 - Production deployment where node lifecycle management is a burden
 
-For this POC, managed node groups with explicit instance types provide better cost control and transparency.
+For this project, managed node groups with explicit instance types provide better cost control and transparency.
 
 ---
 

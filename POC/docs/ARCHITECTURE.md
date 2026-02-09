@@ -1,17 +1,17 @@
-# ARCHITECTURE.md -- Phase 2: Agentic AI Security Reference Architecture POC
+# ARCHITECTURE.md -- Agentic AI Security Reference Architecture
 
 **Version:** 1.0
 **Date:** 2026-02-06
 **Author:** Architect (D&F Phase)
-**Status:** Draft for BLT Review
+**Status:** As-Built
 
 ---
 
 ## 1. System Overview
 
-Phase 2 hardens the Docker Compose POC delivered in Phase 1 (70 stories, 13-middleware chain, 594 tests) and extends it to local Kubernetes, real secrets management, cross-request session persistence, mTLS, full observability, and one-button compliance reporting.
+Phase 2 hardens the Docker Compose stack delivered in Phase 1 (70 stories, 13-middleware chain, 594 tests) and extends it to local Kubernetes, real secrets management, cross-request session persistence, mTLS, full observability, and one-button compliance reporting.
 
-The system remains a **reverse-proxy gateway** written in Go that interposes between AI agents and MCP tool servers. Phase 2 adds five infrastructure services (SPIKE Nexus, KeyDB, OpenBAO, OTel Collector, SPIRE with mTLS enforcement) and two offline toolchains (compliance report generator, CLI setup wizard).
+The system remains a **reverse-proxy gateway** written in Go that interposes between AI agents and MCP tool servers. Phase 2 adds five infrastructure services (SPIKE Nexus, KeyDB, OTel Collector, Phoenix, SPIRE with mTLS enforcement) and two offline toolchains (compliance report generator, CLI setup wizard).
 
 ### 1.1 Architecture Diagram
 
@@ -43,13 +43,8 @@ The system remains a **reverse-proxy gateway** written in Go that interposes bet
 +------+  +-------+  +--------+  +------+  +----------+
 | SPIRE|  | KeyDB |  | SPIKE  |  | OTel |  | MCP Tool |
 | Srvr |  |(sess +|  | Nexus  |  | Coll |  | Server   |
-|+Agent|  | rate) |  |        |  |->Phx |  |          |
+|+Agent|  | rate) |  |(SQLite)|  |->Phx |  |          |
 +------+  +-------+  +--------+  +------+  +----------+
-                          |
-                          v
-                     +---------+
-                     | OpenBAO | (K8s Tier 2 only)
-                     +---------+
 ```
 
 ### 1.2 Technology Stack
@@ -59,8 +54,7 @@ The system remains a **reverse-proxy gateway** written in Go that interposes bet
 | Gateway | Go | 1.23+ | BSD-3 | Performance, static binary, strong concurrency |
 | Policy engine | OPA (embedded) | 0.62+ | Apache-2.0 | Eliminates sidecar failure mode |
 | Identity | SPIFFE/SPIRE | 1.10.0 | Apache-2.0 | CNCF-standard workload identity |
-| Secrets | SPIKE Nexus | 0.8.0 | Apache-2.0 | SPIFFE-native, late-binding tokens |
-| Secrets backend (K8s) | OpenBAO | 2.4+ | MPL-2.0 | Open-source Vault fork, enterprise-safe license |
+| Secrets | SPIKE Nexus | 0.8.0 | Apache-2.0 | SPIFFE-native, late-binding tokens, AES-256-GCM encrypted SQLite backend |
 | Session store | KeyDB | eqalpha/keydb:latest | BSD-3 | Redis-compatible, truly open license |
 | Observability | OTel SDK (Go) | 1.28+ | Apache-2.0 | Vendor-neutral, per-middleware spans |
 | Trace backend | Phoenix | latest | Apache-2.0 | OTel-native, zero-config |
@@ -82,9 +76,11 @@ Each decision records what was decided, why, what alternatives were rejected, an
 
 | Tier | Deployment | Backend | Secret Storage |
 |------|-----------|---------|---------------|
-| 1 | Docker Compose | SPIKE Nexus with local encrypted storage | In-memory root key, AES-256-GCM encrypted SQLite |
-| 2 | Local K8s / EKS | SPIKE Nexus backed by OpenBAO | OpenBAO Secrets Engine (KV v2) |
+| 1 | Docker Compose | SPIKE Nexus with SQLite | AES-256-GCM encrypted SQLite, root key via Keeper (Shamir) |
+| 2 | Local K8s / EKS | SPIKE Nexus with SQLite | AES-256-GCM encrypted SQLite on PVC (same as Tier 1) |
 | 3 | Cloud (future) | Native KMS | AWS KMS / GCP KMS / Azure Key Vault |
+
+> **Note:** OpenBAO was originally planned as the Tier 2 backend but was not implemented. SPIKE Nexus with SQLite proved sufficient for both Docker Compose and Kubernetes tiers. The SQLite database is encrypted with AES-256-GCM and the root encryption key is managed via Shamir secret sharing through SPIKE Keeper(s).
 
 **Image:** `ghcr.io/spiffe/spike-nexus:0.8.0` (built from `github.com/spiffe/spike` -- the Dockerfiles directory contains `nexus.Dockerfile`). The EKS manifests previously referenced `vsecm/spike-nexus:0.3.0`; this is updated to the current SPIFFE-org image at 0.8.0.
 
@@ -123,10 +119,10 @@ Agent                     Gateway                    SPIKE Nexus
 3. SPIKE Pilot (CLI) is used by the setup script to seed initial secrets: `spike secret put external-apis/groq-key value=$GROQ_API_KEY`.
 4. The gateway's `SecretRedeemer` implementation makes mTLS calls to `https://spike-nexus:8443/v1/store/secret/get` to redeem tokens.
 
-**Gateway code changes:**
-- Replace `POCSecretRedeemer` in `internal/gateway/middleware/hooks.go` with a `SPIKENexusRedeemer` that uses `spike-sdk-go` or raw HTTP+mTLS.
-- Add `SPIKE_NEXUS_URL` to `Config` (default: `https://spike-nexus:8443`).
-- The `TokenSubstitution` middleware signature changes to accept a `SecretRedeemer` parameter instead of creating `NewPOCSecretRedeemer()` internally.
+**Gateway code (as-built):**
+- The gateway uses `SPIKENexusRedeemer` in `internal/gateway/middleware/spike_redeemer.go`, which calls SPIKE Nexus via mTLS (raw HTTP with SPIRE X.509 SVIDs).
+- `SPIKE_NEXUS_URL` is in `Config` (default: `https://spike-nexus:8443`). When set, the gateway uses `SPIKENexusRedeemer`; when empty, it falls back to `POCSecretRedeemer` (deterministic mock secrets for local dev without SPIKE).
+- The `TokenSubstitution` middleware accepts a `SecretRedeemer` interface parameter. The production implementation is `SPIKENexusRedeemer`.
 
 **Alternatives rejected:**
 - HashiCorp Vault: BSL licensing is incompatible with enterprise-safe reference architecture (BUSINESS.md Section 5.1).
@@ -134,7 +130,7 @@ Agent                     Gateway                    SPIKE Nexus
 - SPIKE Pilot as sidecar for each service: Unnecessary complexity; gateway is the single substitution point.
 
 **Trade-offs accepted:**
-- SPIKE is at "Development" maturity (not production-ready per SPIFFE lifecycle). Acceptable for a reference architecture POC. Documented as a known limitation.
+- SPIKE is at "Development" maturity (not production-ready per SPIFFE lifecycle). Acceptable for a reference implementation. Documented as a known limitation.
 - Docker Compose Tier 1 uses AES-256-GCM encrypted SQLite with a persistent Docker volume. Root key is delivered via spike-bootstrap and recovered from Keeper(s) via Shamir Secret Sharing on restart. Secrets survive container restarts.
 
 ---
@@ -244,7 +240,7 @@ The complexity of mTLS in Docker Compose is real (BA Risk #3). The approach:
 **Alternatives rejected:**
 - cert-manager: Introduces a second CA alongside SPIRE. Two trust roots is worse than one. cert-manager is appropriate for PKI that is NOT SPIFFE-based; here, everything is SPIFFE.
 - Manual certificate generation scripts: Fragile, no rotation, poor DX.
-- Linkerd/Istio service mesh for mTLS: Massive dependency for a reference architecture POC. The mesh would obscure the security patterns we are demonstrating.
+- Linkerd/Istio service mesh for mTLS: Massive dependency for a reference implementation. The mesh would obscure the security patterns we are demonstrating.
 
 **Trade-offs accepted:**
 - KeyDB requires filesystem-based TLS certs (it does not speak the Workload API). A small helper script or init container fetches the SVID and writes PEM files. This is acceptable overhead.
@@ -740,7 +736,7 @@ It is invoked via `make setup`.
 
 | Data | At Rest | In Transit | Retention |
 |------|---------|-----------|-----------|
-| Secrets (SPIKE) | AES-256-GCM encrypted (Nexus) or OpenBAO backend | mTLS (SVID) | Until explicitly deleted |
+| Secrets (SPIKE) | AES-256-GCM encrypted SQLite (SPIKE Nexus) | mTLS (SVID) | Until explicitly deleted |
 | Session context (KeyDB) | Ephemeral (Docker volume) or encrypted PVC (K8s) | TLS (prod mode) | TTL-based (default 1 hour) |
 | Audit logs | Hash-chained JSONL | mTLS to S3 (K8s) | Indefinite (compliance evidence) |
 | Request/response bodies | Never stored persistently | mTLS between all services | Not retained |
@@ -1051,4 +1047,4 @@ These are NOT Phase 2 scope but are architecturally preserved:
 
 ---
 
-*This document is the single source of truth for Phase 2 technical architecture. It is validated by the BA (BUSINESS.md) for business alignment and by the Designer (DESIGN.md) for feasibility. Changes require BLT consensus.*
+*This document is the technical architecture reference for the Agentic AI Security Reference Architecture. It describes the as-built system as implemented across 194 stories. Originally authored during D&F phase and updated to reflect the final implementation.*

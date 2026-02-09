@@ -1,8 +1,8 @@
-# Agentic AI Security Reference Architecture -- POC
+# Agentic AI Security Reference Architecture -- Reference Implementation
 
 ## What Is This?
 
-This is a **proof-of-concept MCP Security Gateway** that implements a 13-layer
+This is a **reference implementation of an MCP Security Gateway** that implements a 13-layer
 middleware chain for securing AI agent tool calls. It validates the
 [Agentic AI Security Reference Architecture v2.2](../agentic-ai-security-reference-architecture.md),
 a 200+ page document defining security patterns for production agentic AI systems.
@@ -52,7 +52,7 @@ Supporting infrastructure:
 
 ## Quick Start
 
-Prerequisites: Docker, Docker Compose, Go 1.22+, make.
+Prerequisites: Docker, Docker Compose, Go 1.23+, make.
 
 ```bash
 make phoenix-up      # Start observability stack (Phoenix + OTel collector)
@@ -100,6 +100,7 @@ scripts/                  Setup and operational scripts
 | Target | Description |
 |--------|-------------|
 | `make help` | Show available targets |
+| `make setup` | Interactive CLI setup wizard |
 | **Core** | |
 | `make up` | Start Docker Compose stack (waits for all services healthy) |
 | `make down` | Stop Docker Compose stack |
@@ -144,14 +145,20 @@ scripts/                  Setup and operational scripts
 | [docs/security/baseline.md](docs/security/baseline.md) | Security baseline |
 | [docs/architecture/deployment-patterns.md](docs/architecture/deployment-patterns.md) | Deployment architecture |
 | [docs/patterns/multi-agent-orchestration.md](docs/patterns/multi-agent-orchestration.md) | Multi-agent orchestration patterns |
+| [docs/api-reference.md](docs/api-reference.md) | Gateway HTTP API reference (endpoints, wire format, error codes) |
+| [docs/deployment-guide.md](docs/deployment-guide.md) | Deployment guide (Docker Compose, K8s, Phoenix) |
+| [docs/configuration-reference.md](docs/configuration-reference.md) | All environment variables and configuration files |
+| [docs/agentic-security-architecture.skill.md](docs/agentic-security-architecture.skill.md) | AI coding assistant skill file |
+| [sdk/go/README.md](sdk/go/README.md) | Go SDK documentation and usage |
+| [sdk/python/README.md](sdk/python/README.md) | Python SDK documentation and usage |
 
 
 ## Status
 
-This is a **proof of concept** validating the
+This is a **reference implementation** validating the
 [Agentic AI Security Reference Architecture v2.2](../agentic-ai-security-reference-architecture.md).
 It demonstrates that a 13-layer security middleware chain can be implemented,
 deployed, and tested end-to-end with real infrastructure (SPIRE, SPIKE, KeyDB,
 OPA, Phoenix) in both Docker Compose and Kubernetes environments.
 
-All 194 backlog stories have been completed and verified.
+All 233 backlog stories have been completed and verified.

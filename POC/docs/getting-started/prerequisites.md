@@ -1,6 +1,6 @@
 # Prerequisites
 
-This document outlines the prerequisites for running the Agentic Reference Architecture POC.
+This document outlines the prerequisites for running the Agentic Reference Architecture.
 
 ## Required Tools
 
@@ -167,4 +167,4 @@ make up
 curl -s http://localhost:9090/health
 ```
 
-For detailed setup instructions, see the [Setup Guide](./setup-guide.md) (TODO).
+For detailed setup instructions, see the [Deployment Guide](../deployment-guide.md).
