@@ -1,5 +1,5 @@
-# Kustomize resource group for SPIKE manifests (Nexus, Keeper, Bootstrap)
-# Added by RFA-7bh.1, extended by RFA-9k2, RFA-1qx
+# Kustomize resource group for SPIKE manifests (Nexus, Keeper, Bootstrap, Seeder)
+# Added by RFA-7bh.1, extended by RFA-9k2, RFA-1qx, RFA-628
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -18,3 +18,6 @@ resources:
   # Bootstrap
   - bootstrap-rbac.yaml
   - bootstrap-job.yaml
+  # Seeder
+  - seeder-rbac.yaml
+  - seeder-job.yaml
