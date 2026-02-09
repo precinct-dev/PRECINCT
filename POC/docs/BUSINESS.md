@@ -1,4 +1,4 @@
-# BUSINESS.md -- Phase 2: Agentic AI Security Reference Architecture POC
+# BUSINESS.md -- Agentic AI Security Reference Architecture
 
 **Version:** 1.0
 **Date:** 2026-02-06
@@ -9,7 +9,7 @@
 
 ## 1. Business Context
 
-Phase 1 delivered a Docker Compose POC with a 13-middleware MCP Security Gateway (70 stories, all closed). It proved that the security controls described in the 200+ page reference architecture are implementable, composable, and operationally viable.
+Phase 1 delivered a Docker Compose stack with a 13-middleware MCP Security Gateway (70 stories, all closed). It proved that the security controls described in the 200+ page reference architecture are implementable, composable, and operationally viable.
 
 Phase 2 addresses gaps found during Phase 1, hardens the architecture for production evaluation, and expands to meet the needs of three distinct audiences. The core thesis remains: **agents must never see raw credentials, all tool interactions must be inspected, and the audit trail must be tamper-evident and compliance-ready.**
 
@@ -47,7 +47,7 @@ The late-binding secrets pattern -- the architecture's most innovative component
 
 **Progression (in priority order):**
 1. SPIKE Nexus in Docker Compose with local encrypted storage via CLI
-2. SPIKE Nexus backed by OpenBAO (open-source Vault fork) for K8s
+2. SPIKE Nexus with SQLite (same AES-256-GCM encrypted backend as Docker Compose) for K8s
 3. SPIKE Nexus with Keeper(s) for HA via Shamir key sharding
 
 **Scope:** Operational in BOTH Docker Compose and local K8s.
@@ -154,7 +154,7 @@ New users who "don't know much about security" can set up the system through a C
 
 ### 5.1 Licensing
 
-Every dependency must have unambiguous open-source licensing suitable for enterprise adoption. No SSPL, no RSAL, no Commons Clause. This is why KeyDB (BSD-3-Clause) replaces Redis, and OpenBAO (MPL-2.0) replaces HashiCorp Vault.
+Every dependency must have unambiguous open-source licensing suitable for enterprise adoption. No SSPL, no RSAL, no Commons Clause. This is why KeyDB (BSD-3-Clause) replaces Redis. SPIKE Nexus with its built-in AES-256-GCM encrypted SQLite backend eliminates the need for an external secrets engine. OpenBAO (MPL-2.0, open-source Vault fork) was evaluated as a K8s backend option but SPIKE Nexus proved self-sufficient.
 
 ### 5.2 Deployment Parity
 
@@ -195,7 +195,7 @@ The SPIKE Nexus integration follows a three-tier progression based on deployment
 | Tier | Deployment Target | Backend | Priority |
 |------|------------------|---------|----------|
 | 1 | Docker Compose | Local encrypted storage via SPIKE CLI | P0 |
-| 2 | Local K8s / EKS | OpenBAO (open-source Vault fork, MPL-2.0) | P1 |
+| 2 | Local K8s / EKS | SPIKE Nexus with SQLite (AES-256-GCM encrypted, same as Tier 1). Originally planned as OpenBAO; SPIKE Nexus with SQLite proved sufficient. | P1 |
 | 3 | EKS / Cloud | Native KMS (AWS KMS, GCP KMS, Azure Key Vault) | P1 |
 | 4 | Production HA | SPIKE Keepers with Shamir key sharding | P3 |
 
@@ -244,7 +244,7 @@ The following table maps Phase 2 deliverables to compliance framework requiremen
 | Deep scan without fallback creates silent security degradation | Users unaware their security posture is reduced | Setup CLI must explicitly inform. Never silently degrade. |
 | KeyDB as session store introduces GDPR/CCPA obligations | Compliance risk from session data handling | Document retention policy, right-to-deletion, processing records from day one. |
 | Full stack on Docker Desktop K8s may exceed laptop resources | O1 (30-minute setup) fails on resource-constrained machines | Document minimum hardware requirements. Consider resource-light defaults. |
-| OpenBAO is younger than HashiCorp Vault | API compatibility gaps, smaller community | Validate API compatibility early. Document any divergences. |
+| ~~OpenBAO is younger than HashiCorp Vault~~ | **Mitigated.** OpenBAO was not needed. SPIKE Nexus with SQLite serves all deployment tiers, eliminating this risk entirely. | N/A |
 
 ---
 
@@ -253,7 +253,7 @@ The following table maps Phase 2 deliverables to compliance framework requiremen
 | Decision | Rationale | Date |
 |----------|-----------|------|
 | KeyDB over Redis | BSD-3-Clause licensing removes enterprise adoption ambiguity | 2026-02-06 |
-| OpenBAO over HashiCorp Vault | MPL-2.0 licensing. Open-source fork with compatible API. | 2026-02-06 |
+| SPIKE Nexus SQLite over external secrets engine | OpenBAO (MPL-2.0) was evaluated but SPIKE Nexus built-in AES-256-GCM encrypted SQLite backend proved sufficient for all deployment tiers. No external secrets engine dependency required. | 2026-02-06 |
 | Standalone compliance reports (not vendor-specific) | Maximum portability. Any evaluator can use XLSX/CSV/PDF. | 2026-02-06 |
 | Gateway-scoped compliance only | Tractable scope. Infra hardening documented as recommendations. | 2026-02-06 |
 | mTLS all services (not just trust boundary) | Compliance requirement. Evaluators will flag plaintext internal traffic. | 2026-02-06 |
@@ -271,9 +271,9 @@ The following table maps Phase 2 deliverables to compliance framework requiremen
 |------|-----------|
 | **SPIKE Nexus** | SPIFFE-native secrets management engine. Stores encrypted secrets, issues opaque tokens to agents, redeems tokens at the gateway. Agents never see raw credentials. |
 | **Late-binding secrets** | Pattern where agents receive opaque token references instead of actual credentials. The gateway substitutes real secrets at egress time. |
-| **OpenBAO** | Open-source fork of HashiCorp Vault (MPL-2.0). API-compatible secrets management backend. |
+| **OpenBAO** | Open-source fork of HashiCorp Vault (MPL-2.0). Was evaluated as a K8s secrets backend but was not needed -- SPIKE Nexus uses its built-in AES-256-GCM encrypted SQLite store for all deployment tiers. |
 | **KeyDB** | BSD-3-Clause licensed key-value store, wire-compatible with Redis. Used for session persistence and distributed rate limiting. |
-| **SafeZone / DLP** | Data Loss Prevention scanning embedded in the gateway. Detects credentials (fail-closed) and PII (audit-only). |
+| **DLP Scanner** | Data Loss Prevention scanning embedded in the gateway. Detects credentials (always block -- security invariant), injection (configurable block or flag via DLP_INJECTION_POLICY), and PII (flag for audit). |
 | **Deep scan** | Async LLM-based content classification for prompt injection and jailbreak detection. Uses guard models (Prompt Guard 2 via Groq). |
 | **OTel** | OpenTelemetry. Vendor-neutral observability framework for traces, metrics, and logs. |
 | **SVID** | SPIFFE Verifiable Identity Document. X.509 certificate or JWT proving workload identity. |
@@ -282,4 +282,4 @@ The following table maps Phase 2 deliverables to compliance framework requiremen
 
 ---
 
-*This document is the single source of truth for Phase 2 business requirements. It will be referenced by the Designer (DESIGN.md), Architect (ARCHITECTURE.md), and Sr. PM (backlog creation). Changes require Business Owner approval.*
+*This document captures the business requirements and outcomes for the Agentic AI Security Reference Architecture. It is referenced by the Designer (DESIGN.md), Architect (ARCHITECTURE.md), and Sr. PM (backlog creation). Changes require Business Owner approval.*
