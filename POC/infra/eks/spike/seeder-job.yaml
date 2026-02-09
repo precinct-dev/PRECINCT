@@ -1,0 +1,65 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spike-secret-seeder
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-seeder
+    app.kubernetes.io/part-of: spike
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spike-seeder
+        app.kubernetes.io/part-of: spike
+    spec:
+      serviceAccountName: spike-seeder
+      restartPolicy: Never
+      containers:
+        - name: spike-seeder
+          image: ghcr.io/spiffe/spike-pilot:0.8.0
+          command: ['/bin/sh', '-c']
+          args:
+            - |
+              set -e
+              echo 'spike-seeder: waiting for SPIKE Nexus readiness...'
+              sleep 10
+              echo 'spike-seeder: seeding ref=deadbeef'
+              spike secret put deadbeef value=test-secret-value-12345
+              echo 'spike-seeder: creating gateway-read ACL policy'
+              spike policy create --name=gateway-read \
+                --path-pattern='.*' \
+                --spiffeid-pattern='^spiffe://agentic-ref-arch.poc/gateways/.*' \
+                --permissions=read
+              echo 'spike-seeder: done'
+          env:
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: 'unix:///run/spire/sockets/agent.sock'
+            - name: SPIKE_NEXUS_API_URL
+              value: 'https://spike-nexus.spike-system.svc.cluster.local:8443'
+            - name: SPIKE_TRUST_ROOT
+              value: 'agentic-ref-arch.poc'
+            - name: SPIKE_TRUST_ROOT_NEXUS
+              value: 'agentic-ref-arch.poc'
+            - name: SPIKE_TRUST_ROOT_PILOT
+              value: 'agentic-ref-arch.poc'
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ['ALL']
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: Directory

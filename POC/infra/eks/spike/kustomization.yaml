@@ -1,11 +1,23 @@
-# Kustomize resource group for SPIKE Nexus manifests
-# Added by RFA-7bh.1 to support Kustomize overlay references
+# Kustomize resource group for SPIKE manifests (Nexus, Keeper, Bootstrap, Seeder)
+# Added by RFA-7bh.1, extended by RFA-9k2, RFA-1qx, RFA-628
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
 resources:
   - namespace.yaml
+  # Nexus
   - nexus-rbac.yaml
   - nexus-configmap.yaml
+  - nexus-pvc.yaml
   - nexus-deployment.yaml
   - nexus-service.yaml
+  # Keeper
+  - keeper-rbac.yaml
+  - keeper-service.yaml
+  - keeper-deployment.yaml
+  # Bootstrap
+  - bootstrap-rbac.yaml
+  - bootstrap-job.yaml
+  # Seeder
+  - seeder-rbac.yaml
+  - seeder-job.yaml
