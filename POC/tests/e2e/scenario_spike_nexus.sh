@@ -20,8 +20,8 @@ log_header "Scenario: SPIKE Nexus Full Lifecycle (RFA-a2y.2)"
 # ---- Configuration ----
 SPIKE_NEXUS_URL="${SPIKE_NEXUS_URL:-https://localhost:8443}"
 
-# Test secret: pre-seeded by spike-secret-seeder init container (ref=deadbeef).
-# The seeder uses mTLS with a Pilot SPIFFE ID to write to SPIKE Nexus.
+# Test secret: pre-seeded by spike-secret-seeder init container using SPIKE Pilot CLI (ref=deadbeef).
+# The seeder uses the official 'spike secret put' command with a Pilot SPIFFE ID via SPIRE mTLS.
 # This value must NEVER appear in audit logs.
 TEST_SECRET_VALUE="test-secret-value-12345"
 # Hex-compatible ref for the secret path (token regex requires [a-f0-9]+)
@@ -80,8 +80,9 @@ fi
 log_subheader "S1: Verify pre-seeded secret in SPIKE Nexus"
 
 # SPIKE Nexus requires mTLS for ALL endpoints. Secrets are pre-seeded by the
-# spike-secret-seeder init container (cmd/spike-seeder) which uses a Pilot-role
-# SPIFFE ID (spiffe://poc.local/spike/pilot/role/superuser/seeder) via SPIRE.
+# spike-secret-seeder init container using the official SPIKE Pilot CLI
+# (ghcr.io/spiffe/spike-pilot:0.8.0) with a Pilot-role SPIFFE ID
+# (spiffe://poc.local/spike/pilot/role/superuser/seeder) via SPIRE.
 # The seeder also creates an ACL policy granting the gateway read access.
 #
 # Verify the seeder ran successfully by checking its container exit code.
@@ -91,9 +92,9 @@ log_info "spike-secret-seeder status: ${SEEDER_STATUS}"
 if echo "$SEEDER_STATUS" | grep -qi "exited (0)"; then
     log_pass "spike-secret-seeder completed successfully (ref=${TEST_SECRET_REF} seeded)"
 else
-    SEEDER_LOGS=$(docker compose logs --tail 5 spike-secret-seeder 2>/dev/null || echo "no logs")
+    SEEDER_LOGS=$(docker compose logs --tail 10 spike-secret-seeder 2>/dev/null || echo "no logs")
     log_info "Seeder logs: ${SEEDER_LOGS}"
-    if echo "$SEEDER_LOGS" | grep -q "successfully seeded"; then
+    if echo "$SEEDER_LOGS" | grep -q "spike-seeder: done"; then
         log_pass "spike-secret-seeder confirmed secret seeded (ref=${TEST_SECRET_REF})"
     else
         log_fail "spike-secret-seeder" "Did not complete successfully: ${SEEDER_STATUS}"

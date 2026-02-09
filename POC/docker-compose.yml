@@ -155,14 +155,12 @@ services:
       - "spiffe-id=spike-bootstrap"
     restart: "no"
 
-  # SPIKE Secret Seeder - One-shot init to pre-seed test secrets via mTLS (RFA-uln)
-  # Seeds ref "deadbeef" with a test value so demo test 18 can prove full
-  # SPIKE token redemption end-to-end. Uses SPIRE X509Source for mTLS.
+  # SPIKE Secret Seeder - One-shot init to pre-seed test secrets via SPIKE Pilot CLI (RFA-1l2)
+  # Uses the official SPIKE Pilot CLI ('spike secret put' / 'spike policy create') instead
+  # of the custom Go binary. Seeds ref "deadbeef" with a test value so demo test 18 can
+  # prove full SPIKE token redemption end-to-end.
   spike-secret-seeder:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.spike-seeder
-    image: spike-secret-seeder:latest
+    image: ghcr.io/spiffe/spike-pilot:0.8.0
     container_name: spike-secret-seeder
     depends_on:
       spike-nexus:
@@ -171,9 +169,24 @@ services:
       - spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
-      - SPIKE_NEXUS_URL=https://spike-nexus:8443
-      - SEED_REF=deadbeef
-      - SEED_VALUE=test-secret-value-12345
+      - SPIKE_NEXUS_API_URL=https://spike-nexus:8443
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo 'spike-seeder: waiting for SPIKE Nexus readiness...'
+        sleep 5
+        echo 'spike-seeder: seeding ref=deadbeef'
+        spike secret put deadbeef value=test-secret-value-12345
+        echo 'spike-seeder: creating gateway-read ACL policy'
+        spike policy create --name=gateway-read \
+          --path-pattern='.*' \
+          --spiffeid-pattern='^spiffe://poc.local/gateways/.*' \
+          --permissions=read
+        echo 'spike-seeder: done'
     networks:
       - agentic-net
     labels:
