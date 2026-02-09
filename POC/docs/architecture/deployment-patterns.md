@@ -7,7 +7,7 @@ by their deployment mode: **Universal** (present in both Docker Compose and Kube
 The purpose is twofold:
 
 1. Prevent evaluators from concluding the architecture has gaps when controls are
-   intentionally K8s-only (the Docker Compose POC is a development/evaluation
+   intentionally K8s-only (the Docker Compose stack is a development/evaluation
    environment, not a production deployment).
 2. Provide honest documentation of the architecture's boundaries, as required by
    the design principle of honest limitations.
@@ -70,7 +70,7 @@ can flow. All other network paths are blocked at the CNI level.
 enforcement. All containers on the same Docker network can reach each other. There is no
 CNI plugin (Calico, Cilium) equivalent in Docker Compose.
 
-**Evaluator guidance**: The Docker Compose POC does not have network segmentation. This
+**Evaluator guidance**: The Docker Compose stack does not have network segmentation. This
 is an accepted limitation of the development environment. The gateway enforces
 authorization at the application layer (OPA policy, step 6) regardless of network
 topology, so unauthorized tool invocations are still blocked. However, network-level
@@ -170,12 +170,12 @@ encryption at rest protects SPIRE registration entries, trust bundles, and sessi
 **Manifests**: Configured via the EKS Terraform module (`infra/eks/main.tf`) and
 StorageClass annotations, not individual YAML manifests.
 
-**Why not in Docker Compose**: Docker Compose volumes are ephemeral by design in the POC
+**Why not in Docker Compose**: Docker Compose volumes are ephemeral by design in the development
 environment. The SPIRE datastore and KeyDB data are stored in Docker volumes on the host
 filesystem. Host-level disk encryption (FileVault on macOS, LUKS on Linux) may provide
 equivalent protection, but it is outside the scope of Docker Compose configuration.
 
-**Evaluator guidance**: Data at rest encryption in the POC depends on the host operating
+**Evaluator guidance**: Data at rest encryption in the development stack depends on the host operating
 system's disk encryption settings, which are outside the architecture's control. In
 Kubernetes, the architecture explicitly provisions encrypted PVCs via AWS KMS, giving
 the operator auditable control over encryption keys.

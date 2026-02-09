@@ -62,25 +62,25 @@ $SPIKE{ref:<hex>,exp:<seconds>,scope:<scope>}
 
 **hooks.go**
 - `TokenSubstitution`: Middleware implementing the substitution flow
-- `POCSecretRedeemer`: Mock implementation for POC (returns deterministic secrets)
-- `SecretRedeemer`: Interface for production SPIKE Nexus integration
+- `SPIKENexusRedeemer`: Production implementation calling SPIKE Nexus via mTLS
+- `POCSecretRedeemer`: Dev/test fallback returning deterministic mock secrets
+- `SecretRedeemer`: Interface implemented by both redeemers
 
-### POC vs Production
+### Development vs Production
 
-**POC Implementation:**
+**Development Mode** (no `SPIKE_NEXUS_URL` configured):
 - `POCSecretRedeemer` returns mock secrets: `secret-value-for-<ref>`
 - IssuedAt set to current time if not present
 - Scope validation uses default scope
 - Audit logging to stdout
 
-**Production Requirements:**
-- Replace `POCSecretRedeemer` with real mTLS client to SPIKE Nexus
-- Call `https://spike-nexus:8443/api/v1/redeem` with token ref
-- Verify mTLS certificate chain
-- Parse SPIKE response for actual secret and metadata
+**Production Mode** (`SPIKE_NEXUS_URL` configured):
+- `SPIKENexusRedeemer` calls SPIKE Nexus via mTLS at `https://spike-nexus:8443/v1/store/secret`
+- mTLS certificate chain verified via SPIRE X.509 SVIDs
+- Parses SPIKE response for actual secret and metadata
+- devMode flag enables OwnerID fallback to requesting agent's SPIFFE ID
 - Persistent audit logging (database or file)
 - Metrics for latency and error rates
-- Circuit breaker for SPIKE Nexus failures
 
 ## Testing
 

@@ -1,11 +1,11 @@
 # Supply Chain Security: Hardened Base Images
 
 **Last Updated**: 2026-02-05
-**Context**: Agentic AI Security Reference Architecture POC
+**Context**: Agentic AI Security Reference Architecture
 
 ## Executive Summary
 
-This document defines the approved base images for all containerized services in the POC, with a focus on minimizing attack surface through hardened, distroless, or minimal images. All images are pinned by digest to ensure supply chain integrity.
+This document defines the approved base images for all containerized services in the reference implementation, with a focus on minimizing attack surface through hardened, distroless, or minimal images. All images are pinned by digest to ensure supply chain integrity.
 
 ## Research Summary (2025-2026 Best Practices)
 

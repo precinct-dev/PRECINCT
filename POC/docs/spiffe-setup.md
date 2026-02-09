@@ -1,10 +1,10 @@
-# SPIFFE ID Setup for POC
+# SPIFFE ID Setup
 
-This document describes the SPIFFE ID schema and registration process for the POC environment.
+This document describes the SPIFFE ID schema and registration process for the reference implementation.
 
 ## Overview
 
-The POC uses SPIFFE (Secure Production Identity Framework for Everyone) to provide cryptographic workload identities to all components. Each workload receives a unique SPIFFE ID that encodes its role and purpose.
+The reference implementation uses SPIFFE (Secure Production Identity Framework for Everyone) to provide cryptographic workload identities to all components. Each workload receives a unique SPIFFE ID that encodes its role and purpose.
 
 ## SPIFFE ID Schema
 
@@ -16,7 +16,7 @@ spiffe://<trust-domain>/<agent-class>/<agent-purpose>/<environment>
 
 ### Components
 
-- **trust-domain**: `poc.local` (organization identifier for POC)
+- **trust-domain**: `poc.local` (development trust domain)
 - **agent-class**: Workload category
   - `gateways` - MCP security gateway enforcement points
   - `agents/mcp-client` - MCP client agents using external LLMs
@@ -28,7 +28,7 @@ spiffe://<trust-domain>/<agent-class>/<agent-purpose>/<environment>
 
 ## Registered SPIFFE IDs
 
-The POC includes these workload identities:
+The system includes these workload identities:
 
 | SPIFFE ID | Component | Purpose |
 |-----------|-----------|---------|
