@@ -208,6 +208,27 @@ collect_spike_token_proof_compose() {
         | grep -i -E "token_substitution|spike.*ref|spike.*redeem|token.*redeem" | tail -10 \
         || echo "  (no SPIKE token processing entries found in logs)"
     echo ""
+
+    log "SPIKE Keeper proof (spike-keeper-1 logs)"
+    echo ""
+    docker compose -f "$POC_DIR/docker-compose.yml" logs spike-keeper-1 2>/dev/null \
+        | grep -i -E "svid|shard|ready|serving|healthy|keeper" | tail -10 \
+        || echo "  (no spike-keeper-1 log entries found)"
+    echo ""
+
+    log "SPIKE Bootstrap proof (spike-bootstrap logs)"
+    echo ""
+    docker compose -f "$POC_DIR/docker-compose.yml" logs spike-bootstrap 2>/dev/null \
+        | tail -10 \
+        || echo "  (no spike-bootstrap log entries found)"
+    echo ""
+
+    log "SPIKE Secret Seeder proof (spike-secret-seeder logs)"
+    echo ""
+    docker compose -f "$POC_DIR/docker-compose.yml" logs spike-secret-seeder 2>/dev/null \
+        | tail -10 \
+        || echo "  (no spike-secret-seeder log entries found)"
+    echo ""
 }
 
 collect_dlp_injection_proof_k8s() {
