@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-The POC Docker Compose stack was validated end-to-end against the Reference Architecture
+The Docker Compose stack was validated end-to-end against the Reference Architecture
 (v2.2) Section 10.13.1 Local Readiness Checklist and the 5 required demo scenarios.
 
 **Result: 65 PASS / 0 FAIL / 1 SKIP out of 66 total checks across 7 test suites.**
@@ -93,11 +93,11 @@ All 5 services running and healthy:
 | 12 | Circuit Breaker | Health: {"circuit_breaker":{"state":"closed"}} | PASS |
 | 13 | Token Substitution | Positioned last before proxy in gateway.go | PASS |
 
-## Variance Report: Architecture Intent vs POC Reality
+## Variance Report: Architecture Intent vs Implementation Reality
 
 ### Fully Implemented (No Variance)
 
-| Capability | Architecture Section | POC Status |
+| Capability | Architecture Section | Implementation Status |
 |-----------|---------------------|------------|
 | SPIFFE/mTLS identity | 4.5 | SPIRE server+agent, workload entries, dev attestation |
 | OPA policy (embedded) | 6.4 | Embedded Rego engine, bundle digest, tool grants |
@@ -118,7 +118,7 @@ All 5 services running and healthy:
 
 ### Partially Implemented (Known Gaps)
 
-| Gap | Architecture Intent | POC Reality | Severity |
+| Gap | Architecture Intent | Implementation Reality | Severity |
 |-----|-------------------|-------------|----------|
 | Upstream MCP Server | Docker MCP Gateway at :8081/mcp | Not running (port conflict resolved -- was :8080, now :8081) | Low -- proxy works, upstream not started |
 | Tool registry service | Dedicated registry API | Placeholder (golang:1.23 sleep infinity) | Low -- config-file registry works |
@@ -128,14 +128,14 @@ All 5 services running and healthy:
 | Deep scan LLM backend | Groq guard model for deep content analysis | No GROQ_API_KEY configured (async no-op) | Low -- middleware wired, needs API key |
 | Agent containers | DSPy/PydanticAI agents in Docker | Not defined in compose (agents run externally) | Low -- gateway is framework-agnostic |
 
-### Not Implemented (Out of Scope for POC)
+### Not Implemented (Out of Scope)
 
 | Capability | Architecture Section | Reason |
 |-----------|---------------------|--------|
 | Human-in-the-loop approval | 7.6 | Requires UI integration |
-| Production SPIRE node attestation | 4.5 | Dev attestation is sufficient for POC |
+| Production SPIRE node attestation | 4.5 | Dev attestation is sufficient for development |
 | Key rotation | 7.3 | Production concern |
-| Multi-cluster federation | 4.5 | Single cluster POC |
+| Multi-cluster federation | 4.5 | Single cluster deployment |
 | Compliance reporting | 8.3 | Production concern |
 | MCP-UI (Apps Extension) security | 7.9 | Architecture v2.2 addition, future epic |
 

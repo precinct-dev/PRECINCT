@@ -81,7 +81,7 @@ Agent receives JSON-RPC result
 
 | Mode | SPIFFE_MODE | Auth Mechanism | SPIKE | Use Case |
 |------|-------------|----------------|-------|----------|
-| Development | `dev` | `X-SPIFFE-ID` header | POC redeemer (mock) | Local development |
+| Development | `dev` | `X-SPIFFE-ID` header | Dev redeemer (deterministic mock secrets) | Local development |
 | Production | `prod` | mTLS client certificate | SPIKE Nexus (real) | Production deployment |
 
 In `dev` mode, the `X-SPIFFE-ID` header is trusted directly. In `prod` mode,

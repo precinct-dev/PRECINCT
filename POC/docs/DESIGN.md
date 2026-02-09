@@ -1,4 +1,4 @@
-# DESIGN.md -- Phase 2: Agentic AI Security Reference Architecture POC
+# DESIGN.md -- Agentic AI Security Reference Architecture
 
 **Version:** 1.0
 **Date:** 2026-02-06
@@ -938,7 +938,7 @@ docs/
 2. **No assumptions.** The getting-started guide assumes the reader has Docker and a terminal, nothing else.
 3. **Examples over explanations.** Every concept is accompanied by a concrete, copy-pasteable example.
 4. **Honest limitations.** Every capability page includes a "Limitations" section describing what is not covered.
-5. **Version-stamped.** Documentation references the specific version of the architecture and POC.
+5. **Version-stamped.** Documentation references the specific version of the architecture and implementation.
 
 ---
 

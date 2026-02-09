@@ -1,6 +1,6 @@
 # Prerequisites
 
-This document outlines the prerequisites for running the Agentic Reference Architecture POC.
+This document outlines the prerequisites for running the Agentic Reference Architecture.
 
 ## Required Tools
 

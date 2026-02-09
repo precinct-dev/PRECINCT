@@ -3,7 +3,7 @@
 **Last Updated:** 2026-02-06
 **Epic:** RFA-lo1.1 (Security Scanning Infrastructure)
 
-This document establishes the security scanning baseline for the Agentic Reference Architecture POC. All findings documented here represent the state at the time of implementing automated security scanning (RFA-lo1.1).
+This document establishes the security scanning baseline for the Agentic Reference Architecture. All findings documented here represent the state at the time of implementing automated security scanning (RFA-lo1.1).
 
 ## Purpose
 

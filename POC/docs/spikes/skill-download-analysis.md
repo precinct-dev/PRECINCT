@@ -213,7 +213,7 @@ approving it for production use.
 | Full VM isolation     | QEMU / VirtualBox         | ~5s          | Highest    |
 
 **Recommended for Phase 2 design:** Container isolation via Docker. We already
-require Docker for the POC stack. Running a skill in a disposable container with:
+require Docker for the development stack. Running a skill in a disposable container with:
 - No network access (or allowlisted egress only)
 - Read-only filesystem
 - No access to host credentials or agent memory
@@ -336,7 +336,7 @@ non-trivial. For Phase 2, static analysis + signature verification is sufficient
 - The scan service itself becomes an attack surface. Who authenticates scan requests?
   What if the scan service is compromised?
 - Overkill for Phase 2. A separate service makes sense at enterprise scale with
-  hundreds of skills being registered per day. For a reference architecture POC,
+  hundreds of skills being registered per day. For a reference implementation,
   an offline pipeline is sufficient and more transparent.
 
 ---

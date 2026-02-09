@@ -1,16 +1,16 @@
 # Docker MCP Server Setup Guide (Story RFA-qq0.6)
 
-This guide explains how to configure and run the Docker MCP server to provide tools (Tavily, read, grep, bash) to the POC security gateway.
+This guide explains how to configure and run the Docker MCP server to provide tools (Tavily, read, grep, bash) to the security gateway.
 
 ## Overview
 
-The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and runs **outside** of docker-compose. The POC gateway connects to it via JSON-RPC at `http://localhost:8081/mcp`.
+The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and runs **outside** of docker-compose. The gateway connects to it via JSON-RPC at `http://localhost:8081/mcp`.
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────┐
-│  POC Security Gateway               │
+│  MCP Security Gateway                │
 │  (docker-compose)                   │
 │  http://localhost:9090              │
 └────────────┬────────────────────────┘
@@ -34,7 +34,7 @@ The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and 
 
 1. **Docker Desktop 4.30+** with MCP Toolkit enabled
 2. **Tavily API Key** - Get from https://tavily.com
-3. **POC Workspace** - Set `$POC_DIR` to the absolute path of the POC directory (e.g., `export POC_DIR=$(pwd)`)
+3. **Project Workspace** - Set `$POC_DIR` to the absolute path of the project directory (e.g., `export POC_DIR=$(pwd)`)
 
 ## Step 1: Configure Docker MCP Server
 
@@ -113,9 +113,9 @@ curl http://localhost:8081/health
 # Expected: HTTP 200 OK
 ```
 
-## Step 3: Start POC Gateway Stack
+## Step 3: Start Gateway Stack
 
-Start the POC docker-compose stack:
+Start the docker-compose stack:
 
 ```bash
 cd $POC_DIR
@@ -148,7 +148,7 @@ curl -X POST http://localhost:9090 \
   }'
 ```
 
-### Test Read Tool (Within POC Workspace)
+### Test Read Tool (Within Project Workspace)
 
 ```bash
 curl -X POST http://localhost:9090 \
@@ -202,7 +202,7 @@ curl -X POST http://localhost:9090 \
 
 ### Workspace Scope
 
-The following tools are **restricted to POC workspace only**:
+The following tools are **restricted to the project workspace only**:
 
 - `read` - Can only read files in `$POC_DIR/**`
 - `grep` - Can only search in `$POC_DIR/**`
@@ -234,7 +234,7 @@ cd $POC_DIR
 
 # Ensure both gateways are running:
 # 1. Docker MCP Gateway at http://localhost:8081/mcp
-# 2. POC Gateway at http://localhost:9090
+# 2. MCP Security Gateway at http://localhost:9090
 
 # Run Docker MCP integration tests
 go test -tags=integration ./tests/integration -v -run TestDockerMCP
@@ -242,7 +242,7 @@ go test -tags=integration ./tests/integration -v -run TestDockerMCP
 
 **Test Coverage:**
 - Tavily tool callable through gateway
-- Read/grep tools restricted to POC workspace
+- Read/grep tools restricted to project workspace
 - Bash tool requires step-up authentication
 - Tool hash verification for all tools
 
