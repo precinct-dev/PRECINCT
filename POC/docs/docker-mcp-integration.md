@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document provides a comprehensive integration plan for using Docker's MCP (Model Context Protocol) server as a tool proxy for the POC gateway. It covers configuration, tool registration (Tavily, filesystem read/grep/bash), and the JSON-RPC communication protocol.
+This document provides a comprehensive integration plan for using Docker's MCP (Model Context Protocol) server as a tool proxy for the security gateway. It covers configuration, tool registration (Tavily, filesystem read/grep/bash), and the JSON-RPC communication protocol.
 
 **Last Updated:** 2026-02-05
 **Status:** Research Complete - Ready for Implementation
@@ -554,7 +554,7 @@ docker mcp config reset tavily
 
 **Tasks:**
 1. Add filesystem configuration to `docker-mcp.yaml` with volume mounts
-2. Mount POC workspace: `-v $POC_DIR:/workspace`
+2. Mount project workspace: `-v $POC_DIR:/workspace`
 3. Enable filesystem server: `docker mcp server enable filesystem`
 4. Test `read_file` tool with known file
 5. Test `search_files` tool (grep functionality)
@@ -596,12 +596,12 @@ docker mcp config reset tavily
 - Search returns matching file paths
 - Cannot access files outside mounted volumes
 
-### 7.4 Phase 4: POC Gateway Integration (Story RFA-qq0.5)
+### 7.4 Phase 4: Gateway Integration (Story RFA-qq0.5)
 
-**Objective:** Connect POC gateway to Docker MCP Gateway via JSON-RPC
+**Objective:** Connect security gateway to Docker MCP Gateway via JSON-RPC
 
 **Tasks:**
-1. Implement JSON-RPC client in POC gateway
+1. Implement JSON-RPC client in security gateway
 2. Configure gateway to connect to `http://localhost:8081/mcp`
 3. Implement tool discovery via `tools/list`
 4. Implement tool calling via `tools/call`
@@ -610,7 +610,7 @@ docker mcp config reset tavily
 
 **Architecture:**
 ```
-POC Gateway (Python/Go)
+MCP Security Gateway (Go)
     ↓ HTTP/JSON-RPC
 Docker MCP Gateway (localhost:8081)
     ↓
@@ -618,7 +618,7 @@ Docker Containers (Tavily, Filesystem)
 ```
 
 **Acceptance Criteria:**
-- POC gateway successfully discovers all registered tools
+- Security gateway successfully discovers all registered tools
 - Can invoke Tavily search and receive results
 - Can read files and search file contents
 - Error responses properly handled

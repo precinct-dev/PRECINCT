@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This is the consolidated deployment guide for the Agentic AI Security Reference Architecture POC. It covers Docker Compose (development/evaluation), local Kubernetes (Docker Desktop), and references to EKS production deployment.
+This is the consolidated deployment guide for the Agentic AI Security Reference Architecture. It covers Docker Compose (development/evaluation), local Kubernetes (Docker Desktop), and references to EKS production deployment.
 
 For detailed architecture context, see [Deployment Patterns](architecture/deployment-patterns.md).
 For detailed prerequisites, see [Prerequisites](getting-started/prerequisites.md).
@@ -132,7 +132,7 @@ The Docker Compose stack runs 11 services plus 3 one-shot init containers. Servi
 | Service | Role | Notes |
 |---------|------|-------|
 | `spike-nexus` | Secret store | Late-binding token redemption via SPIFFE mTLS. AES-256-GCM encrypted SQLite backend. Port 8443 |
-| `spike-keeper-1` | Key shard holder | Holds Shamir secret shard for Nexus root key recovery. Threshold=1, shares=1 for POC |
+| `spike-keeper-1` | Key shard holder | Holds Shamir secret shard for Nexus root key recovery. Threshold=1, shares=1 for development |
 | `spike-bootstrap` | One-shot init | Generates root key, splits via Shamir, sends shards to Keeper(s) |
 | `spike-secret-seeder` | One-shot init | Seeds demo secrets (`ref=deadbeef`) and creates gateway-read ACL policy via SPIKE Pilot CLI |
 

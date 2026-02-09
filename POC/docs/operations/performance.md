@@ -36,7 +36,7 @@ real middleware implementations (not mocks):
 - **Real session store** (in-memory, no network)
 - **Real rate limiter** with token bucket algorithm
 - **Real circuit breaker** with state machine
-- **Real SPIKE token substitution** (POC redeemer)
+- **Real SPIKE token substitution** (dev redeemer)
 - **In-memory OTel exporter** for per-middleware span timing
 
 The only simulated components are:

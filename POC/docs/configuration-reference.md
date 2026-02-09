@@ -149,7 +149,7 @@ SPIRE Server and Agent are configured primarily through HCL config files in
 | `server_port` | `8081` | SPIRE server gRPC port |
 | `socket_path` | `/tmp/spire-agent/public/api.sock` | Workload API socket path |
 | `trust_domain` | `poc.local` | Must match server trust domain |
-| `insecure_bootstrap` | `true` | POC only -- skip bootstrap certificate verification |
+| `insecure_bootstrap` | `true` | Development only -- skip bootstrap certificate verification |
 | WorkloadAttestor | `docker` + `unix` | Docker attestor with `use_new_container_locator=true` (required for cgroupv2) |
 
 ### Docker Compose Requirements
@@ -174,7 +174,7 @@ environment variables. Source: `docker-compose.yml` service definitions.
 | `SPIKE_NEXUS_DATA_DIR` | `/opt/spike/data` | Data directory for SQLite (AES-256-GCM encrypted) |
 | `SPIKE_NEXUS_KEEPER_PEERS` | `https://spike-keeper-1:8443` | Comma-separated list of Keeper URLs for Shamir recovery |
 | `SPIKE_NEXUS_SHAMIR_THRESHOLD` | `1` | Minimum Keeper shards needed for root key reconstruction |
-| `SPIKE_NEXUS_SHAMIR_SHARES` | `1` | Total Shamir shards (POC uses 1; production should use 3+) |
+| `SPIKE_NEXUS_SHAMIR_SHARES` | `1` | Total Shamir shards (development uses 1; production should use 3+) |
 | `SPIKE_SYSTEM_LOG_LEVEL` | `INFO` | SPIKE logging level: `DEBUG`, `INFO`, `WARN`, `ERROR` |
 | `SPIKE_TRUST_ROOT` | `poc.local` | Base trust root |
 | `SPIKE_TRUST_ROOT_NEXUS` | `poc.local` | Trust root for Nexus validation (required for `IsNexus()` check) |
@@ -308,7 +308,7 @@ computed by `scripts/compute_tool_hashes.go`.
 
 ### config/spiffe-ids.yaml
 
-**Purpose**: Documents the SPIFFE ID schema for all POC workloads. Used as a
+**Purpose**: Documents the SPIFFE ID schema for all workloads. Used as a
 reference; the actual SPIFFE entries are registered by `scripts/register-spire-entries.sh`.
 
 **SPIFFE ID pattern**: `spiffe://<trust-domain>/<agent-class>/<agent-purpose>/<environment>`
@@ -358,7 +358,7 @@ guard model thresholds, and DLP policy per content category.
 thresholds:
   fast_path_max: 3     # 0-3: no friction (fast path)
   step_up_max: 6       # 4-6: step-up gating (destination check + guard model)
-  approval_max: 9      # 7-9: human approval required (HTTP 403 stub for POC)
+  approval_max: 9      # 7-9: human approval required (HTTP 403 stub)
   # 10-12: deny by default
 
 guard:
@@ -458,7 +458,7 @@ receiver -> processor -> exporter path.
 - Server: `spire-server:8081`
 - NodeAttestor: `join_token`
 - WorkloadAttestor: `docker` (with `use_new_container_locator=true`) + `unix`
-- `insecure_bootstrap = true` (POC only)
+- `insecure_bootstrap = true` (development only)
 
 ---
 

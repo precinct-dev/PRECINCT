@@ -32,7 +32,7 @@ perform audit logging, and maintain session state.
 | Field                        | Value                                         |
 |------------------------------|-----------------------------------------------|
 | Processor Name               | MCP Security Gateway                          |
-| Component Version            | POC v1.0                                      |
+| Component Version            | v1.0                                          |
 | Deployment Model             | Docker Compose (self-hosted)                  |
 | Processing Location          | Controller's infrastructure (on-premises or cloud) |
 

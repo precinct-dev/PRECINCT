@@ -8,7 +8,7 @@
 
 ## 1. Project Summary
 
-The Agentic AI Security Reference Architecture POC implements a **Model Context Protocol (MCP) Security Gateway** that interposes between AI agents and their tools, enforcing a 13-layer security middleware chain. The project validates that the security controls described in the 200+ page reference architecture document are implementable, composable, and operationally viable.
+The Agentic AI Security Reference Architecture implements a **Model Context Protocol (MCP) Security Gateway** that interposes between AI agents and their tools, enforcing a 13-layer security middleware chain. The project validates that the security controls described in the 200+ page reference architecture document are implementable, composable, and operationally viable.
 
 Two deployment targets exist: a Docker Compose stack for local development and validation, and Kubernetes manifests (EKS-targeted) for production-grade deployment.
 
@@ -199,7 +199,7 @@ OPA Gatekeeper ConstraintTemplates enforce digest pinning and registry allowlist
 
 ### 4.2 SPIKE Nexus Maturity
 
-SPIKE is at "Development" maturity (not production-ready per SPIFFE lifecycle). Acceptable for a reference architecture POC. Keepers (Tier 4, Shamir key sharding) would be needed for production HA.
+SPIKE is at "Development" maturity (not production-ready per SPIFFE lifecycle). Acceptable for a reference implementation. Keepers (Tier 4, Shamir key sharding) would be needed for production HA.
 
 ### 4.3 EKS Not Deployed to Running Cluster
 
