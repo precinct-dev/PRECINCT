@@ -1,0 +1,41 @@
+# Dockerfile for spike-keeper with TCP healthcheck (RFA-oyg)
+# Layers a small TCP healthcheck binary onto the distroless spike-keeper image.
+#
+# Why TCP instead of mTLS (unlike Dockerfile.spike-nexus)?
+# The Keeper's TLS authorizer (PeerCanTalkToKeeper) only allows Nexus and
+# Bootstrap SPIFFE IDs. The mTLS healthcheck runs inside the same container
+# and presents the Keeper's own SVID, which the authorizer rejects. A plain
+# TCP dial proves the TLS listener is up without requiring authorization.
+
+# ============================================================================
+# Stage 1: Build the TCP healthcheck binary
+# ============================================================================
+FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS builder
+
+RUN apk add --no-cache ca-certificates git
+
+WORKDIR /build
+
+# Cache dependency download
+COPY go.mod go.sum ./
+ENV GOTOOLCHAIN=auto
+RUN go mod download && go mod verify
+
+COPY . .
+
+# Static binary -- spike-keeper image is distroless (no libc)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/tcp-healthcheck \
+    ./cmd/tcp-healthcheck
+
+# ============================================================================
+# Stage 2: Runtime -- spike-keeper + healthcheck sidecar binary
+# ============================================================================
+FROM ghcr.io/spiffe/spike-keeper:0.8.0
+
+COPY --from=builder /build/tcp-healthcheck /usr/local/bin/tcp-healthcheck
+
+HEALTHCHECK --interval=5s --timeout=15s --start-period=15s --retries=12 \
+    CMD ["/usr/local/bin/tcp-healthcheck"]

@@ -101,7 +101,8 @@ services:
 
   # SPIKE Nexus - Late-binding secrets vault with SPIFFE mTLS (RFA-a2y.1)
   # Provides token-based secret redemption so agents never see raw credentials.
-  # Docker Compose Tier 1: in-memory root key (lost on restart, acceptable for POC per ADR-001).
+  # Docker Compose Tier 1: AES-256-GCM encrypted SQLite with persistent volume (RFA-oyg).
+  # Root key delivered via spike-bootstrap -> Keeper Shamir shard recovery on startup.
   spike-nexus:
     build:
       context: .
@@ -112,13 +113,21 @@ services:
     depends_on:
       spire-entry-registrar:
         condition: service_completed_successfully  # Entries must exist before SVID fetch
+      spike-keeper-1:
+        condition: service_healthy  # Keeper must be healthy before Nexus starts
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
+      - spike-nexus-data:/opt/spike/data  # RFA-oyg: persistent SQLite (AES-256-GCM encrypted)
     ports:
       - "8443:8443"  # HTTPS API
     environment:
       - SPIKE_NEXUS_TLS_PORT=:8443
-      - SPIKE_NEXUS_BACKEND_STORE=memory
+      - SPIKE_NEXUS_BACKEND_STORE=sqlite
+      - SPIKE_NEXUS_DATA_DIR=/opt/spike/data  # RFA-oyg: explicit data dir for SQLite volume mount
+      # Keeper configuration for Shamir Secret Sharing root key recovery (RFA-oyg)
+      - SPIKE_NEXUS_KEEPER_PEERS=https://spike-keeper-1:8443
+      - SPIKE_NEXUS_SHAMIR_THRESHOLD=1
+      - SPIKE_NEXUS_SHAMIR_SHARES=1
       - SPIKE_SYSTEM_LOG_LEVEL=INFO
       - SPIKE_TRUST_ROOT=poc.local
       - SPIKE_TRUST_ROOT_NEXUS=poc.local
@@ -135,45 +144,113 @@ services:
       - "component=secrets"
       - "service=spike"
 
-  # SPIKE Bootstrap - One-shot init container to generate and deliver root key to Nexus (RFA-a2y.1)
+  # SPIKE Keeper 1 - Shamir key shard holder for Nexus root key recovery (RFA-oyg)
+  # Single Keeper with threshold=1, shares=1 is minimum viable for POC.
+  # Keeper holds root encryption key shard in memory; Nexus contacts it on startup
+  # to reconstruct the AES-256-GCM root key for SQLite backend encryption.
+  spike-keeper-1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spike-keeper
+    image: spike-keeper:latest
+    container_name: spike-keeper-1
+    hostname: spike-keeper-1
+    depends_on:
+      spire-entry-registrar:
+        condition: service_completed_successfully  # SPIRE entry must exist before Keeper fetches SVID
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+    environment:
+      - SPIKE_KEEPER_TLS_PORT=:8443
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_KEEPER=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+      - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
+      - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
+      - SPIKE_SYSTEM_LOG_LEVEL=INFO
+      - HEALTHCHECK_ADDR=localhost:8443
+    networks:
+      - agentic-net
+    labels:
+      - "spiffe-id=spike-keeper-1"
+      - "component=secrets"
+      - "service=spike"
+    restart: "no"
+
+  # SPIKE Bootstrap - One-shot init container to deliver root encryption key (RFA-oyg)
+  # Generates a root key, splits it via Shamir Secret Sharing, and broadcasts shards
+  # directly to Keeper(s). Nexus's retry loop then recovers the shards from Keepers
+  # and initializes the AES-256-GCM encrypted SQLite backing store.
+  # Uses the dedicated bootstrap image (ghcr.io/spiffe/spike-bootstrap) with the
+  # 'bootstrap' binary that speaks mTLS to Keepers via SPIRE SVID.
+  # NOTE: Bootstrap depends on Keeper (not Nexus) because it sends shards TO Keepers.
+  # Nexus runs in parallel, retrying until Keepers have shards.
   spike-bootstrap:
-    profiles: ["prod"]  # spike-nexus image is distroless (no spike CLI); not needed with memory backend
-    image: ghcr.io/spiffe/spike-nexus:0.8.0
+    image: ghcr.io/spiffe/spike-bootstrap:0.8.0
     container_name: spike-bootstrap
     depends_on:
-      spike-nexus:
-        condition: service_started
+      spire-entry-registrar:
+        condition: service_completed_successfully  # SPIRE entry must exist for bootstrap's SVID
+      spike-keeper-1:
+        condition: service_healthy  # Keeper must be serving mTLS before bootstrap sends shards
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
-      - SPIKE_NEXUS_ADDR=https://spike-nexus:8443
-    command: ["spike", "init"]
+      - SPIKE_NEXUS_API_URL=https://spike-nexus:8443  # For VerifyInitialization after shard delivery
+      - SPIKE_NEXUS_KEEPER_PEERS=https://spike-keeper-1:8443
+      - SPIKE_NEXUS_SHAMIR_THRESHOLD=1
+      - SPIKE_NEXUS_SHAMIR_SHARES=1
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+      - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
+      - SPIKE_TRUST_ROOT_KEEPER=poc.local
+      - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
+      - SPIKE_SYSTEM_LOG_LEVEL=DEBUG  # Verbose for bootstrap troubleshooting
+    command: ["-init"]
     networks:
       - agentic-net
     labels:
       - "spiffe-id=spike-bootstrap"
     restart: "no"
 
-  # SPIKE Secret Seeder - One-shot init to pre-seed test secrets via mTLS (RFA-uln)
-  # Seeds ref "deadbeef" with a test value so demo test 18 can prove full
-  # SPIKE token redemption end-to-end. Uses SPIRE X509Source for mTLS.
+  # SPIKE Secret Seeder - One-shot init to pre-seed test secrets via SPIKE Pilot CLI (RFA-1l2)
+  # Uses the official SPIKE Pilot CLI ('spike secret put' / 'spike policy create') instead
+  # of the custom Go binary. Seeds ref "deadbeef" with a test value so demo test 18 can
+  # prove full SPIKE token redemption end-to-end.
   spike-secret-seeder:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.spike-seeder
-    image: spike-secret-seeder:latest
+    image: ghcr.io/spiffe/spike-pilot:0.8.0
     container_name: spike-secret-seeder
     depends_on:
       spike-nexus:
         condition: service_healthy  # Nexus must be healthy and serving mTLS
+      spike-bootstrap:
+        condition: service_completed_successfully  # RFA-oyg: root key must be delivered before seeding secrets
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
-      - SPIKE_NEXUS_URL=https://spike-nexus:8443
-      - SEED_REF=deadbeef
-      - SEED_VALUE=test-secret-value-12345
+      - SPIKE_NEXUS_API_URL=https://spike-nexus:8443
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        echo 'spike-seeder: waiting for SPIKE Nexus readiness...'
+        sleep 5
+        echo 'spike-seeder: seeding ref=deadbeef'
+        spike secret put deadbeef value=test-secret-value-12345
+        echo 'spike-seeder: creating gateway-read ACL policy'
+        spike policy create --name=gateway-read \
+          --path-pattern='.*' \
+          --spiffeid-pattern='^spiffe://poc.local/gateways/.*' \
+          --permissions=read
+        echo 'spike-seeder: done'
     networks:
       - agentic-net
     labels:
@@ -408,6 +485,10 @@ volumes:
   # KeyDB persistent data (RFA-hh5.1)
   keydb-data:
     name: keydb-data
+
+  # SPIKE Nexus SQLite data (RFA-oyg: persistent secret storage, AES-256-GCM encrypted)
+  spike-nexus-data:
+    name: spike-nexus-data
 
   # KeyDB SVID certificates (RFA-8z8.2) - shared between keydb-svid-init and keydb
   keydb-certs:
