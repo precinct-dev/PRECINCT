@@ -13,12 +13,16 @@
 #
 #   EGRESS:
 #     - To kube-dns on port 53 (DNS resolution)
-#     - To SPIRE agent on the host (SPIFFE SVID retrieval)
-#     - To internal CIDRs only (10.0.0.0/8) -- NO public internet access
+#     - All outbound traffic permitted (0.0.0.0/0)
+#
+#   NOTE: Egress is currently open to all destinations. MCP tool servers may
+#   need to reach arbitrary external APIs, databases, and cloud services, and
+#   we do not know each tool's requirements in advance. In production, this
+#   should be replaced with a per-tool whitelist. See the TODO comment on the
+#   egress rule below for specific recommendations.
 #
 # Reference Architecture Section 9.4:
 #   "Tool pods can ONLY receive traffic from the gateway namespace"
-#   "Default-deny egress -- tool pods cannot reach the public internet"
 # ------------------------------------------------------------------------------
 
 # Allow inbound from gateway namespace only
@@ -49,7 +53,7 @@ spec:
         - protocol: TCP
           port: 8081
 ---
-# Allow tool server egress to DNS and internal services only
+# Allow tool server egress to DNS and all outbound destinations
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -77,14 +81,18 @@ spec:
         - protocol: TCP
           port: 53
 
-    # Allow egress to internal CIDRs only (no public internet)
-    # This covers internal Kubernetes services, SPIRE agent, etc.
+    # Allow ALL outbound traffic for tool servers.
+    #
+    # TODO(production): Replace with a per-tool whitelist of external destinations.
+    # MCP tool servers may need to reach arbitrary external APIs, databases,
+    # and cloud services. We don't know in advance what each tool requires.
+    # For now, we allow all egress and rely on application-layer controls.
+    #
+    # Production recommendation:
+    #   1. Audit each tool's outbound dependencies
+    #   2. Create per-tool NetworkPolicies with specific CIDRs/ports
+    #   3. Use an egress proxy (e.g., Istio egress gateway) for logging
+    #   4. Remove this permissive rule once whitelist is in place
     - to:
         - ipBlock:
-            cidr: 10.0.0.0/8
-    - to:
-        - ipBlock:
-            cidr: 172.16.0.0/12
-    - to:
-        - ipBlock:
-            cidr: 192.168.0.0/16
+            cidr: 0.0.0.0/0
