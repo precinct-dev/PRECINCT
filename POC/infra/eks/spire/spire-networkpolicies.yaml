@@ -1,0 +1,93 @@
+# ------------------------------------------------------------------------------
+# SPIRE System NetworkPolicies
+# Story: RFA-6lk
+#
+# IMPORTANT: SPIRE Agent (DaemonSet) uses hostNetwork: true for node-level
+# identity attestation. Kubernetes NetworkPolicy does NOT apply to hostNetwork
+# pods -- they bypass the CNI and therefore bypass NetworkPolicy enforcement.
+# This is by Kubernetes design, not a configuration gap.
+#
+# Only spire-server (StatefulSet) is governed by NetworkPolicy in this namespace.
+#
+# Reference: https://kubernetes.io/docs/concepts/services-networking/network-policies/
+#   "Network policies do not apply to pods using host networking"
+# ------------------------------------------------------------------------------
+
+# Default deny all traffic in the spire-system namespace.
+# Note: This applies to all pods, but hostNetwork pods (spire-agent) are
+# architecturally exempt per K8s specification (see header comment).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/part-of: spire
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow ingress to spire-server on gRPC (8081) and health (8080) ports.
+#
+# SPIRE Agent uses hostNetwork: true, so its traffic arrives from the node IP
+# (not a pod IP). We cannot use podSelector/namespaceSelector for hostNetwork
+# traffic. Instead, we allow the ports from any source within the cluster.
+# SPIRE Server itself validates mTLS on the gRPC endpoint for security.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spire-server-allow-ingress
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/part-of: spire
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spire-server
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow SPIRE Agent -> Server gRPC on port 8081.
+    # Agent uses hostNetwork: true, so traffic arrives from node IP, not pod IP.
+    # We allow port 8081 from any source; SPIRE Server validates mTLS.
+    - ports:
+        - protocol: TCP
+          port: 8081
+    # Health check on port 8080 (kubelet probes)
+    - ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow spire-server egress to DNS only.
+# SPIRE Server does not initiate outbound connections to other services;
+# it only needs DNS for internal name resolution.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spire-server-allow-egress
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/part-of: spire
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spire-server
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution (kube-dns)
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

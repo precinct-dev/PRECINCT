@@ -14,3 +14,4 @@ resources:
   - agent-configmap.yaml
   - agent-daemonset.yaml
   - registration-entries.yaml
+  - spire-networkpolicies.yaml

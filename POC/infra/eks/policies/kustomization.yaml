@@ -1,0 +1,9 @@
+# NetworkPolicies: default-deny + explicit allow for gateway and tools namespaces
+# Story: RFA-6qf
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - default-deny.yaml
+  - gateway-allow.yaml
+  - mcp-server-allow.yaml
