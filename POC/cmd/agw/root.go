@@ -45,5 +45,6 @@ func newRootCmd() *cobra.Command {
 	_ = viper.BindPFlag(cfgFormat, rootCmd.PersistentFlags().Lookup("format"))
 
 	rootCmd.AddCommand(newStatusCmd())
+	rootCmd.AddCommand(newInspectCmd())
 	return rootCmd
 }
