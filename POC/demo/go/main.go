@@ -70,6 +70,20 @@ func main() {
 			fn:     testInvalidToolsCallMissingNameRejected,
 		},
 		{
+			name:   "MCP-UI: tools/list strips _meta.ui in MCP mode (secure default)",
+			what:   "MCP transport mode still enforces MCP-UI capability gating on tools/list responses",
+			send:   "tools/list with mock MCP server returning a tool that includes _meta.ui",
+			expect: "HTTP 200 and tool render-analytics has NO _meta.ui (stripped by UI gating)",
+			fn:     testMCPUIToolsListStripsMetaUI,
+		},
+		{
+			name:   "MCP-UI: ui:// resources/read denied before upstream (fail-closed)",
+			what:   "MCP transport mode blocks ui:// resource reads when UI is not enabled/granted",
+			send:   "resources/read(uri='ui://mcp-untrusted-server/exploit.html')",
+			expect: "HTTP 403 with code=ui_capability_denied proving request-side UI gating is active in MCP mode",
+			fn:     testMCPUIResourceReadDenied,
+		},
+		{
 			name:   "SPIFFE auth denial (empty identity)",
 			what:   "SPIFFE identity verification rejects unauthenticated requests at step 2",
 			send:   "read(file_path='/tmp/test') with EMPTY SPIFFE ID (no identity)",
@@ -377,6 +391,133 @@ func testInvalidToolsCallMissingNameRejected() bool {
 		return printProof(false, fmt.Sprintf("expected code=mcp_invalid_request, got %s", ge.Code))
 	}
 	return printProof(true, "malformed tools/call rejected with mcp_invalid_request (fail-closed)")
+}
+
+// 2c. MCP-UI: tools/list response should have _meta.ui stripped in MCP transport mode
+// when UI is not enabled (secure default).
+func testMCPUIToolsListStripsMetaUI() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	payload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1001,
+		"method":  "tools/list",
+		"params":  map[string]any{},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("failed to marshal payload: %v", err))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, *gatewayURL, bytes.NewReader(body))
+	if err != nil {
+		return printProof(false, fmt.Sprintf("failed to create request: %v", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+	req.Header.Set("X-Session-ID", "demo-ui-tools-list")
+	req.Header.Set("X-MCP-Server", "mcp-dashboard-server")
+	req.Header.Set("X-Tenant", "acme-corp")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("request failed: %v", err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return printProof(false, fmt.Sprintf("expected HTTP 200, got %d: %s", resp.StatusCode, truncateStr(string(respBody), 200)))
+	}
+
+	var rpcResp map[string]any
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		return printProof(false, fmt.Sprintf("expected JSON-RPC response, got: %s", truncateStr(string(respBody), 200)))
+	}
+
+	result, ok := rpcResp["result"].(map[string]any)
+	if !ok {
+		return printProof(false, fmt.Sprintf("missing result in tools/list response: %s", truncateStr(string(respBody), 200)))
+	}
+	tools, ok := result["tools"].([]any)
+	if !ok {
+		return printProof(false, "missing tools array in tools/list response")
+	}
+
+	found := false
+	for _, item := range tools {
+		tool, _ := item.(map[string]any)
+		name, _ := tool["name"].(string)
+		if name != "render-analytics" {
+			continue
+		}
+		found = true
+		metaRaw, hasMeta := tool["_meta"]
+		if !hasMeta {
+			return printProof(true, "render-analytics present and has no _meta (UI stripped)")
+		}
+		meta, _ := metaRaw.(map[string]any)
+		if _, hasUI := meta["ui"]; hasUI {
+			return printProof(false, "render-analytics still has _meta.ui (UI gating not applied in MCP mode)")
+		}
+		return printProof(true, "render-analytics present and _meta.ui stripped (UI gating active in MCP mode)")
+	}
+
+	if !found {
+		return printProof(false, "tools/list did not include render-analytics (mock MCP server UI tool missing)")
+	}
+	return printProof(false, "unexpected: fell through tools/list validation")
+}
+
+// 2d. MCP-UI: ui:// resources/read should be denied (fail-closed) in MCP transport mode.
+func testMCPUIResourceReadDenied() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	payload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1002,
+		"method":  "resources/read",
+		"params": map[string]any{
+			"uri": "ui://mcp-untrusted-server/exploit.html",
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("failed to marshal payload: %v", err))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, *gatewayURL, bytes.NewReader(body))
+	if err != nil {
+		return printProof(false, fmt.Sprintf("failed to create request: %v", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+	req.Header.Set("X-Session-ID", "demo-ui-resource-read")
+	req.Header.Set("X-MCP-Server", "mcp-untrusted-server")
+	req.Header.Set("X-Tenant", "acme-corp")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("request failed: %v", err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusForbidden {
+		return printProof(false, fmt.Sprintf("expected HTTP 403, got %d: %s", resp.StatusCode, truncateStr(string(respBody), 200)))
+	}
+
+	var ge mcpgateway.GatewayError
+	if err := json.Unmarshal(respBody, &ge); err != nil {
+		return printProof(false, fmt.Sprintf("expected JSON GatewayError body, got: %s", truncateStr(string(respBody), 200)))
+	}
+	if ge.Code != "ui_capability_denied" {
+		printGatewayError(&ge)
+		return printProof(false, fmt.Sprintf("expected code=ui_capability_denied, got %s", ge.Code))
+	}
+	return printProof(true, "ui:// resources/read denied with ui_capability_denied (MCP mode UI gating active)")
 }
 
 // 3. SPIFFE auth denial: Client with empty SPIFFE ID should get 401.

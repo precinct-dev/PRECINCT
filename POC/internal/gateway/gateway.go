@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -11,6 +12,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -381,7 +383,7 @@ func (g *Gateway) proxyHandler() http.Handler {
 		// httputil.ReverseProxy path with full UI processing for backward compat.
 		if g.config.MCPTransportMode == "mcp" {
 			// MCP path: translate SDK request -> MCP JSON-RPC -> upstream -> response
-			g.handleMCPRequest(proxyRW, r.WithContext(ctx), mcpMethod, mcpParams)
+			g.handleMCPRequest(proxyRW, r.WithContext(ctx), mcpMethod, mcpParams, server, tenant)
 		} else {
 			// Legacy path: full UI response processing pipeline
 			g.processUpstreamResponse(proxyRW, r.WithContext(ctx), reqInfo, server, tenant)
@@ -430,8 +432,30 @@ func (prw *proxyResponseWriter) Write(b []byte) (int, error) {
 // ready yet.
 //
 // ALL errors use middleware.WriteGatewayError() with proper GatewayError structs.
-func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, method string, params map[string]interface{}) {
+func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, method string, params map[string]interface{}, server, tenant string) {
 	ctx := r.Context()
+
+	// RFA-6fse.2: Request-side enforcement for ui:// resource reads MUST occur
+	// before *any* upstream contact (including MCP transport initialization).
+	var resourceURI string
+	isUIResourceRead := false
+	if method == "resources/read" && params != nil {
+		if uriRaw, ok := params["uri"]; ok {
+			if uri, ok := uriRaw.(string); ok && strings.HasPrefix(uri, "ui://") {
+				resourceURI = uri
+				isUIResourceRead = true
+				if !g.checkUIResourceReadAllowed(server, tenant, resourceURI) {
+					middleware.WriteGatewayError(w, r, http.StatusForbidden, middleware.GatewayError{
+						Code:        middleware.ErrUICapabilityDenied,
+						Message:     "UI resource reads are not permitted for this server/tenant.",
+						Middleware:  "ui_capability_gating",
+						Remediation: "Grant UI capabilities for this server/tenant in ui_capability_grants.yaml.",
+					})
+					return
+				}
+			}
+		}
+	}
 
 	// Lazy init: ensure MCP transport is initialized
 	if err := g.ensureMCPTransportInitialized(ctx); err != nil {
@@ -523,6 +547,55 @@ func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, metho
 		return
 	}
 
+	// RFA-6fse.2: Response-side UI enforcement in MCP transport mode.
+	// For tools/list: apply full tools/list processing pipeline to the JSON-RPC response.
+	// For resources/read ui://: apply UI resource controls + registry verification to the
+	// extracted resource content and block on failure.
+	if method == "tools/list" {
+		raw, err := json.Marshal(rpcResp)
+		if err != nil {
+			middleware.WriteGatewayError(w, r, http.StatusInternalServerError, middleware.GatewayError{
+				Code:        middleware.ErrMCPInvalidResponse,
+				Message:     fmt.Sprintf("Failed to serialize MCP response: %v", err),
+				Middleware:  "mcp_transport",
+				Remediation: "This is an internal error. Check gateway logs for details.",
+			})
+			return
+		}
+		respBytes := g.uiResponseProcessor.ProcessToolsListResponse(raw, server, tenant)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(respBytes)
+		return
+	}
+
+	if isUIResourceRead {
+		content, contentType, err := extractUIResourceFromMCPResult(rpcResp.Result, resourceURI)
+		if err != nil {
+			middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
+				Code:        middleware.ErrMCPInvalidResponse,
+				Message:     fmt.Sprintf("Invalid resources/read result: %v", err),
+				Middleware:  "mcp_transport",
+				Remediation: "The upstream MCP server returned an invalid resources/read result.",
+			})
+			return
+		}
+
+		allowed, reason, _ := g.uiResponseProcessor.ProcessUIResourceResponse(
+			content, contentType, server, tenant, resourceURI,
+		)
+		if !allowed {
+			middleware.WriteGatewayError(w, r, http.StatusForbidden, middleware.GatewayError{
+				Code:        middleware.ErrUIResourceBlocked,
+				Message:     fmt.Sprintf("UI resource blocked: %s", reason),
+				Middleware:  "ui_resource_controls",
+				Details:     map[string]any{"reason": reason},
+				Remediation: "Ensure the resource passes content-type, size, scan, and hash verification.",
+			})
+			return
+		}
+	}
+
 	// Write the JSON-RPC response back to the client
 	w.Header().Set("Content-Type", "application/json")
 	respBytes, err := json.Marshal(rpcResp)
@@ -537,6 +610,88 @@ func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, metho
 	}
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(respBytes)
+}
+
+// extractUIResourceFromMCPResult extracts resource content bytes and mimeType from a
+// resources/read JSON-RPC result. For MCP spec 2025-03-26, resources/read returns:
+//   {"contents":[{"uri":"ui://...","mimeType":"text/html;profile=mcp-app","text":"..."}]}
+// The gateway uses the extracted bytes + mimeType to run the same UI resource
+// controls used by proxy mode.
+func extractUIResourceFromMCPResult(result json.RawMessage, resourceURI string) ([]byte, string, error) {
+	if len(result) == 0 {
+		return nil, "", fmt.Errorf("missing result")
+	}
+
+	type resourceContent struct {
+		URI      string  `json:"uri"`
+		MimeType string  `json:"mimeType"`
+		Text     *string `json:"text,omitempty"`
+		Blob     *string `json:"blob,omitempty"`
+	}
+	var rr map[string]any
+	if err := json.Unmarshal(result, &rr); err != nil {
+		return nil, "", fmt.Errorf("failed to parse result: %w", err)
+	}
+
+	// Extract mimeType (may exist at top-level or per entry).
+	mimeType, _ := rr["mimeType"].(string)
+
+	// Spec-conformant: result.contents = []{ uri, mimeType, text|blob }
+	var contents []resourceContent
+	if raw, ok := rr["contents"]; ok {
+		b, _ := json.Marshal(raw)
+		_ = json.Unmarshal(b, &contents)
+	} else if raw, ok := rr["content"]; ok {
+		// Permissive fallback: some implementations may use "content" instead of "contents".
+		b, _ := json.Marshal(raw)
+		_ = json.Unmarshal(b, &contents)
+	}
+
+	// Prefer an entry whose uri matches the requested resourceURI.
+	var chosen *resourceContent
+	for i := range contents {
+		if contents[i].URI != "" && contents[i].URI == resourceURI {
+			chosen = &contents[i]
+			break
+		}
+	}
+	if chosen == nil && len(contents) > 0 {
+		chosen = &contents[0]
+	}
+
+	if chosen != nil && chosen.MimeType != "" {
+		mimeType = chosen.MimeType
+	}
+
+	if chosen != nil {
+		if chosen.Text != nil {
+			return []byte(*chosen.Text), mimeType, nil
+		}
+		if chosen.Blob != nil {
+			decoded, err := base64.StdEncoding.DecodeString(*chosen.Blob)
+			if err != nil {
+				return nil, mimeType, fmt.Errorf("invalid base64 blob: %w", err)
+			}
+			return decoded, mimeType, nil
+		}
+	}
+
+	// Non-spec fallbacks (best-effort)
+	if txt, ok := rr["text"].(string); ok && txt != "" {
+		return []byte(txt), mimeType, nil
+	}
+	if blob, ok := rr["blob"].(string); ok && blob != "" {
+		decoded, err := base64.StdEncoding.DecodeString(blob)
+		if err != nil {
+			return nil, mimeType, fmt.Errorf("invalid base64 blob: %w", err)
+		}
+		return decoded, mimeType, nil
+	}
+	if content, ok := rr["content"].(string); ok && content != "" {
+		return []byte(content), mimeType, nil
+	}
+
+	return nil, mimeType, fmt.Errorf("no resource contents found")
 }
 
 // ensureMCPTransportInitialized performs lazy initialization of the MCP transport.

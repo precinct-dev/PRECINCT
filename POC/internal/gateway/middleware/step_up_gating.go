@@ -532,6 +532,31 @@ func StepUpGating(
 			return
 		}
 
+		// RFA-6fse.2: MCP protocol methods must not be risk-scored as "unknown tools".
+		// Otherwise they hit unknown_tool_defaults (total=9) and are blocked at the
+		// approval gate. Protocol methods include tools/list, resources/read, prompts/*,
+		// ping, initialize, and notifications/*.
+		//
+		// UI-specific resources/read (ui://) is governed by the gateway handler's
+		// UI capability gating + response-side resource controls. We allow the
+		// request to reach that logic by bypassing step-up gating for protocol methods.
+		if parsed.IsNotification() ||
+			parsed.IsToolsList() ||
+			parsed.IsResourcesRead() ||
+			parsed.IsResourcesList() ||
+			parsed.IsPromptsList() ||
+			parsed.IsPromptsGet() ||
+			parsed.IsSamplingCreateMessage() ||
+			parsed.IsInitialize() ||
+			parsed.IsPing() {
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "protocol method passthrough"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
 		toolName, toolErr := parsed.EffectiveToolName()
 		params := parsed.EffectiveToolParams()
 		if toolErr != nil {

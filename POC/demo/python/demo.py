@@ -138,6 +138,70 @@ def test_invalid_tools_call_missing_name_rejected(url: str) -> bool:
         return print_proof(False, f"unexpected error: {type(e).__name__}: {e}")
 
 
+def test_mcp_ui_tools_list_strips_meta_ui(url: str) -> bool:
+    """2c. MCP-UI: tools/list response should have _meta.ui stripped in MCP transport mode."""
+    payload = {"jsonrpc": "2.0", "id": 1001, "method": "tools/list", "params": {}}
+    headers = {
+        "Content-Type": "application/json",
+        "X-SPIFFE-ID": DSPY_SPIFFE,
+        "X-Session-ID": "demo-ui-tools-list",
+        "X-MCP-Server": "mcp-dashboard-server",
+        "X-Tenant": "acme-corp",
+    }
+    try:
+        resp = httpx.post(url, json=payload, headers=headers, timeout=10.0)
+        if resp.status_code != 200:
+            return print_proof(False, f"expected HTTP 200, got {resp.status_code}: {resp.text[:200]}")
+        data = resp.json()
+        tools = (data.get("result") or {}).get("tools") if isinstance(data, dict) else None
+        if not isinstance(tools, list):
+            return print_proof(False, "missing tools array in tools/list response")
+
+        for tool in tools:
+            if not isinstance(tool, dict):
+                continue
+            if tool.get("name") != "render-analytics":
+                continue
+            meta = tool.get("_meta")
+            if not isinstance(meta, dict):
+                return print_proof(True, "render-analytics present and has no _meta (UI stripped)")
+            if "ui" in meta:
+                return print_proof(False, "render-analytics still has _meta.ui (UI gating not applied in MCP mode)")
+            return print_proof(True, "render-analytics present and _meta.ui stripped (UI gating active in MCP mode)")
+
+        return print_proof(False, "tools/list did not include render-analytics (mock MCP server UI tool missing)")
+    except Exception as e:
+        return print_proof(False, f"unexpected error: {type(e).__name__}: {e}")
+
+
+def test_mcp_ui_resource_read_denied(url: str) -> bool:
+    """2d. MCP-UI: ui:// resources/read should be denied (fail-closed) in MCP transport mode."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1002,
+        "method": "resources/read",
+        "params": {"uri": "ui://mcp-untrusted-server/exploit.html"},
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "X-SPIFFE-ID": DSPY_SPIFFE,
+        "X-Session-ID": "demo-ui-resource-read",
+        "X-MCP-Server": "mcp-untrusted-server",
+        "X-Tenant": "acme-corp",
+    }
+    try:
+        resp = httpx.post(url, json=payload, headers=headers, timeout=10.0)
+        if resp.status_code != 403:
+            return print_proof(False, f"expected HTTP 403, got {resp.status_code}: {resp.text[:200]}")
+        data = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+        code = data.get("code") if isinstance(data, dict) else None
+        if code != "ui_capability_denied":
+            return print_proof(False, f"expected code=ui_capability_denied, got {code}")
+        return print_proof(True, "ui:// resources/read denied with ui_capability_denied (MCP mode UI gating active)")
+    except Exception as e:
+        return print_proof(False, f"unexpected error: {type(e).__name__}: {e}")
+
+
 def test_auth_denial(url: str) -> bool:
     """3. SPIFFE auth denial: empty identity -> 401."""
     client = new_client(url, spiffe_id="")
@@ -535,6 +599,20 @@ def main() -> None:
             send="tools/call(params={arguments:{...}}) missing name (raw JSON-RPC)",
             expect="HTTP 400 with code=mcp_invalid_request proving fail-closed validation is active",
             fn=test_invalid_tools_call_missing_name_rejected,
+        ),
+        TestCase(
+            name="MCP-UI: tools/list strips _meta.ui in MCP mode (secure default)",
+            what="MCP transport mode still enforces MCP-UI capability gating on tools/list responses",
+            send="tools/list with mock MCP server returning a tool that includes _meta.ui",
+            expect="HTTP 200 and tool render-analytics has NO _meta.ui (stripped by UI gating)",
+            fn=test_mcp_ui_tools_list_strips_meta_ui,
+        ),
+        TestCase(
+            name="MCP-UI: ui:// resources/read denied before upstream (fail-closed)",
+            what="MCP transport mode blocks ui:// resource reads when UI is not enabled/granted",
+            send="resources/read(uri='ui://mcp-untrusted-server/exploit.html')",
+            expect="HTTP 403 with code=ui_capability_denied proving request-side UI gating is active in MCP mode",
+            fn=test_mcp_ui_resource_read_denied,
         ),
         TestCase(
             name="SPIFFE auth denial (empty identity)",

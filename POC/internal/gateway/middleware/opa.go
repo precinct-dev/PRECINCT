@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -157,12 +158,42 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		body := GetRequestBody(ctx)
 		toolName := ""
 		params := make(map[string]interface{})
+		var parsed *ParsedMCPRequest
 		if len(body) > 0 {
-			if parsed, err := ParseMCPRequestBody(body); err == nil {
+			if p, err := ParseMCPRequestBody(body); err == nil {
+				parsed = p
 				if tn, err := parsed.EffectiveToolName(); err == nil {
 					toolName = tn
 				}
 				params = parsed.EffectiveToolParams()
+			}
+		}
+
+		// RFA-6fse.2: MCP protocol methods are not "tools" and should not be
+		// denied by tool-grant policy. UI methods are governed by dedicated
+		// MCP-UI controls in the gateway handler (request-side gating + response-side
+		// processors). We bypass OPA for:
+		//   - tools/list (required MCP protocol method)
+		//   - resources/read ONLY when ui:// (governed by UI capability gating)
+		if parsed != nil {
+			if parsed.IsToolsList() {
+				span.SetAttributes(
+					attribute.String("mcp.result", "allowed"),
+					attribute.String("mcp.reason", "protocol method passthrough"),
+				)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			if parsed.IsResourcesRead() {
+				uri, _ := parsed.Params["uri"].(string)
+				if strings.HasPrefix(uri, "ui://") {
+					span.SetAttributes(
+						attribute.String("mcp.result", "allowed"),
+						attribute.String("mcp.reason", "ui:// resources/read passthrough (UI-gated)"),
+					)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
 			}
 		}
 
