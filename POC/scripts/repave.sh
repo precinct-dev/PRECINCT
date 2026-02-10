@@ -1,117 +1,431 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-component="${COMPONENT:-${1:-}}"
-if [[ -z "${component}" ]]; then
-  echo "Usage: make repave COMPONENT=<component> (ex: make repave COMPONENT=keydb)" >&2
-  exit 2
-fi
+usage() {
+  cat >&2 <<'EOF'
+Usage:
+  make repave                     # repave full stack in dependency order (RFA-67xd)
+  make repave COMPONENT=keydb      # repave a single component (walking skeleton, RFA-4ldp)
 
-if [[ "${component}" != "keydb" ]]; then
-  echo "ERROR: only COMPONENT=keydb is supported in this walking skeleton (got: ${component})" >&2
-  exit 2
-fi
+Direct invocation:
+  scripts/repave.sh --all
+  scripts/repave.sh <component>
+
+Test hooks:
+  REPAVE_SIMULATE_HEALTH_FAIL_COMPONENT=<component>  # force health failure for a component (for integration tests)
+EOF
+}
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 poc_dir="$(cd -- "${script_dir}/.." && pwd)"
 cd "${poc_dir}"
 
-service="${component}"
 state_file="${poc_dir}/.repave-state.json"
+reports_dir="${poc_dir}/reports"
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "ERROR: docker is required" >&2
   exit 1
 fi
-
 if ! docker compose version >/dev/null 2>&1; then
   echo "ERROR: docker compose is required" >&2
   exit 1
 fi
-
-cid="$(docker compose ps -q "${service}" || true)"
-if [[ -z "${cid}" ]]; then
-  echo "ERROR: compose service '${service}' is not running; start it first (ex: docker compose up -d --wait ${service})" >&2
+if ! command -v jq >/dev/null 2>&1; then
+  echo "ERROR: jq is required (used for deterministic state + report generation)" >&2
   exit 1
 fi
 
-image_ref="$(docker compose config --images "${service}" 2>/dev/null | head -n1 || true)"
-if [[ -z "${image_ref}" ]]; then
-  echo "ERROR: could not determine image ref for compose service '${service}'" >&2
-  exit 1
+arg="${1:-}"
+if [[ -z "${arg}" ]]; then
+  usage
+  exit 2
 fi
 
-before_image_hash="$(docker inspect --format '{{.Image}}' "${cid}" 2>/dev/null || true)"
-if [[ -z "${before_image_hash}" ]]; then
-  echo "ERROR: could not inspect current image hash for container '${cid}'" >&2
-  exit 1
-fi
+compose_main=(docker compose)
+compose_phoenix=(docker compose -f docker-compose.phoenix.yml)
 
-echo "[repave] component=${component}"
-echo "[repave] service=${service}"
-echo "[repave] image_ref=${image_ref}"
-echo "[repave] current_image_hash=${before_image_hash}"
+now_utc_iso() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
+now_utc_compact() { date -u +'%Y-%m-%d-%H%M%S'; }
 
-echo "[repave] pulling fresh image (same tag)..."
-docker compose pull "${service}"
+container_id_for() {
+  local svc="$1"
+  if [[ "${svc}" == "phoenix" || "${svc}" == "otel-collector" ]]; then
+    "${compose_phoenix[@]}" ps -q "${svc}" 2>/dev/null || true
+  else
+    "${compose_main[@]}" ps -q "${svc}" 2>/dev/null || true
+  fi
+}
 
-echo "[repave] stopping container..."
-docker compose stop "${service}"
+image_ref_for() {
+  local svc="$1"
+  if [[ "${svc}" == "phoenix" || "${svc}" == "otel-collector" ]]; then
+    "${compose_phoenix[@]}" config --images "${svc}" 2>/dev/null | head -n1 || true
+  else
+    "${compose_main[@]}" config --images "${svc}" 2>/dev/null | head -n1 || true
+  fi
+}
 
-echo "[repave] removing container (preserving volumes)..."
-docker compose rm -f "${service}"
+inspect_image_hash() {
+  local cid="$1"
+  docker inspect --format '{{.Image}}' "${cid}" 2>/dev/null || true
+}
 
-echo "[repave] starting new container and waiting for health..."
-docker compose up -d --wait --wait-timeout 180 "${service}"
+inspect_health_status() {
+  local cid="$1"
+  docker inspect --format '{{.State.Health.Status}}' "${cid}" 2>/dev/null || echo "unknown"
+}
 
-new_cid="$(docker compose ps -q "${service}" || true)"
-if [[ -z "${new_cid}" ]]; then
-  echo "ERROR: compose service '${service}' did not start (no container id found)" >&2
-  exit 1
-fi
-
-health_status="$(docker inspect --format '{{.State.Health.Status}}' "${new_cid}" 2>/dev/null || echo "unknown")"
-if [[ "${health_status}" != "healthy" ]]; then
-  echo "ERROR: health check failed after repave (health=${health_status}); aborting" >&2
-  exit 1
-fi
-
-ping_out="$(docker compose exec -T "${service}" keydb-cli ping | tr -d '\r' || true)"
-if [[ "${ping_out}" != "PONG" ]]; then
-  echo "ERROR: connectivity check failed after repave (expected PONG, got: ${ping_out}); aborting" >&2
-  exit 1
-fi
-
-after_image_hash="$(docker inspect --format '{{.Image}}' "${new_cid}" 2>/dev/null || true)"
-if [[ -z "${after_image_hash}" ]]; then
-  echo "ERROR: could not inspect new image hash after repave" >&2
-  exit 1
-fi
-
-timestamp="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-
-echo "[repave] new_image_hash=${after_image_hash}"
-echo "[repave] writing repave state: ${state_file}"
-
-# AC7 requirement: state update happens only after health + connectivity checks pass.
-if command -v jq >/dev/null 2>&1; then
-  base='{}'
+update_state() {
+  local comp="$1" ts="$2" img="$3" health="$4"
+  local base='{}'
   if [[ -f "${state_file}" ]]; then
     base="$(cat "${state_file}")"
   fi
+  local tmp
   tmp="$(mktemp)"
   printf '%s' "${base}" | jq -S \
-    --arg comp "${component}" \
-    --arg ts "${timestamp}" \
-    --arg img "${after_image_hash}" \
-    --arg health "${health_status}" \
+    --arg comp "${comp}" \
+    --arg ts "${ts}" \
+    --arg img "${img}" \
+    --arg health "${health}" \
     '.last_repave = (.last_repave // {}) | .last_repave[$comp] = {timestamp: $ts, image_hash: $img, health: $health}' \
     > "${tmp}"
   mv "${tmp}" "${state_file}"
-else
-  echo "ERROR: jq is required to update ${state_file} deterministically" >&2
-  exit 1
-fi
+}
 
-echo "[repave] OK"
+ensure_running() {
+  local svc="$1"
+  local cid
+  cid="$(container_id_for "${svc}")"
+  if [[ -n "${cid}" ]]; then
+    return 0
+  fi
+  echo "[repave] service ${svc} not running; starting it..."
+  if [[ "${svc}" == "phoenix" || "${svc}" == "otel-collector" ]]; then
+    "${compose_phoenix[@]}" up -d --wait --wait-timeout 180 "${svc}"
+  else
+    "${compose_main[@]}" up -d --wait --wait-timeout 180 "${svc}"
+  fi
+}
 
+verify_spire_server_agent_list() {
+  # Story requires: spire-server agent list returns entries.
+  # We tolerate transient reconnect delays after spire-server restart.
+  local deadline=$((SECONDS + 90))
+  while (( SECONDS < deadline )); do
+    # Use spire-server CLI inside the container.
+    # Output includes a header line; require at least one agent row.
+    local out
+    out="$("${compose_main[@]}" exec -T spire-server /opt/spire/bin/spire-server agent list 2>/dev/null || true)"
+    # Heuristic: spire-server prints "Found 0 agents" when empty; avoid parsing brittle formats.
+    if [[ -n "${out}" && "${out}" != *"Found 0 agents"* && "${out}" == *"SPIFFE ID"* ]]; then
+      return 0
+    fi
+    sleep 2
+  done
+  echo "ERROR: spire-server agent list did not return entries within timeout" >&2
+  return 1
+}
+
+verify_keydb_ping() {
+  local pong
+  pong="$("${compose_main[@]}" exec -T keydb keydb-cli ping | tr -d '\r' || true)"
+  [[ "${pong}" == "PONG" ]]
+}
+
+verify_gateway_health() {
+  # Host port mapping for gateway is 9090:9090 in docker-compose.yml.
+  curl -fsS "http://localhost:9090/health" >/dev/null 2>&1
+}
+
+verify_phoenix_health() {
+  curl -fsS "http://localhost:6006/" >/dev/null 2>&1
+}
+
+verify_otel_collector_health() {
+  # otel-collector image is FROM scratch, so we probe from a tiny curl container
+  # attached to the phoenix-observability-network.
+  docker run --rm --network phoenix-observability-network curlimages/curl:8.5.0 -fsS \
+    "http://otel-collector:13133/" >/dev/null
+}
+
+repave_one_main() {
+  local svc="$1"
+  ensure_running "${svc}"
+
+  local cid image_ref before_hash after_hash ts health duration_s start_s
+  cid="$(container_id_for "${svc}")"
+  image_ref="$(image_ref_for "${svc}")"
+  before_hash="$(inspect_image_hash "${cid}")"
+  if [[ -z "${before_hash}" || -z "${image_ref}" ]]; then
+    echo "ERROR: could not determine current image hash or image ref for ${svc}" >&2
+    return 1
+  fi
+
+  echo "[repave] component=${svc}"
+  echo "[repave] service=${svc}"
+  echo "[repave] image_ref=${image_ref}"
+  echo "[repave] current_image_hash=${before_hash}"
+
+  echo "[repave] pulling fresh image (same tag)..."
+  "${compose_main[@]}" pull "${svc}"
+
+  start_s="${SECONDS}"
+  echo "[repave] stopping container..."
+  "${compose_main[@]}" stop "${svc}"
+
+  echo "[repave] removing container (preserving volumes)..."
+  "${compose_main[@]}" rm -f "${svc}"
+
+  echo "[repave] starting new container and waiting for health..."
+  "${compose_main[@]}" up -d --wait --wait-timeout 300 "${svc}"
+
+  cid="$(container_id_for "${svc}")"
+  if [[ -z "${cid}" ]]; then
+    echo "ERROR: compose service '${svc}' did not start (no container id found)" >&2
+    return 1
+  fi
+
+  health="$(inspect_health_status "${cid}")"
+  if [[ "${health}" != "healthy" ]]; then
+    echo "ERROR: health check failed after repave (health=${health})" >&2
+    return 1
+  fi
+
+  # Additional per-component verifications (RFA-67xd health verification section).
+  case "${svc}" in
+    spire-server)
+      verify_spire_server_agent_list
+      ;;
+    spire-agent)
+      # docker healthcheck is the primary signal; nothing extra.
+      ;;
+    keydb)
+      if ! verify_keydb_ping; then
+        echo "ERROR: keydb connectivity check failed after repave (expected PONG)" >&2
+        return 1
+      fi
+      ;;
+    mcp-security-gateway)
+      if ! verify_gateway_health; then
+        echo "ERROR: gateway /health check failed after repave" >&2
+        return 1
+      fi
+      ;;
+    mock-mcp-server)
+      # docker healthcheck is sufficient (wget /health inside container).
+      ;;
+    spike-keeper-1|spike-nexus)
+      # docker healthcheck (from Dockerfile) is sufficient.
+      ;;
+    *)
+      ;;
+  esac
+
+  if [[ "${REPAVE_SIMULATE_HEALTH_FAIL_COMPONENT:-}" == "${svc}" ]]; then
+    echo "ERROR: simulated health failure for ${svc} (REPAVE_SIMULATE_HEALTH_FAIL_COMPONENT)" >&2
+    return 1
+  fi
+
+  after_hash="$(inspect_image_hash "${cid}")"
+  if [[ -z "${after_hash}" ]]; then
+    echo "ERROR: could not inspect new image hash after repave for ${svc}" >&2
+    return 1
+  fi
+
+  duration_s=$((SECONDS - start_s))
+  ts="$(now_utc_iso)"
+  update_state "${svc}" "${ts}" "${after_hash}" "healthy"
+
+  echo "[repave] new_image_hash=${after_hash}"
+  echo "[repave] OK component=${svc} duration_s=${duration_s}"
+
+  # Return data for reporting via global vars (bash doesn't have real structs).
+  REPAIRED_BEFORE_HASH="${before_hash}"
+  REPAIRED_AFTER_HASH="${after_hash}"
+  REPAIRED_HEALTH="OK"
+  REPAIRED_DURATION="${duration_s}"
+  return 0
+}
+
+repave_one_phoenix() {
+  local svc="$1"
+  ensure_running "${svc}"
+
+  local cid image_ref before_hash after_hash duration_s start_s ts
+  cid="$(container_id_for "${svc}")"
+  image_ref="$(image_ref_for "${svc}")"
+  before_hash="$(inspect_image_hash "${cid}")"
+  if [[ -z "${before_hash}" || -z "${image_ref}" ]]; then
+    echo "ERROR: could not determine current image hash or image ref for ${svc}" >&2
+    return 1
+  fi
+
+  echo "[repave] component=${svc}"
+  echo "[repave] service=${svc}"
+  echo "[repave] image_ref=${image_ref}"
+  echo "[repave] current_image_hash=${before_hash}"
+
+  echo "[repave] pulling fresh image (same tag)..."
+  "${compose_phoenix[@]}" pull "${svc}"
+
+  start_s="${SECONDS}"
+  echo "[repave] stopping container..."
+  "${compose_phoenix[@]}" stop "${svc}"
+
+  echo "[repave] removing container (preserving volumes)..."
+  "${compose_phoenix[@]}" rm -f "${svc}"
+
+  echo "[repave] starting new container and waiting for health..."
+  "${compose_phoenix[@]}" up -d --wait --wait-timeout 300 "${svc}"
+
+  cid="$(container_id_for "${svc}")"
+  if [[ -z "${cid}" ]]; then
+    echo "ERROR: compose service '${svc}' did not start (no container id found)" >&2
+    return 1
+  fi
+
+  # Phoenix has a Docker healthcheck. OTel does not; verify via health_check extension endpoint.
+  if [[ "${svc}" == "phoenix" ]]; then
+    if ! verify_phoenix_health; then
+      echo "ERROR: phoenix health check failed (GET :6006)" >&2
+      return 1
+    fi
+  elif [[ "${svc}" == "otel-collector" ]]; then
+    if ! verify_otel_collector_health; then
+      echo "ERROR: otel-collector health check failed (GET :13133)" >&2
+      return 1
+    fi
+  fi
+
+  if [[ "${REPAVE_SIMULATE_HEALTH_FAIL_COMPONENT:-}" == "${svc}" ]]; then
+    echo "ERROR: simulated health failure for ${svc} (REPAVE_SIMULATE_HEALTH_FAIL_COMPONENT)" >&2
+    return 1
+  fi
+
+  after_hash="$(inspect_image_hash "${cid}")"
+  if [[ -z "${after_hash}" ]]; then
+    echo "ERROR: could not inspect new image hash after repave for ${svc}" >&2
+    return 1
+  fi
+
+  duration_s=$((SECONDS - start_s))
+  ts="$(now_utc_iso)"
+  update_state "${svc}" "${ts}" "${after_hash}" "healthy"
+
+  echo "[repave] new_image_hash=${after_hash}"
+  echo "[repave] OK component=${svc} duration_s=${duration_s}"
+
+  REPAIRED_BEFORE_HASH="${before_hash}"
+  REPAIRED_AFTER_HASH="${after_hash}"
+  REPAIRED_HEALTH="OK"
+  REPAIRED_DURATION="${duration_s}"
+  return 0
+}
+
+repave_all() {
+  local ts_start ts_compact report_file start_s total_duration_s
+  ts_start="$(now_utc_iso)"
+  ts_compact="$(now_utc_compact)"
+  mkdir -p "${reports_dir}"
+  report_file="${reports_dir}/repave-${ts_compact}.md"
+  start_s="${SECONDS}"
+
+  # Build rows as we go so we can emit a report even on failure.
+  local rows_json='[]'
+  local failed_component="" failed_reason=""
+
+  finalize_report() {
+    local ts_end dur
+    ts_end="$(now_utc_iso)"
+    dur=$((SECONDS - start_s))
+
+    {
+      echo "# Repave Report"
+      echo "Timestamp: ${ts_start}"
+      echo "Duration: ${dur}s"
+      echo ""
+      if [[ -n "${failed_component}" ]]; then
+        echo "Status: FAILED"
+        echo "Failed Component: ${failed_component}"
+        echo "Reason: ${failed_reason}"
+      else
+        echo "Status: OK"
+      fi
+      echo ""
+      echo "| Container | Image Hash Before | Image Hash After | Health | Duration |"
+      echo "|-----------|------------------|------------------|--------|----------|"
+      printf '%s' "${rows_json}" | jq -r '.[] | "| \(.container) | \(.before) | \(.after) | \(.health) | \(.duration)s |"'
+      echo ""
+    } > "${report_file}"
+  }
+
+  trap 'finalize_report' EXIT
+
+  local order=(spire-server spire-agent keydb spike-keeper-1 spike-nexus mcp-security-gateway mock-mcp-server otel-collector phoenix)
+  local i total
+  total="${#order[@]}"
+
+  echo "[repave-all] starting (components=${total})"
+
+  for i in "${!order[@]}"; do
+    local svc
+    svc="${order[$i]}"
+    echo "[repave-all] step $((i+1))/${total} repaving ${svc}"
+
+    local ok=0
+    if [[ "${svc}" == "phoenix" || "${svc}" == "otel-collector" ]]; then
+      if repave_one_phoenix "${svc}"; then ok=1; fi
+    else
+      if repave_one_main "${svc}"; then ok=1; fi
+    fi
+
+    if [[ "${ok}" -ne 1 ]]; then
+      failed_component="${svc}"
+      failed_reason="health verification failed (see output)"
+      echo "ERROR: stop-on-failure: ${svc} failed; aborting remaining repave steps" >&2
+      # Add a failure row for visibility.
+      rows_json="$(printf '%s' "${rows_json}" | jq -c \
+        --arg c "${svc}" \
+        --arg b "${REPAIRED_BEFORE_HASH:-}" \
+        --arg a "${REPAIRED_AFTER_HASH:-}" \
+        --arg h "FAIL" \
+        --arg d "${REPAIRED_DURATION:-0}" \
+        '. + [{container:$c, before:$b, after:$a, health:$h, duration:($d|tonumber)}]')"
+      exit 1
+    fi
+
+    rows_json="$(printf '%s' "${rows_json}" | jq -c \
+      --arg c "${svc}" \
+      --arg b "${REPAIRED_BEFORE_HASH}" \
+      --arg a "${REPAIRED_AFTER_HASH}" \
+      --arg h "${REPAIRED_HEALTH}" \
+      --arg d "${REPAIRED_DURATION}" \
+      '. + [{container:$c, before:$b, after:$a, health:$h, duration:($d|tonumber)}]')"
+  done
+
+  total_duration_s=$((SECONDS - start_s))
+  echo "[repave-all] OK duration_s=${total_duration_s} report=${report_file}"
+}
+
+repave_single() {
+  local component="$1"
+  if [[ "${component}" != "keydb" ]]; then
+    echo "ERROR: only COMPONENT=keydb is supported for single-component repave in the walking skeleton (got: ${component})" >&2
+    exit 2
+  fi
+  repave_one_main "keydb"
+}
+
+case "${arg}" in
+  --all)
+    repave_all
+    ;;
+  -h|--help)
+    usage
+    ;;
+  *)
+    repave_single "${arg}"
+    ;;
+esac

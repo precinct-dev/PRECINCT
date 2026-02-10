@@ -22,6 +22,9 @@ func TestRepaveKeyDB(t *testing.T) {
 	if _, err := exec.LookPath("make"); err != nil {
 		t.Skipf("make not installed: %v", err)
 	}
+	if _, err := exec.LookPath("jq"); err != nil {
+		t.Skipf("jq not installed: %v", err)
+	}
 
 	dir := pocDir()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
@@ -101,4 +104,3 @@ func TestRepaveKeyDB(t *testing.T) {
 		t.Fatalf("expected last_repave.keydb.health=healthy, got %q", keydbState.Health)
 	}
 }
-
