@@ -67,12 +67,12 @@ up: ## Start Docker Compose stack (waits for all services healthy)
 down: ## Stop Docker Compose stack
 	docker compose down
 
-repave: ## Repave a single Docker Compose component container (ex: make repave COMPONENT=keydb)
-	@if [ -z "$(COMPONENT)" ]; then \
-		echo "ERROR: COMPONENT is required (ex: make repave COMPONENT=keydb)"; \
-		exit 1; \
+repave: ## Repave containers. Default: full-stack in dependency order. Optional: single component (ex: make repave COMPONENT=keydb)
+	@if [ -n "$(COMPONENT)" ]; then \
+		bash scripts/repave.sh "$(COMPONENT)"; \
+	else \
+		bash scripts/repave.sh --all; \
 	fi
-	@bash scripts/repave.sh "$(COMPONENT)"
 
 upgrade-check: ## Show current vs latest versions (containers, Go modules, Python deps) in table + JSON
 	@bash scripts/upgrade-check.sh --format table
