@@ -310,7 +310,7 @@ func (g *Gateway) Handler() http.Handler {
 	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor, middleware.NewToolRegistryScopeResolver(g.registry)) // 13 - LAST before proxy (RFA-0gr: dynamic scope)
 	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                         // 12
 	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                                 // 11
-	handler = middleware.DeepScanMiddleware(handler, g.deepScanner)                                                                  // 10
+	handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig)                                                    // 10
 	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor)       // 9
 	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                         // 8
 	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy())                                                         // 7
@@ -614,7 +614,9 @@ func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, metho
 
 // extractUIResourceFromMCPResult extracts resource content bytes and mimeType from a
 // resources/read JSON-RPC result. For MCP spec 2025-03-26, resources/read returns:
-//   {"contents":[{"uri":"ui://...","mimeType":"text/html;profile=mcp-app","text":"..."}]}
+//
+//	{"contents":[{"uri":"ui://...","mimeType":"text/html;profile=mcp-app","text":"..."}]}
+//
 // The gateway uses the extracted bytes + mimeType to run the same UI resource
 // controls used by proxy mode.
 func extractUIResourceFromMCPResult(result json.RawMessage, resourceURI string) ([]byte, string, error) {

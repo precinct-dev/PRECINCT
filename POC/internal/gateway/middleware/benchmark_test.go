@@ -122,7 +122,7 @@ allow { input.tool == "tools/list" }
 	handler = TokenSubstitution(handler, spikeRedeemer, auditor, nil)                      // 13
 	handler = CircuitBreakerMiddleware(handler, circuitBreaker)                            // 12
 	handler = RateLimitMiddleware(handler, rateLimiter)                                    // 11
-	handler = DeepScanMiddleware(handler, deepScanner)                                     // 10
+	handler = DeepScanMiddleware(handler, deepScanner, riskConfig)                         // 10
 	handler = StepUpGating(handler, guardClient, allowlist, riskConfig, registry, auditor) // 9
 	handler = SessionContextMiddleware(handler, sessionContext)                            // 8
 	handler = DLPMiddleware(handler, dlpScanner)                                           // 7
@@ -516,7 +516,7 @@ allow { input.tool == "file_read" }
 	handler = TokenSubstitution(handler, spikeRedeemer, auditor, nil)
 	handler = CircuitBreakerMiddleware(handler, circuitBreaker)
 	handler = RateLimitMiddleware(handler, rateLimiter)
-	handler = DeepScanMiddleware(handler, deepScanner)
+	handler = DeepScanMiddleware(handler, deepScanner, riskCfg)
 	handler = StepUpGating(handler, guardClient, allowlist, riskCfg, registry, auditor)
 	handler = SessionContextMiddleware(handler, sessionCtx)
 	handler = DLPMiddleware(handler, dlpScanner)
@@ -729,7 +729,7 @@ allow { input.tool == "file_read" }
 	fullHandler = TokenSubstitution(fullHandler, spikeRedeemer, auditor, nil)
 	fullHandler = CircuitBreakerMiddleware(fullHandler, circuitBreaker)
 	fullHandler = RateLimitMiddleware(fullHandler, rateLimiter)
-	fullHandler = DeepScanMiddleware(fullHandler, deepScanner)
+	fullHandler = DeepScanMiddleware(fullHandler, deepScanner, rc)
 	fullHandler = StepUpGating(fullHandler, guardClient, al, rc, registry, auditor)
 	fullHandler = SessionContextMiddleware(fullHandler, sessionCtx)
 	fullHandler = DLPMiddleware(fullHandler, dlpScanner)
