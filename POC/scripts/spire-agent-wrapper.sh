@@ -22,10 +22,13 @@ fi
 
 echo "Successfully read join token from /token/join-token"
 
-# Note: We do NOT clean agent data. The join token is only needed for initial
-# attestation. After the first successful attestation, the agent persists its
-# SVID and uses that for future startups. Cleaning the data would force
-# re-attestation with a stale token.
+# Local Docker Desktop K8s reliability:
+# The local SPIRE server CA can be recreated (or the bundle can change) between runs.
+# If the agent persists state across runs, it can get stuck failing TLS verification
+# against a new server CA/bundle. Since the local overlay always provisions a fresh
+# join token, we can safely wipe persisted agent state on startup to keep k8s-up and
+# demo-k8s deterministic.
+rm -f /opt/spire/data/agent/agent-data.json /opt/spire/data/agent/keys.json 2>/dev/null || true
 
 # Start SPIRE agent with the fresh token (only used if no existing SVID)
 echo "Starting SPIRE agent with join token..."

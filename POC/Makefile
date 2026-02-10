@@ -397,8 +397,16 @@ k8s-register-spire:
 		exit 1; \
 	fi
 	@echo "  Detecting SPIRE agent identity..."
-	@PARENT_ID=$$($(SPIRE_EXEC) agent list -socketPath $(SPIRE_SOCK) 2>/dev/null | \
-		grep 'SPIFFE ID' | head -1 | awk '{print $$NF}'); \
+	@PARENT_ID=""; \
+	i=0; \
+	while [ $$i -lt 60 ]; do \
+		PARENT_ID=$$($(SPIRE_EXEC) agent list -socketPath $(SPIRE_SOCK) 2>/dev/null | \
+			grep 'SPIFFE ID' | head -1 | awk '{print $$NF}'); \
+		if [ -n "$$PARENT_ID" ]; then break; fi; \
+		i=$$(( $$i + 1 )); \
+		echo "  Waiting for SPIRE agent attestation... ($$i/60)"; \
+		sleep 2; \
+	done; \
 	if [ -z "$$PARENT_ID" ]; then \
 		echo "ERROR: No SPIRE node entry found. Is the agent attested?"; \
 		exit 1; \

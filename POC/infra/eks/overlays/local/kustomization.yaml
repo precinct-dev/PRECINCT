@@ -369,7 +369,7 @@ patches:
           pod-security.kubernetes.io/warn: privileged
 
   # --------------------------------------------------------------------------
-  # SPIKE Nexus: reduced resources
+  # SPIKE Nexus: reduced resources + debug flags (local only)
   # --------------------------------------------------------------------------
   - target:
       kind: Deployment
@@ -387,6 +387,11 @@ patches:
           spec:
             containers:
               - name: spike-nexus
+                env:
+                  - name: SPIKE_SYSTEM_LOG_LEVEL
+                    value: "DEBUG"
+                  - name: SPIKE_STACK_TRACES_ON_LOG_FATAL
+                    value: "1"
                 resources:
                   requests:
                     cpu: 25m
@@ -396,7 +401,7 @@ patches:
                     memory: 256Mi
 
   # --------------------------------------------------------------------------
-  # SPIKE Keeper: local registry image, reduced resources
+  # SPIKE Keeper: local registry image, reduced resources + debug flags (local only)
   # --------------------------------------------------------------------------
   - target:
       kind: Deployment
@@ -415,6 +420,11 @@ patches:
               - name: spike-keeper
                 image: registry:5000/spike-keeper:latest
                 imagePullPolicy: Always
+                env:
+                  - name: SPIKE_SYSTEM_LOG_LEVEL
+                    value: "DEBUG"
+                  - name: SPIKE_STACK_TRACES_ON_LOG_FATAL
+                    value: "1"
                 resources:
                   requests:
                     cpu: 25m
@@ -435,10 +445,11 @@ patches:
         value:
           tcpSocket:
             port: 8443
-          initialDelaySeconds: 20
+          # Nexus performs shard recovery on startup; allow time for Keeper/Bootstrap.
+          initialDelaySeconds: 90
           periodSeconds: 10
           timeoutSeconds: 5
-          failureThreshold: 3
+          failureThreshold: 12
       - op: replace
         path: /spec/template/spec/containers/0/readinessProbe
         value:
