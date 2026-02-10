@@ -464,14 +464,21 @@ The SDK constructs MCP JSON-RPC 2.0 requests. Understanding the wire format is u
 
 {
     "jsonrpc": "2.0",
-    "method": "tavily_search",
+    "method": "tools/call",
     "params": {
-        "query": "AI security",
-        "max_results": 5
+        "name": "tavily_search",
+        "arguments": {
+            "query": "AI security",
+            "max_results": 5
+        }
     },
     "id": 1
 }
 ```
+
+**Note:** The SDK uses MCP-spec compliant `tools/call`. Some deployments may still accept
+the deprecated shortcut `method="<tool_name>"`, but `tools/call` is the recommended and
+portable wire format.
 
 **Success response:**
 

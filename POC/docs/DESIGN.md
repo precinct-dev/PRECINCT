@@ -368,11 +368,11 @@ Next steps:
   * Connect an agent:      See docs/agent-integration.md
   * Try it with curl:
 
-    curl -s -X POST http://localhost:9090 \
-      -H "Content-Type: application/json" \
-      -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
-      -H "X-Session-ID: demo-session-1" \
-      -d '{"jsonrpc":"2.0","method":"read","params":{"file_path":"go.mod"},"id":1}'
+	    curl -s -X POST http://localhost:9090 \
+	      -H "Content-Type: application/json" \
+	      -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
+	      -H "X-Session-ID: demo-session-1" \
+	      -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"read","arguments":{"file_path":"go.mod"}},"id":1}'
 ```
 
 ---
@@ -733,7 +733,7 @@ curl -s -X POST http://localhost:9090 \
   -H "Content-Type: application/json" \
   -H "X-SPIFFE-ID: spiffe://poc.local/agents/my-agent/dev" \
   -H "X-Session-ID: $(uuidgen)" \
-  -d '{"jsonrpc":"2.0","method":"read","params":{"file_path":"go.mod"},"id":1}'
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"read","arguments":{"file_path":"go.mod"}},"id":1}'
 ```
 
 #### 4.5.5 Go SDK Interface
