@@ -161,7 +161,9 @@ run_go_demo() {
     local url="$1"
     local network="$2"
     log "Running Go SDK demo (container)"
-    docker run --rm --network "$network" "$GO_IMAGE" --gateway-url="$url"
+    docker run --rm --network "$network" \
+        ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
+        "$GO_IMAGE" --gateway-url="$url"
     return $?
 }
 
@@ -169,7 +171,9 @@ run_python_demo() {
     local url="$1"
     local network="$2"
     log "Running Python SDK demo (container)"
-    docker run --rm --network "$network" "$PY_IMAGE" --gateway-url="$url"
+    docker run --rm --network "$network" \
+        ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
+        "$PY_IMAGE" --gateway-url="$url"
     return $?
 }
 
@@ -341,6 +345,14 @@ run_demo_cycle() {
     local url
     local network
 
+    # In Docker Compose mode we wire a mock guard model into the gateway so the
+    # deep scan deny path (step 10) is deterministic. Gate strict demo checks
+    # to compose only so k8s runs remain compatible with external guard config.
+    DEMO_STRICT_DEEPSCAN=""
+    if [ "$mode" = "compose" ]; then
+        DEMO_STRICT_DEEPSCAN="1"
+    fi
+
     # Check Phoenix availability before any mode-specific setup.
     # This runs for both compose and k8s modes. Non-fatal -- demo
     # proceeds without traces if Phoenix is not running.
@@ -350,6 +362,15 @@ run_demo_cycle() {
         # Inside the Docker network, gateway is at service name:port
         url="http://mcp-security-gateway:9090"
         network="$COMPOSE_NETWORK"
+
+        # Compose demos should be deterministic and self-contained:
+        # - Ensure Step 9 (step-up guard) doesn't call external Groq by default.
+        # - Keep rate-limits high enough that the demo suite itself isn't throttled
+        #   (we still include an explicit burst test that will hit 429).
+        export GROQ_API_KEY=""
+        export RATE_LIMIT_RPM="600"
+        export RATE_LIMIT_BURST="100"
+
         if [ "$SKIP_SETUP" = false ]; then
             start_compose
         fi
