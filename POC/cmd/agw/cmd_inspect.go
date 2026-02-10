@@ -8,6 +8,6 @@ func newInspectCmd() *cobra.Command {
 		Short: "Inspect internal state from supporting systems (KeyDB, SPIRE, ...)",
 	}
 	cmd.AddCommand(newInspectRateLimitCmd())
+	cmd.AddCommand(newInspectCircuitBreakerCmd())
 	return cmd
 }
-
