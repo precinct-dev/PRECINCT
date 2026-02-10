@@ -127,7 +127,7 @@ allow { input.tool == "tools/list" }
 	handler = SessionContextMiddleware(handler, sessionContext)                            // 8
 	handler = DLPMiddleware(handler, dlpScanner)                                           // 7
 	handler = OPAPolicy(handler, opaEngine)                                                // 6
-	handler = ToolRegistryVerify(handler, registry)                                        // 5
+	handler = ToolRegistryVerify(handler, registry, nil, nil)                              // 5
 	handler = AuditLog(handler, auditor)                                                   // 4
 	handler = SPIFFEAuth(handler, "dev")                                                   // 3
 	handler = BodyCapture(handler)                                                         // 2
@@ -521,7 +521,7 @@ allow { input.tool == "file_read" }
 	handler = SessionContextMiddleware(handler, sessionCtx)
 	handler = DLPMiddleware(handler, dlpScanner)
 	handler = OPAPolicy(handler, opaEngine)
-	handler = ToolRegistryVerify(handler, registry)
+	handler = ToolRegistryVerify(handler, registry, nil, nil)
 	handler = AuditLog(handler, auditor)
 	handler = SPIFFEAuth(handler, "dev")
 	handler = BodyCapture(handler)
@@ -734,7 +734,7 @@ allow { input.tool == "file_read" }
 	fullHandler = SessionContextMiddleware(fullHandler, sessionCtx)
 	fullHandler = DLPMiddleware(fullHandler, dlpScanner)
 	fullHandler = OPAPolicy(fullHandler, opaEngine)
-	fullHandler = ToolRegistryVerify(fullHandler, registry)
+	fullHandler = ToolRegistryVerify(fullHandler, registry, nil, nil)
 	fullHandler = AuditLog(fullHandler, auditor)
 	fullHandler = SPIFFEAuth(fullHandler, "dev")
 	fullHandler = BodyCapture(fullHandler)

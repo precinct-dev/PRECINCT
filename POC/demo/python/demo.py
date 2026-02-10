@@ -237,6 +237,69 @@ def test_unregistered_tool(url: str) -> bool:
         client.close()
 
 
+def test_tool_registry_rugpull_protection(url: str) -> bool:
+    """Tool registry rug-pull protection (compose-only deterministic proof).
+
+    Proves gateway-owned tool metadata hash verification without client tool_hash:
+    1) Toggle mock MCP server rugpull ON
+    2) tools/list via gateway does NOT include tavily_search (stripped)
+    3) tools/call(tavily_search) via SDK is denied with 403 code=registry_hash_mismatch
+    4) Toggle rugpull OFF and re-list (best-effort) to reset cache
+    """
+    if os.getenv("DEMO_STRICT_DEEPSCAN") != "1":
+        return print_proof(True, "SKIP: compose-only rug-pull proof (DEMO_STRICT_DEEPSCAN not set)")
+
+    payload = {"jsonrpc": "2.0", "id": 1100, "method": "tools/list", "params": {}}
+    headers = {
+        "Content-Type": "application/json",
+        "X-SPIFFE-ID": DSPY_SPIFFE,
+        "X-Session-ID": "demo-rugpull-tools-list",
+        "X-MCP-Server": "default",
+        "X-Tenant": "default",
+    }
+    enabled = False
+    client = None
+    try:
+        # Toggle rugpull ON at the mock MCP server (reachable inside compose network).
+        r = httpx.post("http://mock-mcp-server:8082/__demo__/rugpull/on", timeout=5.0)
+        if r.status_code != 200:
+            return print_proof(False, f"enable rugpull returned HTTP {r.status_code}: {r.text[:200]}")
+        enabled = True
+
+        # tools/list should strip tavily_search when rugpull is enabled.
+        resp = httpx.post(url, json=payload, headers=headers, timeout=10.0)
+        if resp.status_code != 200:
+            return print_proof(False, f"expected HTTP 200 from tools/list, got {resp.status_code}: {resp.text[:200]}")
+        data = resp.json()
+        tools = (data.get("result") or {}).get("tools") if isinstance(data, dict) else None
+        if not isinstance(tools, list):
+            return print_proof(False, "missing tools array in tools/list response")
+        for tool in tools:
+            if isinstance(tool, dict) and tool.get("name") == "tavily_search":
+                return print_proof(False, "tavily_search was present in tools/list (expected stripped due to rug-pull mismatch)")
+
+        # tools/call should be denied with registry_hash_mismatch (no client tool_hash required).
+        client = new_client(url)
+        client.call("tavily_search", query="AI security")
+        return print_proof(False, "unexpected success: tavily_search should be denied due to rug-pull hash mismatch")
+    except GatewayError as e:
+        print_gateway_error(e)
+        ok = (e.http_status == 403 and e.code == "registry_hash_mismatch")
+        return print_proof(ok, f"rug-pull enforcement: HTTP={e.http_status} code={e.code}")
+    except Exception as e:
+        return print_proof(False, f"unexpected error: {type(e).__name__}: {e}")
+    finally:
+        if client is not None:
+            client.close()
+        # Cleanup: toggle rugpull OFF and re-list to reset cache (best-effort).
+        if enabled:
+            try:
+                httpx.post("http://mock-mcp-server:8082/__demo__/rugpull/off", timeout=5.0)
+                httpx.post(url, json=payload, headers={**headers, "X-Session-ID": "demo-rugpull-tools-list-reset"}, timeout=10.0)
+            except Exception:
+                pass
+
+
 def test_opa_denial(url: str) -> bool:
     """5. OPA policy denial: bash requires step-up auth."""
     client = new_client(url)
@@ -649,6 +712,13 @@ def main() -> None:
             send="not_a_real_tool() -- a tool name that does not exist in the registry",
             expect="400 or 403 -- gateway blocks before OPA policy evaluation",
             fn=test_unregistered_tool,
+        ),
+        TestCase(
+            name="Tool registry: rug-pull protection (gateway-owned hash verification)",
+            what="Gateway denies tools/call when upstream tools/list metadata hash differs from the approved registry baseline (no client tool_hash required)",
+            send="Toggle mock MCP rugpull ON -> tools/list (tavily_search stripped) -> tools/call(tavily_search) denied",
+            expect="Compose-only: tools/list does NOT include tavily_search + tools/call denied with 403 code=registry_hash_mismatch",
+            fn=test_tool_registry_rugpull_protection,
         ),
         TestCase(
             name="OPA policy denial (bash requires step-up)",

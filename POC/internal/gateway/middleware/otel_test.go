@@ -453,7 +453,7 @@ func TestOTelSpan_ToolRegistryVerify(t *testing.T) {
 
 	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}), registry)
+	}), registry, nil, nil)
 
 	body := []byte(`{"jsonrpc":"2.0","method":"file_read","params":{"tool":"file_read"},"id":1}`)
 	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))

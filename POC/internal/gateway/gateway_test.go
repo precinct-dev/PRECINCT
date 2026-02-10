@@ -608,6 +608,27 @@ func upstreamToolsListWithUI() http.HandlerFunc {
 			"id":      1,
 			"result": map[string]interface{}{
 				"tools": []interface{}{
+					// Include a registry-managed tool with full schema so tool registry hash
+					// verification can safely compute observed hashes from tools/list.
+					map[string]interface{}{
+						"name":        "tavily_search",
+						"description": "Search the web using Tavily API",
+						"inputSchema": map[string]interface{}{
+							"type":     "object",
+							"required": []interface{}{"query"},
+							"properties": map[string]interface{}{
+								"query": map[string]interface{}{
+									"type":        "string",
+									"description": "Search query",
+								},
+								"max_results": map[string]interface{}{
+									"type":        "integer",
+									"description": "Maximum results to return",
+									"default":     5,
+								},
+							},
+						},
+					},
 					map[string]interface{}{
 						"name":        "render-analytics",
 						"description": "Render analytics dashboard",
@@ -1113,6 +1134,25 @@ func newMockMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 					"id":      1,
 					"result": map[string]interface{}{
 						"tools": []interface{}{
+							map[string]interface{}{
+								"name":        "tavily_search",
+								"description": "Search the web using Tavily API",
+								"inputSchema": map[string]interface{}{
+									"type":     "object",
+									"required": []interface{}{"query"},
+									"properties": map[string]interface{}{
+										"query": map[string]interface{}{
+											"type":        "string",
+											"description": "Search query",
+										},
+										"max_results": map[string]interface{}{
+											"type":        "integer",
+											"description": "Maximum results to return",
+											"default":     5,
+										},
+									},
+								},
+							},
 							map[string]interface{}{
 								"name":        "render-analytics",
 								"description": "Render analytics dashboard",
@@ -1686,6 +1726,11 @@ func TestMCPTransport_MCPMode_UpstreamError(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26"}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			// Tool registry verification uses tools/list to compute observed hashes.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			requestCount++
 			// Return JSON-RPC error
@@ -1999,6 +2044,15 @@ func TestMCPTransport_LazyInit_NotAtStartup(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
+		if method == "tools/list" {
+			// RFA-6fse.4: ToolRegistryVerify may perform a gateway-owned tools/list refresh
+			// before allowing the first tool invocation. Provide a baseline tool definition
+			// matching config/tool-registry.yaml so the hash verification succeeds.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
+			return
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -2097,7 +2151,10 @@ func TestMCPTransport_ErrorUsesWriteGatewayError(t *testing.T) {
 
 	handler := gw.Handler()
 
-	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"error test"},"id":1}`
+	// Use a protocol method passthrough so ToolRegistryVerify does not block first.
+	// Choose tools/list (permitted by OPA in this POC) so we reach handleMCPRequest
+	// and exercise MCP transport initialization failure.
+	body := `{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
@@ -2176,6 +2233,39 @@ func newMockMCPServerSSE(t *testing.T) (*httptest.Server, *mcpServerLog) {
 
 			case "notifications/initialized":
 				w.WriteHeader(http.StatusOK)
+
+			case "tools/list":
+				// Tool registry verification uses tools/list to compute observed hashes.
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"result": map[string]interface{}{
+						"tools": []interface{}{
+							map[string]interface{}{
+								"name":        "tavily_search",
+								"description": "Search the web using Tavily API",
+								"inputSchema": map[string]interface{}{
+									"type":     "object",
+									"required": []interface{}{"query"},
+									"properties": map[string]interface{}{
+										"query": map[string]interface{}{
+											"type":        "string",
+											"description": "Search query",
+										},
+										"max_results": map[string]interface{}{
+											"type":        "integer",
+											"description": "Maximum results to return",
+											"default":     5,
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(resp)
 
 			case "tools/call", "tavily_search":
 				// Respond with SSE instead of JSON
@@ -2316,6 +2406,11 @@ func TestMCPTransport_404_SessionExpiry_ThroughGateway(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock-mcp","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			// Tool registry verification uses tools/list to compute observed hashes.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			requestCount++
 			if requestCount == 1 {
@@ -2446,6 +2541,36 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 
 			var respJSON []byte
 			switch method {
+			case "tools/list":
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      rpcReq["id"],
+					"result": map[string]interface{}{
+						"tools": []interface{}{
+							map[string]interface{}{
+								"name":        "tavily_search",
+								"description": "Search the web using Tavily API",
+								"inputSchema": map[string]interface{}{
+									"type":     "object",
+									"required": []interface{}{"query"},
+									"properties": map[string]interface{}{
+										"query": map[string]interface{}{
+											"type":        "string",
+											"description": "Search query",
+										},
+										"max_results": map[string]interface{}{
+											"type":        "integer",
+											"description": "Maximum results to return",
+											"default":     5,
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+				respJSON, _ = json.Marshal(resp)
+
 			case "tools/call", "tavily_search":
 				resp := map[string]interface{}{
 					"jsonrpc": "2.0",
@@ -2498,6 +2623,175 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 
 	t.Cleanup(server.Close)
 	return server, sseLog
+}
+
+// newMockMCPServerRugPull creates a Streamable HTTP MCP server that intentionally
+// returns a tools/list definition for tavily_search that does NOT match the
+// tool registry baseline, simulating a rug-pull attack.
+func newMockMCPServerRugPull(t *testing.T) (*httptest.Server, *mcpServerLog) {
+	t.Helper()
+
+	log := &mcpServerLog{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			var rpcReq map[string]interface{}
+			if err := json.Unmarshal(body, &rpcReq); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			method, _ := rpcReq["method"].(string)
+			log.RecordCall(method, r.Header.Get("Mcp-Session-Id"), body)
+
+			switch method {
+			case "initialize":
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Mcp-Session-Id", "rugpull-session-1")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock-mcp-rugpull","version":"1.0"}}}`))
+
+			case "notifications/initialized":
+				w.WriteHeader(http.StatusOK)
+
+			case "tools/list":
+				// Intentionally mutate the description (everything else matches baseline schema).
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"result": map[string]interface{}{
+						"tools": []interface{}{
+							map[string]interface{}{
+								"name":        "tavily_search",
+								"description": "Search the web using Tavily API (MUTATED UPSTREAM)",
+								"inputSchema": map[string]interface{}{
+									"type":     "object",
+									"required": []interface{}{"query"},
+									"properties": map[string]interface{}{
+										"query": map[string]interface{}{
+											"type":        "string",
+											"description": "Search query",
+										},
+										"max_results": map[string]interface{}{
+											"type":        "integer",
+											"description": "Maximum results to return",
+											"default":     5,
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(resp)
+
+			case "tools/call", "tavily_search":
+				// If the gateway is working correctly, it should never reach this.
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"unexpected: rugpull tool was executed"}]}}`))
+
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}`))
+			}
+
+		case http.MethodDelete:
+			log.RecordCall("DELETE", r.Header.Get("Mcp-Session-Id"), nil)
+			w.WriteHeader(http.StatusOK)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	t.Cleanup(server.Close)
+	return server, log
+}
+
+func TestMCPTransport_ToolRegistry_RugPull_DeniesAndStrips(t *testing.T) {
+	mcpServer, serverLog := newMockMCPServerRugPull(t)
+
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           auditPath,
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	// 1) Call tools/call first (no client tools/list). Gateway must internally refresh tools/list and deny.
+	callBody := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"rugpull"}},"id":1}`)
+	callReq := httptest.NewRequest("POST", "/", bytes.NewBuffer(callBody))
+	callReq.Header.Set("Content-Type", "application/json")
+	callReq.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	callReq.Header.Set("X-MCP-Server", "default")
+	callRec := httptest.NewRecorder()
+	handler.ServeHTTP(callRec, callReq)
+
+	if callRec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403, got %d. Body: %s", callRec.Code, callRec.Body.String())
+	}
+	if !strings.Contains(callRec.Body.String(), middleware.ErrRegistryHashMismatch) {
+		t.Fatalf("Expected code=%s in body. Body: %s", middleware.ErrRegistryHashMismatch, callRec.Body.String())
+	}
+
+	// Prove internal refresh happened (tools/list called upstream) and tools/call was NOT sent upstream.
+	if len(serverLog.MethodCalls("tools/list")) < 1 {
+		t.Fatalf("Expected upstream tools/list call for gateway-owned verification, got none (calls=%v)", serverLog.calls)
+	}
+	if len(serverLog.MethodCalls("tools/call")) != 0 {
+		t.Fatalf("Expected upstream tools/call NOT to be called on rug-pull deny, got %d", len(serverLog.MethodCalls("tools/call")))
+	}
+
+	// 2) Client-visible tools/list must strip the mismatched tool.
+	listBody := []byte(`{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}`)
+	listReq := httptest.NewRequest("POST", "/", bytes.NewBuffer(listBody))
+	listReq.Header.Set("Content-Type", "application/json")
+	listReq.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	listReq.Header.Set("X-MCP-Server", "default")
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("Expected 200 from tools/list, got %d. Body: %s", listRec.Code, listRec.Body.String())
+	}
+	if strings.Contains(listRec.Body.String(), "tavily_search") {
+		t.Fatalf("Expected tavily_search to be stripped from client-visible tools/list. Body: %s", listRec.Body.String())
+	}
+
+	// Prove an audit event was emitted for stripping, without leaking tool payloads.
+	if gw.auditor != nil {
+		gw.auditor.Flush()
+	}
+	auditBytes, _ := os.ReadFile(auditPath)
+	if !strings.Contains(string(auditBytes), `"action":"tool_registry_rugpull_stripped"`) {
+		t.Fatalf("Expected audit action tool_registry_rugpull_stripped in %s, got: %s", auditPath, string(auditBytes))
+	}
 }
 
 // TestMCPTransport_LegacySSE_ThroughAll13Layers proves that a legacy SSE
@@ -2748,6 +3042,10 @@ func TestMCPTransport_UpstreamDropsMidStream(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"drop-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			// Write partial JSON then drop connection
 			w.Header().Set("Content-Type", "application/json")
@@ -2833,6 +3131,10 @@ func TestMCPTransport_OversizedResponse(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"oversize-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -2914,6 +3216,10 @@ func TestMCPTransport_404MidConversation(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"404-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			n := atomic.AddInt32(&requestCount, 1)
 			if n <= 2 {
@@ -3001,6 +3307,10 @@ func TestMCPTransport_SessionIsolation(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"isolation-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			// Record the session ID for each request
 			sid := r.Header.Get("Mcp-Session-Id")
@@ -3167,6 +3477,10 @@ func TestMCPTransport_AllErrorsUseWriteGatewayError(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"err-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("service unavailable"))
