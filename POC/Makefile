@@ -1,6 +1,6 @@
 .PHONY: help up down test lint clean logs demo demo-compose demo-k8s k8s-up k8s-down ci benchmark security-scan \
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
-       compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time \
+       compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
        k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry \
        phoenix-up phoenix-down phoenix-reset
 
@@ -45,6 +45,13 @@ up: ## Start Docker Compose stack (waits for all services healthy)
 
 down: ## Stop Docker Compose stack
 	docker compose down
+
+repave: ## Repave a single Docker Compose component container (ex: make repave COMPONENT=keydb)
+	@if [ -z "$(COMPONENT)" ]; then \
+		echo "ERROR: COMPONENT is required (ex: make repave COMPONENT=keydb)"; \
+		exit 1; \
+	fi
+	@bash scripts/repave.sh "$(COMPONENT)"
 
 test: ## Run all tests (unit + OPA)
 	@echo "Running unit tests..."
