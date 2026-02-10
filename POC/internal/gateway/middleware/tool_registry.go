@@ -86,7 +86,6 @@ var poisoningPatterns = []*regexp.Regexp{
 // Fix for RFA-rqj: ToolRegistryVerify was treating these as tool names.
 var mcpProtocolMethods = map[string]bool{
 	"tools/list":             true,
-	"tools/call":             true,
 	"resources/read":         true,
 	"resources/list":         true,
 	"prompts/list":           true,
@@ -733,9 +732,8 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 			return
 		}
 
-		// Parse MCP request to extract tool name
-		var mcpReq MCPRequest
-		if err := json.Unmarshal(body, &mcpReq); err != nil {
+		parsed, err := ParseMCPRequestBody(body)
+		if err != nil {
 			// Not a valid MCP request, pass through
 			span.SetAttributes(
 				attribute.String("mcp.result", "allowed"),
@@ -745,26 +743,37 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 			return
 		}
 
-		// Extract tool name from method or params
-		toolName := mcpReq.Method
-		if toolName == "" {
-			// Try to get from params
-			if tn, ok := mcpReq.Params["tool"]; ok {
-				if toolNameStr, ok := tn.(string); ok {
-					toolName = toolNameStr
-				}
-			}
-		}
+		rpcMethod := parsed.RPCMethod
 
 		// RFA-rqj: MCP protocol methods pass through without tool registry verification.
 		// These are part of the MCP protocol itself, not user-defined tools.
-		if mcpProtocolMethods[toolName] || strings.HasPrefix(toolName, "notifications/") {
+		//
+		// NOTE: tools/call is a protocol method envelope but MUST NOT bypass tool
+		// verification. We verify the effective tool name inside tools/call.
+		if !parsed.IsToolsCall() && (mcpProtocolMethods[rpcMethod] || strings.HasPrefix(rpcMethod, "notifications/")) {
 			span.SetAttributes(
-				attribute.String("tool_name", toolName),
+				attribute.String("tool_name", rpcMethod),
 				attribute.String("mcp.result", "allowed"),
 				attribute.String("mcp.reason", "protocol method passthrough"),
 			)
 			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		toolName, toolErr := parsed.EffectiveToolName()
+		if parsed.IsToolsCall() && toolErr != nil {
+			span.SetAttributes(
+				attribute.Bool("hash_verified", false),
+				attribute.String("mcp.result", "denied"),
+				attribute.String("mcp.reason", "invalid tools/call"),
+			)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusBadRequest, GatewayError{
+				Code:           ErrMCPInvalidRequest,
+				Message:        fmt.Sprintf("Invalid tools/call request: %v", toolErr),
+				Middleware:     "tool_registry_verify",
+				MiddlewareStep: 5,
+				Remediation:    "Use MCP spec tools/call with params.name and params.arguments.",
+			})
 			return
 		}
 
@@ -775,7 +784,7 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 
 			// Extract provided hash from params if present
 			providedHash := ""
-			if hash, ok := mcpReq.Params["tool_hash"]; ok {
+			if hash, ok := parsed.Params["tool_hash"]; ok {
 				if hashStr, ok := hash.(string); ok {
 					providedHash = hashStr
 				}

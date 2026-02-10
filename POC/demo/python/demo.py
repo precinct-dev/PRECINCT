@@ -8,6 +8,8 @@ import os
 from dataclasses import dataclass
 from typing import Callable
 
+import httpx
+
 # Add SDK to path so we can import without installing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "sdk", "python"))
 
@@ -105,6 +107,35 @@ def test_mcp_tools_call(url: str) -> bool:
         return print_proof(False, f"unexpected error: {type(e).__name__}")
     finally:
         client.close()
+
+
+def test_invalid_tools_call_missing_name_rejected(url: str) -> bool:
+    """2b. MCP spec: invalid tools/call (missing params.name) must be rejected (HTTP 400)."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 999,
+        "method": "tools/call",
+        "params": {"arguments": {"query": "AI security"}},
+    }
+    headers = {
+        "Content-Type": "application/json",
+        "X-SPIFFE-ID": DSPY_SPIFFE,
+        "X-Session-ID": "demo-invalid-tools-call",
+    }
+    try:
+        resp = httpx.post(url, json=payload, headers=headers, timeout=10.0)
+        if resp.status_code != 400:
+            return print_proof(False, f"expected HTTP 400, got {resp.status_code}: {resp.text[:200]}")
+        try:
+            body = resp.json()
+        except Exception:
+            return print_proof(False, f"expected JSON error body, got: {resp.text[:200]}")
+        code = body.get("code") if isinstance(body, dict) else None
+        if code != "mcp_invalid_request":
+            return print_proof(False, f"expected code=mcp_invalid_request, got {code}")
+        return print_proof(True, "malformed tools/call rejected with mcp_invalid_request (fail-closed)")
+    except Exception as e:
+        return print_proof(False, f"unexpected error: {type(e).__name__}: {e}")
 
 
 def test_auth_denial(url: str) -> bool:
@@ -497,6 +528,13 @@ def main() -> None:
             send="tavily_search(query='AI security best practices') via SDK -> gateway -> mock MCP server",
             expect="Actual search results from mock MCP server proving SDK -> gateway -> MCP transport -> server -> results",
             fn=test_mcp_tools_call,
+        ),
+        TestCase(
+            name="MCP spec: invalid tools/call is rejected (fail-closed)",
+            what="Gateway rejects malformed MCP tools/call requests (missing params.name) instead of silently allowing bypass",
+            send="tools/call(params={arguments:{...}}) missing name (raw JSON-RPC)",
+            expect="HTTP 400 with code=mcp_invalid_request proving fail-closed validation is active",
+            fn=test_invalid_tools_call_missing_name_rejected,
         ),
         TestCase(
             name="SPIFFE auth denial (empty identity)",

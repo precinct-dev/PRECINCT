@@ -475,7 +475,7 @@ func TestTokenSubstitutionWithScopeResolver(t *testing.T) {
 	t.Run("scope match - tool in registry with matching token scope", func(t *testing.T) {
 		resolver := &mockScopeResolver{
 			scopes: map[string]struct{ loc, op, dest string }{
-				"tools/call": {loc: "tools", op: "docker", dest: "read"},
+				"docker_tool": {loc: "tools", op: "docker", dest: "read"},
 			},
 		}
 
@@ -496,8 +496,9 @@ func TestTokenSubstitutionWithScopeResolver(t *testing.T) {
 		handler = SPIFFEAuth(handler, "dev")
 		handler = BodyCapture(handler)
 
-		// MCP request body: the method is "tools/call" which matches the resolver
-		requestBody := `{"jsonrpc":"2.0","method":"tools/call","params":{"tool":"docker_tool"},"id":1,"api_key":"$SPIKE{ref:abc123,exp:3600,scope:tools.docker.read}"}`
+		// MCP spec: method=tools/call, params.name=<effective tool name>.
+		// The SPIKE token is placed inside params.arguments to mirror real tool args.
+		requestBody := `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"docker_tool","arguments":{"api_key":"$SPIKE{ref:abc123,exp:3600,scope:tools.docker.read}"}},"id":1}`
 		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(requestBody))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-SPIFFE-ID", ownerSPIFFEID)
@@ -518,7 +519,7 @@ func TestTokenSubstitutionWithScopeResolver(t *testing.T) {
 	t.Run("scope mismatch - tool requires different scope than token has", func(t *testing.T) {
 		resolver := &mockScopeResolver{
 			scopes: map[string]struct{ loc, op, dest string }{
-				"tools/call": {loc: "tools", op: "s3", dest: "write"},
+				"docker_tool": {loc: "tools", op: "s3", dest: "write"},
 			},
 		}
 
@@ -535,8 +536,8 @@ func TestTokenSubstitutionWithScopeResolver(t *testing.T) {
 		handler = SPIFFEAuth(handler, "dev")
 		handler = BodyCapture(handler)
 
-		// Token has scope "tools.docker.read" but registry requires "tools.s3.write"
-		requestBody := `{"jsonrpc":"2.0","method":"tools/call","params":{},"id":1,"api_key":"$SPIKE{ref:abc123,exp:3600,scope:tools.docker.read}"}`
+		// Token has scope "tools.docker.read" but resolver requires "tools.s3.write"
+		requestBody := `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"docker_tool","arguments":{"api_key":"$SPIKE{ref:abc123,exp:3600,scope:tools.docker.read}"}},"id":1}`
 		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewBufferString(requestBody))
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("X-SPIFFE-ID", ownerSPIFFEID)

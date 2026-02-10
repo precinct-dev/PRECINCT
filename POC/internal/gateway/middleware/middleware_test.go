@@ -16,6 +16,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -640,7 +641,6 @@ func TestToolRegistryVerify_MCPProtocolMethodsPassThrough(t *testing.T) {
 	// All MCP protocol methods that must pass through
 	protocolMethods := []string{
 		"tools/list",
-		"tools/call",
 		"resources/read",
 		"resources/list",
 		"prompts/list",
@@ -669,6 +669,72 @@ func TestToolRegistryVerify_MCPProtocolMethodsPassThrough(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestToolRegistryVerify_ToolsCall_VerifiesEffectiveTool proves that tools/call
+// is NOT an unconditional protocol passthrough: it must be verified against the
+// effective tool name in params.name per MCP spec.
+func TestToolRegistryVerify_ToolsCall_VerifiesEffectiveTool(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: tavily_search
+    description: "Search the web"
+    hash: "abc123"
+    risk_level: low
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), registry)
+
+	t.Run("Allowed_WhenNameIsRegistered", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"hi"}},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Denied_WhenNameIsUnknown", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"unknown_tool","arguments":{}},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("BadRequest_WhenNameMissing", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"arguments":{}},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), ErrMCPInvalidRequest) {
+			t.Fatalf("Expected error code %q in response body. Body: %s", ErrMCPInvalidRequest, rec.Body.String())
+		}
+	})
 }
 
 // TestToolRegistryVerify_NotificationsPassThrough verifies that notification methods

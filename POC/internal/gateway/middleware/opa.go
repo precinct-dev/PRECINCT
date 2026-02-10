@@ -158,17 +158,11 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		toolName := ""
 		params := make(map[string]interface{})
 		if len(body) > 0 {
-			var mcpReq MCPRequest
-			if err := json.Unmarshal(body, &mcpReq); err == nil {
-				toolName = mcpReq.Method
-				if toolName == "" {
-					if tn, ok := mcpReq.Params["tool"]; ok {
-						if toolNameStr, ok := tn.(string); ok {
-							toolName = toolNameStr
-						}
-					}
+			if parsed, err := ParseMCPRequestBody(body); err == nil {
+				if tn, err := parsed.EffectiveToolName(); err == nil {
+					toolName = tn
 				}
-				params = mcpReq.Params
+				params = parsed.EffectiveToolParams()
 			}
 		}
 

@@ -99,7 +99,7 @@ class GatewayClient:
     # ------------------------------------------------------------------
 
     def call(self, tool_name: str, **params: Any) -> Any:
-        """Call a tool through the gateway.
+        """Call a tool through the gateway using MCP-spec tools/call.
 
         Constructs an MCP JSON-RPC request, sends it to the gateway,
         handles errors (raising :class:`GatewayError` for denials), and
@@ -107,7 +107,7 @@ class GatewayClient:
 
         Args:
             tool_name: MCP tool name (e.g. ``"tavily_search"``, ``"read"``).
-            **params:  Keyword arguments passed as the JSON-RPC ``params`` dict.
+            **params:  Keyword arguments passed as MCP ``params.arguments``.
 
         Returns:
             The ``result`` field from the JSON-RPC response (dict or value).
@@ -121,15 +121,20 @@ class GatewayClient:
             span = self.tracer.start_span(
                 f"gateway.tool_call.{tool_name}",
                 attributes={
-                    "mcp.method": tool_name,
-                    "mcp.params": json.dumps(params),
+                    "mcp.method": "tools/call",
+                    "mcp.tool.name": tool_name,
+                    "mcp.tool.arguments": json.dumps(params),
                     "spiffe.id": self.spiffe_id,
                     "session.id": self.session_id,
                 },
             )
 
         try:
-            result = self._call_with_retry(tool_name, params)
+            result = self._call_rpc_with_retry(
+                method="tools/call",
+                params={"name": tool_name, "arguments": params},
+                display_name=tool_name,
+            )
             if span:
                 span.set_attribute("mcp.result.success", True)
             return result
@@ -148,6 +153,18 @@ class GatewayClient:
             if span:
                 span.end()
 
+    def call_rpc(self, method: str, params: Optional[dict[str, Any]] = None) -> Any:
+        """Call a raw MCP JSON-RPC method through the gateway.
+
+        This is for protocol-level methods like ``tools/list`` or ``resources/read``.
+        For tool invocations, prefer :meth:`call`, which uses MCP-spec ``tools/call``.
+        """
+        return self._call_rpc_with_retry(
+            method=method,
+            params=params or {},
+            display_name=method,
+        )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
@@ -156,12 +173,12 @@ class GatewayClient:
         self._request_id += 1
         return self._request_id
 
-    def _call_with_retry(self, tool_name: str, params: dict[str, Any]) -> Any:
-        """Execute tool call with retry logic for 503 responses."""
+    def _call_rpc_with_retry(self, *, method: str, params: dict[str, Any], display_name: str) -> Any:
+        """Execute JSON-RPC call with retry logic for 503 responses."""
         last_exc: Optional[GatewayError] = None
         for attempt in range(self.max_retries + 1):
             try:
-                return self._do_call(tool_name, params)
+                return self._do_call(method, params)
             except GatewayError as exc:
                 if exc.http_status != 503:
                     raise  # Non-retryable -- propagate immediately
@@ -170,9 +187,9 @@ class GatewayClient:
                 if attempt < self.max_retries:
                     backoff = self.backoff_base * (2 ** attempt)
                     logger.warning(
-                        "Tool %s returned 503 (attempt %d/%d). "
+                        "RPC %s returned 503 (attempt %d/%d). "
                         "Retrying in %.1fs. Code: %s",
-                        tool_name,
+                        display_name,
                         attempt + 1,
                         self.max_retries + 1,
                         backoff,
@@ -181,9 +198,9 @@ class GatewayClient:
                     time.sleep(backoff)
                 else:
                     logger.error(
-                        "Tool %s returned 503 after %d attempts. Giving up. "
+                        "RPC %s returned 503 after %d attempts. Giving up. "
                         "Code: %s",
-                        tool_name,
+                        display_name,
                         self.max_retries + 1,
                         exc.code,
                     )
@@ -192,11 +209,11 @@ class GatewayClient:
         assert last_exc is not None  # guaranteed by loop logic
         raise last_exc
 
-    def _do_call(self, tool_name: str, params: dict[str, Any]) -> Any:
+    def _do_call(self, method: str, params: dict[str, Any]) -> Any:
         """Execute a single MCP JSON-RPC call to the gateway."""
         payload = {
             "jsonrpc": "2.0",
-            "method": tool_name,
+            "method": method,
             "params": params,
             "id": self._next_id(),
         }
