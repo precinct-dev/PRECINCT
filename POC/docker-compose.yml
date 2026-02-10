@@ -136,7 +136,8 @@ services:
       - SPIKE_TRUST_ROOT_KEEPER=poc.local
       - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
-      - HEALTHCHECK_URL=https://localhost:8443/
+      # Avoid IPv6 localhost resolution ([::1]) issues; services bind IPv4 in-container.
+      - HEALTHCHECK_URL=https://127.0.0.1:8443/
     networks:
       - agentic-net
     labels:
@@ -170,7 +171,8 @@ services:
       - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
       - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
       - SPIKE_SYSTEM_LOG_LEVEL=INFO
-      - HEALTHCHECK_ADDR=localhost:8443
+      # Avoid IPv6 localhost resolution ([::1]) issues; Keeper listens on IPv4 in-container.
+      - HEALTHCHECK_ADDR=127.0.0.1:8443
     networks:
       - agentic-net
     labels:
@@ -395,6 +397,7 @@ services:
     environment:
       - PORT=9090
       - UPSTREAM_URL=http://mock-mcp-server:8082  # RFA-71u: Point to mock MCP server in Docker network
+      - DEMO_RUGPULL_ADMIN_ENABLED=1  # Demo-only: gateway mediates upstream rugpull toggles (RFA-1r0x)
       - OPA_POLICY_DIR=/config/opa
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760

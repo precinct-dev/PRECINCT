@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"net/http/httputil"
@@ -182,22 +183,41 @@ func New(cfg *Config) (*Gateway, error) {
 	// SPIKE Nexus requires mTLS for ALL endpoints (including secret get/put).
 	// When SPIFFE_ENDPOINT_SOCKET is set (Docker Compose), we create an X509Source
 	// from the SPIRE Workload API so the redeemer presents a valid client cert.
-	// In dev mode without SPIRE, we fall back to InsecureSkipVerify (no client cert).
+	// NOTE: If SPIKE_NEXUS_URL is configured, we require SPIRE Workload API access.
+	// Falling back to InsecureSkipVerify breaks SPIKE's mTLS security model and
+	// will deterministically fail with 401 (no client cert presented).
 	var spikeRedeemer middleware.SecretRedeemer
 	if cfg.SPIKENexusURL != "" {
-		var spikeX509 *workloadapi.X509Source
-		if os.Getenv("SPIFFE_ENDPOINT_SOCKET") != "" {
-			// SPIRE agent socket available -- obtain X509Source for mTLS to SPIKE Nexus.
-			spikeCtx, spikeCancel := context.WithTimeout(context.Background(), 15*time.Second)
-			x509Src, err := workloadapi.NewX509Source(spikeCtx)
-			spikeCancel()
-			if err != nil {
-				log.Printf("WARNING: Failed to create X509Source for SPIKE Nexus mTLS: %v (falling back to InsecureSkipVerify)", err)
-			} else {
-				spikeX509 = x509Src
-				log.Printf("SPIKE Nexus: mTLS configured via SPIRE X509Source")
-			}
+		if os.Getenv("SPIFFE_ENDPOINT_SOCKET") == "" {
+			return nil, fmt.Errorf("SPIKE_NEXUS_URL is set but SPIFFE_ENDPOINT_SOCKET is empty; cannot perform SPIKE Nexus mTLS")
 		}
+
+		var spikeX509 *workloadapi.X509Source
+
+		// Obtain an X509Source for SPIKE Nexus mTLS. We keep the source for the
+		// gateway lifetime (closed via redeemer.Close()) so SVID rotation continues.
+		//
+		// NewX509Source can return before a workload SVID is available; wait up to
+		// a bounded timeout for the first SVID so startup failures are clear.
+		x509Src, err := workloadapi.NewX509Source(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create X509Source for SPIKE Nexus mTLS: %w", err)
+		}
+		start := time.Now()
+		for {
+			if svid, err := x509Src.GetX509SVID(); err == nil {
+				log.Printf("SPIKE Nexus mTLS: using client SVID %s", svid.ID)
+				break
+			}
+			if time.Since(start) > 30*time.Second {
+				_ = x509Src.Close()
+				return nil, fmt.Errorf("SPIKE Nexus mTLS: timed out waiting for SPIRE workload SVID (30s)")
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+		spikeX509 = x509Src
+		log.Printf("SPIKE Nexus: mTLS configured via SPIRE X509Source")
+
 		// devMode=true when x509Source is nil (no SPIRE agent) -- auto-populate OwnerID.
 		// Even with mTLS, SPIKE Nexus v0.8.0 may not return owner metadata,
 		// so devMode is always true in the Docker Compose POC.
@@ -331,6 +351,11 @@ func (g *Gateway) Handler() http.Handler {
 	// Add endpoints
 	mux := http.NewServeMux()
 	mux.Handle("/health", http.HandlerFunc(g.healthHandler))
+	// Demo-only: allow the demo runner/clients to toggle upstream rugpull mode
+	// without direct network access to tool pods (keeps tools ingress restricted
+	// to the gateway namespace in k8s). Disabled by default.
+	mux.Handle("/__demo__/rugpull/on", http.HandlerFunc(g.demoRugpullToggleHandler(true)))
+	mux.Handle("/__demo__/rugpull/off", http.HandlerFunc(g.demoRugpullToggleHandler(false)))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
@@ -367,6 +392,40 @@ func (g *Gateway) proxyHandler() http.Handler {
 			),
 		)
 		defer span.End()
+
+		// Demo-only, fast-path endpoint for deterministic rate-limit proofs.
+		//
+		// This path is intentionally handled inside the normal middleware chain
+		// (see Handler()) so requests still pass through Step 11 rate limiting.
+		// We gate it behind the same secure-by-default demo toggle used for rugpull
+		// admin endpoints so it is not exposed accidentally in non-demo runs.
+		if r.URL.Path == "/__demo__/ratelimit" {
+			if g.config == nil || !g.config.DemoRugpullAdminEnabled || g.config.SPIFFEMode != "dev" {
+				http.NotFound(w, r)
+				span.SetAttributes(
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "demo endpoints disabled"),
+				)
+				return
+			}
+			if r.Method != http.MethodGet {
+				w.WriteHeader(http.StatusMethodNotAllowed)
+				span.SetAttributes(
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "method not allowed"),
+				)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true}`))
+			span.SetAttributes(
+				attribute.Int("status_code", http.StatusOK),
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "demo ratelimit endpoint"),
+			)
+			return
+		}
 
 		// Extract MCP method from request body (already captured by BodyCapture middleware)
 		mcpMethod, mcpParams := g.extractMCPMethodAndParams(ctx)
@@ -1124,6 +1183,59 @@ func (g *Gateway) healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(health)
+}
+
+// demoRugpullToggleHandler is a demo-only endpoint that forwards a rugpull toggle
+// to the upstream MCP server. This keeps the k8s NetworkPolicy invariant that
+// tool pods only accept ingress from the gateway namespace.
+func (g *Gateway) demoRugpullToggleHandler(enable bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Hide endpoint when not explicitly enabled.
+		if g.config == nil || !g.config.DemoRugpullAdminEnabled || g.config.SPIFFEMode != "dev" {
+			http.NotFound(w, r)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		up, err := url.Parse(g.config.UpstreamURL)
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":"invalid upstream url"}`))
+			return
+		}
+		if enable {
+			up.Path = "/__demo__/rugpull/on"
+		} else {
+			up.Path = "/__demo__/rugpull/off"
+		}
+		up.RawQuery = ""
+		up.Fragment = ""
+
+		transport := g.proxy.Transport
+		if transport == nil {
+			transport = http.DefaultTransport
+		}
+		client := &http.Client{
+			Timeout:   5 * time.Second,
+			Transport: transport,
+		}
+		req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, up.String(), nil)
+		resp, err := client.Do(req)
+		if err != nil {
+			w.WriteHeader(http.StatusBadGateway)
+			_, _ = w.Write([]byte(`{"error":"failed to reach upstream demo endpoint"}`))
+			return
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(resp.StatusCode)
+		_, _ = w.Write(body)
+	}
 }
 
 // checkUIResourceReadAllowed checks whether a ui:// resource read is permitted.

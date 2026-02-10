@@ -101,6 +101,37 @@ patches:
         replicas: 1
         template:
           spec:
+            initContainers:
+              - name: wait-for-spire-socket
+                image: busybox:1.36
+                command: ["sh", "-c"]
+                args:
+                  - |
+                    set -eu
+                    i=1
+                    while [ "$i" -le 60 ]; do
+                      if [ -S /run/spire/sockets/agent.sock ]; then
+                        exit 0
+                      fi
+                      echo "waiting for SPIRE Workload API socket: /run/spire/sockets/agent.sock" >&2
+                      sleep 1
+                      i=$((i + 1))
+                    done
+                    echo "SPIRE Workload API socket not found after 60s" >&2
+                    exit 1
+                volumeMounts:
+                  - name: spire-agent-socket
+                    mountPath: /run/spire/sockets
+                    readOnly: true
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  runAsGroup: 1000
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
             containers:
               - name: mcp-security-gateway
                 image: registry:5000/mcp-security-gateway:latest
@@ -110,10 +141,15 @@ patches:
                     value: "debug"
                   - name: SPIFFE_MODE
                     value: "dev"
+                  # go-spiffe Workload API socket (used for SPIKE Nexus mTLS, KeyDB mTLS, etc.)
+                  - name: SPIFFE_ENDPOINT_SOCKET
+                    value: "unix:///run/spire/sockets/agent.sock"
                   - name: KEYDB_URL
                     value: "redis://keydb.data.svc.cluster.local:6379"
                   - name: UPSTREAM_URL
                     value: "http://mcp-server.tools.svc.cluster.local:8081"
+                  - name: DEMO_RUGPULL_ADMIN_ENABLED
+                    value: "1"
                   - name: SPIKE_NEXUS_URL
                     value: "https://spike-nexus.spike-system.svc.cluster.local:8443"
                   - name: OTEL_EXPORTER_OTLP_ENDPOINT
@@ -139,9 +175,10 @@ patches:
                   - name: DLP_INJECTION_POLICY
                     value: ""
                   - name: RATE_LIMIT_RPM
-                    value: "60"
+                    # Demo-friendly: avoid incidental 429s while keeping the explicit burst test meaningful.
+                    value: "600"
                   - name: RATE_LIMIT_BURST
-                    value: "10"
+                    value: "100"
                   - name: MCP_TRANSPORT_MODE
                     value: "mcp"
                   - name: SPIFFE_TRUST_DOMAIN

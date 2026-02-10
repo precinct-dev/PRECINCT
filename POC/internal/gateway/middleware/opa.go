@@ -154,6 +154,18 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		)
 		defer span.End()
 
+		// Demo-only: allow the deterministic rate-limit proof endpoint to flow
+		// through the chain. The endpoint itself enforces secure-by-default gating
+		// (404 unless explicitly enabled in dev mode), so OPA should not block it.
+		if r.URL.Path == "/__demo__/ratelimit" {
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "demo ratelimit passthrough"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
 		// Extract tool name and params from request body
 		body := GetRequestBody(ctx)
 		toolName := ""

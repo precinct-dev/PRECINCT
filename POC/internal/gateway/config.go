@@ -3,6 +3,7 @@ package gateway
 import (
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config holds gateway configuration
@@ -53,6 +54,9 @@ type Config struct {
 	MCPProbeTimeout         int       // RFA-xhr: per-probe timeout in seconds for transport detection (default: 5)
 	MCPDetectTimeout        int       // RFA-xhr: overall detection timeout in seconds (default: 15)
 	MCPRequestTimeout       int       // RFA-xhr: per-request timeout in seconds for MCP calls (default: 30)
+	// Demo-only: allow the gateway to mediate upstream rugpull toggles via
+	// /__demo__/rugpull/{on|off}. Disabled by default.
+	DemoRugpullAdminEnabled bool
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -198,6 +202,13 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	demoRugpullAdminEnabled := false
+	if v := strings.TrimSpace(os.Getenv("DEMO_RUGPULL_ADMIN_ENABLED")); v != "" {
+		if v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes") {
+			demoRugpullAdminEnabled = true
+		}
+	}
+
 	return &Config{
 		Port:                    port,
 		UpstreamURL:             getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
@@ -241,6 +252,7 @@ func ConfigFromEnv() *Config {
 		MCPProbeTimeout:         mcpProbeTimeout,
 		MCPDetectTimeout:        mcpDetectTimeout,
 		MCPRequestTimeout:       mcpRequestTimeout,
+		DemoRugpullAdminEnabled: demoRugpullAdminEnabled,
 	}
 }
 

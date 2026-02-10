@@ -8,7 +8,10 @@ metadata:
     app.kubernetes.io/part-of: spike
 spec:
   backoffLimit: 3
-  ttlSecondsAfterFinished: 300
+  # Keep artifacts long enough for demo-k8s proof collection.
+  # demo/run.sh tears down namespaces after the demo; this TTL is only a
+  # safety net in case teardown is skipped.
+  ttlSecondsAfterFinished: 3600
   template:
     metadata:
       labels:
@@ -23,16 +26,47 @@ spec:
           command: ['/bin/sh', '-c']
           args:
             - |
-              set -e
-              echo 'spike-seeder: waiting for SPIKE Nexus readiness...'
-              sleep 10
-              echo 'spike-seeder: seeding ref=deadbeef'
-              spike secret put deadbeef value=test-secret-value-12345
+              # POSIX sh only (image may not ship bash)
+              set -eu
+
+              echo 'spike-seeder: waiting for SPIKE Nexus (bootstrap may still be running)...'
+              # Deterministic seeding: retry until Nexus is reachable and accepts writes.
+              seeded=0
+              i=1
+              while [ "$i" -le 60 ]; do
+                if spike secret put deadbeef value=test-secret-value-12345 >/dev/null 2>&1; then
+                  seeded=1
+                  break
+                fi
+                echo "spike-seeder: retry secret put ($i/60)" >&2
+                sleep 5
+                i=$((i + 1))
+              done
+              if [ "$seeded" -ne 1 ]; then
+                echo 'spike-seeder: FAILED to seed secret ref=deadbeef' >&2
+                exit 1
+              fi
+              echo 'spike-seeder: seeded ref=deadbeef'
+
               echo 'spike-seeder: creating gateway-read ACL policy'
-              spike policy create --name=gateway-read \
-                --path-pattern='.*' \
-                --spiffeid-pattern='^spiffe://agentic-ref-arch.poc/gateways/.*' \
-                --permissions=read
+              policy_ok=0
+              i=1
+              while [ "$i" -le 60 ]; do
+                if spike policy create --name=gateway-read \
+                  --path-pattern='.*' \
+                  --spiffeid-pattern="^spiffe://${SPIKE_TRUST_ROOT}/ns/gateway/sa/.*" \
+                  --permissions=read >/dev/null 2>&1; then
+                  policy_ok=1
+                  break
+                fi
+                echo "spike-seeder: retry policy create ($i/60)" >&2
+                sleep 5
+                i=$((i + 1))
+              done
+              if [ "$policy_ok" -ne 1 ]; then
+                echo 'spike-seeder: FAILED to create gateway-read policy' >&2
+                exit 1
+              fi
               echo 'spike-seeder: done'
           env:
             - name: SPIFFE_ENDPOINT_SOCKET
@@ -49,6 +83,12 @@ spec:
             - name: spire-agent-socket
               mountPath: /run/spire/sockets
               readOnly: true
+            # Deterministic ordering: this ConfigMap is created by spike-bootstrap
+            # only after successful bootstrap completion. Making it a required
+            # volume ensures the seeder Pod will not start until bootstrap is done.
+            - name: spike-bootstrap-state
+              mountPath: /etc/spike/bootstrap-state
+              readOnly: true
           securityContext:
             runAsNonRoot: true
             runAsUser: 1000
@@ -63,3 +103,6 @@ spec:
           hostPath:
             path: /run/spire/sockets
             type: Directory
+        - name: spike-bootstrap-state
+          configMap:
+            name: spike-bootstrap-state

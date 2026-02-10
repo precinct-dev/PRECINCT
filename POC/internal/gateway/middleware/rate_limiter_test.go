@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -370,6 +372,60 @@ func TestRateLimiter_KeyDBPerAgentEnforcement(t *testing.T) {
 	allowed, _, _ = limiter.Allow(agent2)
 	if !allowed {
 		t.Error("agent2 should have independent rate limit bucket")
+	}
+}
+
+func TestRateLimiter_ConcurrentBurstEnforces429_InMemoryStore(t *testing.T) {
+	store := NewInMemoryRateLimitStore()
+	limiter := NewRateLimiter(60, 10, store) // 1 req/sec, burst 10
+	spiffeID := "spiffe://example.org/agent/concurrent"
+
+	var denied atomic.Int32
+	var wg sync.WaitGroup
+	const goroutines = 50
+
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			allowed, _, _ := limiter.Allow(spiffeID)
+			if !allowed {
+				denied.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	// With burst=10 and 50 concurrent requests, we should see some denials.
+	if denied.Load() == 0 {
+		t.Fatal("expected at least one rate-limited request under concurrent burst, got 0 denials")
+	}
+}
+
+func TestRateLimiter_ConcurrentBurstEnforces429_KeyDBStore(t *testing.T) {
+	store, _ := newTestKeyDBRateLimitStore(t)
+	limiter := NewRateLimiter(60, 10, store) // 1 req/sec, burst 10
+	spiffeID := "spiffe://poc.local/agents/concurrent"
+
+	var denied atomic.Int32
+	var wg sync.WaitGroup
+	const goroutines = 50
+
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func() {
+			defer wg.Done()
+			allowed, _, _ := limiter.Allow(spiffeID)
+			if !allowed {
+				denied.Add(1)
+			}
+		}()
+	}
+	wg.Wait()
+
+	// With burst=10 and 50 concurrent requests, we should see some denials.
+	if denied.Load() == 0 {
+		t.Fatal("expected at least one rate-limited request under concurrent burst, got 0 denials")
 	}
 }
 

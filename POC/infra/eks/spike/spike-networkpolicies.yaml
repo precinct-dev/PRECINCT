@@ -199,6 +199,14 @@ spec:
       ports:
         - protocol: TCP
           port: 8443
+    # To spike-nexus (bootstrap verify / initialization check)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-nexus
+      ports:
+        - protocol: TCP
+          port: 8443
     # DNS resolution
     - to:
         - namespaceSelector: {}
