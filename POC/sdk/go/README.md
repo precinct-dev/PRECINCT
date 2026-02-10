@@ -334,10 +334,13 @@ The SDK constructs and parses standard JSON-RPC 2.0 envelopes.
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "tavily_search",
+  "method": "tools/call",
   "params": {
-    "query": "AI security best practices",
-    "max_results": 5
+    "name": "tavily_search",
+    "arguments": {
+      "query": "AI security best practices",
+      "max_results": 5
+    }
   },
   "id": 1
 }
@@ -345,6 +348,10 @@ The SDK constructs and parses standard JSON-RPC 2.0 envelopes.
 
 The `id` field is an auto-incrementing 64-bit integer, safe for concurrent use
 (backed by `atomic.Int64`).
+
+**Note:** The recommended (MCP-spec compliant) invocation format is `method="tools/call"`.
+Some gateways may still support the deprecated shortcut `method="<tool_name>"`, but the SDK
+uses `tools/call` for portability.
 
 ### Success Response
 

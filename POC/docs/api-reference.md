@@ -51,10 +51,13 @@ X-Session-ID: 550e8400-e29b-41d4-a716-446655440000
 
 {
   "jsonrpc": "2.0",
-  "method": "tavily_search",
+  "method": "tools/call",
   "params": {
-    "query": "AI security best practices",
-    "max_results": 5
+    "name": "tavily_search",
+    "arguments": {
+      "query": "AI security best practices",
+      "max_results": 5
+    }
   },
   "id": 1
 }
@@ -229,13 +232,13 @@ to call. The trust domain must match `SPIFFE_TRUST_DOMAIN` (default: `poc.local`
 The gateway uses the JSON-RPC 2.0 protocol as defined by MCP. All tool calls are
 wrapped in a JSON-RPC request envelope.
 
-### Request Format
+### Request Format (Tools)
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `jsonrpc` | string | Yes | Must be `"2.0"` |
-| `method` | string | Yes | The tool name to invoke (e.g., `"tavily_search"`, `"read"`, `"bash"`) |
-| `params` | object | Yes | Tool-specific parameters |
+| `method` | string | Yes | For tool invocation, use MCP-spec `tools/call` |
+| `params` | object | Yes | For `tools/call`, `{"name":"<tool_name>","arguments":{...}}` |
 | `id` | integer | Yes | Request identifier (echoed in response) |
 
 **Example:**
@@ -243,14 +246,21 @@ wrapped in a JSON-RPC request envelope.
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "tavily_search",
+  "method": "tools/call",
   "params": {
-    "query": "MCP security",
-    "max_results": 3
+    "name": "tavily_search",
+    "arguments": {
+      "query": "MCP security",
+      "max_results": 3
+    }
   },
   "id": 1
 }
 ```
+
+**Legacy compatibility (deprecated):** Some deployments may still accept the
+non-spec shortcut `method="<tool_name>"` with tool-specific params. Prefer `tools/call`
+for portability and future compatibility.
 
 ### Response Format
 
@@ -476,10 +486,13 @@ Embed SPIKE tokens anywhere in the JSON request body where a secret value is nee
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "tavily_search",
+  "method": "tools/call",
   "params": {
-    "query": "AI security",
-    "api_key": "$SPIKE{ref:abc123,exp:3600,scope:tools.tavily.search}"
+    "name": "tavily_search",
+    "arguments": {
+      "query": "AI security",
+      "api_key": "$SPIKE{ref:abc123,exp:3600,scope:tools.tavily.search}"
+    }
   },
   "id": 1
 }
@@ -540,10 +553,13 @@ curl -s -X POST http://localhost:9090/ \
   -H "X-Session-ID: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "tavily_search",
+    "method": "tools/call",
     "params": {
-      "query": "AI security best practices",
-      "max_results": 3
+      "name": "tavily_search",
+      "arguments": {
+        "query": "AI security best practices",
+        "max_results": 3
+      }
     },
     "id": 1
   }' | jq .
@@ -560,9 +576,12 @@ curl -s -X POST http://localhost:9090/ \
   -H "X-Session-ID: 550e8400-e29b-41d4-a716-446655440000" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "bash",
+    "method": "tools/call",
     "params": {
-      "command": "ls -la"
+      "name": "bash",
+      "arguments": {
+        "command": "ls -la"
+      }
     },
     "id": 1
   }' | jq .
@@ -593,8 +612,8 @@ for i in $(seq 1 100); do
     -H "X-Session-ID: 550e8400-e29b-41d4-a716-446655440000" \
     -d '{
       "jsonrpc": "2.0",
-      "method": "tavily_search",
-      "params": {"query": "test"},
+      "method": "tools/call",
+      "params": {"name":"tavily_search","arguments":{"query":"test"}},
       "id": '"$i"'
     }'
 done
@@ -674,3 +693,17 @@ Key gateway configuration parameters that affect API behavior:
 | `MCP_REQUEST_TIMEOUT` | `30` | Per-request timeout in seconds for MCP calls |
 | `KEYDB_URL` | (empty) | KeyDB URL for distributed session/rate limit storage |
 | `SESSION_TTL` | `3600` | Session expiry in seconds |
+
+---
+
+## Transport Modes and Enforcement Notes
+
+The gateway enforces the same 13-layer inbound security chain in both transport modes. The key difference is how the gateway communicates with the upstream MCP server:
+
+- `MCP_TRANSPORT_MODE=mcp`: the gateway acts as an MCP JSON-RPC client to the upstream MCP server. This enables internal control-plane calls (for example: `tools/list` refreshes used by security enforcement).
+- `MCP_TRANSPORT_MODE=proxy`: the gateway reverse-proxies requests to the upstream. Security enforcement remains active, but upstream-introspection behaviors may be best-effort.
+
+Security controls to expect in both modes:
+- UI controls are enforced (capability mediation / blocking).
+- Deep scan can deny requests with `deepscan_blocked` (depending on policy, model availability, and fallback configuration).
+- Tool registry verification is gateway-owned: the baseline allowlist lives in `config/tool-registry.yaml`, and the gateway compares it to observed upstream tool metadata from `tools/list` (in `mcp` mode the gateway can refresh observed metadata internally when needed).

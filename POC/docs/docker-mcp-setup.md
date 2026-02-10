@@ -139,10 +139,13 @@ curl -X POST http://localhost:9090 \
   -H "X-SPIFFE-ID: spiffe://poc.local/gateways/mcp-security-gateway/dev" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "tavily_search",
+    "method": "tools/call",
     "params": {
-      "query": "Docker MCP integration",
-      "max_results": 2
+      "name": "tavily_search",
+      "arguments": {
+        "query": "Docker MCP integration",
+        "max_results": 2
+      }
     },
     "id": "test-001"
   }'
@@ -156,9 +159,12 @@ curl -X POST http://localhost:9090 \
   -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "read",
+    "method": "tools/call",
     "params": {
-      "file_path": "$POC_DIR/README.md"
+      "name": "read",
+      "arguments": {
+        "file_path": "$POC_DIR/README.md"
+      }
     },
     "id": "test-002"
   }'
@@ -172,10 +178,13 @@ curl -X POST http://localhost:9090 \
   -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "grep",
+    "method": "tools/call",
     "params": {
-      "pattern": "TODO",
-      "path": "$POC_DIR"
+      "name": "grep",
+      "arguments": {
+        "pattern": "TODO",
+        "path": "$POC_DIR"
+      }
     },
     "id": "test-003"
   }'
@@ -190,9 +199,12 @@ curl -X POST http://localhost:9090 \
   -H "X-Step-Up-Token: valid-step-up-token-12345" \
   -d '{
     "jsonrpc": "2.0",
-    "method": "bash",
+    "method": "tools/call",
     "params": {
-      "command": "ls $POC_DIR"
+      "name": "bash",
+      "arguments": {
+        "command": "ls $POC_DIR"
+      }
     },
     "id": "test-004"
   }'
