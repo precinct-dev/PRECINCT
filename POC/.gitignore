@@ -30,6 +30,9 @@ __pycache__/
 *.egg-info/
 uv.lock
 
+# Repave workflow state (runtime artifact)
+.repave-state.json
+
 # OpenTofu / Terraform
 .terraform/
 *.tfstate
