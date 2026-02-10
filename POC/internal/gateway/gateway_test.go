@@ -1143,10 +1143,9 @@ func TestMCPTransport_ToolsCall_ThroughAll13Layers(t *testing.T) {
 
 	handler := gw.Handler()
 
-	// Build a tools/call request. Using "tavily_search" as the method so it passes
-	// all middleware checks (tool registry, OPA destination_allowed).
-	// The MCP transport translates this to a JSON-RPC request to the upstream.
-	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"MCP test"},"id":1}`
+	// Build a spec-conformant tools/call request. The gateway MUST enforce policy
+	// and registry checks against params.name (the effective tool name).
+	requestBody := `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"MCP test"}},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
@@ -1197,26 +1196,34 @@ func TestMCPTransport_ToolsCall_ThroughAll13Layers(t *testing.T) {
 		t.Errorf("Expected 1 notifications/initialized call, got %d", len(notifCalls))
 	}
 
-	toolsCalls := serverLog.MethodCalls("tavily_search")
+	toolsCalls := serverLog.MethodCalls("tools/call")
 	if len(toolsCalls) != 1 {
-		t.Fatalf("Expected 1 tavily_search call, got %d", len(toolsCalls))
+		t.Fatalf("Expected 1 tools/call call, got %d", len(toolsCalls))
 	}
 
-	// Verify tavily_search had Mcp-Session-Id header
+	// Verify tools/call had Mcp-Session-Id header
 	if toolsCalls[0].SessionID != "integration-session-42" {
 		t.Errorf("Expected Mcp-Session-Id 'integration-session-42', got '%s'", toolsCalls[0].SessionID)
 	}
 
-	// Verify tavily_search body is proper JSON-RPC
+	// Verify tools/call body is proper JSON-RPC
 	var toolsCallBody map[string]interface{}
 	if err := json.Unmarshal(toolsCalls[0].Body, &toolsCallBody); err != nil {
-		t.Fatalf("tavily_search body is not JSON: %v", err)
+		t.Fatalf("tools/call body is not JSON: %v", err)
 	}
 	if toolsCallBody["jsonrpc"] != "2.0" {
-		t.Errorf("Expected tavily_search body jsonrpc=2.0, got %v", toolsCallBody["jsonrpc"])
+		t.Errorf("Expected tools/call body jsonrpc=2.0, got %v", toolsCallBody["jsonrpc"])
 	}
-	if toolsCallBody["method"] != "tavily_search" {
-		t.Errorf("Expected tavily_search method, got %v", toolsCallBody["method"])
+	if toolsCallBody["method"] != "tools/call" {
+		t.Errorf("Expected tools/call method, got %v", toolsCallBody["method"])
+	}
+	// Verify the effective tool name is preserved in params.name.
+	if params, ok := toolsCallBody["params"].(map[string]interface{}); ok {
+		if name, _ := params["name"].(string); name != "tavily_search" {
+			t.Errorf("Expected params.name=tavily_search, got %v", params["name"])
+		}
+	} else {
+		t.Errorf("Expected params object in tools/call body, got %T", toolsCallBody["params"])
 	}
 
 	t.Logf("PASS: tools/call flowed through all 13 middleware layers to MCP server and back (status=%d)", rec.Code)

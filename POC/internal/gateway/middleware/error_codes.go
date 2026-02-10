@@ -56,4 +56,7 @@ const (
 	ErrMCPTransportFailed = "mcp_transport_failed" // transport-level failure (connection, timeout)
 	ErrMCPRequestFailed   = "mcp_request_failed"   // MCP server returned JSON-RPC error
 	ErrMCPInvalidResponse = "mcp_invalid_response" // malformed response from MCP server
+
+	// MCP Request Validation -- 400 Bad Request
+	ErrMCPInvalidRequest = "mcp_invalid_request"
 )

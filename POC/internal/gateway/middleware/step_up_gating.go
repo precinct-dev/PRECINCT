@@ -521,8 +521,8 @@ func StepUpGating(
 			return
 		}
 
-		var mcpReq MCPRequest
-		if err := json.Unmarshal(body, &mcpReq); err != nil {
+		parsed, err := ParseMCPRequestBody(body)
+		if err != nil {
 			// Not a valid MCP request, pass through
 			span.SetAttributes(
 				attribute.String("mcp.result", "allowed"),
@@ -532,14 +532,17 @@ func StepUpGating(
 			return
 		}
 
-		// Extract tool name
-		toolName := mcpReq.Method
-		if toolName == "" {
-			if tn, ok := mcpReq.Params["tool"]; ok {
-				if toolNameStr, ok := tn.(string); ok {
-					toolName = toolNameStr
-				}
-			}
+		toolName, toolErr := parsed.EffectiveToolName()
+		params := parsed.EffectiveToolParams()
+		if toolErr != nil {
+			// Malformed tools/call should be rejected by earlier middleware.
+			// Step-up gating is fail-open here to avoid double-emitting different errors.
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "unable to extract effective tool name"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
 		}
 
 		if toolName == "" {
@@ -559,10 +562,10 @@ func StepUpGating(
 		}
 
 		// Determine if external target and destination
-		isExternal, destination := isExternalTarget(toolName, mcpReq.Params)
+		isExternal, destination := isExternalTarget(toolName, params)
 
 		// Also check params for explicit destination field
-		if dest, ok := mcpReq.Params["destination"].(string); ok && destination == "" {
+		if dest, ok := params["destination"].(string); ok && destination == "" {
 			destination = dest
 			if destination != "" {
 				isExternal = true

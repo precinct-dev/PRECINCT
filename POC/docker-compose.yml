@@ -195,6 +195,12 @@ services:
         condition: service_completed_successfully  # SPIRE entry must exist for bootstrap's SVID
       spike-keeper-1:
         condition: service_healthy  # Keeper must be serving mTLS before bootstrap sends shards
+      # Demo reliability: bootstrap verifies initialization by calling SPIKE Nexus.
+      # On slower machines this can race Nexus startup and fail the one-shot container.
+      # We only require Nexus to be started (not healthy) to avoid any potential
+      # dependency deadlocks with shard initialization.
+      spike-nexus:
+        condition: service_started
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
     environment:

@@ -2,11 +2,14 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -25,10 +28,10 @@ const (
 
 // testCase holds a single E2E test with rich self-documenting metadata.
 type testCase struct {
-	name   string   // Short test name (shown in [N/M] header)
-	what   string   // Plain-English explanation of the security control
-	send   string   // What payload/tool/identity we send
-	expect string   // Expected result and what it proves
+	name   string // Short test name (shown in [N/M] header)
+	what   string // Plain-English explanation of the security control
+	send   string // What payload/tool/identity we send
+	expect string // Expected result and what it proves
 	fn     func() bool
 }
 
@@ -58,6 +61,13 @@ func main() {
 			send:   "tavily_search(query='AI security best practices') via SDK -> gateway -> mock MCP server",
 			expect: "Actual search results from mock MCP server proving SDK -> gateway -> MCP transport -> server -> results",
 			fn:     testMCPToolsCall,
+		},
+		{
+			name:   "MCP spec: invalid tools/call is rejected (fail-closed)",
+			what:   "Gateway rejects malformed MCP tools/call requests (missing params.name) instead of silently allowing bypass",
+			send:   "tools/call(params={arguments:{...}}) missing name (raw JSON-RPC)",
+			expect: "HTTP 400 with code=mcp_invalid_request proving fail-closed validation is active",
+			fn:     testInvalidToolsCallMissingNameRejected,
 		},
 		{
 			name:   "SPIFFE auth denial (empty identity)",
@@ -319,6 +329,54 @@ func testMCPToolsCall() bool {
 	}
 
 	return printProof(true, "MCP transport returned actual search results through all 13 layers")
+}
+
+// 2b. MCP spec: invalid tools/call missing params.name must be rejected fail-closed (HTTP 400).
+func testInvalidToolsCallMissingNameRejected() bool {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Intentionally malformed tools/call: name missing.
+	payload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      999,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"arguments": map[string]any{"query": "AI security"},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("failed to marshal payload: %v", err))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, *gatewayURL, bytes.NewReader(body))
+	if err != nil {
+		return printProof(false, fmt.Sprintf("failed to create request: %v", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+	req.Header.Set("X-Session-ID", "demo-invalid-tools-call")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("request failed: %v", err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusBadRequest {
+		return printProof(false, fmt.Sprintf("expected HTTP 400, got %d: %s", resp.StatusCode, truncateStr(string(respBody), 200)))
+	}
+
+	var ge mcpgateway.GatewayError
+	if err := json.Unmarshal(respBody, &ge); err != nil {
+		return printProof(false, fmt.Sprintf("expected JSON GatewayError body, got: %s", truncateStr(string(respBody), 200)))
+	}
+	if ge.Code != "mcp_invalid_request" {
+		return printProof(false, fmt.Sprintf("expected code=mcp_invalid_request, got %s", ge.Code))
+	}
+	return printProof(true, "malformed tools/call rejected with mcp_invalid_request (fail-closed)")
 }
 
 // 3. SPIFFE auth denial: Client with empty SPIFFE ID should get 401.

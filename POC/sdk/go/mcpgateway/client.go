@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -125,21 +126,28 @@ type jsonRPCResponse struct {
 	ID      any            `json:"id"`
 }
 
-// Call invokes a tool through the gateway using the MCP JSON-RPC protocol.
+// Call invokes a tool through the gateway using MCP-spec JSON-RPC.
 //
-// The toolName is the MCP method name (e.g. "tavily_search", "read").
-// The params are passed as the JSON-RPC params object.
+// Primary path (spec):
+//   - method="tools/call"
+//   - params.name=<tool name>
+//   - params.arguments=<tool arguments>
+//
+// Backward/advanced path:
+// If methodOrTool looks like a JSON-RPC "protocol method" (e.g. "tools/list",
+// "resources/read", "notifications/initialized", "initialize"), Call will send
+// it as-is (method=<methodOrTool>, params=<params>).
 //
 // On success, the JSON-RPC "result" field is returned as a map.
 // On denial or error, a *[GatewayError] is returned. Use [errors.As] to inspect it.
 //
 // Call respects context cancellation and deadline. It retries 503 responses
 // with exponential backoff up to MaxRetries times.
-func (c *GatewayClient) Call(ctx context.Context, toolName string, params map[string]any) (any, error) {
+func (c *GatewayClient) Call(ctx context.Context, methodOrTool string, params map[string]any) (any, error) {
 	var lastErr *GatewayError
 
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
-		result, err := c.doCall(ctx, toolName, params)
+		result, err := c.doCall(ctx, methodOrTool, params)
 		if err == nil {
 			return result, nil
 		}
@@ -184,12 +192,44 @@ func (c *GatewayClient) nextID() int64 {
 	return c.requestID.Add(1)
 }
 
-func (c *GatewayClient) doCall(ctx context.Context, toolName string, params map[string]any) (any, error) {
+func isProtocolMethod(methodOrTool string) bool {
+	if methodOrTool == "" {
+		return false
+	}
+	// Explicit protocol methods.
+	if methodOrTool == "initialize" {
+		return true
+	}
+	if strings.HasPrefix(methodOrTool, "notifications/") {
+		return true
+	}
+	// Any method with a namespace separator is treated as protocol-level
+	// (tools/list, tools/call, resources/read, prompts/list, etc.).
+	return strings.Contains(methodOrTool, "/")
+}
+
+func (c *GatewayClient) doCall(ctx context.Context, methodOrTool string, params map[string]any) (any, error) {
+	method := methodOrTool
+	effectiveParams := params
+
+	// For tool invocations, use MCP-spec tools/call envelope.
+	// This is the primary supported wire format for language/framework agnostic usage.
+	if !isProtocolMethod(methodOrTool) {
+		if params == nil {
+			params = map[string]any{}
+		}
+		method = "tools/call"
+		effectiveParams = map[string]any{
+			"name":      methodOrTool,
+			"arguments": params,
+		}
+	}
+
 	// Build JSON-RPC envelope
 	reqBody := jsonRPCRequest{
 		JSONRPC: "2.0",
-		Method:  toolName,
-		Params:  params,
+		Method:  method,
+		Params:  effectiveParams,
 		ID:      c.nextID(),
 	}
 
