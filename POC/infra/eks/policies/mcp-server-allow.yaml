@@ -52,6 +52,9 @@ spec:
       ports:
         - protocol: TCP
           port: 8081
+        # NOTE(local overlay): demo mock MCP server listens on :8082
+        - protocol: TCP
+          port: 8082
 ---
 # Allow tool server egress to DNS and all outbound destinations
 apiVersion: networking.k8s.io/v1

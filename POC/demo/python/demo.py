@@ -5,7 +5,9 @@ import argparse
 import json
 import sys
 import os
+import threading
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 import httpx
@@ -47,6 +49,12 @@ def print_gateway_error(e: GatewayError) -> None:
     print(f"  {DIM}Step:{RESET}        {e.step}")
     print(f"  {DIM}HTTP:{RESET}        {e.http_status}")
     print(f"  {DIM}Message:{RESET}     {e.message}")
+    if getattr(e, "details", None):
+        # Print structured denial details (e.g. expected_hash/observed_hash for registry_hash_mismatch).
+        try:
+            print(f"  {DIM}Details:{RESET}     {json.dumps(e.details)}")
+        except Exception:
+            print(f"  {DIM}Details:{RESET}     {e.details}")
     if e.remediation:
         print(f"  {DIM}Remediation:{RESET} {e.remediation}")
     if e.trace_id:
@@ -238,7 +246,7 @@ def test_unregistered_tool(url: str) -> bool:
 
 
 def test_tool_registry_rugpull_protection(url: str) -> bool:
-    """Tool registry rug-pull protection (compose-only deterministic proof).
+    """Tool registry rug-pull protection (deterministic proof).
 
     Proves gateway-owned tool metadata hash verification without client tool_hash:
     1) Toggle mock MCP server rugpull ON
@@ -246,8 +254,9 @@ def test_tool_registry_rugpull_protection(url: str) -> bool:
     3) tools/call(tavily_search) via SDK is denied with 403 code=registry_hash_mismatch
     4) Toggle rugpull OFF and re-list (best-effort) to reset cache
     """
-    if os.getenv("DEMO_STRICT_DEEPSCAN") != "1":
-        return print_proof(True, "SKIP: compose-only rug-pull proof (DEMO_STRICT_DEEPSCAN not set)")
+    admin_base = (os.getenv("DEMO_RUGPULL_ADMIN_URL") or "").rstrip("/")
+    if not admin_base:
+        return print_proof(True, "SKIP: rug-pull proof disabled (DEMO_RUGPULL_ADMIN_URL not set)")
 
     payload = {"jsonrpc": "2.0", "id": 1100, "method": "tools/list", "params": {}}
     headers = {
@@ -260,8 +269,8 @@ def test_tool_registry_rugpull_protection(url: str) -> bool:
     enabled = False
     client = None
     try:
-        # Toggle rugpull ON at the mock MCP server (reachable inside compose network).
-        r = httpx.post("http://mock-mcp-server:8082/__demo__/rugpull/on", timeout=5.0)
+        # Toggle rugpull ON at the upstream mock MCP server.
+        r = httpx.post(f"{admin_base}/__demo__/rugpull/on", timeout=5.0)
         if r.status_code != 200:
             return print_proof(False, f"enable rugpull returned HTTP {r.status_code}: {r.text[:200]}")
         enabled = True
@@ -294,7 +303,7 @@ def test_tool_registry_rugpull_protection(url: str) -> bool:
         # Cleanup: toggle rugpull OFF and re-list to reset cache (best-effort).
         if enabled:
             try:
-                httpx.post("http://mock-mcp-server:8082/__demo__/rugpull/off", timeout=5.0)
+                httpx.post(f"{admin_base}/__demo__/rugpull/off", timeout=5.0)
                 httpx.post(url, json=payload, headers={**headers, "X-Session-ID": "demo-rugpull-tools-list-reset"}, timeout=10.0)
             except Exception:
                 pass
@@ -613,22 +622,76 @@ def test_injection_base64_obfuscation(url: str) -> bool:
 
 
 def test_rate_limit(url: str) -> bool:
-    """17. Rate limit burst: rapid calls until 429."""
-    max_attempts = 200
+    """17. Rate limit burst: deterministic 429."""
+    # Deterministic burst proof: tool calls can be slow enough in some environments (k8s NodePort)
+    # that token refill prevents exhausting the bucket. Burst against the gateway's demo-only fast
+    # path endpoint which still runs inside the normal middleware chain (incl. Step 11 rate limiting).
+    endpoint = url.rstrip("/") + "/__demo__/ratelimit"
+
+    max_attempts = 5000
+    concurrency = 50
+
+    # Probe endpoint existence (demo endpoints must be enabled in the gateway).
     try:
-        for i in range(max_attempts):
-            client = new_client(url)  # fresh session each call to avoid session risk escalation
-            try:
-                client.call("tavily_search", query="test")
-            except GatewayError as e:
-                if e.http_status == 429:
-                    print_gateway_error(e)
-                    return print_proof(True, f"rate limited after {i + 1} calls: code={e.code}")
-                # Other errors (502 etc.) are expected -- keep trying
-                continue
-        return print_proof(False, f"no rate limit after {max_attempts} calls")
-    finally:
-        client.close()
+        r = httpx.get(endpoint, headers={"X-SPIFFE-ID": DSPY_SPIFFE, "X-Session-ID": "demo-rl-probe"}, timeout=5.0)
+        if r.status_code == 404:
+            return print_proof(False, "rate limit probe returned 404: /__demo__/ratelimit not enabled (set DEMO_RUGPULL_ADMIN_ENABLED=1 in gateway)")
+    except Exception as e:
+        return print_proof(False, f"rate limit probe failed: {e}")
+
+    called = 0
+    called_lock = threading.Lock()
+    saw_429 = threading.Event()
+    first_429_status: int | None = None
+    first_429_headers: dict[str, str] | None = None
+    first_429_lock = threading.Lock()
+
+    def next_call_index() -> int:
+        nonlocal called
+        with called_lock:
+            called += 1
+            return called
+
+    def worker(worker_id: int) -> None:
+        nonlocal first_429_status, first_429_headers
+        client = httpx.Client(timeout=5.0, limits=httpx.Limits(max_keepalive_connections=50, max_connections=50))
+        try:
+            while not saw_429.is_set():
+                i = next_call_index()
+                if i > max_attempts:
+                    return
+                try:
+                    resp = client.get(
+                        endpoint,
+                        headers={"X-SPIFFE-ID": DSPY_SPIFFE, "X-Session-ID": f"demo-rl-{worker_id}"},
+                    )
+                    if resp.status_code == 429:
+                        with first_429_lock:
+                            if first_429_status is None:
+                                first_429_status = resp.status_code
+                                first_429_headers = dict(resp.headers)
+                        saw_429.set()
+                        return
+                except BaseException:
+                    # Transient network errors shouldn't crash the whole demo run.
+                    continue
+        finally:
+            client.close()
+
+    with ThreadPoolExecutor(max_workers=concurrency) as ex:
+        futures = [ex.submit(worker, wid) for wid in range(concurrency)]
+        for f in as_completed(futures):
+            _ = f.result()
+
+    if first_429_status == 429:
+        if first_429_headers:
+            limit = first_429_headers.get("x-ratelimit-limit", "")
+            remaining = first_429_headers.get("x-ratelimit-remaining", "")
+            reset = first_429_headers.get("x-ratelimit-reset", "")
+            print(f"  {DIM}RateLimit:{RESET}  limit={limit} remaining={remaining} reset={reset}")
+        return print_proof(True, "rate limited under burst load (429) -- per-identity throttling active")
+
+    return print_proof(False, f"no rate limit after {max_attempts} calls (burst test to {endpoint})")
 
 
 def test_request_size_limit(url: str) -> bool:
@@ -717,7 +780,7 @@ def main() -> None:
             name="Tool registry: rug-pull protection (gateway-owned hash verification)",
             what="Gateway denies tools/call when upstream tools/list metadata hash differs from the approved registry baseline (no client tool_hash required)",
             send="Toggle mock MCP rugpull ON -> tools/list (tavily_search stripped) -> tools/call(tavily_search) denied",
-            expect="Compose-only: tools/list does NOT include tavily_search + tools/call denied with 403 code=registry_hash_mismatch",
+            expect="tools/list does NOT include tavily_search + tools/call denied with 403 code=registry_hash_mismatch",
             fn=test_tool_registry_rugpull_protection,
         ),
         TestCase(
@@ -842,8 +905,8 @@ def main() -> None:
         TestCase(
             name="Rate limit burst (429 on rapid calls)",
             what="Per-SPIFFE-ID rate limiter enforces request quotas at step 11",
-            send="Rapid burst of tavily_search() calls (up to 200) with same SPIFFE ID",
-            expect="429 after hitting rate limit -- proves per-identity throttling works",
+            send="Rapid burst of GET /__demo__/ratelimit with same SPIFFE ID (demo-only fast path)",
+            expect="429 after hitting rate limit -- proves per-identity throttling works (and is deterministic across compose/k8s)",
             fn=test_rate_limit,
         ),
         TestCase(

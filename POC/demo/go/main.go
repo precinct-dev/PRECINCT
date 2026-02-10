@@ -12,6 +12,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/example/mcp-gateway-sdk-go/mcpgateway"
@@ -101,7 +103,7 @@ func main() {
 			name:   "Tool registry: rug-pull protection (gateway-owned hash verification)",
 			what:   "Gateway denies tools/call when upstream tools/list metadata hash differs from the approved registry baseline (no client tool_hash required)",
 			send:   "Toggle mock MCP server rugpull ON -> tools/list (tavily_search stripped) -> tools/call(tavily_search) denied",
-			expect: "Compose-only: tools/list does NOT include tavily_search + tools/call denied with 403 code=registry_hash_mismatch",
+			expect: "tools/list does NOT include tavily_search + tools/call denied with 403 code=registry_hash_mismatch",
 			fn:     testToolRegistryRugPullProtection,
 		},
 		{
@@ -219,8 +221,8 @@ func main() {
 		{
 			name:   "Rate limit burst (429 on rapid calls)",
 			what:   "Per-SPIFFE-ID rate limiter enforces request quotas at step 11",
-			send:   "Rapid burst of tavily_search() calls (up to 200) with same SPIFFE ID",
-			expect: "429 after hitting rate limit -- proves per-identity throttling works",
+			send:   "Rapid burst of GET /__demo__/ratelimit with same SPIFFE ID (demo-only fast path)",
+			expect: "429 after hitting rate limit -- proves per-identity throttling works (and is deterministic across compose/k8s)",
 			fn:     testRateLimit,
 		},
 		{
@@ -278,6 +280,14 @@ func printGatewayError(ge *mcpgateway.GatewayError) {
 	fmt.Printf("  %sStep:%s        %d\n", colorDim, colorReset, ge.Step)
 	fmt.Printf("  %sHTTP:%s        %d\n", colorDim, colorReset, ge.HTTPStatus)
 	fmt.Printf("  %sMessage:%s     %s\n", colorDim, colorReset, ge.Message)
+	if len(ge.Details) > 0 {
+		// Print structured denial details (e.g. expected_hash/observed_hash for registry_hash_mismatch).
+		if b, err := json.Marshal(ge.Details); err == nil {
+			fmt.Printf("  %sDetails:%s     %s\n", colorDim, colorReset, string(b))
+		} else {
+			fmt.Printf("  %sDetails:%s     %v\n", colorDim, colorReset, ge.Details)
+		}
+	}
 	if ge.Remediation != "" {
 		fmt.Printf("  %sRemediation:%s %s\n", colorDim, colorReset, ge.Remediation)
 	}
@@ -364,11 +374,11 @@ func testMCPToolsCall() bool {
 //     hash differs from the registry baseline (no client tool_hash required).
 //   - tools/list returned to the client must not expose the mismatched tool (stripped).
 func testToolRegistryRugPullProtection() bool {
-	// Compose-only: relies on the Docker Compose mock MCP server being reachable at
-	// http://mock-mcp-server:8082 from inside the demo container network.
-	// demo/run.sh sets DEMO_STRICT_DEEPSCAN=1 for compose mode.
-	if os.Getenv("DEMO_STRICT_DEEPSCAN") != "1" {
-		return printProof(true, "SKIP: compose-only rug-pull proof (DEMO_STRICT_DEEPSCAN not set)")
+	// This proof needs a way to toggle the upstream mock MCP server into "rugpull" mode.
+	// demo/run.sh provides this via DEMO_RUGPULL_ADMIN_URL for both compose and k8s.
+	adminBase := strings.TrimSuffix(os.Getenv("DEMO_RUGPULL_ADMIN_URL"), "/")
+	if adminBase == "" {
+		return printProof(true, "SKIP: rug-pull proof disabled (DEMO_RUGPULL_ADMIN_URL not set)")
 	}
 
 	toolsListPayload := map[string]any{
@@ -386,7 +396,7 @@ func testToolRegistryRugPullProtection() bool {
 	{
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://mock-mcp-server:8082/__demo__/rugpull/on", nil)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, adminBase+"/__demo__/rugpull/on", nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return printProof(false, fmt.Sprintf("failed to enable rugpull mode on mock server: %v", err))
@@ -401,7 +411,7 @@ func testToolRegistryRugPullProtection() bool {
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://mock-mcp-server:8082/__demo__/rugpull/off", nil)
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, adminBase+"/__demo__/rugpull/off", nil)
 		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
@@ -1043,26 +1053,97 @@ func testSPIKECredentialContrast() bool {
 // Creates a fresh client per call to avoid session risk accumulation (OPA step 6)
 // while still accumulating rate limit counters (per-SPIFFE-ID at step 11).
 func testRateLimit() bool {
+	// Deterministic burst proof: tool calls can be slow enough in some environments (k8s NodePort)
+	// that token refill prevents exhausting the bucket. Use the gateway's demo-only fast path
+	// endpoint which still runs inside the normal middleware chain (incl. Step 11 rate limiting).
 	ctx := context.Background()
-	maxAttempts := 200 // enough to hit the rate limit
+	endpoint := strings.TrimSuffix(*gatewayURL, "/") + "/__demo__/ratelimit"
 
-	for i := 0; i < maxAttempts; i++ {
-		client := newClient() // fresh session each call to avoid session risk escalation
-		_, err := client.Call(ctx, "tavily_search", map[string]any{"query": "test"})
-		if err == nil {
-			continue // chain succeeded -- keep going
+	const (
+		maxAttempts = 5000
+		concurrency = 50
+	)
+
+	// Reuse a single HTTP transport across all workers to maximize throughput.
+	sharedHTTP := &http.Client{
+		Timeout: 5 * time.Second,
+		Transport: &http.Transport{
+			MaxIdleConns:        500,
+			MaxIdleConnsPerHost: 500,
+			MaxConnsPerHost:     500,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
+
+	// Probe that the endpoint exists (demo toggle must be enabled in the gateway).
+	{
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+		req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+		req.Header.Set("X-Session-ID", "demo-rl-probe")
+		resp, err := sharedHTTP.Do(req)
+		if err != nil {
+			return printProof(false, fmt.Sprintf("rate limit probe failed: %v", err))
 		}
-		var ge *mcpgateway.GatewayError
-		if errors.As(err, &ge) {
-			if ge.HTTPStatus == 429 {
-				printGatewayError(ge)
-				return printProof(true, fmt.Sprintf("rate limited after %d calls: code=%s", i+1, ge.Code))
-			}
-			// Other errors (502 etc.) are expected -- keep trying
-			continue
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			return printProof(false, "rate limit probe returned 404: /__demo__/ratelimit not enabled (set DEMO_RUGPULL_ADMIN_ENABLED=1 in gateway)")
 		}
 	}
-	return printProof(false, fmt.Sprintf("no rate limit after %d calls", maxAttempts))
+
+	var called atomic.Int32
+	var saw429 atomic.Bool
+	var first429Status atomic.Int32
+	var first429Headers atomic.Value // http.Header
+
+	work := func(workerID int) {
+		for {
+			if saw429.Load() {
+				return
+			}
+			n := int(called.Add(1))
+			if n > maxAttempts {
+				return
+			}
+
+			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+			req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+			req.Header.Set("X-Session-ID", fmt.Sprintf("demo-rl-%d", workerID))
+
+			resp, err := sharedHTTP.Do(req)
+			if err != nil {
+				continue
+			}
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+
+			if resp.StatusCode == http.StatusTooManyRequests {
+				if saw429.CompareAndSwap(false, true) {
+					first429Status.Store(int32(resp.StatusCode))
+					first429Headers.Store(resp.Header.Clone())
+				}
+				return
+			}
+		}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(concurrency)
+	for i := 0; i < concurrency; i++ {
+		workerID := i
+		go func() { defer wg.Done(); work(workerID) }()
+	}
+	wg.Wait()
+
+	if saw429.Load() && first429Status.Load() == int32(http.StatusTooManyRequests) {
+		if h, ok := first429Headers.Load().(http.Header); ok {
+			limit := h.Get("X-RateLimit-Limit")
+			remaining := h.Get("X-RateLimit-Remaining")
+			reset := h.Get("X-RateLimit-Reset")
+			fmt.Printf("  %sRateLimit:%s  limit=%s remaining=%s reset=%s\n", colorDim, colorReset, limit, remaining, reset)
+		}
+		return printProof(true, "rate limited under burst load (429) -- per-identity throttling active")
+	}
+	return printProof(false, fmt.Sprintf("no rate limit after %d calls (burst test to %s)", maxAttempts, endpoint))
 }
 
 // 21. Request size limit: 11 MB payload should be rejected at step 1.

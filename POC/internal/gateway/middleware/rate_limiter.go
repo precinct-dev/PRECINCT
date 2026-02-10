@@ -32,6 +32,11 @@ type RateLimiter struct {
 	store RateLimitStore
 	rpm   int // requests per minute
 	burst int // burst allowance (bucket capacity)
+
+	// Guard against races when the underlying store does not provide an atomic
+	// token-consumption primitive (e.g., in-memory store). KeyDB uses an atomic
+	// Lua script, so this is only used as a fallback.
+	locks sync.Map // map[string]*sync.Mutex keyed by SPIFFE ID
 }
 
 // NewRateLimiter creates a new rate limiter with the given RPM, burst, and store.
@@ -48,11 +53,42 @@ func NewRateLimiter(rpm, burst int, store RateLimitStore) *RateLimiter {
 	}
 }
 
+func (rl *RateLimiter) lockFor(spiffeID string) *sync.Mutex {
+	if spiffeID == "" {
+		// Should never happen; callers already enforce SPIFFE ID presence.
+		return &sync.Mutex{}
+	}
+	if v, ok := rl.locks.Load(spiffeID); ok {
+		return v.(*sync.Mutex)
+	}
+	mu := &sync.Mutex{}
+	actual, _ := rl.locks.LoadOrStore(spiffeID, mu)
+	return actual.(*sync.Mutex)
+}
+
 // Allow checks if a request is allowed under rate limits using the token bucket
 // algorithm. Tokens refill at rpm/60 per second, up to the burst capacity.
 func (rl *RateLimiter) Allow(spiffeID string) (allowed bool, remaining int, resetTime time.Time) {
 	ctx := context.Background()
 	now := time.Now()
+
+	// Distributed KeyDB store: use an atomic Lua script to avoid lost updates
+	// under concurrency and across gateway replicas.
+	if keydbStore, ok := rl.store.(*KeyDBRateLimitStore); ok {
+		allowed, remaining, err := keydbStore.TakeTokenAtomic(ctx, spiffeID, rl.rpm, rl.burst, now)
+		if err != nil {
+			// On store error, fail closed (deny) to avoid letting traffic through
+			// when distributed state is unavailable.
+			return false, 0, now.Add(time.Minute)
+		}
+		resetTime = now.Add(time.Minute)
+		return allowed, remaining, resetTime
+	}
+
+	// Non-atomic stores: serialize per SPIFFE ID to avoid lost updates.
+	mu := rl.lockFor(spiffeID)
+	mu.Lock()
+	defer mu.Unlock()
 
 	tokens, lastFill, err := rl.store.GetTokens(ctx, spiffeID)
 	if err != nil {
@@ -161,6 +197,55 @@ type KeyDBRateLimitStore struct {
 	client *redis.Client
 }
 
+var takeTokenLua = redis.NewScript(`
+-- KEYS[1] = tokensKey
+-- KEYS[2] = lastFillKey
+-- ARGV[1] = now_unix_nano
+-- ARGV[2] = rpm
+-- ARGV[3] = burst
+-- ARGV[4] = ttl_seconds
+
+local now = tonumber(ARGV[1])
+local rpm = tonumber(ARGV[2])
+local burst = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+
+local tokensStr = redis.call("GET", KEYS[1])
+local lastStr = redis.call("GET", KEYS[2])
+
+local tokens
+local last
+if (not tokensStr) or (not lastStr) then
+  tokens = burst
+  last = now
+else
+  tokens = tonumber(tokensStr)
+  last = tonumber(lastStr)
+end
+
+local perSecond = rpm / 60.0
+local elapsed = (now - last) / 1000000000.0
+if elapsed < 0 then
+  elapsed = 0
+end
+
+tokens = tokens + (elapsed * perSecond)
+if tokens > burst then
+  tokens = burst
+end
+
+local allowed = 0
+if tokens >= 1.0 then
+  allowed = 1
+  tokens = tokens - 1.0
+end
+
+redis.call("SETEX", KEYS[1], ttl, tostring(tokens))
+redis.call("SETEX", KEYS[2], ttl, tostring(now))
+
+return {allowed, math.floor(tokens)}
+`)
+
 // NewKeyDBRateLimitStore creates a new KeyDB-backed rate limit store.
 // Accepts an existing redis.Client to enable connection pool sharing
 // with the session store.
@@ -168,6 +253,47 @@ func NewKeyDBRateLimitStore(client *redis.Client) *KeyDBRateLimitStore {
 	return &KeyDBRateLimitStore{
 		client: client,
 	}
+}
+
+// TakeTokenAtomic atomically refills and consumes a single token for the given
+// SPIFFE ID using a KeyDB Lua script. This avoids lost updates under concurrency.
+func (s *KeyDBRateLimitStore) TakeTokenAtomic(ctx context.Context, spiffeID string, rpm, burst int, now time.Time) (bool, int, error) {
+	tokensKey := rateLimitTokensKey(spiffeID)
+	lastFillKey := rateLimitLastFillKey(spiffeID)
+
+	res, err := takeTokenLua.Run(ctx, s.client,
+		[]string{tokensKey, lastFillKey},
+		now.UnixNano(),
+		rpm,
+		burst,
+		int(rateLimitTTL.Seconds()),
+	).Result()
+	if err != nil {
+		return false, 0, fmt.Errorf("keydb eval rate limit: %w", err)
+	}
+
+	arr, ok := res.([]interface{})
+	if !ok || len(arr) != 2 {
+		return false, 0, fmt.Errorf("keydb eval rate limit: unexpected result type %T", res)
+	}
+
+	allowedNum, ok1 := arr[0].(int64)
+	remainingNum, ok2 := arr[1].(int64)
+	if !ok1 || !ok2 {
+		// Some redis impls may return strings; try to coerce.
+		allowedStr, okA := arr[0].(string)
+		remainingStr, okR := arr[1].(string)
+		if okA && okR {
+			a, errA := strconv.ParseInt(allowedStr, 10, 64)
+			r, errR := strconv.ParseInt(remainingStr, 10, 64)
+			if errA == nil && errR == nil {
+				return a == 1, int(r), nil
+			}
+		}
+		return false, 0, fmt.Errorf("keydb eval rate limit: unexpected result elements %T/%T", arr[0], arr[1])
+	}
+
+	return allowedNum == 1, int(remainingNum), nil
 }
 
 func rateLimitTokensKey(spiffeID string) string {
