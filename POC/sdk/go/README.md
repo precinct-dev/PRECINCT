@@ -113,8 +113,8 @@ Invokes a tool through the gateway using the MCP JSON-RPC protocol.
 | Parameter  | Type              | Description                                            |
 |------------|-------------------|--------------------------------------------------------|
 | `ctx`      | `context.Context` | Context for cancellation and deadlines                 |
-| `toolName` | `string`          | MCP method name (e.g., `"tavily_search"`, `"read"`)   |
-| `params`   | `map[string]any`  | JSON-RPC params object                                 |
+| `toolName` | `string`          | MCP tool name (e.g., `"tavily_search"`, `"read"`)      |
+| `params`   | `map[string]any`  | Tool arguments (becomes `params.arguments` in `tools/call`) |
 
 **Returns:**
 
