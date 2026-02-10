@@ -98,6 +98,13 @@ func main() {
 			fn:     testUnregisteredTool,
 		},
 		{
+			name:   "Tool registry: rug-pull protection (gateway-owned hash verification)",
+			what:   "Gateway denies tools/call when upstream tools/list metadata hash differs from the approved registry baseline (no client tool_hash required)",
+			send:   "Toggle mock MCP server rugpull ON -> tools/list (tavily_search stripped) -> tools/call(tavily_search) denied",
+			expect: "Compose-only: tools/list does NOT include tavily_search + tools/call denied with 403 code=registry_hash_mismatch",
+			fn:     testToolRegistryRugPullProtection,
+		},
+		{
 			name:   "OPA policy denial (bash requires step-up)",
 			what:   "OPA policy engine enforces fine-grained authorization (bash requires step-up auth)",
 			send:   "bash(command='ls') with standard SPIFFE ID (no step-up auth)",
@@ -350,6 +357,133 @@ func testMCPToolsCall() bool {
 	}
 
 	return printProof(true, "MCP transport returned actual search results through all 13 layers")
+}
+
+// 2e. Tool registry rug-pull protection:
+//   - tools/call for a registry-managed tool must be denied if the upstream tools/list metadata
+//     hash differs from the registry baseline (no client tool_hash required).
+//   - tools/list returned to the client must not expose the mismatched tool (stripped).
+func testToolRegistryRugPullProtection() bool {
+	// Compose-only: relies on the Docker Compose mock MCP server being reachable at
+	// http://mock-mcp-server:8082 from inside the demo container network.
+	// demo/run.sh sets DEMO_STRICT_DEEPSCAN=1 for compose mode.
+	if os.Getenv("DEMO_STRICT_DEEPSCAN") != "1" {
+		return printProof(true, "SKIP: compose-only rug-pull proof (DEMO_STRICT_DEEPSCAN not set)")
+	}
+
+	toolsListPayload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1100,
+		"method":  "tools/list",
+		"params":  map[string]any{},
+	}
+	toolsListBody, err := json.Marshal(toolsListPayload)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("failed to marshal tools/list payload: %v", err))
+	}
+
+	// Toggle rug-pull ON at the mock MCP server.
+	{
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://mock-mcp-server:8082/__demo__/rugpull/on", nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return printProof(false, fmt.Sprintf("failed to enable rugpull mode on mock server: %v", err))
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return printProof(false, fmt.Sprintf("enable rugpull returned HTTP %d", resp.StatusCode))
+		}
+	}
+	// Always attempt to disable rugpull and re-seed baseline before returning so
+	// later demo tests are not impacted.
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://mock-mcp-server:8082/__demo__/rugpull/off", nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			_ = resp.Body.Close()
+		}
+
+		// Best-effort: re-seed observed hashes back to baseline by re-listing tools after rugpull is off.
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel2()
+		req2, _ := http.NewRequestWithContext(ctx2, http.MethodPost, *gatewayURL, bytes.NewReader(toolsListBody))
+		req2.Header.Set("Content-Type", "application/json")
+		req2.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+		req2.Header.Set("X-Session-ID", "demo-rugpull-tools-list-reset")
+		req2.Header.Set("X-MCP-Server", "default")
+		req2.Header.Set("X-Tenant", "default")
+		resp2, err2 := http.DefaultClient.Do(req2)
+		if err2 == nil {
+			_ = resp2.Body.Close()
+		}
+	}()
+
+	// First: prove client-visible tools/list strips the mismatched tool and seeds observed hashes.
+	ctx2, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx2, http.MethodPost, *gatewayURL, bytes.NewReader(toolsListBody))
+	if err != nil {
+		return printProof(false, fmt.Sprintf("failed to create tools/list request: %v", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+	req.Header.Set("X-Session-ID", "demo-rugpull-tools-list")
+	req.Header.Set("X-MCP-Server", "default")
+	req.Header.Set("X-Tenant", "default")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("tools/list request failed: %v", err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return printProof(false, fmt.Sprintf("expected HTTP 200 from tools/list, got %d: %s", resp.StatusCode, truncateStr(string(respBody), 200)))
+	}
+
+	var rpcResp map[string]any
+	if err := json.Unmarshal(respBody, &rpcResp); err != nil {
+		return printProof(false, fmt.Sprintf("expected JSON-RPC response, got: %s", truncateStr(string(respBody), 200)))
+	}
+	result, ok := rpcResp["result"].(map[string]any)
+	if !ok {
+		return printProof(false, fmt.Sprintf("missing result in tools/list response: %s", truncateStr(string(respBody), 200)))
+	}
+	tools, ok := result["tools"].([]any)
+	if !ok {
+		return printProof(false, "missing tools array in tools/list response")
+	}
+
+	for _, item := range tools {
+		tool, _ := item.(map[string]any)
+		name, _ := tool["name"].(string)
+		if name == "tavily_search" {
+			return printProof(false, "tavily_search was present in tools/list (expected stripped due to rug-pull mismatch)")
+		}
+	}
+
+	// Second: prove invocation-time denial works without relying on the client providing tool_hash.
+	client := newClient()
+	ctx := context.Background()
+	_, err = client.Call(ctx, "tavily_search", map[string]any{"query": "AI security"})
+	if err == nil {
+		return printProof(false, "unexpected success: tavily_search should be denied due to rug-pull hash mismatch")
+	}
+	var ge *mcpgateway.GatewayError
+	if !errors.As(err, &ge) {
+		return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
+	}
+	printGatewayError(ge)
+	if ge.HTTPStatus != http.StatusForbidden || ge.Code != "registry_hash_mismatch" {
+		return printProof(false, fmt.Sprintf("expected 403 registry_hash_mismatch, got HTTP %d code=%s", ge.HTTPStatus, ge.Code))
+	}
+
+	return printProof(true, "rug-pull protection active: tools/list stripped + tools/call denied (registry_hash_mismatch)")
 }
 
 // 2b. MCP spec: invalid tools/call missing params.name must be rejected fail-closed (HTTP 400).

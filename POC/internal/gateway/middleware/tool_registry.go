@@ -14,6 +14,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/x509"
@@ -708,8 +709,14 @@ func ComputeHash(description string, inputSchema map[string]interface{}) string 
 	return hex.EncodeToString(hash[:])
 }
 
+// ObservedToolHashRefresher refreshes observed tool hashes for a given logical server
+// by performing an internal tools/list call upstream.
+//
+// RFA-6fse.4: Enables gateway-owned rug-pull protection without client tool_hash.
+type ObservedToolHashRefresher func(ctx context.Context, server string) (map[string]string, error)
+
 // ToolRegistryVerify middleware verifies tool authorization with hash checking and poisoning detection (RFA-qq0.19)
-func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler {
+func ToolRegistryVerify(next http.Handler, registry *ToolRegistry, observed *ObservedToolHashCache, refresh ObservedToolHashRefresher) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// RFA-m6j.2: Create OTel span for step 5
 		ctx, span := tracer.Start(r.Context(), "gateway.tool_registry_verify",
@@ -782,6 +789,30 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 		if toolName != "" {
 			span.SetAttributes(attribute.String("tool_name", toolName))
 
+			server := r.Header.Get("X-MCP-Server")
+			if server == "" {
+				server = "default"
+			}
+
+			// Baseline: tool must exist in registry; capture expected hash.
+			allowed, expectedHash := registry.VerifyTool(toolName, "")
+			if !allowed {
+				span.SetAttributes(
+					attribute.Bool("hash_verified", false),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "tool_not_found"),
+				)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           ErrRegistryToolUnknown,
+					Message:        "Tool not authorized: tool_not_found",
+					Middleware:     "tool_registry_verify",
+					MiddlewareStep: 5,
+					Details:        map[string]any{"tool": toolName, "reason": "tool_not_found"},
+					Remediation:    "Verify the tool is registered and its hash matches the registry.",
+				})
+				return
+			}
+
 			// Extract provided hash from params if present
 			providedHash := ""
 			if hash, ok := parsed.Params["tool_hash"]; ok {
@@ -790,41 +821,109 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry) http.Handler 
 				}
 			}
 
-			// Use new verification with poisoning check (RFA-qq0.19)
-			result := registry.VerifyToolWithPoisoningCheck(toolName, providedHash)
-			if !result.Allowed {
-				// Log critical alert for poisoning detection
-				if result.AlertLevel == AlertCritical {
-					// TODO: Emit audit event with critical alert level
-					// For now, log to stdout (audit logging is middleware step 4)
-					fmt.Printf("[CRITICAL] Poisoning pattern detected in tool %s: %s\n", toolName, result.Reason)
-				}
+			// Poisoning patterns: check baseline registry description (do not log upstream tool text).
+			// This remains an explicit defense-in-depth check independent of hash verification.
+			poisoningResult := registry.VerifyToolWithPoisoningCheck(toolName, providedHash)
+			if !poisoningResult.Allowed {
 				span.SetAttributes(
 					attribute.Bool("hash_verified", false),
 					attribute.String("mcp.result", "denied"),
-					attribute.String("mcp.reason", result.Reason),
+					attribute.String("mcp.reason", poisoningResult.Reason),
 				)
-				// Map tool registry reasons to specific error codes
 				errCode := ErrRegistryToolUnknown
-				if strings.Contains(result.Reason, "hash_mismatch") {
+				if strings.Contains(poisoningResult.Reason, "hash_mismatch") {
 					errCode = ErrRegistryHashMismatch
 				}
 				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
 					Code:           errCode,
-					Message:        fmt.Sprintf("Tool not authorized: %s", result.Reason),
+					Message:        fmt.Sprintf("Tool not authorized: %s", poisoningResult.Reason),
 					Middleware:     "tool_registry_verify",
 					MiddlewareStep: 5,
-					Details:        map[string]any{"tool": toolName, "reason": result.Reason, "alert_level": result.AlertLevel},
+					Details:        map[string]any{"tool": toolName, "reason": poisoningResult.Reason, "alert_level": poisoningResult.AlertLevel},
 					Remediation:    "Verify the tool is registered and its hash matches the registry.",
 				})
 				return
 			}
+
+			// Gateway-owned rug-pull verification:
+			// Compare observed upstream tools/list hash to the registry baseline hash.
+			observedHash, ok, stale := observed.Get(server, toolName)
+			if !ok || stale {
+				if refresh != nil {
+					if hashes, err := refresh(ctx, server); err == nil {
+						observed.SetMany(server, hashes)
+					}
+				}
+				observedHash, ok, _ = observed.Get(server, toolName)
+			}
+
+			if !ok || observedHash == "" {
+				// Proxy-mode compatibility: if no refresher is available, we cannot
+				// perform gateway-owned verification. Fail open (but do NOT claim
+				// hash_verified=true). tools/list response stripping (when implemented)
+				// can still reduce discovery of mismatched tools.
+				if refresh == nil {
+					span.SetAttributes(
+						attribute.Bool("hash_verified", false),
+						attribute.String("mcp.result", "allowed"),
+						attribute.String("mcp.reason", "observed hash unavailable (no refresher)"),
+					)
+					toolHashVerified = false
+					ctx = WithToolHashVerified(ctx, toolHashVerified)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+				span.SetAttributes(
+					attribute.Bool("hash_verified", false),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "observed_hash_missing"),
+				)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           ErrRegistryHashMismatch,
+					Message:        "Tool metadata hash not observed; cannot verify rug-pull protection",
+					Middleware:     "tool_registry_verify",
+					MiddlewareStep: 5,
+					Details: map[string]any{
+						"tool":          toolName,
+						"server":        server,
+						"expected_hash": expectedHash,
+						"observed_hash": "",
+						"reason":        "observed_hash_missing",
+					},
+					Remediation: "Ensure the upstream MCP server supports tools/list and the gateway can reach it to refresh tool metadata.",
+				})
+				return
+			}
+
+			if observedHash != expectedHash {
+				span.SetAttributes(
+					attribute.Bool("hash_verified", false),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "hash_mismatch"),
+				)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           ErrRegistryHashMismatch,
+					Message:        "Tool metadata hash mismatch (rug-pull suspected)",
+					Middleware:     "tool_registry_verify",
+					MiddlewareStep: 5,
+					Details: map[string]any{
+						"tool":          toolName,
+						"server":        server,
+						"expected_hash": expectedHash,
+						"observed_hash": observedHash,
+						"reason":        "hash_mismatch",
+					},
+					Remediation: "Re-approve and update the registry baseline if the tool change is expected; otherwise treat as a rug-pull attack.",
+				})
+				return
+			}
+
 			toolHashVerified = true
 			span.SetAttributes(
 				attribute.Bool("hash_verified", true),
 				attribute.String("registry_digest", "verified"),
 				attribute.String("mcp.result", "allowed"),
-				attribute.String("mcp.reason", "tool verified"),
+				attribute.String("mcp.reason", "tool verified (observed hash matches baseline)"),
 			)
 		}
 

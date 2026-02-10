@@ -36,19 +36,20 @@ type Gateway struct {
 	sessionContext       *middleware.SessionContext
 	rateLimiter          *middleware.RateLimiter
 	circuitBreaker       *middleware.CircuitBreaker
-	handleStore          *HandleStore                     // RFA-qq0.16: response firewall data handle cache
-	groqGuardClient      middleware.GroqGuardClient       // RFA-qq0.17: guard model client for step-up gating
-	destinationAllowlist *middleware.DestinationAllowlist // RFA-qq0.17: destination allowlist
-	riskConfig           *middleware.RiskConfig           // RFA-qq0.17: risk scoring thresholds
-	uiCapabilityGating   *UICapabilityGating              // RFA-j2d.1: MCP-UI capability gating
-	uiResourceControls   *UIResourceControls              // RFA-j2d.2: UI resource content controls
-	uiResponseProcessor  *UIResponseProcessor             // RFA-j2d.6: UI response processing pipeline
-	spikeRedeemer        middleware.SecretRedeemer        // RFA-a2y.1: SPIKE Nexus or POC secret redeemer
-	sessionStore         middleware.SessionStore          // RFA-hh5.1: session persistence store (InMemory or KeyDB)
-	spiffeTLS            *SPIFFETLSConfig                 // RFA-8z8.1: SPIFFE mTLS config (nil in dev mode)
-	registryStop         func()                           // RFA-dh9: stop function for registry fsnotify watcher
-	mcpTransport         mcpclient.Transport              // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
-	mcpTransportMu       sync.Mutex                       // RFA-9ol: protects lazy initialization of mcpTransport
+	handleStore          *HandleStore                      // RFA-qq0.16: response firewall data handle cache
+	groqGuardClient      middleware.GroqGuardClient        // RFA-qq0.17: guard model client for step-up gating
+	destinationAllowlist *middleware.DestinationAllowlist  // RFA-qq0.17: destination allowlist
+	riskConfig           *middleware.RiskConfig            // RFA-qq0.17: risk scoring thresholds
+	uiCapabilityGating   *UICapabilityGating               // RFA-j2d.1: MCP-UI capability gating
+	uiResourceControls   *UIResourceControls               // RFA-j2d.2: UI resource content controls
+	uiResponseProcessor  *UIResponseProcessor              // RFA-j2d.6: UI response processing pipeline
+	observedToolHashes   *middleware.ObservedToolHashCache // RFA-6fse.4: gateway-owned observed tool metadata hashes
+	spikeRedeemer        middleware.SecretRedeemer         // RFA-a2y.1: SPIKE Nexus or POC secret redeemer
+	sessionStore         middleware.SessionStore           // RFA-hh5.1: session persistence store (InMemory or KeyDB)
+	spiffeTLS            *SPIFFETLSConfig                  // RFA-8z8.1: SPIFFE mTLS config (nil in dev mode)
+	registryStop         func()                            // RFA-dh9: stop function for registry fsnotify watcher
+	mcpTransport         mcpclient.Transport               // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
+	mcpTransportMu       sync.Mutex                        // RFA-9ol: protects lazy initialization of mcpTransport
 }
 
 // New creates a new gateway instance
@@ -86,6 +87,7 @@ func New(cfg *Config) (*Gateway, error) {
 		Endpoint:     cfg.GuardModelEndpoint,
 		ModelName:    cfg.GuardModelName,
 	})
+	observedToolHashes := middleware.NewObservedToolHashCache(5 * time.Minute)
 	// RFA-hh5.1: Select session store based on KeyDB availability.
 	// RFA-hh5.2: Also select rate limit store. Both share the same redis client
 	// when KeyDB is available, enabling distributed session persistence and
@@ -269,6 +271,7 @@ func New(cfg *Config) (*Gateway, error) {
 		uiCapabilityGating:   uiCapabilityGating,
 		uiResourceControls:   uiResourceControls,
 		uiResponseProcessor:  uiResponseProcessor,
+		observedToolHashes:   observedToolHashes,
 		spikeRedeemer:        spikeRedeemer,
 		sessionStore:         sessionStore,
 		registryStop:         registryStop,
@@ -315,11 +318,15 @@ func (g *Gateway) Handler() http.Handler {
 	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                         // 8
 	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy())                                                         // 7
 	handler = middleware.OPAPolicy(handler, g.opa)                                                                                   // 6
-	handler = middleware.ToolRegistryVerify(handler, g.registry)                                                                     // 5
-	handler = middleware.AuditLog(handler, g.auditor)                                                                                // 4
-	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                                                    // 3
-	handler = middleware.BodyCapture(handler)                                                                                        // 2
-	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes)                                                     // 1
+	var toolHashRefresher middleware.ObservedToolHashRefresher
+	if g.config.MCPTransportMode == "mcp" {
+		toolHashRefresher = g.refreshObservedToolHashes
+	}
+	handler = middleware.ToolRegistryVerify(handler, g.registry, g.observedToolHashes, toolHashRefresher) // 5
+	handler = middleware.AuditLog(handler, g.auditor)                                                     // 4
+	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                         // 3
+	handler = middleware.BodyCapture(handler)                                                             // 2
+	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes)                          // 1
 
 	// Add endpoints
 	mux := http.NewServeMux()
@@ -562,6 +569,9 @@ func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, metho
 			})
 			return
 		}
+		// RFA-6fse.4: Apply rug-pull stripping + seed observed hash cache in MCP transport mode too.
+		raw = g.filterAndCacheToolsListResponse(r, raw, server)
+
 		respBytes := g.uiResponseProcessor.ProcessToolsListResponse(raw, server, tenant)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -696,6 +706,62 @@ func extractUIResourceFromMCPResult(result json.RawMessage, resourceURI string) 
 	return nil, mimeType, fmt.Errorf("no resource contents found")
 }
 
+// refreshObservedToolHashes performs an internal tools/list call upstream and
+// computes per-tool hashes over (description + canonicalized input schema).
+//
+// RFA-6fse.4: Used by ToolRegistryVerify to enforce rug-pull protection without
+// requiring client-supplied tool_hash.
+func (g *Gateway) refreshObservedToolHashes(ctx context.Context, server string) (map[string]string, error) {
+	if err := g.ensureMCPTransportInitialized(ctx); err != nil {
+		return nil, err
+	}
+
+	rpcReq := &mcpclient.JSONRPCRequest{
+		JSONRPC: "2.0",
+		ID:      1,
+		Method:  "tools/list",
+		Params:  map[string]any{},
+	}
+
+	retryCfg := mcpclient.DefaultRetryConfig()
+	reinitFn := func(retryCtx context.Context) error {
+		g.mcpTransportMu.Lock()
+		g.mcpTransport = nil
+		g.mcpTransportMu.Unlock()
+		return g.ensureMCPTransportInitialized(retryCtx)
+	}
+
+	rpcResp, err := mcpclient.SendWithRetry(ctx, g.mcpTransport, rpcReq, retryCfg, reinitFn)
+	if err != nil {
+		return nil, err
+	}
+	if rpcResp.Error != nil {
+		return nil, fmt.Errorf("upstream tools/list error: code=%d message=%s", rpcResp.Error.Code, rpcResp.Error.Message)
+	}
+
+	var result struct {
+		Tools []struct {
+			Name        string                 `json:"name"`
+			Description string                 `json:"description"`
+			InputSchema map[string]interface{} `json:"inputSchema"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(rpcResp.Result, &result); err != nil {
+		return nil, fmt.Errorf("failed to decode tools/list result: %w", err)
+	}
+
+	hashes := make(map[string]string, len(result.Tools))
+	for _, t := range result.Tools {
+		if t.Name == "" {
+			continue
+		}
+		hashes[t.Name] = middleware.ComputeHash(t.Description, t.InputSchema)
+	}
+
+	g.observedToolHashes.SetMany(server, hashes)
+	return hashes, nil
+}
+
 // ensureMCPTransportInitialized performs lazy initialization of the MCP transport.
 // Thread-safe: only the first caller initializes; subsequent callers wait.
 //
@@ -783,6 +849,11 @@ func (g *Gateway) handleToolsListResponse(
 
 	responseBody := capture.body.Bytes()
 
+	// RFA-6fse.4: Gateway-owned rug-pull protection for discovery.
+	// Strip tools whose observed tools/list metadata hash mismatches the registry baseline.
+	// Also seed the observed hash cache for subsequent tools/call verification.
+	responseBody = g.filterAndCacheToolsListResponse(r, responseBody, server)
+
 	// RFA-j2d.6: Apply full tools/list processing pipeline
 	// (capability gating from j2d.1 + CSP/permissions mediation from j2d.3)
 	processedBody := g.uiResponseProcessor.ProcessToolsListResponse(responseBody, server, tenant)
@@ -791,6 +862,84 @@ func (g *Gateway) handleToolsListResponse(
 	w.Header().Del("Content-Length") // Body size may have changed
 	w.WriteHeader(capture.statusCode)
 	_, _ = w.Write(processedBody)
+}
+
+// filterAndCacheToolsListResponse seeds the observed tool hash cache from a tools/list
+// response and strips tools that mismatch the registry baseline hash.
+//
+// This is client-visible (discovery) protection. Invocation-time protection is
+// enforced by ToolRegistryVerify using the same observed hash cache.
+func (g *Gateway) filterAndCacheToolsListResponse(r *http.Request, responseBody []byte, server string) []byte {
+	if len(responseBody) == 0 || g.registry == nil || g.observedToolHashes == nil {
+		return responseBody
+	}
+
+	// Parse JSON-RPC response envelope.
+	var env map[string]any
+	if err := json.Unmarshal(responseBody, &env); err != nil {
+		return responseBody
+	}
+	rawResult, ok := env["result"]
+	if !ok {
+		return responseBody
+	}
+
+	// Parse tools list result.
+	var result struct {
+		Tools []map[string]any `json:"tools"`
+	}
+	b, _ := json.Marshal(rawResult)
+	if err := json.Unmarshal(b, &result); err != nil {
+		return responseBody
+	}
+
+	filtered := make([]map[string]any, 0, len(result.Tools))
+	observedHashes := make(map[string]string, len(result.Tools))
+
+	for _, tool := range result.Tools {
+		name, _ := tool["name"].(string)
+		desc, _ := tool["description"].(string)
+		schema, _ := tool["inputSchema"].(map[string]any)
+		if schema == nil {
+			// Some servers may omit inputSchema. Use empty schema in hash computation.
+			schema = map[string]any{}
+		}
+
+		if name != "" {
+			observedHash := middleware.ComputeHash(desc, schema)
+			observedHashes[name] = observedHash
+
+			// Only enforce stripping for tools that exist in the baseline registry.
+			allowed, expectedHash := g.registry.VerifyTool(name, "")
+			if allowed && expectedHash != "" && observedHash != expectedHash {
+				// Audit: do not log description or schema (payload may be malicious).
+				if g.auditor != nil {
+					g.auditor.Log(middleware.AuditEvent{
+						SessionID:  middleware.GetSessionID(r.Context()),
+						DecisionID: middleware.GetDecisionID(r.Context()),
+						TraceID:    middleware.GetTraceID(r.Context()),
+						SPIFFEID:   middleware.GetSPIFFEID(r.Context()),
+						Action:     "tool_registry_rugpull_stripped",
+						Result:     fmt.Sprintf("server=%s tool=%s expected_hash=%s observed_hash=%s", server, name, expectedHash, observedHash),
+					})
+				}
+				continue // strip
+			}
+		}
+
+		filtered = append(filtered, tool)
+	}
+
+	// Seed cache for invocation-time enforcement.
+	g.observedToolHashes.SetMany(server, observedHashes)
+
+	// Rewrite response result.tools with filtered list.
+	env["result"] = map[string]any{"tools": filtered}
+	out, err := json.Marshal(env)
+	if err != nil {
+		return responseBody
+	}
+	return out
 }
 
 // handleUIResourceRead handles ui:// resource reads with both request-side

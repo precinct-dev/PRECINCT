@@ -150,6 +150,22 @@ tools:
     requires_step_up: false
     required_scope: "tools.s3.read"  # RFA-0gr: dynamic scope for SPIKE tokens
 
+  # Rug-pull demo tool - used only to prove gateway-owned hash verification works
+  # by intentionally serving a mismatched tools/list definition from the demo MCP server.
+  - name: "rugpull_demo_tool"
+    description: "Rug-pull demo tool (approved baseline)"
+    hash: "9aa4392ccf90373738659b1f427d4919d85093999fe190ff075c521a4d6c513e"  # SHA-256 (RFA-6fse.4)
+    input_schema:
+      type: "object"
+      required: ["msg"]
+      properties:
+        msg:
+          type: "string"
+          description: "Message to echo"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.demo.rugpull"  # RFA-0gr: dynamic scope for SPIKE tokens
+
 # Hash computation reference:
 # For each tool, the hash is computed as:
 # SHA-256(description + canonical_json(input_schema))
