@@ -13,39 +13,24 @@ import (
 )
 
 func newStatusCmd() *cobra.Command {
-	return &cobra.Command{
+	cmd := &cobra.Command{
 		Use:   "status",
-		Short: "Show gateway health",
+		Short: "Show health for gateway + supporting infrastructure",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gatewayURL := strings.TrimSpace(viper.GetString(cfgGatewayURL))
-			if gatewayURL == "" {
-				return errors.New("gateway URL is empty (set --gateway-url or AGW_GATEWAY_URL)")
-			}
-
-			ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
 			defer cancel()
 
-			client := agw.NewClient(gatewayURL)
-			h, err := client.GetHealth(ctx)
+			component := strings.ToLower(strings.TrimSpace(viper.GetString("component")))
+			cfg := agw.DefaultConfig()
+			cfg.GatewayURL = strings.TrimSpace(viper.GetString(cfgGatewayURL))
+			cfg.KeyDBURL = strings.TrimSpace(viper.GetString(cfgKeyDBURL))
+			cfg.PhoenixURL = strings.TrimSpace(viper.GetString(cfgPhoenixURL))
+			cfg.OtelHealthURL = strings.TrimSpace(viper.GetString(cfgOtelURL))
+			cfg.Component = component
+
+			out, allOK, err := agw.CollectStatus(ctx, cfg, agw.DefaultDeps())
 			if err != nil {
 				return err
-			}
-
-			status := "unknown"
-			if h.Status != "" {
-				status = strings.ToLower(h.Status)
-			}
-
-			out := agw.StatusOutput{
-				Components: []agw.ComponentStatus{
-					{
-						Name:   "gateway",
-						Status: status,
-						Details: map[string]any{
-							"circuit_breaker": map[string]any{"state": h.CircuitBreakerState},
-						},
-					},
-				},
 			}
 
 			format := strings.ToLower(strings.TrimSpace(viper.GetString(cfgFormat)))
@@ -66,12 +51,14 @@ func newStatusCmd() *cobra.Command {
 				return fmt.Errorf("invalid --format %q (expected json|table)", format)
 			}
 
-			// AC6: Exit 0 if healthy.
-			if status != "ok" {
-				return fmt.Errorf("gateway not ok: status=%s", status)
+			// AC5: Exit code 0 when all components are OK; exit code 1 otherwise.
+			if !allOK {
+				return errors.New("one or more components not OK")
 			}
 			return nil
 		},
 	}
+	cmd.Flags().String("component", "", "Show health for a single component (gateway|keydb|spire-server|spike-nexus|phoenix|otel-collector)")
+	_ = viper.BindPFlag("component", cmd.Flags().Lookup("component"))
+	return cmd
 }
-
