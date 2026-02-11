@@ -360,6 +360,7 @@ func (g *Gateway) Handler() http.Handler {
 	mux.Handle("/admin/circuit-breakers", http.HandlerFunc(g.adminCircuitBreakersHandler))
 	mux.Handle("/admin/circuit-breakers/", http.HandlerFunc(g.adminCircuitBreakersHandler))
 	mux.Handle("/admin/circuit-breakers/reset", http.HandlerFunc(g.adminCircuitBreakersResetHandler))
+	mux.Handle("/admin/policy/reload", http.HandlerFunc(g.adminPolicyReloadHandler))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
@@ -1269,6 +1270,15 @@ type circuitBreakersResetResponse struct {
 	Reset []circuitBreakerResetEntry `json:"reset"`
 }
 
+type policyReloadResponse struct {
+	Status         string `json:"status"`
+	Timestamp      string `json:"timestamp,omitempty"`
+	RegistryTools  int    `json:"registry_tools,omitempty"`
+	OPAPolicies    int    `json:"opa_policies,omitempty"`
+	CosignVerified bool   `json:"cosign_verified"`
+	Error          string `json:"error,omitempty"`
+}
+
 // adminCircuitBreakersHandler serves:
 //   - GET /admin/circuit-breakers
 //   - GET /admin/circuit-breakers/<tool>
@@ -1400,6 +1410,50 @@ func (g *Gateway) adminCircuitBreakersResetHandler(w http.ResponseWriter, r *htt
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(circuitBreakersResetResponse{Reset: result})
+}
+
+// adminPolicyReloadHandler serves:
+//   - POST /admin/policy/reload
+//
+// It triggers an explicit hot-reload for both tool registry and OPA policies
+// through the same public reload paths used by their fsnotify watchers.
+func (g *Gateway) adminPolicyReloadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	registryResult, err := g.registry.Reload()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(policyReloadResponse{
+			Status:         "failed",
+			Error:          err.Error(),
+			CosignVerified: false,
+		})
+		return
+	}
+
+	opaResult, err := g.opa.Reload()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(policyReloadResponse{
+			Status:         "failed",
+			Error:          err.Error(),
+			CosignVerified: registryResult.CosignVerified,
+		})
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(policyReloadResponse{
+		Status:         "reloaded",
+		Timestamp:      time.Now().UTC().Format(time.RFC3339),
+		RegistryTools:  registryResult.ToolCount,
+		OPAPolicies:    opaResult.PolicyCount,
+		CosignVerified: registryResult.CosignVerified,
+	})
 }
 
 // checkUIResourceReadAllowed checks whether a ui:// resource read is permitted.
