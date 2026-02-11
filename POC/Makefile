@@ -1,4 +1,4 @@
-.PHONY: help up down test lint clean logs demo demo-compose demo-k8s k8s-up k8s-down ci benchmark security-scan \
+.PHONY: help up down test lint clean logs demo demo-compose demo-k8s agw-demo k8s-up k8s-down ci benchmark security-scan \
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
        compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
        k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -155,6 +155,38 @@ demo-compose: ## Run E2E demo (Docker Compose)
 
 demo-k8s: ## Run E2E demo (K8s)
 	@bash demo/run.sh k8s
+
+agw-demo: ## Stakeholder demo: validate agw CLI against live Docker Compose stack
+	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
+		echo "Phoenix network not found. Running make phoenix-up..."; \
+		$(MAKE) phoenix-up; \
+	fi
+	@required="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"; \
+	ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+	healthy=1; \
+	for s in $$required; do \
+		line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+		state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+		health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+		if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+			healthy=0; \
+			break; \
+		fi; \
+	done; \
+	if [ "$$healthy" -eq 0 ]; then \
+		echo "Core services not fully healthy. Running make up..."; \
+		$(MAKE) up; \
+	else \
+		echo "Core services already running and healthy. Skipping make up."; \
+	fi
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	@if bash tests/e2e/test_agw_cli.sh; then \
+		echo "agw-demo: PASS"; \
+	else \
+		echo "agw-demo: FAIL"; \
+		exit 1; \
+	fi
 
 # ---------------------------------------------------------------------------
 # Kubernetes (Docker Desktop K8s + local registry)
