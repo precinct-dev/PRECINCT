@@ -8,5 +8,6 @@ func newAuditCmd() *cobra.Command {
 		Short: "Search and analyze gateway audit events",
 	}
 	cmd.AddCommand(newAuditSearchCmd())
+	cmd.AddCommand(newAuditExplainCmd())
 	return cmd
 }
