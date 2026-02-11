@@ -1,7 +1,7 @@
 .PHONY: help up down test lint clean logs demo demo-compose demo-k8s k8s-up k8s-down ci benchmark security-scan \
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
        compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
-       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check \
+       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
        phoenix-up phoenix-down phoenix-reset
 
 # Container image config
@@ -57,6 +57,20 @@ upgrade-check: ## Show current vs latest versions (containers, Go modules, Pytho
 	@bash scripts/upgrade-check.sh --format table
 	@echo ""
 	@bash scripts/upgrade-check.sh --format json
+
+upgrade: ## Upgrade a single component (ex: make upgrade COMPONENT=keydb VERIFY=1)
+	@if [ -z "$(COMPONENT)" ]; then \
+		echo "ERROR: COMPONENT is required (ex: make upgrade COMPONENT=keydb)"; \
+		exit 1; \
+	fi
+	@args="--component $(COMPONENT)"; \
+	if [ "$(VERIFY)" = "1" ]; then args="$$args --verify"; fi; \
+	bash scripts/upgrade.sh $$args
+
+upgrade-all: ## Upgrade all non-pinned components (ex: make upgrade-all VERIFY=1)
+	@args="--all"; \
+	if [ "$(VERIFY)" = "1" ]; then args="$$args --verify"; fi; \
+	bash scripts/upgrade.sh $$args
 
 test: ## Run all tests (unit + OPA)
 	@echo "Running unit tests..."
