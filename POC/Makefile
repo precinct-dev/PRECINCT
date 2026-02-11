@@ -1,7 +1,7 @@
 .PHONY: help up down test lint clean logs demo demo-compose demo-k8s k8s-up k8s-down ci benchmark security-scan \
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
        compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
-       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry \
+       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check \
        phoenix-up phoenix-down phoenix-reset
 
 # Container image config
@@ -52,6 +52,11 @@ repave: ## Repave a single Docker Compose component container (ex: make repave C
 		exit 1; \
 	fi
 	@bash scripts/repave.sh "$(COMPONENT)"
+
+upgrade-check: ## Show current vs latest versions (containers, Go modules, Python deps) in table + JSON
+	@bash scripts/upgrade-check.sh --format table
+	@echo ""
+	@bash scripts/upgrade-check.sh --format json
 
 test: ## Run all tests (unit + OPA)
 	@echo "Running unit tests..."
