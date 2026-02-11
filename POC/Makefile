@@ -38,8 +38,29 @@ up: ## Start Docker Compose stack (waits for all services healthy)
 		exit 1; \
 	fi
 	@echo "Building and starting services (waiting for all health checks)..."
-	docker compose up -d --build --wait --wait-timeout 180
-	@echo "All services healthy."
+	@if docker compose up -d --build --wait --wait-timeout 180; then \
+		echo "All services healthy."; \
+	else \
+		echo "WARN: docker compose --wait timed out. Checking core service readiness..."; \
+		ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+		ok=1; \
+		required_running="spire-server spire-agent spike-keeper-1 spike-nexus keydb mock-mcp-server mock-guard-model mcp-security-gateway"; \
+		for s in $$required_running; do \
+			line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+			state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+			health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+			if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+				ok=0; \
+				echo "  Not ready: $$s (state=$$state health=$$health)"; \
+			fi; \
+		done; \
+		if [ "$$ok" -ne 1 ]; then \
+			echo "ERROR: Compose startup failed and required services are not ready."; \
+			docker compose ps; \
+			exit 1; \
+		fi; \
+		echo "Core services are ready despite compose wait timeout; continuing."; \
+	fi
 	@echo "Running register-spire for any additional entries..."
 	$(MAKE) register-spire
 
