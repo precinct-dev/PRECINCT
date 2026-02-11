@@ -12,6 +12,21 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+// NewKeyDBClient returns a raw *redis.Client for use by commands that operate
+// directly on KeyDB (e.g. rate-limit reset). For higher-level introspection
+// (list/get rate limits), use the KeyDB wrapper below.
+func NewKeyDBClient(keydbURL string) (*redis.Client, error) {
+	keydbURL = strings.TrimSpace(keydbURL)
+	if keydbURL == "" {
+		return nil, fmt.Errorf("keydb url is empty")
+	}
+	opt, err := redis.ParseURL(keydbURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse keydb url: %w", err)
+	}
+	return redis.NewClient(opt), nil
+}
+
 type KeyDB struct {
 	client *redis.Client
 }
@@ -129,4 +144,3 @@ func (k *KeyDB) getByTokensKey(ctx context.Context, key, spiffeID string, rpm, b
 func (k *KeyDB) SetTokensForTest(ctx context.Context, spiffeID string, tokens float64, ttl time.Duration) error {
 	return k.client.Set(ctx, rateLimitTokensKey(spiffeID), strconv.FormatFloat(tokens, 'f', -1, 64), ttl).Err()
 }
-

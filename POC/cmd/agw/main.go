@@ -6,12 +6,13 @@ import (
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }
 
-func run(args []string, stdout, stderr io.Writer) int {
+func run(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	cmd := newRootCmd()
 	cmd.SetArgs(args)
+	cmd.SetIn(stdin)
 	cmd.SetOut(stdout)
 	cmd.SetErr(stderr)
 
@@ -23,4 +24,3 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	return 0
 }
-
