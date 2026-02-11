@@ -356,6 +356,9 @@ func (g *Gateway) Handler() http.Handler {
 	// to the gateway namespace in k8s). Disabled by default.
 	mux.Handle("/__demo__/rugpull/on", http.HandlerFunc(g.demoRugpullToggleHandler(true)))
 	mux.Handle("/__demo__/rugpull/off", http.HandlerFunc(g.demoRugpullToggleHandler(false)))
+	// Admin endpoints (not exposed externally in the POC; no auth required).
+	mux.Handle("/admin/circuit-breakers", http.HandlerFunc(g.adminCircuitBreakersHandler))
+	mux.Handle("/admin/circuit-breakers/", http.HandlerFunc(g.adminCircuitBreakersHandler))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
@@ -1236,6 +1239,88 @@ func (g *Gateway) demoRugpullToggleHandler(enable bool) http.HandlerFunc {
 		w.WriteHeader(resp.StatusCode)
 		_, _ = w.Write(body)
 	}
+}
+
+type circuitBreakerEntry struct {
+	Tool               string     `json:"tool"`
+	State              string     `json:"state"`
+	Failures           int        `json:"failures"`
+	Threshold          int        `json:"threshold"`
+	ResetTimeoutSec    int        `json:"reset_timeout_seconds"`
+	LastStateChangeUTC *time.Time `json:"last_state_change"`
+}
+
+type circuitBreakersResponse struct {
+	CircuitBreakers []circuitBreakerEntry `json:"circuit_breakers"`
+}
+
+// adminCircuitBreakersHandler serves:
+//   - GET /admin/circuit-breakers
+//   - GET /admin/circuit-breakers/<tool>
+func (g *Gateway) adminCircuitBreakersHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	tool := strings.TrimPrefix(r.URL.Path, "/admin/circuit-breakers")
+	tool = strings.TrimPrefix(tool, "/")
+
+	tools := g.registry.ToolNames()
+
+	// Single-tool view
+	if tool != "" {
+		found := false
+		for _, t := range tools {
+			if t == tool {
+				found = true
+				break
+			}
+		}
+		if !found {
+			http.NotFound(w, r)
+			return
+		}
+
+		snap := g.circuitBreaker.Snapshot()
+		resetSec := int(snap.ResetTimeout.Seconds())
+		if snap.ResetTimeout > 0 && resetSec == 0 {
+			resetSec = 1
+		}
+		entry := circuitBreakerEntry{
+			Tool:               tool,
+			State:              snap.State.String(),
+			Failures:           snap.Failures,
+			Threshold:          snap.Threshold,
+			ResetTimeoutSec:    resetSec,
+			LastStateChangeUTC: snap.LastStateChange,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(circuitBreakersResponse{CircuitBreakers: []circuitBreakerEntry{entry}})
+		return
+	}
+
+	// All tools
+	snap := g.circuitBreaker.Snapshot()
+	resetSec := int(snap.ResetTimeout.Seconds())
+	if snap.ResetTimeout > 0 && resetSec == 0 {
+		resetSec = 1
+	}
+	out := make([]circuitBreakerEntry, 0, len(tools))
+	for _, t := range tools {
+		out = append(out, circuitBreakerEntry{
+			Tool:               t,
+			State:              snap.State.String(),
+			Failures:           snap.Failures,
+			Threshold:          snap.Threshold,
+			ResetTimeoutSec:    resetSec,
+			LastStateChangeUTC: snap.LastStateChange,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(circuitBreakersResponse{CircuitBreakers: out})
 }
 
 // checkUIResourceReadAllowed checks whether a ui:// resource read is permitted.

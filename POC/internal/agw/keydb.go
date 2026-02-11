@@ -1,0 +1,132 @@
+package agw
+
+import (
+	"context"
+	"fmt"
+	"math"
+	"sort"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+)
+
+type KeyDB struct {
+	client *redis.Client
+}
+
+func NewKeyDB(url string) (*KeyDB, error) {
+	opt, err := redis.ParseURL(url)
+	if err != nil {
+		return nil, fmt.Errorf("parse keydb url: %w", err)
+	}
+	return &KeyDB{client: redis.NewClient(opt)}, nil
+}
+
+func (k *KeyDB) Close() error { return k.client.Close() }
+
+func rateLimitTokensKey(spiffeID string) string {
+	// Must match internal/gateway/middleware/rate_limiter.go
+	return "ratelimit:" + spiffeID + ":tokens"
+}
+
+func parseSpiffeIDFromTokensKey(key string) (string, bool) {
+	if !strings.HasPrefix(key, "ratelimit:") || !strings.HasSuffix(key, ":tokens") {
+		return "", false
+	}
+	spiffeID := strings.TrimSuffix(strings.TrimPrefix(key, "ratelimit:"), ":tokens")
+	if spiffeID == "" {
+		return "", false
+	}
+	return spiffeID, true
+}
+
+func (k *KeyDB) ListRateLimits(ctx context.Context, rpm, burst int) ([]RateLimitEntry, error) {
+	var cursor uint64
+	var keys []string
+
+	for {
+		batch, next, err := k.client.Scan(ctx, cursor, "ratelimit:*:tokens", 200).Result()
+		if err != nil {
+			return nil, fmt.Errorf("scan ratelimit keys: %w", err)
+		}
+		keys = append(keys, batch...)
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+
+	entries := make([]RateLimitEntry, 0, len(keys))
+	for _, key := range keys {
+		spiffeID, ok := parseSpiffeIDFromTokensKey(key)
+		if !ok {
+			continue
+		}
+		e, err := k.getByTokensKey(ctx, key, spiffeID, rpm, burst)
+		if err != nil {
+			// Treat missing keys as non-entries; other errors are fatal.
+			if err == redis.Nil {
+				continue
+			}
+			return nil, err
+		}
+		if e != nil {
+			entries = append(entries, *e)
+		}
+	}
+
+	sort.Slice(entries, func(i, j int) bool { return entries[i].SPIFFEID < entries[j].SPIFFEID })
+	return entries, nil
+}
+
+func (k *KeyDB) GetRateLimit(ctx context.Context, spiffeID string, rpm, burst int) (*RateLimitEntry, error) {
+	key := rateLimitTokensKey(spiffeID)
+	e, err := k.getByTokensKey(ctx, key, spiffeID, rpm, burst)
+	if err == redis.Nil {
+		return nil, nil
+	}
+	return e, err
+}
+
+func (k *KeyDB) getByTokensKey(ctx context.Context, key, spiffeID string, rpm, burst int) (*RateLimitEntry, error) {
+	val, err := k.client.Get(ctx, key).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := strconv.ParseFloat(strings.TrimSpace(val), 64)
+	if err != nil {
+		return nil, fmt.Errorf("parse tokens for %s: %w", key, err)
+	}
+
+	ttl, err := k.client.TTL(ctx, key).Result()
+	if err != nil {
+		return nil, fmt.Errorf("ttl for %s: %w", key, err)
+	}
+	ttlSeconds := int(ttl.Seconds())
+	if ttlSeconds < 0 {
+		ttlSeconds = 0
+	}
+
+	remaining := int(math.Floor(f))
+	if remaining < 0 {
+		remaining = 0
+	}
+
+	return &RateLimitEntry{
+		SPIFFEID:    spiffeID,
+		Remaining:   remaining,
+		Limit:       rpm,
+		Burst:       burst,
+		TTLSeconds:  ttlSeconds,
+		ObservedKey: key,
+	}, nil
+}
+
+// For tests, allow setting TTL without relying on internal store TTL behavior.
+func (k *KeyDB) SetTokensForTest(ctx context.Context, spiffeID string, tokens float64, ttl time.Duration) error {
+	return k.client.Set(ctx, rateLimitTokensKey(spiffeID), strconv.FormatFloat(tokens, 'f', -1, 64), ttl).Err()
+}
+
