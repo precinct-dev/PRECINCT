@@ -32,9 +32,15 @@ type OPAEngine struct {
 	query           *rego.PreparedEvalQuery
 	contextQuery    *rego.PreparedEvalQuery  // RFA-xwc: query for mcp.context policy
 	uiPolicyQueries *uiPolicyPreparedQueries // RFA-j2d.7: queries for mcp.ui.policy rules
+	policyCount     int
 	mu              sync.RWMutex
 	watcher         *fsnotify.Watcher
 	stopChan        chan struct{}
+}
+
+// OPAEngineReloadResult captures metadata from a policy reload operation.
+type OPAEngineReloadResult struct {
+	PolicyCount int
 }
 
 // uiPolicyPreparedQueries holds the compiled queries for each rule in the
@@ -233,10 +239,34 @@ func (e *OPAEngine) loadPolicies() error {
 	e.query = &prepared
 	e.contextQuery = contextQueryPtr
 	e.uiPolicyQueries = uiQueries
+	e.policyCount = 0
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		if filepath.Ext(file.Name()) == ".rego" {
+			e.policyCount++
+		}
+	}
 	e.mu.Unlock()
 
 	log.Printf("OPA policies loaded successfully from %s", e.policyDir)
 	return nil
+}
+
+// PolicyCount returns the number of compiled .rego policy files in the current engine state.
+func (e *OPAEngine) PolicyCount() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.policyCount
+}
+
+// Reload performs a policy reload from disk and returns summary metadata.
+func (e *OPAEngine) Reload() (OPAEngineReloadResult, error) {
+	if err := e.loadPolicies(); err != nil {
+		return OPAEngineReloadResult{}, err
+	}
+	return OPAEngineReloadResult{PolicyCount: e.PolicyCount()}, nil
 }
 
 // Evaluate evaluates OPA policy with given input
@@ -444,7 +474,7 @@ func (e *OPAEngine) watchLoop() {
 				ext := filepath.Ext(event.Name)
 				if ext == ".rego" || ext == ".yaml" || ext == ".yml" {
 					log.Printf("Policy file changed: %s, reloading...", event.Name)
-					if err := e.loadPolicies(); err != nil {
+					if _, err := e.Reload(); err != nil {
 						log.Printf("Warning: failed to reload policies: %v (keeping previous policy)", err)
 					} else {
 						log.Printf("Policies reloaded successfully")

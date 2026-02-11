@@ -184,6 +184,15 @@ type ToolRegistry struct {
 	publicKey   ed25519.PublicKey               // RFA-lo1.4: Ed25519 public key for signature verification (nil = dev mode)
 }
 
+// ToolRegistryReloadResult captures the outcome of an explicit registry reload.
+// CosignVerified is true only when a public key is configured and signature
+// verification passed for this reload operation.
+type ToolRegistryReloadResult struct {
+	ToolCount       int
+	UIResourceCount int
+	CosignVerified  bool
+}
+
 // NewToolRegistry creates a new tool registry from a config file.
 // The config file contains both tool definitions and UI resource registrations.
 func NewToolRegistry(configPath string) (*ToolRegistry, error) {
@@ -410,38 +419,29 @@ func (tr *ToolRegistry) Watch() (stop func(), err error) {
 	return stopFn, nil
 }
 
-// reloadWithAttestation performs the hot-reload logic with optional signature
-// verification. When a public key is configured, the companion .sig file is
-// checked before accepting the new registry data. On verification failure,
-// the old registry is kept and a critical audit event is logged.
-//
-// RFA-lo1.4: Central reload logic called by Watch() on file change.
-func (tr *ToolRegistry) reloadWithAttestation() {
-	// Read the YAML data first (we need it for both loading and sig verification)
+// Reload performs the same registry hot-reload path used by fsnotify.
+// It validates cosign signatures when a public key is configured, then atomically
+// swaps tool/UI-resource maps on success.
+func (tr *ToolRegistry) Reload() (ToolRegistryReloadResult, error) {
+	result := ToolRegistryReloadResult{}
+
+	// Read the YAML data first (used for both parse and optional signature verification).
 	yamlData, err := os.ReadFile(tr.configPath)
 	if err != nil {
-		log.Printf("[tool-registry] reload failed, keeping old registry: failed to read config file: %v", err)
-		return
+		return result, fmt.Errorf("failed to read config file: %w", err)
 	}
 
 	if tr.publicKey != nil {
-		// Attestation mode: verify signature before accepting update
 		if sigErr := tr.readAndVerifySigFile(yamlData, tr.configPath); sigErr != nil {
-			log.Printf("[CRITICAL] [tool-registry] signature verification failed, keeping old registry: %v", sigErr)
-			log.Printf("[AUDIT] registry_reload_rejected: signature_verification_failed path=%s", tr.configPath)
-			return
+			return result, sigErr
 		}
-		log.Printf("[tool-registry] signature verification passed for %s", tr.configPath)
-	} else {
-		// Dev mode: accept without verification but warn
-		log.Printf("[tool-registry] WARNING: accepting unsigned registry update (no public key configured)")
+		result.CosignVerified = true
 	}
 
-	// Parse and atomically swap
+	// Parse and atomically swap.
 	var config ToolRegistryConfig
 	if err := yaml.Unmarshal(yamlData, &config); err != nil {
-		log.Printf("[tool-registry] reload failed, keeping old registry: failed to parse config file: %v", err)
-		return
+		return result, fmt.Errorf("failed to parse config file: %w", err)
 	}
 
 	newTools := make(map[string]ToolDefinition, len(config.Tools))
@@ -459,11 +459,38 @@ func (tr *ToolRegistry) reloadWithAttestation() {
 	tr.uiResources = newUIResources
 	tr.mu.Unlock()
 
-	tr.mu.RLock()
-	toolCount := len(tr.tools)
-	uiCount := len(tr.uiResources)
-	tr.mu.RUnlock()
-	log.Printf("[tool-registry] reload successful: %d tools, %d ui_resources", toolCount, uiCount)
+	result.ToolCount = len(newTools)
+	result.UIResourceCount = len(newUIResources)
+	return result, nil
+}
+
+// reloadWithAttestation performs the hot-reload logic with optional signature
+// verification. When a public key is configured, the companion .sig file is
+// checked before accepting the new registry data. On verification failure,
+// the old registry is kept and a critical audit event is logged.
+//
+// RFA-lo1.4: Central reload logic called by Watch() on file change.
+func (tr *ToolRegistry) reloadWithAttestation() {
+	if tr.publicKey == nil {
+		// Dev mode: accept without verification but warn.
+		log.Printf("[tool-registry] WARNING: accepting unsigned registry update (no public key configured)")
+	}
+
+	result, err := tr.Reload()
+	if err != nil {
+		if tr.publicKey != nil && (strings.Contains(err.Error(), "signature") || strings.Contains(err.Error(), ".sig")) {
+			log.Printf("[CRITICAL] [tool-registry] signature verification failed, keeping old registry: %v", err)
+			log.Printf("[AUDIT] registry_reload_rejected: signature_verification_failed path=%s", tr.configPath)
+			return
+		}
+		log.Printf("[tool-registry] reload failed, keeping old registry: %v", err)
+		return
+	}
+
+	if result.CosignVerified {
+		log.Printf("[tool-registry] signature verification passed for %s", tr.configPath)
+	}
+	log.Printf("[tool-registry] reload successful: %d tools, %d ui_resources", result.ToolCount, result.UIResourceCount)
 }
 
 // VerifyTool checks if a tool is allowed and matches expected hash

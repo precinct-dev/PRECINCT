@@ -2,7 +2,11 @@ package gateway
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -3819,6 +3823,165 @@ func TestAdminCircuitBreakers_Reset(t *testing.T) {
 		expected := "unknown tool: does-not-exist"
 		if parsed["error"] != expected {
 			t.Fatalf("expected error=%q, got %q", expected, parsed["error"])
+		}
+	})
+}
+
+func TestAdminPolicyReload(t *testing.T) {
+	newOPA := func(t *testing.T) *middleware.OPAEngine {
+		t.Helper()
+		opa, err := middleware.NewOPAEngine(testutil.OPAPolicyDir(), middleware.OPAEngineConfig{})
+		if err != nil {
+			t.Fatalf("NewOPAEngine: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = opa.Close()
+		})
+		return opa
+	}
+
+	t.Run("success", func(t *testing.T) {
+		reg, err := middleware.NewToolRegistry(writeTempToolRegistry(t))
+		if err != nil {
+			t.Fatalf("NewToolRegistry: %v", err)
+		}
+
+		g := &Gateway{
+			registry: reg,
+			opa:      newOPA(t),
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/policy/reload", nil)
+		rec := httptest.NewRecorder()
+		g.adminPolicyReloadHandler(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Status         string `json:"status"`
+			Timestamp      string `json:"timestamp"`
+			RegistryTools  int    `json:"registry_tools"`
+			OPAPolicies    int    `json:"opa_policies"`
+			CosignVerified bool   `json:"cosign_verified"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if parsed.Status != "reloaded" {
+			t.Fatalf("expected status=reloaded, got %q", parsed.Status)
+		}
+		if _, err := time.Parse(time.RFC3339, parsed.Timestamp); err != nil {
+			t.Fatalf("expected RFC3339 timestamp, got %q (err=%v)", parsed.Timestamp, err)
+		}
+		if parsed.RegistryTools != 2 {
+			t.Fatalf("expected registry_tools=2, got %d", parsed.RegistryTools)
+		}
+		if parsed.OPAPolicies <= 0 {
+			t.Fatalf("expected opa_policies > 0, got %d", parsed.OPAPolicies)
+		}
+		if parsed.CosignVerified {
+			t.Fatalf("expected cosign_verified=false in dev mode, got true")
+		}
+	})
+
+	t.Run("registry_parse_failure_returns_400", func(t *testing.T) {
+		configPath := writeTempToolRegistry(t)
+		reg, err := middleware.NewToolRegistry(configPath)
+		if err != nil {
+			t.Fatalf("NewToolRegistry: %v", err)
+		}
+		if err := os.WriteFile(configPath, []byte("tools: ["), 0644); err != nil {
+			t.Fatalf("write invalid yaml: %v", err)
+		}
+
+		g := &Gateway{
+			registry: reg,
+			opa:      newOPA(t),
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/policy/reload", nil)
+		rec := httptest.NewRecorder()
+		g.adminPolicyReloadHandler(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Status         string `json:"status"`
+			Error          string `json:"error"`
+			CosignVerified bool   `json:"cosign_verified"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if parsed.Status != "failed" {
+			t.Fatalf("expected status=failed, got %q", parsed.Status)
+		}
+		if !strings.Contains(parsed.Error, "failed to parse config file") {
+			t.Fatalf("expected parse error, got %q", parsed.Error)
+		}
+		if parsed.CosignVerified {
+			t.Fatalf("expected cosign_verified=false on failure")
+		}
+	})
+
+	t.Run("cosign_verification_failure_returns_400", func(t *testing.T) {
+		configPath := writeTempToolRegistry(t)
+		reg, err := middleware.NewToolRegistry(configPath)
+		if err != nil {
+			t.Fatalf("NewToolRegistry: %v", err)
+		}
+
+		pub, _, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			t.Fatalf("GenerateKey: %v", err)
+		}
+		pubDER, err := x509.MarshalPKIXPublicKey(pub)
+		if err != nil {
+			t.Fatalf("MarshalPKIXPublicKey: %v", err)
+		}
+		pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+		if err := reg.SetPublicKey(pubPEM); err != nil {
+			t.Fatalf("SetPublicKey: %v", err)
+		}
+
+		invalidSig := base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize))
+		if err := os.WriteFile(configPath+".sig", []byte(invalidSig), 0644); err != nil {
+			t.Fatalf("write invalid sig: %v", err)
+		}
+
+		g := &Gateway{
+			registry: reg,
+			opa:      newOPA(t),
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/policy/reload", nil)
+		rec := httptest.NewRecorder()
+		g.adminPolicyReloadHandler(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Status         string `json:"status"`
+			Error          string `json:"error"`
+			CosignVerified bool   `json:"cosign_verified"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if parsed.Status != "failed" {
+			t.Fatalf("expected status=failed, got %q", parsed.Status)
+		}
+		if !strings.Contains(parsed.Error, "signature verification failed") {
+			t.Fatalf("expected signature verification error, got %q", parsed.Error)
+		}
+		if parsed.CosignVerified {
+			t.Fatalf("expected cosign_verified=false when verification fails")
 		}
 	})
 }
