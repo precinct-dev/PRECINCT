@@ -14,6 +14,8 @@ const (
 	cfgOtelURL          = "otel_health_url"
 	cfgOPAPolicyDir     = "opa_policy_dir"
 	cfgToolRegistryPath = "tool_registry"
+	cfgAuditSource      = "audit_source"
+	cfgAuditLogPath     = "audit_log_path"
 	cfgFormat           = "format"
 )
 
@@ -44,6 +46,8 @@ func newRootCmd() *cobra.Command {
 	_ = viper.BindEnv(cfgOtelURL, "AGW_OTEL_HEALTH_URL")
 	_ = viper.BindEnv(cfgOPAPolicyDir, "AGW_OPA_POLICY_DIR")
 	_ = viper.BindEnv(cfgToolRegistryPath, "AGW_TOOL_REGISTRY")
+	_ = viper.BindEnv(cfgAuditSource, "AGW_AUDIT_SOURCE")
+	_ = viper.BindEnv(cfgAuditLogPath, "AGW_AUDIT_LOG_PATH")
 	_ = viper.BindPFlag(cfgGatewayURL, rootCmd.PersistentFlags().Lookup("gateway-url"))
 	_ = viper.BindPFlag(cfgKeyDBURL, rootCmd.PersistentFlags().Lookup("keydb-url"))
 	_ = viper.BindPFlag(cfgPhoenixURL, rootCmd.PersistentFlags().Lookup("phoenix-url"))
@@ -55,6 +59,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newStatusCmd())
 	rootCmd.AddCommand(newComplianceCmd())
 	rootCmd.AddCommand(newInspectCmd())
+	rootCmd.AddCommand(newAuditCmd())
 	rootCmd.AddCommand(newResetCmd())
 	return rootCmd
 }

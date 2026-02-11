@@ -332,3 +332,74 @@ func TestAgwResetRateLimit_AllConfirm_DeletesOnlyRatelimit(t *testing.T) {
 		t.Fatalf("expected non-ratelimit keys to remain")
 	}
 }
+
+func TestAgwAuditSearch_FileSource_JSONDecisionID(t *testing.T) {
+	tmp := t.TempDir()
+	logPath := filepath.Join(tmp, "audit.jsonl")
+	lines := []string{
+		`{"timestamp":"2026-02-11T09:00:00Z","decision_id":"d-1","spiffe_id":"spiffe://poc.local/agents/a/dev","tool":"tavily_search","result":"allowed","status_code":200}`,
+		`{"timestamp":"2026-02-11T09:10:00Z","decision_id":"d-2","spiffe_id":"spiffe://poc.local/agents/b/dev","tool":"bash","result":"denied","status_code":403}`,
+	}
+	if err := os.WriteFile(logPath, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{
+			"audit", "search",
+			"--source", "file",
+			"--audit-log-path", logPath,
+			"--decision-id", "d-2",
+			"--format", "json",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+
+	var parsed []struct {
+		DecisionID string `json:"decision_id"`
+		Tool       string `json:"tool"`
+		Result     string `json:"result"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid json: %v output=%q", err, stdout.String())
+	}
+	if len(parsed) != 1 {
+		t.Fatalf("expected one result, got %+v", parsed)
+	}
+	if parsed[0].DecisionID != "d-2" || parsed[0].Tool != "bash" || parsed[0].Result != "denied" {
+		t.Fatalf("unexpected result: %+v", parsed[0])
+	}
+}
+
+func TestAgwAuditSearch_InvalidLast_Exit1(t *testing.T) {
+	tmp := t.TempDir()
+	logPath := filepath.Join(tmp, "audit.jsonl")
+	if err := os.WriteFile(logPath, []byte(`{"timestamp":"2026-02-11T09:00:00Z","decision_id":"d-1"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{
+			"audit", "search",
+			"--source", "file",
+			"--audit-log-path", logPath,
+			"--last", "9x",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("expected exit 1, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "invalid --last") {
+		t.Fatalf("expected invalid --last error, got %q", stderr.String())
+	}
+}
