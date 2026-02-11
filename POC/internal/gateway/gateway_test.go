@@ -3698,3 +3698,127 @@ func TestAdminCircuitBreakers_ListAndGet(t *testing.T) {
 		}
 	})
 }
+
+func TestAdminCircuitBreakers_Reset(t *testing.T) {
+	reg, err := middleware.NewToolRegistry(writeTempToolRegistry(t))
+	if err != nil {
+		t.Fatalf("NewToolRegistry: %v", err)
+	}
+
+	cb := middleware.NewCircuitBreaker(middleware.CircuitBreakerConfig{
+		FailureThreshold: 5,
+		ResetTimeout:     time.Hour,
+		SuccessThreshold: 2,
+	}, nil)
+
+	g := &Gateway{
+		registry:       reg,
+		circuitBreaker: cb,
+	}
+
+	t.Run("reset_specific_tool", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			cb.RecordFailure()
+		}
+
+		body := bytes.NewBufferString(`{"tool":"bash"}`)
+		req := httptest.NewRequest(http.MethodPost, "/admin/circuit-breakers/reset", body)
+		rec := httptest.NewRecorder()
+
+		g.adminCircuitBreakersResetHandler(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Reset []struct {
+				Tool          string `json:"tool"`
+				PreviousState string `json:"previous_state"`
+				NewState      string `json:"new_state"`
+			} `json:"reset"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+
+		if len(parsed.Reset) != 1 {
+			t.Fatalf("expected 1 reset entry, got %d", len(parsed.Reset))
+		}
+		if parsed.Reset[0].Tool != "bash" {
+			t.Fatalf("expected tool=bash, got %q", parsed.Reset[0].Tool)
+		}
+		if parsed.Reset[0].PreviousState != "open" {
+			t.Fatalf("expected previous_state=open, got %q", parsed.Reset[0].PreviousState)
+		}
+		if parsed.Reset[0].NewState != "closed" {
+			t.Fatalf("expected new_state=closed, got %q", parsed.Reset[0].NewState)
+		}
+		if cb.State() != middleware.CircuitClosed {
+			t.Fatalf("expected circuit breaker closed, got %s", cb.State().String())
+		}
+	})
+
+	t.Run("reset_all_tools", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			cb.RecordFailure()
+		}
+
+		body := bytes.NewBufferString(`{"tool":"*"}`)
+		req := httptest.NewRequest(http.MethodPost, "/admin/circuit-breakers/reset", body)
+		rec := httptest.NewRecorder()
+
+		g.adminCircuitBreakersResetHandler(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Reset []struct {
+				Tool          string `json:"tool"`
+				PreviousState string `json:"previous_state"`
+				NewState      string `json:"new_state"`
+			} `json:"reset"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+
+		if len(parsed.Reset) != 2 {
+			t.Fatalf("expected 2 reset entries, got %d", len(parsed.Reset))
+		}
+		for _, e := range parsed.Reset {
+			if e.PreviousState != "open" {
+				t.Fatalf("expected previous_state=open, got %q", e.PreviousState)
+			}
+			if e.NewState != "closed" {
+				t.Fatalf("expected new_state=closed, got %q", e.NewState)
+			}
+		}
+		if cb.State() != middleware.CircuitClosed {
+			t.Fatalf("expected circuit breaker closed, got %s", cb.State().String())
+		}
+	})
+
+	t.Run("unknown_tool_404", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"tool":"does-not-exist"}`)
+		req := httptest.NewRequest(http.MethodPost, "/admin/circuit-breakers/reset", body)
+		rec := httptest.NewRecorder()
+
+		g.adminCircuitBreakersResetHandler(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		expected := "unknown tool: does-not-exist"
+		if parsed["error"] != expected {
+			t.Fatalf("expected error=%q, got %q", expected, parsed["error"])
+		}
+	})
+}
