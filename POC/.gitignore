@@ -1,6 +1,7 @@
 data/
 
 # Compiled Go binaries (platform-specific, never commit)
+/agw
 /gateway
 /service
 /gdpr-delete
