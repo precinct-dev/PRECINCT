@@ -46,6 +46,9 @@ func createTempUpgradeRepo(t *testing.T, demoComposeExit int) string {
 	t.Helper()
 	tmp := t.TempDir()
 
+	// Ignore runtime upgrade artifacts so a successful upgrade commit does not bloat history.
+	writeFile(t, filepath.Join(tmp, ".gitignore"), 0o644, "config/versions.yaml.snapshot.*\nconfig/upgrade-snapshots/\n")
+
 	writeFile(t, filepath.Join(tmp, "config", "versions.yaml"), 0o644, `components:
   keydb:
     image: eqalpha/keydb
@@ -132,6 +135,18 @@ func TestUpgradeWorkflow_Success(t *testing.T) {
 	count := strings.TrimSpace(mustRun(t, repo, "git", "rev-list", "--count", "HEAD"))
 	if count != "2" {
 		t.Fatalf("expected 2 commits (baseline + upgrade), got: %s", count)
+	}
+
+	// Snapshot/log artifacts must NOT be committed.
+	tree := mustRun(t, repo, "git", "ls-tree", "-r", "HEAD", "--name-only")
+	if strings.Contains(tree, "config/versions.yaml.snapshot.") {
+		t.Fatalf("snapshot file should be ignored and not committed; tree contains snapshot:\n%s", tree)
+	}
+	if strings.Contains(tree, "config/upgrade-snapshots/") {
+		t.Fatalf("snapshot dir should be ignored and not committed; tree contains upgrade-snapshots:\n%s", tree)
+	}
+	if !strings.Contains(tree, "docs/upgrades/"+time.Now().Format("2006-01-02")+"-upgrade-report.md") {
+		t.Fatalf("expected upgrade report to be committed; tree:\n%s", tree)
 	}
 }
 
