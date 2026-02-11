@@ -26,6 +26,7 @@ type SignResult struct {
 	Skipped       bool   `json:"skipped"`
 	SkipReason    string `json:"skip_reason,omitempty"`
 	ArchivePath   string `json:"archive_path,omitempty"`
+	BundlePath    string `json:"bundle_path,omitempty"`
 	SignaturePath string `json:"signature_path,omitempty"`
 }
 
@@ -75,6 +76,7 @@ func SignEvidencePackage(p SignParams) (SignResult, error) {
 		return SignResult{}, err
 	}
 	sigPath := archivePath + ".sig"
+	bundlePath := archivePath + ".bundle"
 
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
@@ -83,8 +85,12 @@ func SignEvidencePackage(p SignParams) (SignResult, error) {
 		projectRoot,
 		"cosign",
 		"sign-blob",
+		"--yes",
 		"--key", keyPath,
 		"--output-signature", sigPath,
+		"--bundle", bundlePath,
+		"--new-bundle-format=false",
+		"--use-signing-config=false",
 		archivePath,
 	)
 	if err != nil {
@@ -96,6 +102,7 @@ func SignEvidencePackage(p SignParams) (SignResult, error) {
 
 	return SignResult{
 		ArchivePath:   archivePath,
+		BundlePath:    bundlePath,
 		SignaturePath: sigPath,
 	}, nil
 }
