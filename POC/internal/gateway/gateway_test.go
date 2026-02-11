@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
 	"github.com/example/agentic-security-poc/internal/testutil"
@@ -3543,4 +3544,157 @@ func TestMCPTransport_AllErrorsUseWriteGatewayError(t *testing.T) {
 	}
 
 	t.Logf("PASS: error response uses WriteGatewayError envelope (status=%d, code=%v)", rec.Code, gatewayErr["code"])
+}
+
+func writeTempToolRegistry(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "tool-registry.yaml")
+	// Minimal registry config for tests.
+	yaml := `tools:
+  - name: "tavily_search"
+    description: "Search the web using Tavily API"
+    hash: "dummy"
+    input_schema: {}
+  - name: "bash"
+    description: "Execute shell commands"
+    hash: "dummy2"
+    input_schema: {}
+`
+	if err := os.WriteFile(path, []byte(yaml), 0644); err != nil {
+		t.Fatalf("write tool registry: %v", err)
+	}
+	return path
+}
+
+func TestAdminCircuitBreakers_ListAndGet(t *testing.T) {
+	reg, err := middleware.NewToolRegistry(writeTempToolRegistry(t))
+	if err != nil {
+		t.Fatalf("NewToolRegistry: %v", err)
+	}
+
+	cb := middleware.NewCircuitBreaker(middleware.CircuitBreakerConfig{
+		FailureThreshold: 5,
+		ResetTimeout:     2 * time.Millisecond,
+		SuccessThreshold: 2,
+	}, nil)
+
+	g := &Gateway{
+		registry:       reg,
+		circuitBreaker: cb,
+	}
+
+	t.Run("list_closed", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/admin/circuit-breakers", nil)
+		rec := httptest.NewRecorder()
+		g.adminCircuitBreakersHandler(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			CircuitBreakers []struct {
+				Tool            string     `json:"tool"`
+				State           string     `json:"state"`
+				Failures        int        `json:"failures"`
+				Threshold       int        `json:"threshold"`
+				ResetTimeoutSec int        `json:"reset_timeout_seconds"`
+				LastStateChange *time.Time `json:"last_state_change"`
+			} `json:"circuit_breakers"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if len(parsed.CircuitBreakers) != 2 {
+			t.Fatalf("expected 2 circuit breakers, got %d", len(parsed.CircuitBreakers))
+		}
+		for _, e := range parsed.CircuitBreakers {
+			if e.State != "closed" {
+				t.Fatalf("expected state=closed, got %q", e.State)
+			}
+			if e.Failures != 0 {
+				t.Fatalf("expected failures=0, got %d", e.Failures)
+			}
+			if e.Threshold != 5 {
+				t.Fatalf("expected threshold=5, got %d", e.Threshold)
+			}
+			if e.ResetTimeoutSec <= 0 {
+				t.Fatalf("expected reset_timeout_seconds > 0, got %d", e.ResetTimeoutSec)
+			}
+			if e.LastStateChange != nil {
+				t.Fatalf("expected last_state_change=null for initial closed state, got %v", e.LastStateChange)
+			}
+		}
+	})
+
+	t.Run("get_unknown_404", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/admin/circuit-breakers/nope", nil)
+		rec := httptest.NewRecorder()
+		g.adminCircuitBreakersHandler(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("get_single", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/admin/circuit-breakers/bash", nil)
+		rec := httptest.NewRecorder()
+		g.adminCircuitBreakersHandler(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+		var parsed struct {
+			CircuitBreakers []struct {
+				Tool string `json:"tool"`
+			} `json:"circuit_breakers"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if len(parsed.CircuitBreakers) != 1 || parsed.CircuitBreakers[0].Tool != "bash" {
+			t.Fatalf("unexpected response: %+v", parsed)
+		}
+	})
+
+	t.Run("list_open_then_half_open", func(t *testing.T) {
+		// Trip the breaker to open.
+		for i := 0; i < 5; i++ {
+			cb.RecordFailure()
+		}
+
+		// Allow reset timeout to elapse so Snapshot transitions Open -> Half-Open.
+		time.Sleep(3 * time.Millisecond)
+
+		req := httptest.NewRequest(http.MethodGet, "/admin/circuit-breakers", nil)
+		rec := httptest.NewRecorder()
+		g.adminCircuitBreakersHandler(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			CircuitBreakers []struct {
+				State           string     `json:"state"`
+				Failures        int        `json:"failures"`
+				LastStateChange *time.Time `json:"last_state_change"`
+			} `json:"circuit_breakers"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if len(parsed.CircuitBreakers) == 0 {
+			t.Fatalf("expected non-empty response, got %+v", parsed)
+		}
+		for _, e := range parsed.CircuitBreakers {
+			if e.State != "half-open" && e.State != "open" {
+				t.Fatalf("expected state=open|half-open after trip, got %q", e.State)
+			}
+			if e.Failures < 5 {
+				t.Fatalf("expected failures>=5 after trip, got %d", e.Failures)
+			}
+			if e.LastStateChange == nil {
+				t.Fatalf("expected last_state_change set after trip, got nil")
+			}
+		}
+	})
 }

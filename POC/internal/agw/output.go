@@ -34,10 +34,23 @@ func RenderTable(out StatusOutput) (string, error) {
 	tw := tabwriter.NewWriter(&buf, 0, 4, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "COMPONENT\tSTATUS\tDETAILS")
 	for _, c := range out.Components {
-		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", c.Name, strings.ToUpper(c.Status), detailsToString(c.Details))
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\n", c.Name, colorizeStatus(strings.ToUpper(c.Status), c.Status), detailsToString(c.Details))
 	}
 	_ = tw.Flush()
 	return buf.String(), nil
+}
+
+func colorizeStatus(label, status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "ok":
+		return "\x1b[32m" + label + "\x1b[0m"
+	case "degraded":
+		return "\x1b[33m" + label + "\x1b[0m"
+	case "fail":
+		return "\x1b[31m" + label + "\x1b[0m"
+	default:
+		return label
+	}
 }
 
 func detailsToString(m map[string]any) string {
@@ -74,4 +87,3 @@ func formatAny(v any) string {
 		return string(b)
 	}
 }
-

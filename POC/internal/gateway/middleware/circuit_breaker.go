@@ -62,6 +62,7 @@ type CircuitBreaker struct {
 	// Timing
 	lastFailureTime time.Time // when the circuit was last opened
 	openedAt        time.Time // when the circuit transitioned to open
+	lastStateChange time.Time // when the circuit last transitioned state
 
 	// Audit callback for state transitions (optional)
 	onStateChange func(from, to CircuitState)
@@ -120,6 +121,40 @@ func (cb *CircuitBreaker) State() CircuitState {
 	}
 
 	return cb.state
+}
+
+// CircuitBreakerSnapshot is a read-only view of circuit breaker state for diagnostics.
+type CircuitBreakerSnapshot struct {
+	State           CircuitState
+	Failures        int
+	Threshold       int
+	ResetTimeout    time.Duration
+	LastStateChange *time.Time
+}
+
+// Snapshot returns a consistent snapshot of the circuit breaker state.
+func (cb *CircuitBreaker) Snapshot() CircuitBreakerSnapshot {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+
+	// Keep behavior consistent with State(): Open -> Half-Open after reset timeout.
+	if cb.state == CircuitOpen && cb.now().Sub(cb.openedAt) >= cb.resetTimeout {
+		cb.transitionTo(CircuitHalfOpen)
+	}
+
+	var last *time.Time
+	if !cb.lastStateChange.IsZero() {
+		t := cb.lastStateChange
+		last = &t
+	}
+
+	return CircuitBreakerSnapshot{
+		State:           cb.state,
+		Failures:        cb.consecutiveFailures,
+		Threshold:       cb.failureThreshold,
+		ResetTimeout:    cb.resetTimeout,
+		LastStateChange: last,
+	}
 }
 
 // RetryAfterSeconds returns the number of seconds until the circuit
@@ -217,6 +252,7 @@ func (cb *CircuitBreaker) transitionTo(newState CircuitState) {
 	}
 
 	cb.state = newState
+	cb.lastStateChange = cb.now()
 
 	// Reset counters on transition
 	switch newState {

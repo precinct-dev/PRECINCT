@@ -28,6 +28,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -554,6 +555,19 @@ func (tr *ToolRegistry) GetToolDefinition(toolName string) (ToolDefinition, bool
 	defer tr.mu.RUnlock()
 	toolDef, exists := tr.tools[toolName]
 	return toolDef, exists
+}
+
+// ToolNames returns the registered tool names in sorted order.
+// Used by admin/debug endpoints and CLI inspection commands.
+func (tr *ToolRegistry) ToolNames() []string {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
+	names := make([]string, 0, len(tr.tools))
+	for name := range tr.tools {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // ScopeResolver resolves the required SPIKE token scope for a given tool name.
