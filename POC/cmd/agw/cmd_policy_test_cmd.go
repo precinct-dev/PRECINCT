@@ -11,10 +11,12 @@ import (
 
 func newPolicyTestCmd() *cobra.Command {
 	var params string
+	var runtime bool
+	var sessionID string
 
 	cmd := &cobra.Command{
 		Use:   "test <spiffe-id> <tool>",
-		Short: "Dry-run policy checks through offline layers 1-6",
+		Short: "Dry-run policy checks through offline or full runtime layers",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			spiffeID := strings.TrimSpace(args[0])
@@ -23,7 +25,26 @@ func newPolicyTestCmd() *cobra.Command {
 			opaPolicyDir := strings.TrimSpace(viper.GetString(cfgOPAPolicyDir))
 			toolRegistryPath := strings.TrimSpace(viper.GetString(cfgToolRegistryPath))
 
-			out, err := agw.RunPolicyTestOffline(spiffeID, tool, params, opaPolicyDir, toolRegistryPath)
+			var (
+				out agw.PolicyTestOfflineOutput
+				err error
+			)
+			if runtime {
+				keydbURL := strings.TrimSpace(viper.GetString(cfgKeyDBURL))
+				gatewayURL := strings.TrimSpace(viper.GetString(cfgGatewayURL))
+				out, err = agw.RunPolicyTestRuntime(
+					spiffeID,
+					tool,
+					params,
+					opaPolicyDir,
+					toolRegistryPath,
+					keydbURL,
+					gatewayURL,
+					sessionID,
+				)
+			} else {
+				out, err = agw.RunPolicyTestOffline(spiffeID, tool, params, opaPolicyDir, toolRegistryPath)
+			}
 			if err != nil {
 				return err
 			}
@@ -51,5 +72,7 @@ func newPolicyTestCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringVar(&params, "params", "", "JSON object with request parameters for DLP simulation")
+	cmd.Flags().BoolVar(&runtime, "runtime", false, "Include runtime layers 7-13 (requires running KeyDB and gateway)")
+	cmd.Flags().StringVar(&sessionID, "session-id", "", "Session ID for runtime session-risk lookup (layer 7)")
 	return cmd
 }
