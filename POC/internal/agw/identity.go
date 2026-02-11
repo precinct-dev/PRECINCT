@@ -34,6 +34,7 @@ type identityRegistryFile struct {
 
 type identityRegistryTool struct {
 	Name           string `yaml:"name"`
+	Hash           string `yaml:"hash"`
 	RiskLevel      string `yaml:"risk_level"`
 	RequiresStepUp bool   `yaml:"requires_step_up"`
 }
