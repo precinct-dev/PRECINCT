@@ -88,8 +88,6 @@ logs: ## Tail gateway logs
 # ---------------------------------------------------------------------------
 
 phoenix-up: ## Start standalone Phoenix + OTel collector (persistent traces)
-	@docker network inspect phoenix-observability-network >/dev/null 2>&1 || \
-		docker network create phoenix-observability-network
 	docker compose -f docker-compose.phoenix.yml up -d --build --wait --wait-timeout 60
 	@echo "Phoenix UI: http://localhost:6006"
 
