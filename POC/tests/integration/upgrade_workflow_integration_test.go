@@ -92,7 +92,7 @@ JSON
 func TestUpgradeWorkflow_Success(t *testing.T) {
 	repo := createTempUpgradeRepo(t, 0)
 
-	cmd := exec.Command("bash", "scripts/upgrade.sh", "--component", "keydb")
+	cmd := exec.Command("bash", "scripts/upgrade.sh", "--component", "keydb", "--verify")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "UPGRADE_SKIP_DOCKER=1")
 	out, err := cmd.CombinedOutput()
@@ -124,6 +124,9 @@ func TestUpgradeWorkflow_Success(t *testing.T) {
 	if !strings.Contains(string(rb), "Status: SUCCESS") {
 		t.Fatalf("expected report status SUCCESS; got:\n%s", string(rb))
 	}
+	if !strings.Contains(string(rb), "- make ci: PASS") || !strings.Contains(string(rb), "- make demo-compose: PASS") {
+		t.Fatalf("expected report to record PASS for both make ci and make demo-compose; got:\n%s", string(rb))
+	}
 
 	// Commit created by upgrade (baseline + upgrade)
 	count := strings.TrimSpace(mustRun(t, repo, "git", "rev-list", "--count", "HEAD"))
@@ -135,7 +138,7 @@ func TestUpgradeWorkflow_Success(t *testing.T) {
 func TestUpgradeWorkflow_Rollback(t *testing.T) {
 	repo := createTempUpgradeRepo(t, 1)
 
-	cmd := exec.Command("bash", "scripts/upgrade.sh", "--component", "keydb")
+	cmd := exec.Command("bash", "scripts/upgrade.sh", "--component", "keydb", "--verify")
 	cmd.Dir = repo
 	cmd.Env = append(os.Environ(), "UPGRADE_SKIP_DOCKER=1")
 	out, err := cmd.CombinedOutput()
@@ -161,5 +164,7 @@ func TestUpgradeWorkflow_Rollback(t *testing.T) {
 	if !strings.Contains(string(rb), "Status: FAILURE") {
 		t.Fatalf("expected report status FAILURE; got:\n%s", string(rb))
 	}
+	if !strings.Contains(string(rb), "- make ci: PASS") || !strings.Contains(string(rb), "- make demo-compose: FAIL") {
+		t.Fatalf("expected report to record PASS for ci and FAIL for demo-compose; got:\n%s", string(rb))
+	}
 }
-
