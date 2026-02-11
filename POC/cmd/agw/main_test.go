@@ -403,3 +403,77 @@ func TestAgwAuditSearch_InvalidLast_Exit1(t *testing.T) {
 		t.Fatalf("expected invalid --last error, got %q", stderr.String())
 	}
 }
+
+func TestAgwAuditExplain_FileSource_JSON(t *testing.T) {
+	tmp := t.TempDir()
+	logPath := filepath.Join(tmp, "audit.jsonl")
+	lines := []string{
+		`{"timestamp":"2026-02-11T09:10:00Z","decision_id":"dec-explain","spiffe_id":"spiffe://poc.local/agents/a/dev","tool":"bash","action":"mcp_request","status_code":403,"code":"registry_tool_unknown"}`,
+	}
+	if err := os.WriteFile(logPath, []byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{
+			"audit", "explain", "dec-explain",
+			"--source", "file",
+			"--audit-log-path", logPath,
+			"--format", "json",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+
+	var parsed struct {
+		DecisionID string `json:"decision_id"`
+		Result     string `json:"result"`
+		Layers     []struct {
+			Step   int    `json:"step"`
+			Status string `json:"status"`
+		} `json:"layers"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid json: %v output=%q", err, stdout.String())
+	}
+	if parsed.DecisionID != "dec-explain" {
+		t.Fatalf("unexpected decision id: %+v", parsed)
+	}
+	if !strings.Contains(parsed.Result, "denied") {
+		t.Fatalf("expected denied result, got %+v", parsed)
+	}
+	if len(parsed.Layers) != 13 {
+		t.Fatalf("expected 13 layers, got %+v", parsed.Layers)
+	}
+}
+
+func TestAgwAuditExplain_NotFound_Exit1(t *testing.T) {
+	tmp := t.TempDir()
+	logPath := filepath.Join(tmp, "audit.jsonl")
+	if err := os.WriteFile(logPath, []byte(`{"decision_id":"other"}`+"\n"), 0o644); err != nil {
+		t.Fatalf("write log: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{
+			"audit", "explain", "missing-decision",
+			"--source", "file",
+			"--audit-log-path", logPath,
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("expected exit 1, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "no audit entries found") {
+		t.Fatalf("expected not found error, got %q", stderr.String())
+	}
+}
