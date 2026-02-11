@@ -186,7 +186,9 @@ func TestUIAuditData_JSONMarshal_OptionalFieldsOmitted(t *testing.T) {
 
 	// Verify optional fields are not present
 	var raw map[string]interface{}
-	json.Unmarshal(data, &raw)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Failed to unmarshal marshaled payload: %v", err)
+	}
 
 	if _, ok := raw["scan_result"]; ok {
 		t.Error("scan_result should be omitted when nil")
@@ -289,7 +291,9 @@ func TestAuditEvent_WithUIField_JSONMarshal(t *testing.T) {
 
 	// Verify the JSON structure matches the documented schema
 	var raw map[string]interface{}
-	json.Unmarshal(data, &raw)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Failed to unmarshal event JSON: %v", err)
+	}
 
 	if raw["event_type"] != "ui.resource.read" {
 		t.Errorf("event_type mismatch: %v", raw["event_type"])
@@ -340,7 +344,9 @@ func TestAuditEvent_WithAppDrivenField_JSONMarshal(t *testing.T) {
 	}
 
 	var raw map[string]interface{}
-	json.Unmarshal(data, &raw)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Failed to unmarshal event JSON: %v", err)
+	}
 
 	if raw["event_type"] != "tool.invocation.app_driven" {
 		t.Errorf("event_type mismatch: %v", raw["event_type"])
@@ -385,7 +391,9 @@ func TestAuditEvent_WithoutUI_OmitsUIField(t *testing.T) {
 	}
 
 	var raw map[string]interface{}
-	json.Unmarshal(data, &raw)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("Failed to unmarshal event JSON: %v", err)
+	}
 
 	if _, ok := raw["ui"]; ok {
 		t.Error("UI field should be omitted when nil")
@@ -409,14 +417,20 @@ func TestEmitUIEvent_SetsCorrectFields(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	hashVerified := true
 	auditor.EmitUIEvent(UIAuditEventParams{
@@ -442,7 +456,9 @@ func TestEmitUIEvent_SetsCorrectFields(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open audit file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	scanner := bufio.NewScanner(file)
 	if !scanner.Scan() {
@@ -509,14 +525,20 @@ func TestEmitUIEvent_AllEventTypes(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	// Emit one event for each of the 10 types
 	for _, eventType := range AllUIEventTypes() {
@@ -558,7 +580,9 @@ func TestEmitUIEvent_AllEventTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open audit file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	expectedTypes := AllUIEventTypes()
 	scanner := bufio.NewScanner(file)
@@ -605,8 +629,12 @@ func TestEmitUIEvent_HashChainIntegrity(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle file: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry file: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
@@ -662,7 +690,9 @@ func TestEmitUIEvent_HashChainIntegrity(t *testing.T) {
 		},
 	})
 
-	auditor.Close()
+	if err := auditor.Close(); err != nil {
+		t.Fatalf("Failed to close auditor: %v", err)
+	}
 
 	// Verify hash chain using the existing verification utility
 	result, err := VerifyAuditChain(auditPath)
@@ -687,14 +717,20 @@ func TestEmitUIEvent_FirstEventHasGenesisHash(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle file: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry file: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	// First event is a UI event
 	auditor.EmitUIEvent(UIAuditEventParams{
@@ -710,7 +746,9 @@ func TestEmitUIEvent_FirstEventHasGenesisHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open audit file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	scanner := bufio.NewScanner(file)
 	if !scanner.Scan() {
@@ -718,7 +756,9 @@ func TestEmitUIEvent_FirstEventHasGenesisHash(t *testing.T) {
 	}
 
 	var event AuditEvent
-	json.Unmarshal(scanner.Bytes(), &event)
+	if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+		t.Fatalf("Failed to unmarshal first event: %v", err)
+	}
 
 	genesisHash := sha256.Sum256([]byte(""))
 	expectedGenesis := hex.EncodeToString(genesisHash[:])
@@ -736,14 +776,20 @@ func TestEmitUIEvent_TraceIDCorrelation(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	sharedTraceID := "shared-trace-4bf92f3577b34da6a3ce929d0e0e4736"
 
@@ -779,13 +825,17 @@ func TestEmitUIEvent_TraceIDCorrelation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open audit file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	scanner := bufio.NewScanner(file)
 	eventCount := 0
 	for scanner.Scan() {
 		var event AuditEvent
-		json.Unmarshal(scanner.Bytes(), &event)
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Failed to unmarshal event: %v", err)
+		}
 		if event.TraceID != sharedTraceID {
 			t.Errorf("Event %d: trace_id mismatch, expected %s, got %s", eventCount, sharedTraceID, event.TraceID)
 		}
@@ -805,8 +855,12 @@ func TestEmitUIEvent_RoutedToSameAuditSink(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
@@ -832,14 +886,18 @@ func TestEmitUIEvent_RoutedToSameAuditSink(t *testing.T) {
 		Result:    "success",
 	})
 
-	auditor.Close()
+	if err := auditor.Close(); err != nil {
+		t.Fatalf("Failed to close auditor: %v", err)
+	}
 
 	// Verify all events are in the same file
 	file, err := os.Open(auditPath)
 	if err != nil {
 		t.Fatalf("Failed to open: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	scanner := bufio.NewScanner(file)
 	lineCount := 0
@@ -848,7 +906,9 @@ func TestEmitUIEvent_RoutedToSameAuditSink(t *testing.T) {
 	for scanner.Scan() {
 		lineCount++
 		var event AuditEvent
-		json.Unmarshal(scanner.Bytes(), &event)
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Failed to unmarshal event: %v", err)
+		}
 		if event.EventType == UIEventResourceRead {
 			foundUI = true
 		}
@@ -876,8 +936,12 @@ func TestUIAuditEvents_FullScenario_10EventTypes_HashChain(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test\ndefault allow = true"), 0644)
-	os.WriteFile(registryPath, []byte("tools:\n  - name: test\n    hash: abc"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test\ndefault allow = true"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle file: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools:\n  - name: test\n    hash: abc"), 0644); err != nil {
+		t.Fatalf("Failed to write registry file: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
@@ -1047,7 +1111,9 @@ func TestUIAuditEvents_FullScenario_10EventTypes_HashChain(t *testing.T) {
 		},
 	})
 
-	auditor.Close()
+	if err := auditor.Close(); err != nil {
+		t.Fatalf("Failed to close auditor: %v", err)
+	}
 
 	// --- Verification ---
 
@@ -1066,7 +1132,9 @@ func TestUIAuditEvents_FullScenario_10EventTypes_HashChain(t *testing.T) {
 		}
 		events = append(events, event)
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		t.Fatalf("Failed to close audit file: %v", err)
+	}
 
 	if len(events) != 10 {
 		t.Fatalf("Expected 10 events, got %d", len(events))

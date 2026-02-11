@@ -112,7 +112,9 @@ func TestDeleteGDPRSubjectData_DeletesDataAndMarksAuditEntries(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open marker path: %v", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 	sc := bufio.NewScanner(f)
 	markerLines := 0
 	for sc.Scan() {
@@ -279,7 +281,9 @@ func TestExportGDPRDSAR_WritesCompletePackage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open audit entries: %v", err)
 	}
-	defer auditFile.Close()
+	defer func() {
+		_ = auditFile.Close()
+	}()
 	sc := bufio.NewScanner(auditFile)
 	auditLineCount := 0
 	for sc.Scan() {

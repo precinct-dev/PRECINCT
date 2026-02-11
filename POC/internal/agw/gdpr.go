@@ -128,7 +128,9 @@ func DeleteGDPRSubjectData(ctx context.Context, p GDPRDeleteParams) (GDPRDeleteR
 	if err != nil {
 		return GDPRDeleteReport{}, err
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	_, sessionKeys, err := DeleteSessionKeysForSPIFFEID(ctx, client, spiffeID)
 	if err != nil {
@@ -197,7 +199,9 @@ func ExportGDPRDSAR(ctx context.Context, p GDPRAuditParams) (DSARExportResult, e
 	if err != nil {
 		return DSARExportResult{}, err
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	auditEntries, err := LoadAuditEntries(ctx, p.AuditSource, projectRoot, p.AuditLogPath)
 	if err != nil {
@@ -370,7 +374,9 @@ func appendGDPRAuditMarkers(reportsDir, spiffeID string, entries []map[string]an
 	if err != nil {
 		return "", 0, fmt.Errorf("open marker file: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	sort.Slice(entries, func(i, j int) bool {
 		ti := getString(entries[i], "timestamp")
@@ -597,7 +603,9 @@ func writeAuditJSONL(path string, entries []map[string]any) error {
 	if err != nil {
 		return fmt.Errorf("open %s: %w", path, err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	w := bufio.NewWriter(f)
 	for _, entry := range entries {

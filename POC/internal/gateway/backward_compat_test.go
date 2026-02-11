@@ -630,7 +630,9 @@ func readAuditEvents(t *testing.T, path string) []middleware.AuditEvent {
 	if err != nil {
 		t.Fatalf("Failed to open audit file %s: %v", path, err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	var events []middleware.AuditEvent
 	scanner := bufio.NewScanner(file)

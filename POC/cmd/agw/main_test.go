@@ -166,9 +166,13 @@ func TestAgwInspectSessions_JSON(t *testing.T) {
 
 	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 	sessionKey := "session:" + spiffeID + ":sid-test"
-	mr.Set(sessionKey, `{"ID":"sid-test","SPIFFEID":"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev","RiskScore":0.65}`)
+	if err := mr.Set(sessionKey, `{"ID":"sid-test","SPIFFEID":"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev","RiskScore":0.65}`); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
 	mr.SetTTL(sessionKey, 30*time.Minute)
-	mr.RPush(sessionKey+":actions", `{"Tool":"read"}`, `{"Tool":"grep"}`)
+	if _, err := mr.RPush(sessionKey+":actions", `{"Tool":"read"}`, `{"Tool":"grep"}`); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
 
 	var stdout, stderr bytes.Buffer
 	code := run(
@@ -276,8 +280,12 @@ func TestAgwResetRateLimit_PromptYes_DeletesKeys(t *testing.T) {
 	t.Cleanup(mr.Close)
 
 	spiffe := "spiffe://poc.local/agents/test/dev"
-	mr.Set("ratelimit:"+spiffe+":tokens", "1.5")
-	mr.Set("ratelimit:"+spiffe+":last_fill", "123")
+	if err := mr.Set("ratelimit:"+spiffe+":tokens", "1.5"); err != nil {
+		t.Fatalf("seed rate limit tokens: %v", err)
+	}
+	if err := mr.Set("ratelimit:"+spiffe+":last_fill", "123"); err != nil {
+		t.Fatalf("seed rate limit last_fill: %v", err)
+	}
 
 	keydbURL := fmt.Sprintf("redis://%s", mr.Addr())
 
@@ -306,9 +314,15 @@ func TestAgwResetRateLimit_AllConfirm_DeletesOnlyRatelimit(t *testing.T) {
 	}
 	t.Cleanup(mr.Close)
 
-	mr.Set("ratelimit:spiffe://a:tokens", "1")
-	mr.Set("ratelimit:spiffe://a:last_fill", "1")
-	mr.Set("session:spiffe://a", "keep")
+	if err := mr.Set("ratelimit:spiffe://a:tokens", "1"); err != nil {
+		t.Fatalf("seed rate limit tokens: %v", err)
+	}
+	if err := mr.Set("ratelimit:spiffe://a:last_fill", "1"); err != nil {
+		t.Fatalf("seed rate limit last_fill: %v", err)
+	}
+	if err := mr.Set("session:spiffe://a", "keep"); err != nil {
+		t.Fatalf("seed session key: %v", err)
+	}
 
 	keydbURL := fmt.Sprintf("redis://%s", mr.Addr())
 

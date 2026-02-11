@@ -109,7 +109,9 @@ func TestTracingTransport_InjectsTraceparent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("Failed to close response body: %v", err)
+	}
 
 	if receivedTraceparent == "" {
 		t.Fatal("Expected traceparent header on outbound request, got empty")
@@ -162,7 +164,9 @@ func TestTracingTransport_TraceIDMatchesGatewaySpan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("Failed to close response body: %v", err)
+	}
 	span.End()
 
 	// Extract trace_id from the traceparent header
@@ -217,7 +221,9 @@ func TestTracingTransport_NilBase_UsesDefaultTransport(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("Failed to close response body: %v", err)
+	}
 
 	if receivedTraceparent == "" {
 		t.Fatal("Expected traceparent header even with nil base transport")
@@ -251,7 +257,9 @@ func TestTracingTransport_NoSpanContext_NoHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Request failed: %v", err)
 	}
-	resp.Body.Close()
+	if err := resp.Body.Close(); err != nil {
+		t.Fatalf("Failed to close response body: %v", err)
+	}
 
 	// With no span context, the propagator should not inject a traceparent
 	if receivedTraceparent != "" {

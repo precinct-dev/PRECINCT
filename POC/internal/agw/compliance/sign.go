@@ -115,13 +115,19 @@ func createTarGzFromDir(srcDir, dstPath string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 
 	gw := gzip.NewWriter(out)
-	defer gw.Close()
+	defer func() {
+		_ = gw.Close()
+	}()
 
 	tw := tar.NewWriter(gw)
-	defer tw.Close()
+	defer func() {
+		_ = tw.Close()
+	}()
 
 	base := filepath.Dir(srcDir)
 	dstAbs, _ := filepath.Abs(dstPath)
@@ -165,7 +171,9 @@ func createTarGzFromDir(srcDir, dstPath string) error {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		defer func() {
+			_ = f.Close()
+		}()
 		if _, err := io.Copy(tw, f); err != nil {
 			return err
 		}

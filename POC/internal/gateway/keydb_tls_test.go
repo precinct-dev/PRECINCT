@@ -2,15 +2,9 @@ package gateway
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/elliptic"
-	"crypto/rand"
 	"crypto/tls"
 	"crypto/x509"
-	"crypto/x509/pkix"
 	"encoding/pem"
-	"fmt"
-	"math/big"
 	"net"
 	"os"
 	"path/filepath"
@@ -98,7 +92,9 @@ func TestNewKeyDBClientTLS_CreatesClientWithTLS(t *testing.T) {
 	if client == nil {
 		t.Fatal("NewKeyDBClientTLS returned nil client")
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	// Verify pool size options are set
 	opts := client.Options()
@@ -121,7 +117,9 @@ func TestNewKeyDBClientTLS_NilTLSConfig(t *testing.T) {
 	if client == nil {
 		t.Fatal("NewKeyDBClientTLS returned nil client")
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	opts := client.Options()
 	if opts.TLSConfig != nil {
@@ -267,7 +265,9 @@ func TestKeyDBTLSConnection_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create TLS listener: %v", err)
 	}
-	defer tlsListener.Close()
+	defer func() {
+		_ = tlsListener.Close()
+	}()
 
 	// Proxy TLS connections to miniredis
 	go func() {
@@ -297,7 +297,9 @@ func TestKeyDBTLSConnection_Integration(t *testing.T) {
 	}
 
 	client := NewKeyDBClientTLS(tlsListener.Addr().String(), 5, 20, clientTLSConfig)
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	ctx := context.Background()
 
@@ -341,7 +343,9 @@ func TestKeyDBTLSConnection_Integration(t *testing.T) {
 			Addr:      tlsListener.Addr().String(),
 			TLSConfig: noClientCertConfig,
 		})
-		defer badClient.Close()
+		defer func() {
+			_ = badClient.Close()
+		}()
 
 		_, err := badClient.Ping(ctx).Result()
 		if err == nil {
@@ -373,7 +377,9 @@ func TestKeyDBDevMode_NoTLS(t *testing.T) {
 	client := redis.NewClient(&redis.Options{
 		Addr: mr.Addr(),
 	})
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	// Verify plain connection works
 	ctx := context.Background()
@@ -451,13 +457,17 @@ func TestOTelCollectorNoMTLS(t *testing.T) {
 // Used to proxy TLS-terminated connections to miniredis.
 func proxyConnection(t *testing.T, clientConn net.Conn, targetAddr string) {
 	t.Helper()
-	defer clientConn.Close()
+	defer func() {
+		_ = clientConn.Close()
+	}()
 
 	targetConn, err := net.Dial("tcp", targetAddr)
 	if err != nil {
 		return
 	}
-	defer targetConn.Close()
+	defer func() {
+		_ = targetConn.Close()
+	}()
 
 	done := make(chan struct{}, 2)
 
@@ -500,99 +510,4 @@ func newTestSPIKENexusRedeemer(url string, _ interface{}) *struct{} {
 	// This test verifies the architectural constraint, not the actual
 	// construction. The real verification is in spike_redeemer_test.go.
 	return &struct{}{}
-}
-
-// --- Additional PKI helpers for keydb_tls tests ---
-
-// generateSelfSignedCA creates a self-signed CA certificate and key pair.
-// Returns PEM-encoded cert and key bytes suitable for writing to files.
-func generateSelfSignedCA(t *testing.T) (certPEM, keyPEM []byte) {
-	t.Helper()
-
-	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("Failed to generate CA key: %v", err)
-	}
-
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
-		Subject: pkix.Name{
-			CommonName:   "Test CA for KeyDB TLS",
-			Organization: []string{"Test"},
-		},
-		NotBefore:             time.Now().Add(-1 * time.Hour),
-		NotAfter:              time.Now().Add(24 * time.Hour),
-		IsCA:                  true,
-		BasicConstraintsValid: true,
-		KeyUsage:              x509.KeyUsageCertSign | x509.KeyUsageCRLSign,
-	}
-
-	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
-	if err != nil {
-		t.Fatalf("Failed to create CA certificate: %v", err)
-	}
-
-	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-
-	keyDER, err := x509.MarshalECPrivateKey(key)
-	if err != nil {
-		t.Fatalf("Failed to marshal CA key: %v", err)
-	}
-	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-
-	return certPEM, keyPEM
-}
-
-// generateLeafCert creates a leaf certificate signed by the given CA.
-// Returns PEM-encoded cert and key bytes.
-func generateLeafCert(t *testing.T, caCertPEM, caKeyPEM []byte, spiffeID string) (certPEM, keyPEM []byte) {
-	t.Helper()
-
-	// Parse CA
-	block, _ := pem.Decode(caCertPEM)
-	caCert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
-		t.Fatalf("Failed to parse CA cert: %v", err)
-	}
-
-	block, _ = pem.Decode(caKeyPEM)
-	caKey, err := x509.ParseECPrivateKey(block.Bytes)
-	if err != nil {
-		t.Fatalf("Failed to parse CA key: %v", err)
-	}
-
-	// Generate leaf key
-	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	if err != nil {
-		t.Fatalf("Failed to generate leaf key: %v", err)
-	}
-
-	template := &x509.Certificate{
-		SerialNumber: big.NewInt(time.Now().UnixNano()),
-		Subject: pkix.Name{
-			CommonName: fmt.Sprintf("workload-%s", spiffeID),
-		},
-		NotBefore:             time.Now().Add(-1 * time.Hour),
-		NotAfter:              time.Now().Add(1 * time.Hour),
-		KeyUsage:              x509.KeyUsageDigitalSignature | x509.KeyUsageKeyEncipherment,
-		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
-		IPAddresses:           []net.IP{net.ParseIP("127.0.0.1")},
-		DNSNames:              []string{"localhost", "keydb"},
-		BasicConstraintsValid: true,
-	}
-
-	leafCertDER, err := x509.CreateCertificate(rand.Reader, template, caCert, &leafKey.PublicKey, caKey)
-	if err != nil {
-		t.Fatalf("Failed to create leaf cert: %v", err)
-	}
-
-	certPEM = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: leafCertDER})
-
-	keyDER, err := x509.MarshalECPrivateKey(leafKey)
-	if err != nil {
-		t.Fatalf("Failed to marshal leaf key: %v", err)
-	}
-	keyPEM = pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER})
-
-	return certPEM, keyPEM
 }

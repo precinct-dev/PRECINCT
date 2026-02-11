@@ -3,7 +3,6 @@ package compliance
 import (
 	"context"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -206,7 +205,9 @@ func loadFrameworkRowsFromCSV(csvPath, framework string) ([]map[string]string, e
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	reader := csv.NewReader(f)
 	header, err := reader.Read()
@@ -245,12 +246,4 @@ func loadFrameworkRowsFromCSV(csvPath, framework string) ([]map[string]string, e
 		return out[i]["framework_requirement"] < out[j]["framework_requirement"]
 	})
 	return out, nil
-}
-
-func marshalControlEvidenceJSON(v any) ([]byte, error) {
-	b, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return nil, err
-	}
-	return append(b, '\n'), nil
 }

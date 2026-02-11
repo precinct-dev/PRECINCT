@@ -30,14 +30,22 @@ func TestKeyDBListSessions_AllAndFiltered(t *testing.T) {
 		return string(b)
 	}
 
-	mr.Set("session:"+spiffeA+":sid-a", sessionValue(0.62))
+	if err := mr.Set("session:"+spiffeA+":sid-a", sessionValue(0.62)); err != nil {
+		t.Fatalf("seed session for %s: %v", spiffeA, err)
+	}
 	mr.SetTTL("session:"+spiffeA+":sid-a", 45*time.Minute)
-	mr.RPush("session:"+spiffeA+":sid-a:actions", `{"Tool":"read"}`, `{"Tool":"grep"}`)
+	if _, err := mr.RPush("session:"+spiffeA+":sid-a:actions", `{"Tool":"read"}`, `{"Tool":"grep"}`); err != nil {
+		t.Fatalf("seed actions for %s: %v", spiffeA, err)
+	}
 	mr.SetTTL("session:"+spiffeA+":sid-a:actions", 45*time.Minute)
 
-	mr.Set("session:"+spiffeB+":sid-b", sessionValue(0.21))
+	if err := mr.Set("session:"+spiffeB+":sid-b", sessionValue(0.21)); err != nil {
+		t.Fatalf("seed session for %s: %v", spiffeB, err)
+	}
 	mr.SetTTL("session:"+spiffeB+":sid-b", 20*time.Minute)
-	mr.RPush("session:"+spiffeB+":sid-b:actions", `{"Tool":"read"}`)
+	if _, err := mr.RPush("session:"+spiffeB+":sid-b:actions", `{"Tool":"read"}`); err != nil {
+		t.Fatalf("seed actions for %s: %v", spiffeB, err)
+	}
 	mr.SetTTL("session:"+spiffeB+":sid-b:actions", 20*time.Minute)
 
 	kdb, err := NewKeyDB(fmt.Sprintf("redis://%s", mr.Addr()))

@@ -381,7 +381,9 @@ func TestOTelSpan_AuditLog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	handler := AuditLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -671,7 +673,9 @@ func TestOTelSpan_StepUpGating_FastPath(t *testing.T) {
 	_ = os.WriteFile(bundlePath, []byte("package test\ndefault allow = false"), 0644)
 	_ = os.WriteFile(registryPath, []byte("tools:\n  - read"), 0644)
 	auditor, _ := NewAuditor(auditPath, bundlePath, registryPath)
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	handler := StepUpGating(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1393,7 +1397,9 @@ allow {
 	if err != nil {
 		t.Fatalf("Failed to create OPA engine: %v", err)
 	}
-	defer opaEngine.Close()
+	defer func() {
+		_ = opaEngine.Close()
+	}()
 
 	handler := OPAPolicy(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -1616,7 +1622,9 @@ func TestOTelIntegration_SpansVisibleInCollector(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to send request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	t.Logf("Gateway response status: %d", resp.StatusCode)
 
@@ -1643,7 +1651,9 @@ func TestOTelIntegration_SpansVisibleInCollector(t *testing.T) {
 		t.Logf("Phoenix not reachable (expected if Docker stack is not running): %v", err)
 		return
 	}
-	defer phoenixResp.Body.Close()
+	defer func() {
+		_ = phoenixResp.Body.Close()
+	}()
 
 	t.Logf("Phoenix response status: %d", phoenixResp.StatusCode)
 }

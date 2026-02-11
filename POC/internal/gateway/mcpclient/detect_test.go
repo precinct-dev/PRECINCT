@@ -55,7 +55,9 @@ func TestDetectTransport_StreamableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DetectTransport failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	// Verify it's a StreamableHTTPTransport
 	_, ok := transport.(*StreamableHTTPTransport)
@@ -78,7 +80,7 @@ func TestDetectTransport_LegacySSE(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
 			flusher.Flush()
 			<-r.Context().Done()
 		case r.Method == http.MethodPost && r.URL.Path == "/message":
@@ -99,7 +101,9 @@ func TestDetectTransport_LegacySSE(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DetectTransport failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	// Verify it's a LegacySSETransport
 	_, ok := transport.(*LegacySSETransport)
@@ -163,7 +167,7 @@ func TestDetectTransport_PreferStreamableHTTP(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
 			flusher.Flush()
 			<-r.Context().Done()
 		}
@@ -177,7 +181,9 @@ func TestDetectTransport_PreferStreamableHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DetectTransport failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	// Streamable HTTP should be preferred
 	_, ok := transport.(*StreamableHTTPTransport)
@@ -220,7 +226,9 @@ func TestDetectTransport_NilHTTPClient(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DetectTransport with nil client failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 }
 
 // containsAll checks if s contains all the given substrings.
