@@ -23,10 +23,10 @@ type EvidenceSummary struct {
 }
 
 type CollectParams struct {
-	Framework   string
-	OutputDir   string // base directory where the timestamped evidence dir is created
+	Framework    string
+	OutputDir    string // base directory where the timestamped evidence dir is created
 	AuditLogPath string // optional local JSONL audit log path (default /tmp/audit.jsonl)
-	WorkDir     string // cwd for project root discovery
+	WorkDir      string // cwd for project root discovery
 }
 
 type CollectResult struct {
@@ -132,6 +132,23 @@ func defaultAuditLogPath(v string) string {
 }
 
 func writeControlEvidence(controlDir string, c Control, entries []map[string]any) error {
+	payload, err := buildControlEvidencePayload(c, entries)
+	if err != nil {
+		return err
+	}
+
+	if err := writeJSON(filepath.Join(controlDir, "evidence.json"), payload); err != nil {
+		return err
+	}
+
+	if c.EvidenceType == "configuration" {
+		ref := configReferencesForControl(c)
+		return writeYAML(filepath.Join(controlDir, "config-snapshot.yaml"), map[string]any{"references": ref})
+	}
+	return nil
+}
+
+func buildControlEvidencePayload(c Control, entries []map[string]any) (any, error) {
 	switch c.EvidenceType {
 	case "audit_log":
 		query := ""
@@ -146,32 +163,24 @@ func writeControlEvidence(controlDir string, c Control, entries []map[string]any
 				}
 			}
 		}
-		return writeJSON(filepath.Join(controlDir, "evidence.json"), matches)
+		return matches, nil
 	case "configuration":
 		ref := configReferencesForControl(c)
-		// A lightweight per-control file that points at the config-snapshots folder.
-		// The snapshots themselves are stored at <framework>/config-snapshots/.
-		payload := map[string]any{
+		return map[string]any{
 			"evidence_type": "configuration",
 			"references":    ref,
-		}
-		if err := writeJSON(filepath.Join(controlDir, "evidence.json"), payload); err != nil {
-			return err
-		}
-		return writeYAML(filepath.Join(controlDir, "config-snapshot.yaml"), map[string]any{"references": ref})
+		}, nil
 	case "test_result":
 		ref := testReferencesForControl(c)
-		payload := map[string]any{
+		return map[string]any{
 			"evidence_type": "test_result",
 			"references":    ref,
-		}
-		return writeJSON(filepath.Join(controlDir, "evidence.json"), payload)
+		}, nil
 	default:
-		payload := map[string]any{
+		return map[string]any{
 			"evidence_type": c.EvidenceType,
 			"note":          "unsupported evidence_type; directory created for completeness",
-		}
-		return writeJSON(filepath.Join(controlDir, "evidence.json"), payload)
+		}, nil
 	}
 }
 

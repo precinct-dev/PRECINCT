@@ -1,6 +1,6 @@
 .PHONY: help up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo k8s-up k8s-down ci benchmark security-scan \
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
-       compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
+       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
        k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
        upgrade-demo phoenix-up phoenix-down phoenix-reset
 
@@ -506,6 +506,16 @@ compliance-report: test-compliance
 		echo "Docker stack not running, using existing audit log at $(AUDIT_LOG)"; \
 	fi
 	$(COMPLIANCE_PYTHON) tools/compliance/generate.py --audit-log $(AUDIT_LOG) --project-root .
+
+compliance-evidence:
+	@if [ -z "$(FRAMEWORK)" ]; then \
+		echo "Usage: make compliance-evidence FRAMEWORK=soc2 [SIGN=1] [COSIGN_KEY=.cosign/cosign.key]"; \
+		exit 1; \
+	fi
+	@args=""; \
+	if [ "$(SIGN)" = "1" ]; then args="$$args --sign"; fi; \
+	if [ -n "$(COSIGN_KEY)" ]; then args="$$args --cosign-key $(COSIGN_KEY)"; fi; \
+	go run ./cmd/agw compliance collect --framework "$(FRAMEWORK)" $$args
 
 test-compliance: $(COMPLIANCE_VENV)
 	cd tools/compliance && $(CURDIR)/$(COMPLIANCE_PYTHON) -m pytest test_generate.py -v

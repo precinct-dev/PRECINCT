@@ -8,6 +8,7 @@ func newComplianceCmd() *cobra.Command {
 		Short: "Compliance evidence collection",
 	}
 	cmd.AddCommand(newComplianceCollectCmd())
+	cmd.AddCommand(newComplianceReportCmd())
+	cmd.AddCommand(newComplianceEvidenceCmd())
 	return cmd
 }
-
