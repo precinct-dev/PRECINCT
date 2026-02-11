@@ -2,7 +2,7 @@
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
        compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
        k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
-       phoenix-up phoenix-down phoenix-reset
+       upgrade-demo phoenix-up phoenix-down phoenix-reset
 
 # Container image config
 REGISTRY ?= ghcr.io
@@ -71,6 +71,32 @@ upgrade-all: ## Upgrade all non-pinned components (ex: make upgrade-all VERIFY=1
 	@args="--all"; \
 	if [ "$(VERIFY)" = "1" ]; then args="$$args --verify"; fi; \
 	bash scripts/upgrade.sh $$args
+
+upgrade-demo: ## Stakeholder demo: upgrade check + upgrade + simulated test failure rollback
+	@required="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"; \
+	ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+	healthy=1; \
+	for s in $$required; do \
+		line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+		state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+		health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+		if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+			healthy=0; \
+			break; \
+		fi; \
+	done; \
+	if [ "$$healthy" -eq 0 ]; then \
+		echo "Core services not fully healthy. Running make up..."; \
+		$(MAKE) up; \
+	else \
+		echo "Core services already running and healthy. Skipping make up."; \
+	fi; \
+	if bash tests/e2e/test_upgrade.sh; then \
+		echo "upgrade-demo: PASS"; \
+	else \
+		echo "upgrade-demo: FAIL"; \
+		exit 1; \
+	fi
 
 test: ## Run all tests (unit + OPA)
 	@echo "Running unit tests..."
