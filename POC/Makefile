@@ -528,7 +528,7 @@ gdpr-delete:
 		echo "Usage: make gdpr-delete SPIFFE_ID=spiffe://poc.local/agents/example"; \
 		exit 1; \
 	fi
-	go run ./cmd/gdpr-delete/ "$(SPIFFE_ID)"
+	go run ./cmd/agw gdpr delete "$(SPIFFE_ID)" --confirm
 
 SPIRE_SOCK := /tmp/spire-server/private/api.sock
 SPIRE_EXEC := kubectl -n spire-system exec spire-server-0 -- /opt/spire/bin/spire-server
