@@ -73,6 +73,20 @@ make down && make up
 
 Phoenix UI is available at `http://localhost:6006` for trace inspection.
 
+## Git Hooks (beads)
+
+The repo includes a root `.beads` symlink to `POC/.beads` so `bd` git hooks can
+resolve the beads database when commits are made from subdirectories.
+
+If you ever see a pre-commit warning about a missing beads database, treat it as
+a warning (not a failed commit) and set:
+
+```bash
+export BEADS_DIR=.beads
+```
+
+from the repository root before committing.
+
 
 ## Directory Structure
 
