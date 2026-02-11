@@ -229,8 +229,8 @@ func TestRepaveAll_StopOnFailure_Simulated(t *testing.T) {
 	cmd.Dir = dir
 	_ = cmd.Run() // best-effort
 
-	// Bring up the main stack (skip if not healthy).
-	up := exec.CommandContext(ctx, "docker", "compose", "up", "-d", "--wait", "--wait-timeout", "300")
+	// Bring up the main stack using the repo's resilient readiness path.
+	up := exec.CommandContext(ctx, "make", "up")
 	up.Dir = dir
 	if out, err := up.CombinedOutput(); err != nil {
 		t.Skipf("compose stack not healthy; skipping stop-on-failure test.\nOutput:\n%s", string(out))

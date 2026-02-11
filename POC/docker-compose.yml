@@ -128,6 +128,9 @@ services:
       - SPIKE_NEXUS_KEEPER_PEERS=https://spike-keeper-1:8443
       - SPIKE_NEXUS_SHAMIR_THRESHOLD=1
       - SPIKE_NEXUS_SHAMIR_SHARES=1
+      # RFA-67xd: repave reliability. Nexus periodically re-contributes keeper shards;
+      # short interval ensures keeper shard recovery before next dependent restart.
+      - SPIKE_NEXUS_KEEPER_UPDATE_INTERVAL=5s
       - SPIKE_SYSTEM_LOG_LEVEL=INFO
       - SPIKE_TRUST_ROOT=poc.local
       - SPIKE_TRUST_ROOT_NEXUS=poc.local
