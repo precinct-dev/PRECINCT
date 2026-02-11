@@ -359,6 +359,7 @@ func (g *Gateway) Handler() http.Handler {
 	// Admin endpoints (not exposed externally in the POC; no auth required).
 	mux.Handle("/admin/circuit-breakers", http.HandlerFunc(g.adminCircuitBreakersHandler))
 	mux.Handle("/admin/circuit-breakers/", http.HandlerFunc(g.adminCircuitBreakersHandler))
+	mux.Handle("/admin/circuit-breakers/reset", http.HandlerFunc(g.adminCircuitBreakersResetHandler))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
@@ -1254,6 +1255,20 @@ type circuitBreakersResponse struct {
 	CircuitBreakers []circuitBreakerEntry `json:"circuit_breakers"`
 }
 
+type circuitBreakerResetRequest struct {
+	Tool string `json:"tool"`
+}
+
+type circuitBreakerResetEntry struct {
+	Tool          string `json:"tool"`
+	PreviousState string `json:"previous_state"`
+	NewState      string `json:"new_state"`
+}
+
+type circuitBreakersResetResponse struct {
+	Reset []circuitBreakerResetEntry `json:"reset"`
+}
+
 // adminCircuitBreakersHandler serves:
 //   - GET /admin/circuit-breakers
 //   - GET /admin/circuit-breakers/<tool>
@@ -1321,6 +1336,70 @@ func (g *Gateway) adminCircuitBreakersHandler(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(circuitBreakersResponse{CircuitBreakers: out})
+}
+
+// adminCircuitBreakersResetHandler serves:
+//   - POST /admin/circuit-breakers/reset
+func (g *Gateway) adminCircuitBreakersResetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req circuitBreakerResetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	if req.Tool == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "tool is required"})
+		return
+	}
+
+	tools := g.registry.ToolNames()
+	targetTools := make([]string, 0, len(tools))
+	if req.Tool == "*" {
+		targetTools = append(targetTools, tools...)
+	} else {
+		found := false
+		for _, t := range tools {
+			if t == req.Tool {
+				found = true
+				break
+			}
+		}
+		if !found {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("unknown tool: %s", req.Tool)})
+			return
+		}
+		targetTools = append(targetTools, req.Tool)
+	}
+
+	before := g.circuitBreaker.Snapshot()
+	previousState := before.State.String()
+	g.circuitBreaker.Reset()
+
+	after := g.circuitBreaker.Snapshot()
+	newState := after.State.String()
+
+	result := make([]circuitBreakerResetEntry, 0, len(targetTools))
+	for _, t := range targetTools {
+		result = append(result, circuitBreakerResetEntry{
+			Tool:          t,
+			PreviousState: previousState,
+			NewState:      newState,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(circuitBreakersResetResponse{Reset: result})
 }
 
 // checkUIResourceReadAllowed checks whether a ui:// resource read is permitted.
