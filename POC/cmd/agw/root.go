@@ -60,6 +60,7 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newComplianceCmd())
 	rootCmd.AddCommand(newInspectCmd())
 	rootCmd.AddCommand(newAuditCmd())
+	rootCmd.AddCommand(newIdentityCmd())
 	rootCmd.AddCommand(newPolicyCmd())
 	rootCmd.AddCommand(newResetCmd())
 	rootCmd.AddCommand(newSecretCmd())
