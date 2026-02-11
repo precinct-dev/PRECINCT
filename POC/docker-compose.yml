@@ -136,7 +136,8 @@ services:
       - SPIKE_TRUST_ROOT_KEEPER=poc.local
       - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
-      - HEALTHCHECK_URL=https://localhost:8443/
+      # Avoid IPv6 localhost resolution ([::1]) issues; services bind IPv4 in-container.
+      - HEALTHCHECK_URL=https://127.0.0.1:8443/
     networks:
       - agentic-net
     labels:
@@ -170,7 +171,8 @@ services:
       - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
       - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
       - SPIKE_SYSTEM_LOG_LEVEL=INFO
-      - HEALTHCHECK_ADDR=localhost:8443
+      # Avoid IPv6 localhost resolution ([::1]) issues; Keeper listens on IPv4 in-container.
+      - HEALTHCHECK_ADDR=127.0.0.1:8443
     networks:
       - agentic-net
     labels:
@@ -195,6 +197,12 @@ services:
         condition: service_completed_successfully  # SPIRE entry must exist for bootstrap's SVID
       spike-keeper-1:
         condition: service_healthy  # Keeper must be serving mTLS before bootstrap sends shards
+      # Demo reliability: bootstrap verifies initialization by calling SPIKE Nexus.
+      # On slower machines this can race Nexus startup and fail the one-shot container.
+      # We only require Nexus to be started (not healthy) to avoid any potential
+      # dependency deadlocks with shard initialization.
+      spike-nexus:
+        condition: service_started
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
@@ -338,6 +346,25 @@ services:
       timeout: 3s
       retries: 5
 
+  # Mock Guard Model - Canned "OpenAI chat completions" endpoint for Deep Scan (RFA-6fse.3)
+  # Allows demo-compose to deterministically exercise Step 10 deep scan deny behavior
+  # without external API keys or network calls.
+  mock-guard-model:
+    build:
+      context: ./demo/mock-guard-model
+      dockerfile: Dockerfile
+    container_name: mock-guard-model
+    hostname: mock-guard-model
+    ports:
+      - "8083:8080"
+    networks:
+      - agentic-net
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   # MCP Security Gateway - Security enforcement point for all MCP requests
   mcp-security-gateway:
     build:
@@ -360,15 +387,17 @@ services:
       mock-mcp-server:
         condition: service_healthy  # RFA-71u: Gateway needs mock MCP server ready before
                                     # MCP transport auto-detection on first request.
+      mock-guard-model:
+        condition: service_healthy  # RFA-6fse.3: Deep scan uses mock guard model for deterministic demos.
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
       - ./config:/config:ro  # Mount config directory for OPA policies and tool registry
     ports:
       - "9090:9090"   # MCP JSON-RPC API (HTTP, dev mode)
-      - "9443:9443"   # MCP JSON-RPC API (HTTPS/mTLS, prod mode) (RFA-8z8.1)
     environment:
       - PORT=9090
       - UPSTREAM_URL=http://mock-mcp-server:8082  # RFA-71u: Point to mock MCP server in Docker network
+      - DEMO_RUGPULL_ADMIN_ENABLED=1  # Demo-only: gateway mediates upstream rugpull toggles (RFA-1r0x)
       - OPA_POLICY_DIR=/config/opa
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760
@@ -384,12 +413,16 @@ services:
       - OTEL_SERVICE_NAME=mcp-security-gateway
       - KEYDB_URL=redis://keydb:6379  # RFA-hh5.1: KeyDB session persistence (auto-converts to rediss://keydb:6380 in prod mode per RFA-8z8.2)
       - MCP_TRANSPORT_MODE=${MCP_TRANSPORT_MODE:-mcp}  # RFA-5u9: "mcp" (default) or "proxy" (backward compat reverse proxy)
-      - GROQ_API_KEY=${GROQ_API_KEY:-}  # RFA-o9z: Deep scan LLM guard (Groq Prompt Guard 2)
+      # Demo determinism: do NOT inherit host GROQ_API_KEY. Step-up gating should be unconfigured
+      # in demo-compose so we can deterministically demonstrate deep scan blocking at step 10.
+      - GROQ_API_KEY=
       - DEEP_SCAN_TIMEOUT=${DEEP_SCAN_TIMEOUT:-5}  # RFA-o9z: Deep scan API timeout in seconds
       - DEEP_SCAN_FALLBACK=${DEEP_SCAN_FALLBACK:-fail_closed}  # RFA-o9z: "fail_closed" (default) or "fail_open"
-      - GUARD_MODEL_ENDPOINT=${GUARD_MODEL_ENDPOINT:-}  # RFA-j6c: Guard model API base URL (default: Groq)
+      # Demo determinism: always point the deep scan guard model to the local mock service.
+      - GUARD_MODEL_ENDPOINT=http://mock-guard-model:8080/openai/v1  # RFA-6fse.3: deterministic, no external keys/network
       - GUARD_MODEL_NAME=${GUARD_MODEL_NAME:-}  # RFA-j6c: Guard model identifier (default: llama-prompt-guard-2-86m)
-      - GUARD_API_KEY=${GUARD_API_KEY:-}  # RFA-j6c: Guard model API key (default: falls back to GROQ_API_KEY)
+      # Demo determinism: ensure deep scan is enabled (non-empty key) without requiring real credentials.
+      - GUARD_API_KEY=demo-guard-key  # RFA-6fse.3: deterministic, dummy key
       - DLP_INJECTION_POLICY=${DLP_INJECTION_POLICY:-}  # RFA-sd7: Override DLP injection policy ("block" or "flag", default: use YAML config)
       - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}    # RFA-8ak: Demo-friendly rate limit (code default 600 is too generous for burst test)
       - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}  # RFA-8ak: Small burst bucket so 200-call test triggers 429 quickly

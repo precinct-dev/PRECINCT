@@ -10,6 +10,12 @@ bd close <id>         # Complete work (PM only - see methodology below)
 bd sync               # Sync with git
 ```
 
+### Beads DB Location (Repo Root vs `POC/`)
+
+- Canonical beads database lives at `POC/.beads/`.
+- Repo root contains a `.beads` symlink to `POC/.beads` so `bd` and the git `pre-commit` hook work when you run `git commit` from the repo root.
+- `bd sync` writes exports to `POC/.beads/issues.jsonl` (via the same underlying DB), regardless of whether you run it from repo root or from `POC/`.
+
 > **bd syntax note**: Prefer short flags (`-t`, `-p`, `-d`) over long flags. bd CLI evolves frequently - check `bd --help` for current syntax.
 
 > **Beads skill reference**: For comprehensive beads documentation (worktrees, sync, daemon, troubleshooting), invoke `/beads` or read the beads skill resources. Agents handling cleanup MUST understand beads architecture.

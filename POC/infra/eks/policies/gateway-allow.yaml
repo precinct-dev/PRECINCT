@@ -64,7 +64,13 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Allow egress to MCP tool server in tools namespace on port 8081
+    # Allow egress to MCP tool server in tools namespace.
+    #
+    # NOTE(local overlay): the POC's demo mock MCP server listens on :8082, but
+    # the Service remains at :8081 and forwards to the named container port.
+    # Depending on the CNI implementation, NetworkPolicy enforcement may see
+    # the post-DNAT destination port (8082). Allow both to keep demo-k8s
+    # deterministic without weakening namespace/pod selectors.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -75,6 +81,8 @@ spec:
       ports:
         - protocol: TCP
           port: 8081
+        - protocol: TCP
+          port: 8082
 
     # Allow egress to OTEL Collector in observability namespace (OTLP traces)
     # Story: RFA-9fv.7

@@ -504,11 +504,12 @@ func (d *DeepScanner) classifyChunksParallel(ctx context.Context, chunks []strin
 //   - If DLP flags potential_injection, perform synchronous Groq API call.
 //   - If Groq returns an error and fallback=fail_closed, block the request.
 //   - If Groq returns an error and fallback=fail_open, allow with audit event.
-//   - If Groq classifies as injection (score > threshold), store result in context
-//     for step-up gating to consume.
+//   - If Groq classifies as injection/jailbreak above threshold, block the request
+//     with ErrDeepScanBlocked (HTTP 403) and details containing scores + thresholds.
+//   - Otherwise, store result in context for downstream middleware/audit consumers.
 //
 // Position: Step 10, after step-up gating
-func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
+func DeepScanMiddleware(next http.Handler, scanner *DeepScanner, riskConfig *RiskConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// RFA-m6j.2: Create OTel span for step 10
 		ctx, span := tracer.Start(r.Context(), "gateway.deep_scan_dispatch",
@@ -571,7 +572,8 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 
 		// Handle scan errors with fallback logic (AC5, AC6)
 		if result.Error != nil {
-			scanner.emitAuditEvent(ctx, result, "guard_model_unavailable")
+			injThreshold, jbThreshold := deepScanThresholds(riskConfig)
+			scanner.emitAuditEvent(ctx, result, "guard_model_unavailable", false, injThreshold, jbThreshold)
 
 			if scanner.fallbackMode == FailClosed {
 				// AC5: Block the request
@@ -597,8 +599,42 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 			return
 		}
 
-		// Emit audit event with guard model decision (AC7)
-		scanner.emitAuditEvent(ctx, result, "guard_model_classified")
+		injThreshold, jbThreshold := deepScanThresholds(riskConfig)
+		blocked := result.InjectionScore > injThreshold || result.JailbreakScore > jbThreshold
+
+		// Emit audit event with guard model decision and whether it blocked.
+		scanner.emitAuditEvent(ctx, result, "guard_model_classified", blocked, injThreshold, jbThreshold)
+
+		span.SetAttributes(
+			attribute.Float64("injection_score", result.InjectionScore),
+			attribute.Float64("jailbreak_score", result.JailbreakScore),
+			attribute.Float64("injection_threshold", injThreshold),
+			attribute.Float64("jailbreak_threshold", jbThreshold),
+			attribute.Bool("blocked", blocked),
+		)
+
+		if blocked {
+			span.SetAttributes(
+				attribute.String("mcp.result", "denied"),
+				attribute.String("mcp.reason", "deep scan blocked"),
+			)
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+				Code:           ErrDeepScanBlocked,
+				Message:        "Deep scan blocked request due to prompt injection/jailbreak risk",
+				Middleware:     "deep_scan_dispatch",
+				MiddlewareStep: 10,
+				Details: map[string]any{
+					"injection_score":        result.InjectionScore,
+					"jailbreak_score":        result.JailbreakScore,
+					"injection_threshold":    injThreshold,
+					"jailbreak_threshold":    jbThreshold,
+					"guard_model":            result.ModelUsed,
+					"guard_model_latency_ms": result.LatencyMs,
+				},
+				Remediation: "Revise the prompt to remove injection/jailbreak patterns, or lower tool capability/risk so the request can be handled safely.",
+			})
+			return
+		}
 
 		span.SetAttributes(
 			attribute.String("mcp.result", "allowed"),
@@ -613,17 +649,46 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner) http.Handler {
 	})
 }
 
+// deepScanThresholds returns the injection/jailbreak thresholds used to decide
+// whether a deep scan classification should deny the request.
+//
+// Defaults align with middleware.DefaultRiskConfig() (0.30 / 0.30).
+func deepScanThresholds(riskConfig *RiskConfig) (float64, float64) {
+	const defaultThreshold = 0.30
+
+	if riskConfig == nil {
+		return defaultThreshold, defaultThreshold
+	}
+
+	inj := riskConfig.Guard.InjectionThreshold
+	jb := riskConfig.Guard.JailbreakThreshold
+
+	// Treat zero/unset as "not configured" and fall back to defaults.
+	if inj == 0 {
+		inj = defaultThreshold
+	}
+	if jb == 0 {
+		jb = defaultThreshold
+	}
+
+	// Clamp to a sane range to avoid accidental always-block/never-block configs.
+	inj = math.Max(0, math.Min(1, inj))
+	jb = math.Max(0, math.Min(1, jb))
+
+	return inj, jb
+}
+
 // emitAuditEvent records a guard model decision in the audit log.
 // When chunks are used, the audit event includes chunk_count and
 // per-chunk probabilities for forensic analysis.
-func (d *DeepScanner) emitAuditEvent(ctx context.Context, result DeepScanResult, reason string) {
+func (d *DeepScanner) emitAuditEvent(ctx context.Context, result DeepScanResult, reason string, blocked bool, injThreshold float64, jbThreshold float64) {
 	if d.auditor == nil {
 		return
 	}
 
 	auditResult := fmt.Sprintf(
-		"reason=%s injection_probability=%.4f jailbreak_probability=%.4f model=%s latency_ms=%d chunk_count=%d",
-		reason, result.InjectionScore, result.JailbreakScore, result.ModelUsed, result.LatencyMs, result.ChunkCount,
+		"reason=%s blocked=%t injection_probability=%.4f jailbreak_probability=%.4f injection_threshold=%.4f jailbreak_threshold=%.4f model=%s latency_ms=%d chunk_count=%d",
+		reason, blocked, result.InjectionScore, result.JailbreakScore, injThreshold, jbThreshold, result.ModelUsed, result.LatencyMs, result.ChunkCount,
 	)
 
 	// Append per-chunk probabilities when chunking was used

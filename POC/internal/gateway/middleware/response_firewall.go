@@ -261,20 +261,17 @@ func extractToolName(ctx context.Context) string {
 		return ""
 	}
 
-	var mcpReq MCPRequest
-	if err := json.Unmarshal(body, &mcpReq); err != nil {
+	parsed, err := ParseMCPRequestBody(body)
+	if err != nil {
 		return ""
 	}
 
-	toolName := mcpReq.Method
-	if toolName == "" {
-		if tn, ok := mcpReq.Params["tool"]; ok {
-			if toolNameStr, ok := tn.(string); ok {
-				toolName = toolNameStr
-			}
-		}
+	toolName, err := parsed.EffectiveToolName()
+	if err != nil {
+		// Response firewall is response-path only; if the request is malformed,
+		// earlier middleware should have rejected it. Here we fail open.
+		return ""
 	}
-
 	return toolName
 }
 

@@ -21,11 +21,9 @@ data:
         socket_path = "/run/spire/sockets/agent.sock"
         trust_domain = "agentic-ref-arch.poc"
 
-        # Insecure bootstrap for local development only.
-        # The agent will accept any server certificate on first connection.
-        # This avoids the chicken-and-egg problem with trust bundle distribution.
-        # NOTE: Cannot use trust_bundle_path with insecure_bootstrap.
-        insecure_bootstrap = true
+        # Secure bootstrap: trust the server-published bundle (populated by
+        # spire-server's k8sbundle notifier into ConfigMap/spire-bundle).
+        trust_bundle_path = "/run/spire/bundle/bundle.crt"
     }
 
     plugins {

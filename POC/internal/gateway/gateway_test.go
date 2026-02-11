@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -520,6 +521,43 @@ func newTestGatewayForProxyHandler(t *testing.T, upstreamHandler http.HandlerFun
 	return gw
 }
 
+// newTestGatewayForMCPTransportProxyHandler creates a Gateway instance configured
+// for MCP transport mode ("mcp") and UI gating, intended for tests that exercise
+// the real mcpclient transport initialization path via proxyHandler().
+func newTestGatewayForMCPTransportProxyHandler(t *testing.T, upstreamURL string, uiEnabled bool, grantsYAML string) *Gateway {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	grantsPath := filepath.Join(tmpDir, "grants.yaml")
+	if err := os.WriteFile(grantsPath, []byte(grantsYAML), 0644); err != nil {
+		t.Fatalf("Failed to write grants file: %v", err)
+	}
+
+	uiConfig := UIConfigDefaults()
+	uiConfig.Enabled = uiEnabled
+	uiConfig.DefaultMode = "deny"
+
+	cfg := &Config{
+		UpstreamURL:            upstreamURL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		UI:                     uiConfig,
+		UICapabilityGrantsPath: grantsPath,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+	return gw
+}
+
 // newTestGatewayWithUIGating creates a gateway backed by a mock upstream and a
 // temporary UI capability grants file. Returns the full gateway handler (with entire
 // middleware chain).
@@ -570,6 +608,27 @@ func upstreamToolsListWithUI() http.HandlerFunc {
 			"id":      1,
 			"result": map[string]interface{}{
 				"tools": []interface{}{
+					// Include a registry-managed tool with full schema so tool registry hash
+					// verification can safely compute observed hashes from tools/list.
+					map[string]interface{}{
+						"name":        "tavily_search",
+						"description": "Search the web using Tavily API",
+						"inputSchema": map[string]interface{}{
+							"type":     "object",
+							"required": []interface{}{"query"},
+							"properties": map[string]interface{}{
+								"query": map[string]interface{}{
+									"type":        "string",
+									"description": "Search query",
+								},
+								"max_results": map[string]interface{}{
+									"type":        "integer",
+									"description": "Maximum results to return",
+									"default":     5,
+								},
+							},
+						},
+					},
 					map[string]interface{}{
 						"name":        "render-analytics",
 						"description": "Render analytics dashboard",
@@ -1069,10 +1128,200 @@ func newMockMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 			case "notifications/initialized":
 				w.WriteHeader(http.StatusOK)
 
+			case "tools/list":
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"result": map[string]interface{}{
+						"tools": []interface{}{
+							map[string]interface{}{
+								"name":        "tavily_search",
+								"description": "Search the web using Tavily API",
+								"inputSchema": map[string]interface{}{
+									"type":     "object",
+									"required": []interface{}{"query"},
+									"properties": map[string]interface{}{
+										"query": map[string]interface{}{
+											"type":        "string",
+											"description": "Search query",
+										},
+										"max_results": map[string]interface{}{
+											"type":        "integer",
+											"description": "Maximum results to return",
+											"default":     5,
+										},
+									},
+								},
+							},
+							map[string]interface{}{
+								"name":        "render-analytics",
+								"description": "Render analytics dashboard",
+								"_meta": map[string]interface{}{
+									"ui": map[string]interface{}{
+										"resourceUri": "ui://test-server/analytics.html",
+									},
+								},
+							},
+							map[string]interface{}{
+								"name":        "show-chart",
+								"description": "Display chart",
+								"_meta": map[string]interface{}{
+									"ui": map[string]interface{}{
+										"resourceUri": "ui://test-server/chart.html",
+									},
+								},
+							},
+							map[string]interface{}{
+								"name":        "plain-tool",
+								"description": "A regular tool with no UI",
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(resp)
+
+			case "resources/read":
+				uri := ""
+				if params, ok := rpcReq["params"].(map[string]interface{}); ok {
+					if u, ok := params["uri"].(string); ok {
+						uri = u
+					}
+				}
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"result": map[string]interface{}{
+						"contents": []interface{}{
+							map[string]interface{}{
+								"uri":      uri,
+								"mimeType": "text/html;profile=mcp-app",
+								"text":     "<html><body>Mock UI Resource</body></html>",
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(resp)
+
 			case "tools/call", "tavily_search":
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"search result: MCP gateway integration test passed"}]}}`))
+
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}`))
+			}
+
+		case http.MethodDelete:
+			log.RecordCall("DELETE", r.Header.Get("Mcp-Session-Id"), nil)
+			w.WriteHeader(http.StatusOK)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	t.Cleanup(server.Close)
+	return server, log
+}
+
+// newMockMCPServerUI creates a Streamable HTTP MCP server that supports tools/list
+// (with _meta.ui) and resources/read (ui://) for MCP-UI transport parity tests.
+func newMockMCPServerUI(t *testing.T) (*httptest.Server, *mcpServerLog) {
+	t.Helper()
+
+	log := &mcpServerLog{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			var rpcReq map[string]interface{}
+			if err := json.Unmarshal(body, &rpcReq); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			method, _ := rpcReq["method"].(string)
+			log.RecordCall(method, r.Header.Get("Mcp-Session-Id"), body)
+
+			switch method {
+			case "initialize":
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Mcp-Session-Id", "ui-integration-session")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock-mcp-ui","version":"1.0"}}}`))
+
+			case "notifications/initialized":
+				w.WriteHeader(http.StatusOK)
+
+			case "tools/list":
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"result": map[string]interface{}{
+						"tools": []interface{}{
+							map[string]interface{}{
+								"name":        "analytics-tool",
+								"description": "Render analytics",
+								"_meta": map[string]interface{}{
+									"ui": map[string]interface{}{
+										"resourceUri": "ui://test-server/analytics.html",
+										"csp": map[string]interface{}{
+											"connectDomains":  []interface{}{"https://api.acme.corp", "https://evil.com"},
+											"resourceDomains": []interface{}{"https://cdn.acme.corp"},
+											"frameDomains":    []interface{}{"https://iframe.evil.com"},
+											"baseUriDomains":  []interface{}{"https://redirect.evil.com"},
+										},
+										"permissions": map[string]interface{}{
+											"camera":         true,
+											"microphone":     true,
+											"geolocation":    false,
+											"clipboardWrite": true,
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(resp)
+
+			case "resources/read":
+				uri := ""
+				if params, ok := rpcReq["params"].(map[string]interface{}); ok {
+					if u, ok := params["uri"].(string); ok {
+						uri = u
+					}
+				}
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"result": map[string]interface{}{
+						"contents": []interface{}{
+							map[string]interface{}{
+								"uri":      uri,
+								"mimeType": "text/html;profile=mcp-app",
+								"text":     "<html><body><h1>Safe UI</h1></body></html>",
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(resp)
 
 			default:
 				w.Header().Set("Content-Type", "application/json")
@@ -1118,6 +1367,23 @@ func (l *mcpServerLog) MethodCalls(method string) []mcpCall {
 	return result
 }
 
+func toStringSliceAny(v interface{}) []string {
+	if v == nil {
+		return nil
+	}
+	arr, ok := v.([]interface{})
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, item := range arr {
+		if s, ok := item.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // TestMCPTransport_ToolsCall_ThroughAll13Layers proves that a tools/call request
 // flows through ALL 13 middleware layers and reaches the upstream MCP server as
 // proper JSON-RPC when MCPTransportMode="mcp".
@@ -1143,10 +1409,9 @@ func TestMCPTransport_ToolsCall_ThroughAll13Layers(t *testing.T) {
 
 	handler := gw.Handler()
 
-	// Build a tools/call request. Using "tavily_search" as the method so it passes
-	// all middleware checks (tool registry, OPA destination_allowed).
-	// The MCP transport translates this to a JSON-RPC request to the upstream.
-	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"MCP test"},"id":1}`
+	// Build a spec-conformant tools/call request. The gateway MUST enforce policy
+	// and registry checks against params.name (the effective tool name).
+	requestBody := `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"MCP test"}},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
@@ -1197,29 +1462,190 @@ func TestMCPTransport_ToolsCall_ThroughAll13Layers(t *testing.T) {
 		t.Errorf("Expected 1 notifications/initialized call, got %d", len(notifCalls))
 	}
 
-	toolsCalls := serverLog.MethodCalls("tavily_search")
+	toolsCalls := serverLog.MethodCalls("tools/call")
 	if len(toolsCalls) != 1 {
-		t.Fatalf("Expected 1 tavily_search call, got %d", len(toolsCalls))
+		t.Fatalf("Expected 1 tools/call call, got %d", len(toolsCalls))
 	}
 
-	// Verify tavily_search had Mcp-Session-Id header
+	// Verify tools/call had Mcp-Session-Id header
 	if toolsCalls[0].SessionID != "integration-session-42" {
 		t.Errorf("Expected Mcp-Session-Id 'integration-session-42', got '%s'", toolsCalls[0].SessionID)
 	}
 
-	// Verify tavily_search body is proper JSON-RPC
+	// Verify tools/call body is proper JSON-RPC
 	var toolsCallBody map[string]interface{}
 	if err := json.Unmarshal(toolsCalls[0].Body, &toolsCallBody); err != nil {
-		t.Fatalf("tavily_search body is not JSON: %v", err)
+		t.Fatalf("tools/call body is not JSON: %v", err)
 	}
 	if toolsCallBody["jsonrpc"] != "2.0" {
-		t.Errorf("Expected tavily_search body jsonrpc=2.0, got %v", toolsCallBody["jsonrpc"])
+		t.Errorf("Expected tools/call body jsonrpc=2.0, got %v", toolsCallBody["jsonrpc"])
 	}
-	if toolsCallBody["method"] != "tavily_search" {
-		t.Errorf("Expected tavily_search method, got %v", toolsCallBody["method"])
+	if toolsCallBody["method"] != "tools/call" {
+		t.Errorf("Expected tools/call method, got %v", toolsCallBody["method"])
+	}
+	// Verify the effective tool name is preserved in params.name.
+	if params, ok := toolsCallBody["params"].(map[string]interface{}); ok {
+		if name, _ := params["name"].(string); name != "tavily_search" {
+			t.Errorf("Expected params.name=tavily_search, got %v", params["name"])
+		}
+	} else {
+		t.Errorf("Expected params object in tools/call body, got %T", toolsCallBody["params"])
 	}
 
 	t.Logf("PASS: tools/call flowed through all 13 middleware layers to MCP server and back (status=%d)", rec.Code)
+}
+
+// --- RFA-6fse.2: MCP Transport UI Enforcement Integration Tests ---
+
+func TestMCPTransport_ToolsList_UIProcessing_MatchesProxyMode(t *testing.T) {
+	grants := `
+ui_capability_grants:
+  - server: "test-server"
+    tenant: "test-tenant"
+    mode: "deny"
+    approved_tools: []
+`
+	// Proxy mode gateway: upstream is plain HTTP returning a tools/list JSON-RPC response.
+	gwProxy := newTestGatewayForProxyHandler(t, upstreamToolsListWithUI(), true, grants)
+	handlerProxy := middleware.BodyCapture(gwProxy.proxyHandler())
+
+	// MCP transport mode gateway: upstream is a mock MCP server with initialize + tools/list.
+	mcpServer, _ := newMockMCPServer(t)
+	gwMCP := newTestGatewayForMCPTransportProxyHandler(t, mcpServer.URL, true, grants)
+	handlerMCP := middleware.BodyCapture(gwMCP.proxyHandler())
+
+	// Same tools/list request through both gateways.
+	body := []byte(`{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}`)
+
+	req1 := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req1.Header.Set("Content-Type", "application/json")
+	req1.Header.Set("X-MCP-Server", "test-server")
+	req1.Header.Set("X-Tenant", "test-tenant")
+	rec1 := httptest.NewRecorder()
+	handlerProxy.ServeHTTP(rec1, req1)
+
+	req2 := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req2.Header.Set("Content-Type", "application/json")
+	req2.Header.Set("X-MCP-Server", "test-server")
+	req2.Header.Set("X-Tenant", "test-tenant")
+	rec2 := httptest.NewRecorder()
+	handlerMCP.ServeHTTP(rec2, req2)
+
+	if rec1.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec1.Body)
+		t.Fatalf("Proxy mode expected 200, got %d. Body: %s", rec1.Code, string(respBody))
+	}
+	if rec2.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec2.Body)
+		t.Fatalf("MCP mode expected 200, got %d. Body: %s", rec2.Code, string(respBody))
+	}
+
+	respProxy, _ := io.ReadAll(rec1.Body)
+	respMCP, _ := io.ReadAll(rec2.Body)
+
+	var j1 any
+	var j2 any
+	if err := json.Unmarshal(respProxy, &j1); err != nil {
+		t.Fatalf("Proxy response not JSON: %v (body=%s)", err, string(respProxy))
+	}
+	if err := json.Unmarshal(respMCP, &j2); err != nil {
+		t.Fatalf("MCP response not JSON: %v (body=%s)", err, string(respMCP))
+	}
+
+	if !reflect.DeepEqual(j1, j2) {
+		t.Fatalf("Expected MCP transport tools/list UI processing to match proxy mode.\nproxy=%s\nmcp=%s",
+			string(respProxy), string(respMCP))
+	}
+
+	// Extra sanity: deny mode should strip _meta.ui entirely.
+	if strings.Contains(string(respMCP), "\"resourceUri\"") {
+		t.Fatalf("Expected deny mode tools/list response to have _meta.ui stripped, got: %s", string(respMCP))
+	}
+
+	t.Logf("PASS: MCP transport tools/list UI processing matches proxy mode (deny mode)")
+}
+
+func TestMCPTransport_UIResourceRead_Denied_BlocksBeforeUpstream(t *testing.T) {
+	var upstreamCalls atomic.Int32
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls.Add(1)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"unexpected"}}`))
+	}))
+	t.Cleanup(upstream.Close)
+
+	grants := `
+ui_capability_grants:
+  - server: "denied-server"
+    tenant: "acme"
+    mode: "deny"
+    approved_tools: []
+`
+	gw := newTestGatewayForMCPTransportProxyHandler(t, upstream.URL, true, grants)
+	handler := middleware.BodyCapture(gw.proxyHandler())
+
+	body := []byte(`{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"ui://denied-server/exploit.html"},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-MCP-Server", "denied-server")
+	req.Header.Set("X-Tenant", "acme")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	respBody, _ := io.ReadAll(rec.Body)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403 for denied ui:// resource read, got %d. Body: %s", rec.Code, string(respBody))
+	}
+	if !strings.Contains(string(respBody), "ui_capability_denied") {
+		t.Fatalf("Expected ui_capability_denied error, got: %s", string(respBody))
+	}
+	if upstreamCalls.Load() != 0 {
+		t.Fatalf("Expected upstream to NOT be called for denied ui:// read, got calls=%d", upstreamCalls.Load())
+	}
+
+	t.Logf("PASS: denied ui:// resources/read blocked before upstream (including before MCP init)")
+}
+
+func TestMCPTransport_UIResourceRead_ResponseControls_BlockOnRegistry(t *testing.T) {
+	mcpServer, serverLog := newMockMCPServer(t)
+
+	grants := `
+ui_capability_grants:
+  - server: "mcp-unreg-server"
+    tenant: "acme"
+    mode: "allow"
+    approved_tools: []
+`
+	gw := newTestGatewayForMCPTransportProxyHandler(t, mcpServer.URL, true, grants)
+	handler := middleware.BodyCapture(gw.proxyHandler())
+
+	body := []byte(`{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"ui://mcp-unreg-server/page.html"},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-MCP-Server", "mcp-unreg-server")
+	req.Header.Set("X-Tenant", "acme")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	respBody, _ := io.ReadAll(rec.Body)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403 for ui:// resource blocked by response controls, got %d. Body: %s", rec.Code, string(respBody))
+	}
+	if !strings.Contains(string(respBody), "ui_resource_blocked") {
+		t.Fatalf("Expected ui_resource_blocked error, got: %s", string(respBody))
+	}
+	if !strings.Contains(string(respBody), "not in registry") {
+		t.Fatalf("Expected registry verification to be the block reason, got: %s", string(respBody))
+	}
+
+	// Prove the request actually reached the MCP upstream (i.e., response-side enforcement).
+	if len(serverLog.MethodCalls("resources/read")) != 1 {
+		t.Fatalf("Expected upstream resources/read to be called once, got %d", len(serverLog.MethodCalls("resources/read")))
+	}
+
+	t.Logf("PASS: allowed ui:// resources/read blocked by registry verification in MCP transport mode")
 }
 
 // TestMCPTransport_ProxyMode_BypassesMCPPath verifies that MCPTransportMode="proxy"
@@ -1300,6 +1726,11 @@ func TestMCPTransport_MCPMode_UpstreamError(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26"}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			// Tool registry verification uses tools/list to compute observed hashes.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			requestCount++
 			// Return JSON-RPC error
@@ -1361,6 +1792,232 @@ func TestMCPTransport_MCPMode_UpstreamError(t *testing.T) {
 	t.Logf("PASS: JSON-RPC error returned as proper GatewayError (code=%s, status=%d)", gatewayErr.Code, rec.Code)
 }
 
+// RFA-6fse.2: MCP-UI parity tests for MCP transport mode.
+
+func TestMCPTransport_ToolsList_UIControls_Applied(t *testing.T) {
+	mcpServer, _ := newMockMCPServerUI(t)
+
+	// Write grants YAML to temp file
+	tmpDir := t.TempDir()
+	grantsPath := filepath.Join(tmpDir, "ui_grants.yaml")
+	grants := `
+ui_capability_grants:
+  - server: "test-server"
+    tenant: "acme"
+    mode: "allow"
+    approved_tools:
+      - "analytics-tool"
+    allowed_csp_connect_domains:
+      - "https://api.acme.corp"
+    allowed_csp_resource_domains:
+      - "https://cdn.acme.corp"
+    allowed_permissions:
+      - "clipboardWrite"
+`
+	if err := os.WriteFile(grantsPath, []byte(grants), 0644); err != nil {
+		t.Fatalf("Failed to write grants file: %v", err)
+	}
+
+	uiCfg := UIConfigDefaults()
+	uiCfg.Enabled = true
+	uiCfg.DefaultMode = "deny"
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		UI:                     uiCfg,
+		UICapabilityGrantsPath: grantsPath,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	body := []byte(`{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	req.Header.Set("X-MCP-Server", "test-server")
+	req.Header.Set("X-Tenant", "acme")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		respBody, _ := io.ReadAll(rec.Body)
+		t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, string(respBody))
+	}
+
+	respBody, _ := io.ReadAll(rec.Body)
+	var resp map[string]interface{}
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		t.Fatalf("Response not JSON: %v (%s)", err, string(respBody))
+	}
+
+	result := resp["result"].(map[string]interface{})
+	tools := result["tools"].([]interface{})
+	if len(tools) != 1 {
+		t.Fatalf("Expected 1 tool, got %d", len(tools))
+	}
+	tool := tools[0].(map[string]interface{})
+	meta := tool["_meta"].(map[string]interface{})
+	ui := meta["ui"].(map[string]interface{})
+
+	// CSP mediation: evil.com stripped, frameDomains and baseUriDomains hard-empty.
+	csp := ui["csp"].(map[string]interface{})
+	connectDomains := toStringSliceAny(csp["connectDomains"])
+	if len(connectDomains) != 1 || connectDomains[0] != "https://api.acme.corp" {
+		t.Fatalf("Expected connectDomains=['https://api.acme.corp'], got %v", connectDomains)
+	}
+	if len(toStringSliceAny(csp["frameDomains"])) != 0 {
+		t.Fatalf("Expected frameDomains empty (hard constraint), got %v", toStringSliceAny(csp["frameDomains"]))
+	}
+	if len(toStringSliceAny(csp["baseUriDomains"])) != 0 {
+		t.Fatalf("Expected baseUriDomains empty (hard constraint), got %v", toStringSliceAny(csp["baseUriDomains"]))
+	}
+
+	// Permissions mediation: hard constraints deny camera/microphone regardless of grant.
+	perms := ui["permissions"].(map[string]interface{})
+	if perms["camera"] == true || perms["microphone"] == true {
+		t.Fatalf("Expected camera/microphone denied by hard constraints, got %v", perms)
+	}
+}
+
+func TestMCPTransport_UIResourceRead_UIURI_DeniedBeforeUpstream(t *testing.T) {
+	mcpServer, serverLog := newMockMCPServerUI(t)
+
+	// No allow grants: default deny (uiCfg.DefaultMode="deny").
+	tmpDir := t.TempDir()
+	grantsPath := filepath.Join(tmpDir, "ui_grants.yaml")
+	if err := os.WriteFile(grantsPath, []byte("ui_capability_grants: []\n"), 0644); err != nil {
+		t.Fatalf("Failed to write grants file: %v", err)
+	}
+
+	uiCfg := UIConfigDefaults()
+	uiCfg.Enabled = true
+	uiCfg.DefaultMode = "deny"
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		UI:                     uiCfg,
+		UICapabilityGrantsPath: grantsPath,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	body := []byte(`{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"ui://denied-server/exploit.html"},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	req.Header.Set("X-MCP-Server", "denied-server")
+	req.Header.Set("X-Tenant", "acme")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	respBody, _ := io.ReadAll(rec.Body)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403, got %d. Body: %s", rec.Code, string(respBody))
+	}
+	if !strings.Contains(string(respBody), "ui_capability_denied") {
+		t.Fatalf("Expected ui_capability_denied in body, got: %s", string(respBody))
+	}
+
+	// Critical: request-side deny must happen before any MCP upstream contact (including initialize).
+	if len(serverLog.calls) != 0 {
+		t.Fatalf("Expected no upstream calls, got %d (first=%s)", len(serverLog.calls), serverLog.calls[0].Method)
+	}
+}
+
+func TestMCPTransport_UIResourceRead_UIURI_BlockedByRegistry(t *testing.T) {
+	mcpServer, _ := newMockMCPServerUI(t)
+
+	tmpDir := t.TempDir()
+	grantsPath := filepath.Join(tmpDir, "ui_grants.yaml")
+	grants := `
+ui_capability_grants:
+  - server: "safe-server"
+    tenant: "acme"
+    mode: "allow"
+    approved_tools: []
+`
+	if err := os.WriteFile(grantsPath, []byte(grants), 0644); err != nil {
+		t.Fatalf("Failed to write grants file: %v", err)
+	}
+
+	uiCfg := UIConfigDefaults()
+	uiCfg.Enabled = true
+	uiCfg.DefaultMode = "deny"
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		UI:                     uiCfg,
+		UICapabilityGrantsPath: grantsPath,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	// NOTE: Do NOT register the UI resource in gw.registry. This should cause
+	// registry verification to block with ui_resource_blocked.
+
+	handler := gw.Handler()
+
+	body := []byte(`{"jsonrpc":"2.0","method":"resources/read","params":{"uri":"ui://safe-server/dashboard.html"},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	req.Header.Set("X-MCP-Server", "safe-server")
+	req.Header.Set("X-Tenant", "acme")
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	respBody, _ := io.ReadAll(rec.Body)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403, got %d. Body: %s", rec.Code, string(respBody))
+	}
+	if !strings.Contains(string(respBody), "ui_resource_blocked") {
+		t.Fatalf("Expected ui_resource_blocked in body, got: %s", string(respBody))
+	}
+	if !strings.Contains(string(respBody), "not in registry") {
+		t.Fatalf("Expected 'not in registry' in body, got: %s", string(respBody))
+	}
+}
+
 // TestMCPTransport_LazyInit_NotAtStartup verifies AC9: transport.Initialize() is
 // called on first request, not at startup.
 func TestMCPTransport_LazyInit_NotAtStartup(t *testing.T) {
@@ -1385,6 +2042,15 @@ func TestMCPTransport_LazyInit_NotAtStartup(t *testing.T) {
 		}
 		if method == "notifications/initialized" {
 			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if method == "tools/list" {
+			// RFA-6fse.4: ToolRegistryVerify may perform a gateway-owned tools/list refresh
+			// before allowing the first tool invocation. Provide a baseline tool definition
+			// matching config/tool-registry.yaml so the hash verification succeeds.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 			return
 		}
 
@@ -1485,7 +2151,10 @@ func TestMCPTransport_ErrorUsesWriteGatewayError(t *testing.T) {
 
 	handler := gw.Handler()
 
-	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"error test"},"id":1}`
+	// Use a protocol method passthrough so ToolRegistryVerify does not block first.
+	// Choose tools/list (permitted by OPA in this POC) so we reach handleMCPRequest
+	// and exercise MCP transport initialization failure.
+	body := `{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
@@ -1564,6 +2233,39 @@ func newMockMCPServerSSE(t *testing.T) (*httptest.Server, *mcpServerLog) {
 
 			case "notifications/initialized":
 				w.WriteHeader(http.StatusOK)
+
+			case "tools/list":
+				// Tool registry verification uses tools/list to compute observed hashes.
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"result": map[string]interface{}{
+						"tools": []interface{}{
+							map[string]interface{}{
+								"name":        "tavily_search",
+								"description": "Search the web using Tavily API",
+								"inputSchema": map[string]interface{}{
+									"type":     "object",
+									"required": []interface{}{"query"},
+									"properties": map[string]interface{}{
+										"query": map[string]interface{}{
+											"type":        "string",
+											"description": "Search query",
+										},
+										"max_results": map[string]interface{}{
+											"type":        "integer",
+											"description": "Maximum results to return",
+											"default":     5,
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(resp)
 
 			case "tools/call", "tavily_search":
 				// Respond with SSE instead of JSON
@@ -1704,6 +2406,11 @@ func TestMCPTransport_404_SessionExpiry_ThroughGateway(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock-mcp","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			// Tool registry verification uses tools/list to compute observed hashes.
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			requestCount++
 			if requestCount == 1 {
@@ -1834,6 +2541,36 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 
 			var respJSON []byte
 			switch method {
+			case "tools/list":
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      rpcReq["id"],
+					"result": map[string]interface{}{
+						"tools": []interface{}{
+							map[string]interface{}{
+								"name":        "tavily_search",
+								"description": "Search the web using Tavily API",
+								"inputSchema": map[string]interface{}{
+									"type":     "object",
+									"required": []interface{}{"query"},
+									"properties": map[string]interface{}{
+										"query": map[string]interface{}{
+											"type":        "string",
+											"description": "Search query",
+										},
+										"max_results": map[string]interface{}{
+											"type":        "integer",
+											"description": "Maximum results to return",
+											"default":     5,
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+				respJSON, _ = json.Marshal(resp)
+
 			case "tools/call", "tavily_search":
 				resp := map[string]interface{}{
 					"jsonrpc": "2.0",
@@ -1886,6 +2623,175 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 
 	t.Cleanup(server.Close)
 	return server, sseLog
+}
+
+// newMockMCPServerRugPull creates a Streamable HTTP MCP server that intentionally
+// returns a tools/list definition for tavily_search that does NOT match the
+// tool registry baseline, simulating a rug-pull attack.
+func newMockMCPServerRugPull(t *testing.T) (*httptest.Server, *mcpServerLog) {
+	t.Helper()
+
+	log := &mcpServerLog{}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			var rpcReq map[string]interface{}
+			if err := json.Unmarshal(body, &rpcReq); err != nil {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
+
+			method, _ := rpcReq["method"].(string)
+			log.RecordCall(method, r.Header.Get("Mcp-Session-Id"), body)
+
+			switch method {
+			case "initialize":
+				w.Header().Set("Content-Type", "application/json")
+				w.Header().Set("Mcp-Session-Id", "rugpull-session-1")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock-mcp-rugpull","version":"1.0"}}}`))
+
+			case "notifications/initialized":
+				w.WriteHeader(http.StatusOK)
+
+			case "tools/list":
+				// Intentionally mutate the description (everything else matches baseline schema).
+				resp := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"id":      1,
+					"result": map[string]interface{}{
+						"tools": []interface{}{
+							map[string]interface{}{
+								"name":        "tavily_search",
+								"description": "Search the web using Tavily API (MUTATED UPSTREAM)",
+								"inputSchema": map[string]interface{}{
+									"type":     "object",
+									"required": []interface{}{"query"},
+									"properties": map[string]interface{}{
+										"query": map[string]interface{}{
+											"type":        "string",
+											"description": "Search query",
+										},
+										"max_results": map[string]interface{}{
+											"type":        "integer",
+											"description": "Maximum results to return",
+											"default":     5,
+										},
+									},
+								},
+							},
+						},
+					},
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_ = json.NewEncoder(w).Encode(resp)
+
+			case "tools/call", "tavily_search":
+				// If the gateway is working correctly, it should never reach this.
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"unexpected: rugpull tool was executed"}]}}`))
+
+			default:
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"status":"ok"}}`))
+			}
+
+		case http.MethodDelete:
+			log.RecordCall("DELETE", r.Header.Get("Mcp-Session-Id"), nil)
+			w.WriteHeader(http.StatusOK)
+
+		default:
+			w.WriteHeader(http.StatusMethodNotAllowed)
+		}
+	}))
+
+	t.Cleanup(server.Close)
+	return server, log
+}
+
+func TestMCPTransport_ToolRegistry_RugPull_DeniesAndStrips(t *testing.T) {
+	mcpServer, serverLog := newMockMCPServerRugPull(t)
+
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+
+	cfg := &Config{
+		UpstreamURL:            mcpServer.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           auditPath,
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	// 1) Call tools/call first (no client tools/list). Gateway must internally refresh tools/list and deny.
+	callBody := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"rugpull"}},"id":1}`)
+	callReq := httptest.NewRequest("POST", "/", bytes.NewBuffer(callBody))
+	callReq.Header.Set("Content-Type", "application/json")
+	callReq.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	callReq.Header.Set("X-MCP-Server", "default")
+	callRec := httptest.NewRecorder()
+	handler.ServeHTTP(callRec, callReq)
+
+	if callRec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403, got %d. Body: %s", callRec.Code, callRec.Body.String())
+	}
+	if !strings.Contains(callRec.Body.String(), middleware.ErrRegistryHashMismatch) {
+		t.Fatalf("Expected code=%s in body. Body: %s", middleware.ErrRegistryHashMismatch, callRec.Body.String())
+	}
+
+	// Prove internal refresh happened (tools/list called upstream) and tools/call was NOT sent upstream.
+	if len(serverLog.MethodCalls("tools/list")) < 1 {
+		t.Fatalf("Expected upstream tools/list call for gateway-owned verification, got none (calls=%v)", serverLog.calls)
+	}
+	if len(serverLog.MethodCalls("tools/call")) != 0 {
+		t.Fatalf("Expected upstream tools/call NOT to be called on rug-pull deny, got %d", len(serverLog.MethodCalls("tools/call")))
+	}
+
+	// 2) Client-visible tools/list must strip the mismatched tool.
+	listBody := []byte(`{"jsonrpc":"2.0","method":"tools/list","params":{},"id":2}`)
+	listReq := httptest.NewRequest("POST", "/", bytes.NewBuffer(listBody))
+	listReq.Header.Set("Content-Type", "application/json")
+	listReq.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	listReq.Header.Set("X-MCP-Server", "default")
+	listRec := httptest.NewRecorder()
+	handler.ServeHTTP(listRec, listReq)
+
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("Expected 200 from tools/list, got %d. Body: %s", listRec.Code, listRec.Body.String())
+	}
+	if strings.Contains(listRec.Body.String(), "tavily_search") {
+		t.Fatalf("Expected tavily_search to be stripped from client-visible tools/list. Body: %s", listRec.Body.String())
+	}
+
+	// Prove an audit event was emitted for stripping, without leaking tool payloads.
+	if gw.auditor != nil {
+		gw.auditor.Flush()
+	}
+	auditBytes, _ := os.ReadFile(auditPath)
+	if !strings.Contains(string(auditBytes), `"action":"tool_registry_rugpull_stripped"`) {
+		t.Fatalf("Expected audit action tool_registry_rugpull_stripped in %s, got: %s", auditPath, string(auditBytes))
+	}
 }
 
 // TestMCPTransport_LegacySSE_ThroughAll13Layers proves that a legacy SSE
@@ -2136,6 +3042,10 @@ func TestMCPTransport_UpstreamDropsMidStream(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"drop-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			// Write partial JSON then drop connection
 			w.Header().Set("Content-Type", "application/json")
@@ -2221,6 +3131,10 @@ func TestMCPTransport_OversizedResponse(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"oversize-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -2302,6 +3216,10 @@ func TestMCPTransport_404MidConversation(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"404-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			n := atomic.AddInt32(&requestCount, 1)
 			if n <= 2 {
@@ -2389,6 +3307,10 @@ func TestMCPTransport_SessionIsolation(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"isolation-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			// Record the session ID for each request
 			sid := r.Header.Get("Mcp-Session-Id")
@@ -2555,6 +3477,10 @@ func TestMCPTransport_AllErrorsUseWriteGatewayError(t *testing.T) {
 			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"err-test","version":"1.0"}}}`))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
 		default:
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("service unavailable"))

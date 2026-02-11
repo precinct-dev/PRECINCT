@@ -763,6 +763,32 @@ The MCP Security Gateway is the enforcement point for all security controls. It 
 9. **Audit logging** (comprehensive telemetry)
 10. **MCP-UI governance** (extension capability gating, CSP/permissions mediation, UI resource scanning)
 
+#### 7.1.1 Gateway Interface: MCP JSON-RPC `tools/call` (Canonical)
+
+This architecture treats MCP-spec tool invocation as **JSON-RPC 2.0** with:
+- `method: "tools/call"`
+- `params.name: "<tool_name>"`
+- `params.arguments: { ... }`
+
+Example request (canonical / portable across clients and languages):
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "tavily_search",
+    "arguments": {
+      "query": "AI security best practices",
+      "max_results": 5
+    }
+  },
+  "id": 1
+}
+```
+
+**Legacy shortcut (deprecated / migration-only):** some deployments may accept `method: "<tool_name>"` with tool-specific params. This is not MCP-spec compliant and should not be treated as the primary integration path. The gateway may support it temporarily to ease migrations, but documentation and SDKs should prefer `tools/call`.
+
 ### 7.2 Tiered Scanning Architecture
 
 ```
@@ -825,6 +851,8 @@ The MCP Security Gateway is the enforcement point for all security controls. It 
 ### 7.3 Tool Registry
 
 The Tool Registry defends against tool poisoning and rug-pull attacks:
+
+**Gateway-owned verification (important):** in real deployments, clients often do not send any `tool_hash` during invocation. To provide meaningful rug-pull protection without bespoke client behavior, the gateway treats the allowlist as a **baseline** and independently learns the **observed** upstream tool metadata (description + input schema) from upstream `tools/list` (in MCP transport mode the gateway can refresh this internally; in proxy mode this refresh may be best-effort). At invocation time (`tools/call`), the gateway compares observed vs baseline and denies with `registry_hash_mismatch` on mismatch; and on client-visible `tools/list` it strips mismatched tools and emits an audit event (without persisting tool payload text).
 
 ```go
 type ToolRegistry struct {

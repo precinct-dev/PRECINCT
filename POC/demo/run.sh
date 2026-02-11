@@ -22,6 +22,8 @@ GO_IMAGE="demo-go-sdk"
 PY_IMAGE="demo-python-sdk"
 COMPOSE_NETWORK="agentic-security-network"
 PF_PID=""
+PF_PID_MCP=""
+DOCKER_ADD_HOST=""
 
 # Lua script for targeted rate-limit key cleanup (avoids FLUSHALL).
 # Scans for ratelimit:* keys only, leaving other KeyDB data intact.
@@ -40,7 +42,11 @@ until cursor == "0"
 return count
 '
 
-cleanup() { [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null; true; }
+cleanup() {
+    [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null || true
+    [ -n "$PF_PID_MCP" ] && kill "$PF_PID_MCP" 2>/dev/null || true
+    true
+}
 
 # Colors
 RESET="\033[0m"
@@ -67,6 +73,9 @@ preflight() {
 
     if ! command -v docker >/dev/null 2>&1; then
         err "docker not found"; missing=1
+    fi
+    if [ "$MODE" != "compose" ] && ! command -v kubectl >/dev/null 2>&1; then
+        err "kubectl not found (required for k8s demo mode)"; missing=1
     fi
 
     if [ "$missing" -ne 0 ]; then
@@ -127,6 +136,22 @@ start_k8s() {
         err "docker-desktop context not found. Is Docker Desktop K8s enabled?"
         exit 1
     }
+
+    # Demo-k8s must be repeatable. In local Docker Desktop, SPIKE Nexus persists
+    # state via PVC; re-running bootstrap against stale state can hang forever.
+    # Wipe stale state before bringing the stack up so bootstrap can complete.
+    log "Resetting SPIKE state for deterministic demo-k8s (local-only)"
+    kubectl -n spike-system scale deployment/spike-nexus --replicas=0 >/dev/null 2>&1 || true
+    kubectl -n spike-system delete pod -l app.kubernetes.io/name=spike-nexus --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n spike-system delete configmap spike-bootstrap-state --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n spike-system delete pvc spike-nexus-data --ignore-not-found >/dev/null 2>&1 || true
+    # Wait for PVC deletion to actually complete (Terminating PVCs can break mounts).
+    for _ in $(seq 1 30); do
+        if ! kubectl -n spike-system get pvc spike-nexus-data >/dev/null 2>&1; then
+            break
+        fi
+        sleep 2
+    done
     make -C "$POC_DIR" k8s-up
 }
 
@@ -155,13 +180,119 @@ wait_for_health() {
 }
 
 # --------------------------------------------------------------------------
+# K8s health check (from demo network)
+# --------------------------------------------------------------------------
+wait_for_health_k8s() {
+    local url="$1"
+    local network="${2:-kind}"
+    local timeout=90
+    local elapsed=0
+    local consecutive_ok=0
+    local consecutive_needed=3
+
+    log "Waiting for gateway health from demo network at ${url}/health (timeout: ${timeout}s)"
+    while [ "$elapsed" -lt "$timeout" ]; do
+        # Use the same network path as the demo containers.
+        # k8s NodePort access can briefly flap during rollouts; require a few
+        # consecutive successes so we don't start the demo during a "no endpoints"
+        # window that would show up as intermittent ConnectError/ECONNREFUSED.
+        if docker run --rm --network "$network" curlimages/curl:8.6.0 -sf "${url}/health" >/dev/null 2>&1; then
+            consecutive_ok=$((consecutive_ok + 1))
+            if [ "$consecutive_ok" -ge "$consecutive_needed" ]; then
+                echo ""
+                ok "Gateway is healthy (reachable from demo network: $network)"
+                return 0
+            fi
+        else
+            consecutive_ok=0
+        fi
+        sleep 2
+        elapsed=$((elapsed + 2))
+        printf "."
+    done
+    echo ""
+    err "Gateway did not become healthy within ${timeout}s (network: $network)"
+    return 1
+}
+
+# --------------------------------------------------------------------------
+# K8s readiness gate (fail fast rather than letting the demo hang)
+# --------------------------------------------------------------------------
+k8s_wait_ready() {
+    log "Waiting for K8s stack readiness (SPIRE, SPIKE, tools, gateway)"
+    if ! kubectl -n spire-system rollout status statefulset/spire-server --timeout=180s >/dev/null; then
+        err "SPIRE server not ready"
+        kubectl -n spire-system get pods -o wide || true
+        return 1
+    fi
+    if ! kubectl -n spire-system rollout status daemonset/spire-agent --timeout=180s >/dev/null; then
+        err "SPIRE agent not ready"
+        kubectl -n spire-system get pods -o wide || true
+        return 1
+    fi
+
+    if ! kubectl -n spike-system rollout status deployment/spike-keeper --timeout=240s >/dev/null; then
+        err "SPIKE keeper not ready"
+        kubectl -n spike-system get pods -o wide || true
+        return 1
+    fi
+    if ! kubectl -n spike-system rollout status deployment/spike-nexus --timeout=240s >/dev/null; then
+        err "SPIKE nexus not ready"
+        kubectl -n spike-system get pods -o wide || true
+        return 1
+    fi
+
+    # SPIKE bootstrap must complete for token substitution tests to be meaningful.
+    # Note: the spike-bootstrap Job can be GC'd (ttlSecondsAfterFinished). Use the
+    # persisted completion marker ConfigMap when the Job object is missing.
+    if kubectl -n spike-system get job spike-bootstrap >/dev/null 2>&1; then
+        if ! kubectl -n spike-system wait --for=condition=complete job/spike-bootstrap --timeout=600s >/dev/null 2>&1; then
+            err "SPIKE bootstrap job did not complete"
+            kubectl -n spike-system get pods -o wide || true
+            kubectl -n spike-system logs job/spike-bootstrap --tail=60 2>/dev/null || true
+            kubectl -n spike-system logs deploy/spike-nexus --tail=60 2>/dev/null || true
+            return 1
+        fi
+    else
+        if ! kubectl -n spike-system get configmap spike-bootstrap-state >/dev/null 2>&1; then
+            err "SPIKE bootstrap completion marker not found (job GC'd and configmap missing)"
+            kubectl -n spike-system get pods -o wide || true
+            kubectl -n spike-system logs deploy/spike-nexus --tail=60 2>/dev/null || true
+            return 1
+        fi
+    fi
+    if ! kubectl -n spike-system wait --for=condition=complete job/spike-secret-seeder --timeout=240s >/dev/null 2>&1; then
+        # Seeder can finish quickly and later be GC'd (ttlSecondsAfterFinished).
+        # If it's missing, prefer continuing (token reference tests will fail
+        # deterministically if secrets weren't seeded).
+        warn "SPIKE secret seeder job not complete (or already GC'd)"
+    fi
+
+    if ! kubectl -n tools rollout status deployment/mcp-server --timeout=180s >/dev/null; then
+        err "MCP server not ready"
+        kubectl -n tools get pods -o wide || true
+        return 1
+    fi
+    if ! kubectl -n gateway rollout status deployment/mcp-security-gateway --timeout=240s >/dev/null; then
+        err "Gateway not ready"
+        kubectl -n gateway get pods -o wide || true
+        return 1
+    fi
+    ok "K8s stack is ready"
+}
+
+# --------------------------------------------------------------------------
 # Run containerized demos
 # --------------------------------------------------------------------------
 run_go_demo() {
     local url="$1"
     local network="$2"
     log "Running Go SDK demo (container)"
-    docker run --rm --network "$network" "$GO_IMAGE" --gateway-url="$url"
+    docker run --rm --network "$network" \
+        ${DOCKER_ADD_HOST} \
+        ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
+        ${DEMO_RUGPULL_ADMIN_URL:+-e DEMO_RUGPULL_ADMIN_URL=$DEMO_RUGPULL_ADMIN_URL} \
+        "$GO_IMAGE" --gateway-url="$url"
     return $?
 }
 
@@ -169,7 +300,11 @@ run_python_demo() {
     local url="$1"
     local network="$2"
     log "Running Python SDK demo (container)"
-    docker run --rm --network "$network" "$PY_IMAGE" --gateway-url="$url"
+    docker run --rm --network "$network" \
+        ${DOCKER_ADD_HOST} \
+        ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
+        ${DEMO_RUGPULL_ADMIN_URL:+-e DEMO_RUGPULL_ADMIN_URL=$DEMO_RUGPULL_ADMIN_URL} \
+        "$PY_IMAGE" --gateway-url="$url"
     return $?
 }
 
@@ -297,14 +432,28 @@ collect_spike_token_proof_k8s() {
 
     log "SPIKE Bootstrap proof (K8s spike-bootstrap logs)"
     echo ""
-    kubectl -n spike-system logs job/spike-bootstrap --tail=20 2>/dev/null \
-        || echo "  (no spike-bootstrap log entries found)"
+    # The bootstrap Job may retry; prefer the pod recorded as "completed-by-pod"
+    # in the spike-bootstrap-state ConfigMap so we show the successful run.
+    bootstrap_pod="$(kubectl -n spike-system get configmap spike-bootstrap-state -o jsonpath='{.data.completed-by-pod}' 2>/dev/null || true)"
+    if [ -n "${bootstrap_pod:-}" ]; then
+        kubectl -n spike-system logs "pod/${bootstrap_pod}" --tail=50 2>/dev/null \
+            || echo "  (no spike-bootstrap log entries found for completed pod ${bootstrap_pod})"
+    else
+        kubectl -n spike-system logs job/spike-bootstrap --tail=50 2>/dev/null \
+            || echo "  (no spike-bootstrap log entries found)"
+    fi
     echo ""
 
     log "SPIKE Secret Seeder proof (K8s spike-secret-seeder logs)"
     echo ""
-    kubectl -n spike-system logs job/spike-secret-seeder --tail=20 2>/dev/null \
-        || echo "  (no spike-secret-seeder log entries found)"
+    seeder_pod="$(kubectl -n spike-system get pods -l job-name=spike-secret-seeder -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"
+    if [ -n "${seeder_pod:-}" ]; then
+        kubectl -n spike-system logs "pod/${seeder_pod}" --tail=80 2>/dev/null \
+            || echo "  (no spike-secret-seeder log entries found for pod ${seeder_pod})"
+    else
+        kubectl -n spike-system logs job/spike-secret-seeder --tail=80 2>/dev/null \
+            || echo "  (no spike-secret-seeder log entries found)"
+    fi
     echo ""
 }
 
@@ -341,6 +490,15 @@ run_demo_cycle() {
     local url
     local network
 
+    # In Docker Compose mode we wire a mock guard model into the gateway so the
+    # deep scan deny path (step 10) is deterministic. Gate strict demo checks
+    # to compose only so k8s runs remain compatible with external guard config.
+    DEMO_STRICT_DEEPSCAN=""
+    if [ "$mode" = "compose" ]; then
+        DEMO_STRICT_DEEPSCAN="1"
+    fi
+    DEMO_RUGPULL_ADMIN_URL=""
+
     # Check Phoenix availability before any mode-specific setup.
     # This runs for both compose and k8s modes. Non-fatal -- demo
     # proceeds without traces if Phoenix is not running.
@@ -350,6 +508,19 @@ run_demo_cycle() {
         # Inside the Docker network, gateway is at service name:port
         url="http://mcp-security-gateway:9090"
         network="$COMPOSE_NETWORK"
+        DOCKER_ADD_HOST=""
+
+        # Compose demos should be deterministic and self-contained:
+        # - Ensure Step 9 (step-up guard) doesn't call external Groq by default.
+        # - Keep rate-limits high enough that the demo suite itself isn't throttled
+        #   (we still include an explicit burst test that will hit 429).
+        export GROQ_API_KEY=""
+        export RATE_LIMIT_RPM="600"
+        export RATE_LIMIT_BURST="100"
+        # Demo containers should never need to talk to tool servers directly.
+        # Use gateway-mediated demo admin endpoints for rugpull toggles.
+        DEMO_RUGPULL_ADMIN_URL="$url"
+
         if [ "$SKIP_SETUP" = false ]; then
             start_compose
         fi
@@ -361,29 +532,69 @@ run_demo_cycle() {
         docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         # Health check via localhost (host-side port mapping)
         wait_for_health "http://localhost:9090" || exit 1
+        # Determinism: ensure upstream rugpull state is OFF before running tests.
+        log "Ensuring upstream rugpull state is OFF (via gateway demo endpoint)"
+        docker run --rm --network "$COMPOSE_NETWORK" curlimages/curl:8.6.0 -sf -X POST "${url}/__demo__/rugpull/off" >/dev/null
     elif [ "$mode" = "k8s" ]; then
-        # K8s (Docker Desktop): connect demo containers to "kind" network
-        # so they can reach the K8s node's NodePort directly.
-        local node_ip
-        node_ip=$(docker inspect desktop-control-plane --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null | head -1)
-        if [ -z "$node_ip" ]; then
-            err "Cannot find K8s node IP. Is Docker Desktop K8s running?"
+        # Ensure kubectl points at Docker Desktop before we attempt to discover
+        # node IPs / NodePorts (cycle 2 runs with --skip-setup, so we can't
+        # rely on start_k8s being called here).
+        kubectl config use-context docker-desktop >/dev/null 2>&1 || {
+            err "docker-desktop context not found. Is Docker Desktop K8s enabled?"
             exit 1
-        fi
-        url="http://${node_ip}:30090"
-        network="kind"
+        }
+
         if [ "$SKIP_SETUP" = false ]; then
             start_k8s
         fi
-        # Restart gateway to reset circuit breaker state
-        log "Restarting gateway to reset circuit breaker state"
-        kubectl -n gateway rollout restart deploy/mcp-security-gateway >/dev/null 2>&1 || true
-        sleep 5
-        # Health check: use port-forward since NodePort isn't exposed on host
-        kubectl -n gateway port-forward svc/mcp-security-gateway 30090:9090 >/dev/null 2>&1 &
-        PF_PID=$!
-        trap cleanup EXIT
-        wait_for_health "http://localhost:30090" || { cleanup; exit 1; }
+
+        # K8s (Docker Desktop): demo containers run on the 'kind' network and can
+        # reach the cluster via NodePorts on the control-plane node IP.
+        local node_ip
+        node_ip=$(kubectl get node desktop-control-plane -o jsonpath='{.status.addresses[?(@.type=="InternalIP")].address}' 2>/dev/null || true)
+        if [ -z "$node_ip" ]; then
+            # Fallback: docker-desktop embeds the node as a container named desktop-control-plane.
+            node_ip=$(docker inspect desktop-control-plane --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' 2>/dev/null | head -1)
+        fi
+        # jsonpath can return multiple InternalIP values (IPv4 + IPv6) separated
+        # by spaces. Pick a usable IPv4 for NodePort access from the docker
+        # `kind` network.
+        if [ -n "$node_ip" ]; then
+            node_ip="$(echo "$node_ip" | tr ' ' '\n' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)"
+        fi
+        if [ -z "$node_ip" ]; then
+            err "Cannot determine K8s node IP. Is Docker Desktop K8s running?"
+            exit 1
+        fi
+
+        local gateway_port
+        gateway_port="$(kubectl -n gateway get svc mcp-security-gateway -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)"
+        if [ -z "$gateway_port" ]; then
+            err "Cannot determine gateway NodePort (svc/mcp-security-gateway)"
+            exit 1
+        fi
+
+        url="http://${node_ip}:${gateway_port}"
+        network="kind"
+        DOCKER_ADD_HOST=""
+
+        # Use gateway-mediated demo admin endpoints for upstream rugpull toggles.
+        DEMO_RUGPULL_ADMIN_URL="$url"
+
+        # Ensure SPIRE/SPIKE/tools are actually usable before running demos.
+        if ! k8s_wait_ready; then
+            exit 1
+        fi
+        # In k8s mode, prefer not restarting the gateway here. Rollout restarts can
+        # create brief "no ready endpoints" windows that manifest as flaky
+        # ConnectError/ECONNREFUSED in the containerized demos.
+        wait_for_health_k8s "$url" "$network" || exit 1
+
+        # Determinism: ensure upstream rugpull state is OFF before running tests.
+        # Fail-fast rather than letting the demo fail later with a confusing
+        # registry_hash_mismatch cascade.
+        log "Ensuring upstream rugpull state is OFF (via gateway demo endpoint)"
+        docker run --rm --network "$network" curlimages/curl:8.6.0 -sf -X POST "${url}/__demo__/rugpull/off" >/dev/null
     else
         err "Unknown mode: $mode (expected compose|k8s|both)"
         exit 1
@@ -411,14 +622,8 @@ run_demo_cycle() {
     elif [ "$mode" = "k8s" ]; then
         log "Clearing rate-limit keys and restarting gateway for Python demo"
         kubectl -n data exec deploy/keydb -- keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
-        kubectl -n gateway rollout restart deploy/mcp-security-gateway >/dev/null 2>&1 || true
-        kubectl -n gateway rollout status deploy/mcp-security-gateway --timeout=60s 2>/dev/null || true
-        # Restart port-forward (old one died with old pod)
-        cleanup
-        sleep 2
-        kubectl -n gateway port-forward svc/mcp-security-gateway 30090:9090 >/dev/null 2>&1 &
-        PF_PID=$!
-        wait_for_health "http://localhost:30090" || exit 1
+        # No gateway restart here: it makes NodePort access flaky during endpoint transitions.
+        wait_for_health_k8s "$url" "$network" || exit 1
     fi
 
     run_python_demo "$url" "$network" || py_ok=1
