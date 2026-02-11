@@ -2,7 +2,7 @@
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
        compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
        k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
-       upgrade-demo phoenix-up phoenix-down phoenix-reset
+       upgrade-demo repave-demo phoenix-up phoenix-down phoenix-reset
 
 # Container image config
 REGISTRY ?= ghcr.io
@@ -116,6 +116,16 @@ upgrade-demo: ## Stakeholder demo: upgrade check + upgrade + simulated test fail
 		echo "upgrade-demo: PASS"; \
 	else \
 		echo "upgrade-demo: FAIL"; \
+		exit 1; \
+	fi
+
+repave-demo: up ## Epic 5 demo: single repave + full repave + status + demo-compose validation
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	@if bash tests/e2e/test_repave.sh; then \
+		echo "repave-demo: PASS"; \
+	else \
+		echo "repave-demo: FAIL"; \
 		exit 1; \
 	fi
 
