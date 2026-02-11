@@ -19,8 +19,13 @@ echo "SPIRE Entry Registrar: Waiting for attested agent..."
 # Poll until at least one agent is attested (visible in agent list).
 PARENT_ID=""
 while [ $ELAPSED -lt $MAX_WAIT ]; do
+    # IMPORTANT: We must attach entries to the *currently running* agent node ID.
+    # The SPIRE server data directory persists across compose runs, so multiple
+    # join_token agents can remain attested. The most recently attested agent
+    # is listed last; choosing the first can bind entries to a stale node ID,
+    # causing Workload API calls to return "No identity issued".
     PARENT_ID=$($SPIRE agent list -socketPath "$SOCK" 2>/dev/null \
-        | grep 'SPIFFE ID' | head -1 | awk '{print $NF}')
+        | grep 'SPIFFE ID' | tail -1 | awk '{print $NF}')
     if [ -n "$PARENT_ID" ]; then
         break
     fi

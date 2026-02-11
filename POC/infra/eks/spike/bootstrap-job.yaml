@@ -9,7 +9,7 @@
 # Key design decisions:
 #   - Job (not Deployment): runs once to completion, then stops
 #   - backoffLimit 3: retry on transient failures (Keeper not ready yet)
-#   - ttlSecondsAfterFinished 300: auto-cleanup after 5 minutes
+#   - ttlSecondsAfterFinished 3600: keep logs long enough for demo proof collection
 #   - restartPolicy Never: failed pods create new pods (backoffLimit controls)
 #   - Shamir config: threshold=1, shares=1 (single Keeper for POC)
 #   - Bootstrap depends on Keeper (not Nexus) for shard delivery
@@ -24,7 +24,7 @@ metadata:
     app.kubernetes.io/part-of: spike
 spec:
   backoffLimit: 3
-  ttlSecondsAfterFinished: 300
+  ttlSecondsAfterFinished: 3600
   template:
     metadata:
       labels:

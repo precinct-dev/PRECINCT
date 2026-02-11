@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -16,6 +17,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -567,7 +569,7 @@ func TestToolRegistryVerify(t *testing.T) {
 
 	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}), registry)
+	}), registry, nil, nil)
 
 	t.Run("AllowedTool", func(t *testing.T) {
 		body := []byte(`{"jsonrpc":"2.0","method":"file_read","params":{},"id":1}`)
@@ -609,6 +611,74 @@ func TestToolRegistryVerify(t *testing.T) {
 	})
 }
 
+// RFA-6fse.4: Unit test for gateway-owned rug-pull protection.
+// When the observed tools/list hash is stale/missing, ToolRegistryVerify must refresh
+// (via the refresher hook in MCP transport mode) and deny on mismatch.
+func TestToolRegistryVerify_ObservedHashRefresh_DeniesOnMismatch(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+
+	// Registry baseline: tool exists and is allowlisted with expected hash "expected123".
+	config := `tools:
+  - name: tavily_search
+    description: "Search the web"
+    hash: "expected123"
+    risk_level: low
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	observed := NewObservedToolHashCache(1 * time.Minute)
+
+	// Seed a stale entry that would otherwise allow the call if not refreshed.
+	observed.mu.Lock()
+	observed.entries[observedToolHashKey("default", "tavily_search")] = observedToolHashEntry{
+		Hash:       "expected123",
+		ObservedAt: time.Now().Add(-2 * time.Minute),
+	}
+	observed.mu.Unlock()
+
+	refreshCalls := 0
+	refresh := func(ctx context.Context, server string) (map[string]string, error) {
+		refreshCalls++
+		return map[string]string{
+			"tavily_search": "observed_mismatch_999",
+		}, nil
+	}
+
+	handlerReached := false
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		handlerReached = true
+		w.WriteHeader(http.StatusOK)
+	}), registry, observed, refresh)
+
+	body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"hi"}},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("X-MCP-Server", "default")
+	ctx := WithRequestBody(req.Context(), body)
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if refreshCalls != 1 {
+		t.Fatalf("Expected refresh to be called once, got %d", refreshCalls)
+	}
+	if handlerReached {
+		t.Fatal("Expected request to be denied before reaching next handler")
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403, got %d. Body: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), ErrRegistryHashMismatch) {
+		t.Fatalf("Expected error code %q in body. Body: %s", ErrRegistryHashMismatch, rec.Body.String())
+	}
+}
+
 // TestToolRegistryVerify_MCPProtocolMethodsPassThrough verifies that MCP protocol-level
 // methods (tools/list, resources/read, ping, etc.) pass through the tool registry
 // middleware without verification. These are part of the MCP protocol itself, not
@@ -635,12 +705,11 @@ func TestToolRegistryVerify_MCPProtocolMethodsPassThrough(t *testing.T) {
 	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 		w.WriteHeader(http.StatusOK)
-	}), registry)
+	}), registry, nil, nil)
 
 	// All MCP protocol methods that must pass through
 	protocolMethods := []string{
 		"tools/list",
-		"tools/call",
 		"resources/read",
 		"resources/list",
 		"prompts/list",
@@ -671,6 +740,72 @@ func TestToolRegistryVerify_MCPProtocolMethodsPassThrough(t *testing.T) {
 	}
 }
 
+// TestToolRegistryVerify_ToolsCall_VerifiesEffectiveTool proves that tools/call
+// is NOT an unconditional protocol passthrough: it must be verified against the
+// effective tool name in params.name per MCP spec.
+func TestToolRegistryVerify_ToolsCall_VerifiesEffectiveTool(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: tavily_search
+    description: "Search the web"
+    hash: "abc123"
+    risk_level: low
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), registry, nil, nil)
+
+	t.Run("Allowed_WhenNameIsRegistered", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"hi"}},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("Denied_WhenNameIsUnknown", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"unknown_tool","arguments":{}},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Fatalf("Expected 403, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+	})
+
+	t.Run("BadRequest_WhenNameMissing", func(t *testing.T) {
+		body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"arguments":{}},"id":1}`)
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		ctx := WithRequestBody(req.Context(), body)
+		req = req.WithContext(ctx)
+
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("Expected 400, got %d. Body: %s", rec.Code, rec.Body.String())
+		}
+		if !strings.Contains(rec.Body.String(), ErrMCPInvalidRequest) {
+			t.Fatalf("Expected error code %q in response body. Body: %s", ErrMCPInvalidRequest, rec.Body.String())
+		}
+	})
+}
+
 // TestToolRegistryVerify_NotificationsPassThrough verifies that notification methods
 // (notifications/*) pass through the tool registry middleware. These are MCP protocol
 // notifications and should never be subject to tool verification.
@@ -690,7 +825,7 @@ func TestToolRegistryVerify_NotificationsPassThrough(t *testing.T) {
 	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 		w.WriteHeader(http.StatusOK)
-	}), registry)
+	}), registry, nil, nil)
 
 	notificationMethods := []string{
 		"notifications/initialized",
@@ -742,7 +877,7 @@ func TestToolRegistryVerify_NonProtocolMethodsStillVerified(t *testing.T) {
 
 	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	}), registry)
+	}), registry, nil, nil)
 
 	// Registered tool should still be allowed
 	t.Run("RegisteredToolAllowed", func(t *testing.T) {
@@ -818,7 +953,7 @@ func TestToolRegistryVerify_ProtocolMethodIntegration(t *testing.T) {
 	})
 
 	// Wrap with ToolRegistryVerify, then BodyCapture (outer -> inner execution order)
-	chain := BodyCapture(ToolRegistryVerify(innerHandler, registry))
+	chain := BodyCapture(ToolRegistryVerify(innerHandler, registry, nil, nil))
 
 	// Test: protocol method passes through the full chain
 	t.Run("ProtocolMethodThroughFullChain", func(t *testing.T) {

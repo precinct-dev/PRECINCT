@@ -387,10 +387,13 @@ Span name: `gateway.tool_call.<tool_name>`. Attributes set:
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "tavily_search",
+  "method": "tools/call",
   "params": {
-    "query": "AI security best practices",
-    "max_results": 5
+    "name": "tavily_search",
+    "arguments": {
+      "query": "AI security best practices",
+      "max_results": 5
+    }
   },
   "id": 1
 }
@@ -399,8 +402,8 @@ Span name: `gateway.tool_call.<tool_name>`. Attributes set:
 | Field    | Type    | Required | Description                    |
 |----------|---------|----------|--------------------------------|
 | `jsonrpc`| string  | Yes      | Must be `"2.0"`                |
-| `method` | string  | Yes      | Tool name to invoke            |
-| `params` | object  | Yes      | Tool-specific parameters       |
+| `method` | string  | Yes      | MCP-spec tool invocation uses `tools/call` |
+| `params` | object  | Yes      | For `tools/call`, `{"name":"<tool_name>","arguments":{...}}` |
 | `id`     | integer | Yes      | Request ID (echoed in response)|
 
 **Success Response (200):**
@@ -508,10 +511,13 @@ Embed SPIKE tokens anywhere a secret value is needed:
 ```json
 {
   "jsonrpc": "2.0",
-  "method": "tavily_search",
+  "method": "tools/call",
   "params": {
-    "query": "AI security",
-    "api_key": "$SPIKE{ref:abc123,exp:3600,scope:tools.tavily.search}"
+    "name": "tavily_search",
+    "arguments": {
+      "query": "AI security",
+      "api_key": "$SPIKE{ref:abc123,exp:3600,scope:tools.tavily.search}"
+    }
   },
   "id": 1
 }

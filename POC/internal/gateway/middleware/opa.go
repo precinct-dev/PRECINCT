@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -153,22 +154,58 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		)
 		defer span.End()
 
+		// Demo-only: allow the deterministic rate-limit proof endpoint to flow
+		// through the chain. The endpoint itself enforces secure-by-default gating
+		// (404 unless explicitly enabled in dev mode), so OPA should not block it.
+		if r.URL.Path == "/__demo__/ratelimit" {
+			span.SetAttributes(
+				attribute.String("mcp.result", "allowed"),
+				attribute.String("mcp.reason", "demo ratelimit passthrough"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
 		// Extract tool name and params from request body
 		body := GetRequestBody(ctx)
 		toolName := ""
 		params := make(map[string]interface{})
+		var parsed *ParsedMCPRequest
 		if len(body) > 0 {
-			var mcpReq MCPRequest
-			if err := json.Unmarshal(body, &mcpReq); err == nil {
-				toolName = mcpReq.Method
-				if toolName == "" {
-					if tn, ok := mcpReq.Params["tool"]; ok {
-						if toolNameStr, ok := tn.(string); ok {
-							toolName = toolNameStr
-						}
-					}
+			if p, err := ParseMCPRequestBody(body); err == nil {
+				parsed = p
+				if tn, err := parsed.EffectiveToolName(); err == nil {
+					toolName = tn
 				}
-				params = mcpReq.Params
+				params = parsed.EffectiveToolParams()
+			}
+		}
+
+		// RFA-6fse.2: MCP protocol methods are not "tools" and should not be
+		// denied by tool-grant policy. UI methods are governed by dedicated
+		// MCP-UI controls in the gateway handler (request-side gating + response-side
+		// processors). We bypass OPA for:
+		//   - tools/list (required MCP protocol method)
+		//   - resources/read ONLY when ui:// (governed by UI capability gating)
+		if parsed != nil {
+			if parsed.IsToolsList() {
+				span.SetAttributes(
+					attribute.String("mcp.result", "allowed"),
+					attribute.String("mcp.reason", "protocol method passthrough"),
+				)
+				next.ServeHTTP(w, r.WithContext(ctx))
+				return
+			}
+			if parsed.IsResourcesRead() {
+				uri, _ := parsed.Params["uri"].(string)
+				if strings.HasPrefix(uri, "ui://") {
+					span.SetAttributes(
+						attribute.String("mcp.result", "allowed"),
+						attribute.String("mcp.reason", "ui:// resources/read passthrough (UI-gated)"),
+					)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
 			}
 		}
 
