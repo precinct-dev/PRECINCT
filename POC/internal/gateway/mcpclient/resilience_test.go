@@ -503,7 +503,9 @@ func TestDetectTransportWithConfig_StreamableHTTP_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Expected success, got error: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	_, ok := transport.(*StreamableHTTPTransport)
 	if !ok {
@@ -522,7 +524,7 @@ func TestLegacySSETransport_ConnectWithTimeout_Success(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
 			flusher.Flush()
 			<-r.Context().Done()
 		}
@@ -536,7 +538,9 @@ func TestLegacySSETransport_ConnectWithTimeout_Success(t *testing.T) {
 	if err := transport.ConnectWithTimeout(ctx, 2*time.Second); err != nil {
 		t.Fatalf("ConnectWithTimeout failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	transport.mu.Lock()
 	connected := transport.connected
@@ -653,7 +657,7 @@ func TestStreamableHTTP_Send_UpstreamDropsMidStream(t *testing.T) {
 			if hijacker, ok := w.(http.Hijacker); ok {
 				conn, _, _ := hijacker.Hijack()
 				if conn != nil {
-					conn.Close()
+					_ = conn.Close()
 				}
 			}
 		}

@@ -461,7 +461,7 @@ func TestDLPMiddleware_BlocksCredentials(t *testing.T) {
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Error("Final handler should not be reached when request is blocked")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	// Wrap with DLP middleware
@@ -503,7 +503,7 @@ func TestDLPMiddleware_FlagsPIIButNotBlocks(t *testing.T) {
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedFlags = GetSecurityFlags(r.Context())
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	handler := DLPMiddleware(finalHandler, scanner)
@@ -541,7 +541,7 @@ func TestDLPMiddleware_FlagsSuspiciousButNotBlocks(t *testing.T) {
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedFlags = GetSecurityFlags(r.Context())
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	handler := DLPMiddleware(finalHandler, scanner)
@@ -579,7 +579,7 @@ func TestDLPMiddleware_CleanRequest(t *testing.T) {
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedFlags = GetSecurityFlags(r.Context())
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	handler := DLPMiddleware(finalHandler, scanner)
@@ -608,7 +608,7 @@ func TestDLPMiddleware_NoBody(t *testing.T) {
 
 	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
 	})
 
 	handler := DLPMiddleware(finalHandler, scanner)
@@ -844,7 +844,7 @@ func TestDLPMiddleware_FlagsNewUSPIIButNotBlocks(t *testing.T) {
 			finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				capturedFlags = GetSecurityFlags(r.Context())
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte("OK"))
+				_, _ = w.Write([]byte("OK"))
 			})
 
 			handler := DLPMiddleware(finalHandler, scanner)

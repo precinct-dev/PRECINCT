@@ -1234,7 +1234,7 @@ func (g *Gateway) demoRugpullToggleHandler(enable bool) http.HandlerFunc {
 			_, _ = w.Write([]byte(`{"error":"failed to reach upstream demo endpoint"}`))
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 
 		w.Header().Set("Content-Type", "application/json")

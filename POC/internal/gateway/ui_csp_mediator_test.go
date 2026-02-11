@@ -878,7 +878,9 @@ ui_capability_grants:
     approved_by: "security-review@acme.corp"
 `
 	grantsFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(grantsFile, []byte(grantsYAML), 0644)
+	if err := os.WriteFile(grantsFile, []byte(grantsYAML), 0644); err != nil {
+		t.Fatalf("Failed to write grants file: %v", err)
+	}
 
 	grants, err := LoadUICapabilityGrants(grantsFile)
 	if err != nil {
@@ -932,7 +934,9 @@ ui_capability_grants:
     approved_by: "security-review@acme.corp"
 `
 	grantsFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(grantsFile, []byte(grantsYAML), 0644)
+	if err := os.WriteFile(grantsFile, []byte(grantsYAML), 0644); err != nil {
+		t.Fatalf("Failed to write grants file: %v", err)
+	}
 
 	grants, err := LoadUICapabilityGrants(grantsFile)
 	if err != nil {

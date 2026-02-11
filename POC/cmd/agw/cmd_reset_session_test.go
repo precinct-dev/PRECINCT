@@ -51,10 +51,18 @@ func TestAgwResetSession_PromptYes_DeletesSPIFFEKeys(t *testing.T) {
 
 	spiffe := "spiffe://poc.local/agents/test/dev"
 	other := "spiffe://poc.local/agents/other/dev"
-	mr.Set("session:"+spiffe+":sid-1", `{"RiskScore":0.2}`)
-	mr.Set("session:"+spiffe+":sid-1:actions", `[]`)
-	mr.Set("session:"+other+":sid-2", `{"RiskScore":0.4}`)
-	mr.Set("ratelimit:"+spiffe+":tokens", "1")
+	if err := mr.Set("session:"+spiffe+":sid-1", `{"RiskScore":0.2}`); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	if err := mr.Set("session:"+spiffe+":sid-1:actions", `[]`); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
+	if err := mr.Set("session:"+other+":sid-2", `{"RiskScore":0.4}`); err != nil {
+		t.Fatalf("seed other session: %v", err)
+	}
+	if err := mr.Set("ratelimit:"+spiffe+":tokens", "1"); err != nil {
+		t.Fatalf("seed ratelimit: %v", err)
+	}
 
 	keydbURL := fmt.Sprintf("redis://%s", mr.Addr())
 
@@ -95,10 +103,18 @@ func TestAgwResetSession_AllConfirm_JSON(t *testing.T) {
 	}
 	t.Cleanup(mr.Close)
 
-	mr.Set("session:spiffe://a:s1", `{"RiskScore":0.1}`)
-	mr.Set("session:spiffe://a:s1:actions", `[]`)
-	mr.Set("session:spiffe://b:s2", `{"RiskScore":0.2}`)
-	mr.Set("ratelimit:spiffe://a:tokens", "1")
+	if err := mr.Set("session:spiffe://a:s1", `{"RiskScore":0.1}`); err != nil {
+		t.Fatalf("miniredis set session a:s1: %v", err)
+	}
+	if err := mr.Set("session:spiffe://a:s1:actions", `[]`); err != nil {
+		t.Fatalf("miniredis set session a:s1 actions: %v", err)
+	}
+	if err := mr.Set("session:spiffe://b:s2", `{"RiskScore":0.2}`); err != nil {
+		t.Fatalf("miniredis set session b:s2: %v", err)
+	}
+	if err := mr.Set("ratelimit:spiffe://a:tokens", "1"); err != nil {
+		t.Fatalf("miniredis set rate limit token key: %v", err)
+	}
 
 	keydbURL := fmt.Sprintf("redis://%s", mr.Addr())
 

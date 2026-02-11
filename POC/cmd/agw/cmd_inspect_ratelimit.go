@@ -35,7 +35,9 @@ func newInspectRateLimitCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer kdb.Close()
+			defer func() {
+				_ = kdb.Close()
+			}()
 
 			var out agw.RateLimitOutput
 			if len(args) == 1 {
@@ -89,4 +91,3 @@ func envInt(key string, def int) int {
 	}
 	return n
 }
-

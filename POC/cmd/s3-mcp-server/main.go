@@ -319,7 +319,9 @@ func (m *MCPServer) handleGetObject(ctx context.Context, id interface{}, args ma
 			},
 		}
 	}
-	defer output.Body.Close()
+	defer func() {
+		_ = output.Body.Close()
+	}()
 
 	// Read up to 1MB of content (safety limit for POC)
 	const maxReadBytes = 1 << 20
@@ -355,7 +357,7 @@ func (m *MCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/health" {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 		return
 	}
 
@@ -369,7 +371,9 @@ func (m *MCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeJSONRPCError(w, nil, -32700, "failed to read request body")
 		return
 	}
-	defer r.Body.Close()
+	defer func() {
+		_ = r.Body.Close()
+	}()
 
 	var req JSONRPCRequest
 	if err := json.Unmarshal(body, &req); err != nil {
@@ -400,13 +404,13 @@ func (m *MCPServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // writeJSONRPCError writes a JSON-RPC error response.
 func writeJSONRPCError(w http.ResponseWriter, id interface{}, code int, message string) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(JSONRPCResponse{
+	_ = json.NewEncoder(w).Encode(JSONRPCResponse{
 		Jsonrpc: "2.0",
 		ID:      id,
 		Error:   &RPCError{Code: code, Message: message},
@@ -452,7 +456,7 @@ func main() {
 		if err != nil {
 			os.Exit(1)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			os.Exit(1)
 		}

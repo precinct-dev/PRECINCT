@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/example/agentic-security-poc/internal/spike"
 )
@@ -157,7 +158,11 @@ func runIssue(args []string) error {
 		switch args[i] {
 		case "--exp":
 			if i+1 < len(args) {
-				fmt.Sscanf(args[i+1], "%d", &exp)
+				parsedExp, err := strconv.ParseInt(args[i+1], 10, 64)
+				if err != nil {
+					return fmt.Errorf("invalid --exp value %q: %w", args[i+1], err)
+				}
+				exp = parsedExp
 				i++
 			}
 		case "--scope":

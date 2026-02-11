@@ -43,7 +43,9 @@ func (c *Client) GetHealth(ctx context.Context) (*Health, error) {
 	if err != nil {
 		return nil, fmt.Errorf("gateway request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("gateway unhealthy: status_code=%d", resp.StatusCode)
@@ -120,7 +122,9 @@ func (c *Client) GetCircuitBreakers(ctx context.Context) ([]CircuitBreakerEntry,
 	if err != nil {
 		return nil, fmt.Errorf("gateway request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("gateway returned status_code=%d", resp.StatusCode)
@@ -148,7 +152,9 @@ func (c *Client) GetCircuitBreaker(ctx context.Context, tool string) (*CircuitBr
 	if err != nil {
 		return nil, fmt.Errorf("gateway request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, fmt.Errorf("tool %q not found", tool)
@@ -188,7 +194,9 @@ func (c *Client) ResetCircuitBreakers(ctx context.Context, tool string) (Circuit
 	if err != nil {
 		return CircuitBreakersResetOutput{}, fmt.Errorf("gateway request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		var apiErr struct {
@@ -205,7 +213,7 @@ func (c *Client) ResetCircuitBreakers(ctx context.Context, tool string) (Circuit
 	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
 		return CircuitBreakersResetOutput{}, fmt.Errorf("decode /admin/circuit-breakers/reset JSON: %w", err)
 	}
-	return CircuitBreakersResetOutput{Reset: parsed.Reset}, nil
+	return CircuitBreakersResetOutput(parsed), nil
 }
 
 func (c *Client) ReloadPolicy(ctx context.Context) (PolicyReloadOutput, error) {
@@ -218,7 +226,9 @@ func (c *Client) ReloadPolicy(ctx context.Context) (PolicyReloadOutput, error) {
 	if err != nil {
 		return PolicyReloadOutput{}, fmt.Errorf("gateway request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		var apiErr policyReloadErrorResponse

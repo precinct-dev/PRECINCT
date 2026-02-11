@@ -115,15 +115,15 @@ func writeSchemaYAML(sb *strings.Builder, m map[string]interface{}, indent int) 
 	for _, entry := range sortedMapEntries(m) {
 		switch v := entry.Value.(type) {
 		case map[string]interface{}:
-			sb.WriteString(fmt.Sprintf("%s%s:\n", prefix, entry.Key))
+			_, _ = fmt.Fprintf(sb, "%s%s:\n", prefix, entry.Key)
 			writeSchemaYAML(sb, v, indent+2)
 		case []interface{}:
-			sb.WriteString(fmt.Sprintf("%s%s:\n", prefix, entry.Key))
+			_, _ = fmt.Fprintf(sb, "%s%s:\n", prefix, entry.Key)
 			for _, item := range v {
-				sb.WriteString(fmt.Sprintf("%s  - %v\n", prefix, formatYAMLValue(item)))
+				_, _ = fmt.Fprintf(sb, "%s  - %v\n", prefix, formatYAMLValue(item))
 			}
 		default:
-			sb.WriteString(fmt.Sprintf("%s%s: %v\n", prefix, entry.Key, formatYAMLValue(v)))
+			_, _ = fmt.Fprintf(sb, "%s%s: %v\n", prefix, entry.Key, formatYAMLValue(v))
 		}
 	}
 }
@@ -196,13 +196,13 @@ func GenerateGrantsEntry(name, description string) string {
 	var sb strings.Builder
 
 	sb.WriteString(fmt.Sprintf("  # Grant template for %s - registered %s\n", name, time.Now().Format("2006-01-02")))
-	sb.WriteString(fmt.Sprintf("  # TODO: Replace placeholder SPIFFE pattern with actual agent identity\n"))
-	sb.WriteString(fmt.Sprintf("  - spiffe_pattern: \"spiffe://poc.local/agents/mcp-client/*/dev\"\n"))
+	sb.WriteString("  # TODO: Replace placeholder SPIFFE pattern with actual agent identity\n")
+	sb.WriteString("  - spiffe_pattern: \"spiffe://poc.local/agents/mcp-client/*/dev\"\n")
 	sb.WriteString(fmt.Sprintf("    description: \"Grant for %s - %s\"\n", name, description))
-	sb.WriteString(fmt.Sprintf("    allowed_tools:\n"))
+	sb.WriteString("    allowed_tools:\n")
 	sb.WriteString(fmt.Sprintf("      - %s\n", name))
-	sb.WriteString(fmt.Sprintf("    max_data_classification: internal\n"))
-	sb.WriteString(fmt.Sprintf("    requires_approval_for: []\n"))
+	sb.WriteString("    max_data_classification: internal\n")
+	sb.WriteString("    requires_approval_for: []\n")
 
 	return sb.String()
 }

@@ -21,7 +21,9 @@ func CopyFile(src, dst string) (SnapshotItem, error) {
 	if err != nil {
 		return SnapshotItem{}, err
 	}
-	defer in.Close()
+	defer func() {
+		_ = in.Close()
+	}()
 
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return SnapshotItem{}, err
@@ -31,7 +33,9 @@ func CopyFile(src, dst string) (SnapshotItem, error) {
 	if err != nil {
 		return SnapshotItem{}, err
 	}
-	defer out.Close()
+	defer func() {
+		_ = out.Close()
+	}()
 
 	h := sha256.New()
 	n, err := io.Copy(io.MultiWriter(out, h), in)
@@ -70,4 +74,3 @@ func CopyDirRecursive(srcDir, dstDir string) ([]SnapshotItem, error) {
 	})
 	return items, err
 }
-

@@ -134,8 +134,8 @@ allow { input.tool == "tools/list" }
 	handler = RequestSizeLimit(handler, 1024*1024)                                         // 1
 
 	cleanup := func() {
-		auditor.Close()
-		opaEngine.Close()
+		_ = auditor.Close()
+		_ = opaEngine.Close()
 	}
 
 	return handler, cleanup
@@ -470,13 +470,17 @@ allow { input.tool == "file_read" }
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	opaEngine, err := NewOPAEngine(opaDir, OPAEngineConfig{})
 	if err != nil {
 		t.Fatalf("Failed to create OPA engine: %v", err)
 	}
-	defer opaEngine.Close()
+	defer func() {
+		_ = opaEngine.Close()
+	}()
 
 	registry, err := NewToolRegistry(registryPath)
 	if err != nil {
@@ -696,9 +700,13 @@ allow { input.tool == "file_read" }
 `), 0644)
 
 	auditor, _ := NewAuditor(auditPath, bundlePath, registryPath)
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 	opaEngine, _ := NewOPAEngine(opaDir, OPAEngineConfig{})
-	defer opaEngine.Close()
+	defer func() {
+		_ = opaEngine.Close()
+	}()
 	registry, _ := NewToolRegistry(registryPath)
 	dlpScanner := NewBuiltInScanner()
 	deepScanner := NewDeepScannerWithConfig(DeepScannerConfig{

@@ -335,7 +335,9 @@ func TestGatewayDevModePreservesPhase1Behavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
-	defer gw.Close()
+	defer func() {
+		_ = gw.Close()
+	}()
 
 	// In dev mode, SPIFFE TLS should NOT be enabled
 	if gw.SPIFFETLSEnabled() {
@@ -561,47 +563,6 @@ func newTestGatewayForMCPTransportProxyHandler(t *testing.T, upstreamURL string,
 	}
 	t.Cleanup(func() { _ = gw.Close() })
 	return gw
-}
-
-// newTestGatewayWithUIGating creates a gateway backed by a mock upstream and a
-// temporary UI capability grants file. Returns the full gateway handler (with entire
-// middleware chain).
-func newTestGatewayWithUIGating(t *testing.T, upstreamHandler http.HandlerFunc, uiEnabled bool, grantsYAML string) http.Handler {
-	t.Helper()
-
-	upstream := httptest.NewServer(upstreamHandler)
-	t.Cleanup(upstream.Close)
-
-	// Write grants YAML to temp file
-	tmpDir := t.TempDir()
-	grantsPath := filepath.Join(tmpDir, "grants.yaml")
-	if err := os.WriteFile(grantsPath, []byte(grantsYAML), 0644); err != nil {
-		t.Fatalf("Failed to write grants file: %v", err)
-	}
-
-	uiConfig := UIConfigDefaults()
-	uiConfig.Enabled = uiEnabled
-	uiConfig.DefaultMode = "deny" // default: deny unless grant says otherwise
-
-	cfg := &Config{
-		UpstreamURL:            upstream.URL,
-		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
-		AuditLogPath:           "",
-		OPAPolicyPath:          testutil.OPAPolicyPath(),
-		MaxRequestSizeBytes:    1024 * 1024,
-		SPIFFEMode:             "dev",
-		UI:                     uiConfig,
-		UICapabilityGrantsPath: grantsPath,
-	}
-
-	gw, err := New(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create gateway: %v", err)
-	}
-	t.Cleanup(func() { _ = gw.Close() })
-
-	return gw.Handler()
 }
 
 // upstreamToolsListWithUI returns a mock upstream handler that responds to any
@@ -2516,7 +2477,7 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 			w.WriteHeader(http.StatusOK)
 
 			// Send the endpoint event
-			fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
 			flusher.Flush()
 
 			// Register this SSE connection
@@ -2602,7 +2563,7 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 			// Send response via all SSE connections
 			mu.Lock()
 			for _, conn := range sseConns {
-				fmt.Fprintf(conn.w, "event: message\ndata: %s\n\n", string(respJSON))
+				_, _ = fmt.Fprintf(conn.w, "event: message\ndata: %s\n\n", string(respJSON))
 				conn.f.Flush()
 			}
 			mu.Unlock()
@@ -3059,7 +3020,7 @@ func TestMCPTransport_UpstreamDropsMidStream(t *testing.T) {
 			if hijacker, ok := w.(http.Hijacker); ok {
 				conn, _, _ := hijacker.Hijack()
 				if conn != nil {
-					conn.Close()
+					_ = conn.Close()
 				}
 			}
 		}

@@ -67,7 +67,9 @@ func newResetSessionCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer client.Close()
+			defer func() {
+				_ = client.Close()
+			}()
 
 			var deleted int64
 			var keys []string

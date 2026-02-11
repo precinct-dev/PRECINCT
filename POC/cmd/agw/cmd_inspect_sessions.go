@@ -35,7 +35,9 @@ func newInspectSessionsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer kdb.Close()
+			defer func() {
+				_ = kdb.Close()
+			}()
 
 			sessions, err := kdb.ListSessions(ctx, spiffeFilter)
 			if err != nil {

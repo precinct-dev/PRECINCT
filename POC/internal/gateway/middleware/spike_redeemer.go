@@ -127,7 +127,9 @@ func (s *SPIKENexusRedeemer) RedeemSecret(ctx context.Context, token *SPIKEToken
 	if err != nil {
 		return nil, fmt.Errorf("failed to call SPIKE Nexus: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// Read response body
 	respBody, err := io.ReadAll(resp.Body)

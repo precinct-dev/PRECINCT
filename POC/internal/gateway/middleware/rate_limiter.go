@@ -122,12 +122,9 @@ func (rl *RateLimiter) Allow(spiffeID string) (allowed bool, remaining int, rese
 		tokens -= 1.0
 	}
 
-	// Persist updated state
-	if storeErr := rl.store.SetTokens(ctx, spiffeID, tokens, now); storeErr != nil {
-		// Log but don't fail the request if we already allowed it.
-		// The next request will re-read from store and get stale data,
-		// which is acceptable for rate limiting (eventual consistency).
-	}
+	// Persist updated state best-effort. A stale token write only impacts
+	// short-term precision and is acceptable for this limiter design.
+	_ = rl.store.SetTokens(ctx, spiffeID, tokens, now)
 
 	remaining = int(math.Floor(tokens))
 	if remaining < 0 {

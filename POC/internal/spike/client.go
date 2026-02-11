@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"sync"
 	"time"
 )
@@ -91,7 +92,7 @@ func (c *Client) Put(secret *Secret) error {
 
 	// Validate ref is hex characters only
 	for _, ch := range secret.Ref {
-		if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) {
+		if (ch < '0' || ch > '9') && (ch < 'a' || ch > 'f') {
 			return fmt.Errorf("secret ref must contain only hex characters [0-9a-f]")
 		}
 	}
@@ -220,7 +221,11 @@ func (c *Client) RedeemToken(tokenStr string, spiffeID string) (*Secret, error) 
 	ref := matches[1]
 	var exp int64
 	if matches[2] != "" {
-		fmt.Sscanf(matches[2], "%d", &exp)
+		parsedExp, err := strconv.ParseInt(matches[2], 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid token expiry %q: %w", matches[2], err)
+		}
+		exp = parsedExp
 	}
 
 	// Load secret

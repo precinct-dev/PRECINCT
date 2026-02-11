@@ -514,14 +514,20 @@ func TestAuditLog(t *testing.T) {
 	tmpDir := t.TempDir()
 	bundlePath := tmpDir + "/bundle.rego"
 	registryPath := tmpDir + "/registry.yaml"
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor("", bundlePath, registryPath) // empty path = stdout only
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	handler := AuditLog(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -560,7 +566,9 @@ func TestToolRegistryVerify(t *testing.T) {
     hash: "def456"
     risk_level: high
 `
-	os.WriteFile(configPath, []byte(config), 0644)
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
 	registry, err := NewToolRegistry(configPath)
 	if err != nil {
@@ -694,7 +702,9 @@ func TestToolRegistryVerify_MCPProtocolMethodsPassThrough(t *testing.T) {
     hash: "abc123"
     risk_level: low
 `
-	os.WriteFile(configPath, []byte(config), 0644)
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
 	registry, err := NewToolRegistry(configPath)
 	if err != nil {
@@ -814,7 +824,9 @@ func TestToolRegistryVerify_NotificationsPassThrough(t *testing.T) {
 	configPath := tmpDir + "/tools.yaml"
 	config := `tools: []
 `
-	os.WriteFile(configPath, []byte(config), 0644)
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
 	registry, err := NewToolRegistry(configPath)
 	if err != nil {
@@ -868,7 +880,9 @@ func TestToolRegistryVerify_NonProtocolMethodsStillVerified(t *testing.T) {
     hash: "abc123"
     risk_level: low
 `
-	os.WriteFile(configPath, []byte(config), 0644)
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
 	registry, err := NewToolRegistry(configPath)
 	if err != nil {
@@ -937,7 +951,9 @@ func TestToolRegistryVerify_ProtocolMethodIntegration(t *testing.T) {
     hash: "hash123"
     risk_level: low
 `
-	os.WriteFile(configPath, []byte(config), 0644)
+	if err := os.WriteFile(configPath, []byte(config), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
 
 	registry, err := NewToolRegistry(configPath)
 	if err != nil {

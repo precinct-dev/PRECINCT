@@ -80,9 +80,13 @@ func TestKeyDB_GetSessionRiskScore(t *testing.T) {
 	sessionID := "sid-runtime-test"
 	key := "session:" + spiffeID + ":" + sessionID
 
-	mr.Set(key, `{"RiskScore":0.73}`)
+	if err := mr.Set(key, `{"RiskScore":0.73}`); err != nil {
+		t.Fatalf("seed session value: %v", err)
+	}
 	mr.SetTTL(key, 30*time.Minute)
-	mr.RPush(key+":actions", `{"Tool":"read"}`)
+	if _, err := mr.RPush(key+":actions", `{"Tool":"read"}`); err != nil {
+		t.Fatalf("seed actions: %v", err)
+	}
 
 	score, found, err := kdb.GetSessionRiskScore(ctx, sessionID)
 	if err != nil {

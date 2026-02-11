@@ -1,5 +1,7 @@
 package middleware
 
+//lint:file-ignore SA1019 OPA v1 migration is tracked separately; this engine intentionally uses compatibility packages for now.
+
 import (
 	"context"
 	"fmt"
@@ -9,9 +11,9 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/open-policy-agent/opa/rego"
-	"github.com/open-policy-agent/opa/storage"
-	"github.com/open-policy-agent/opa/storage/inmem"
+	"github.com/open-policy-agent/opa/rego"          //nolint:staticcheck // OPA v1 migration tracked separately.
+	"github.com/open-policy-agent/opa/storage"       //nolint:staticcheck // OPA v1 migration tracked separately.
+	"github.com/open-policy-agent/opa/storage/inmem" //nolint:staticcheck // OPA v1 migration tracked separately.
 	"gopkg.in/yaml.v3"
 )
 
@@ -450,7 +452,7 @@ func (e *OPAEngine) startWatcher() error {
 
 	// Watch policy directory
 	if err := watcher.Add(e.policyDir); err != nil {
-		watcher.Close()
+		_ = watcher.Close()
 		return fmt.Errorf("failed to watch policy directory: %w", err)
 	}
 
