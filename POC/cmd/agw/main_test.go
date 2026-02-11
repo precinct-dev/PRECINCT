@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 )
@@ -153,6 +154,58 @@ func TestAgwInspectIdentity_NoMatch_Exit1(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "no matching grants") {
 		t.Fatalf("expected no matching grants error, got %q", stderr.String())
+	}
+}
+
+func TestAgwInspectSessions_JSON(t *testing.T) {
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("miniredis: %v", err)
+	}
+	t.Cleanup(mr.Close)
+
+	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	sessionKey := "session:" + spiffeID + ":sid-test"
+	mr.Set(sessionKey, `{"ID":"sid-test","SPIFFEID":"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev","RiskScore":0.65}`)
+	mr.SetTTL(sessionKey, 30*time.Minute)
+	mr.RPush(sessionKey+":actions", `{"Tool":"read"}`, `{"Tool":"grep"}`)
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{
+			"inspect", "sessions", spiffeID,
+			"--keydb-url", fmt.Sprintf("redis://%s", mr.Addr()),
+			"--format", "json",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+
+	var parsed struct {
+		Sessions []struct {
+			SessionID     string  `json:"session_id"`
+			SPIFFEID      string  `json:"spiffe_id"`
+			RiskScore     float64 `json:"risk_score"`
+			ToolsAccessed int     `json:"tools_accessed"`
+			TTLSeconds    int     `json:"ttl_seconds"`
+		} `json:"sessions"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid json: %v output=%q", err, stdout.String())
+	}
+	if len(parsed.Sessions) != 1 {
+		t.Fatalf("expected one session, got %+v", parsed.Sessions)
+	}
+	got := parsed.Sessions[0]
+	if got.SPIFFEID != spiffeID || got.SessionID != "sid-test" {
+		t.Fatalf("unexpected session data: %+v", got)
+	}
+	if got.ToolsAccessed != 2 {
+		t.Fatalf("expected tools_accessed=2, got %+v", got)
 	}
 }
 
