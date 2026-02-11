@@ -632,7 +632,7 @@ import rego.v1
 #   "spiffe_id": "spiffe://acme.corp/agents/mcp-client/financial-analyzer/prod",
 #   "tool": "database_query",
 #   "resource": "/data/financial/transactions",
-#   "safezone_flags": ["potential_pii"],
+#   "dlp_flags": ["potential_pii"],
 #   "session": { "risk_score": 0.3, "previous_tools": ["file_read"] }
 # }
 
@@ -641,7 +641,7 @@ default allow := false
 # Tool-level authorization based on SPIFFE ID
 allow if {
     agent_authorized_for_tool
-    not safezone_blocked
+    not dlp_blocked
     session_risk_acceptable
     not contains_poisoning_indicators(input.tool_description)
 }
@@ -652,8 +652,8 @@ agent_authorized_for_tool if {
     input.tool in grant.allowed_tools
 }
 
-safezone_blocked if {
-    "blocked_content" in input.safezone_flags
+dlp_blocked if {
+    "blocked_content" in input.dlp_flags
 }
 
 session_risk_acceptable if {
@@ -701,7 +701,7 @@ package mcp.scanning
 import rego.v1
 
 requires_deep_scan if {
-    "potential_injection" in input.safezone_flags
+    "potential_injection" in input.dlp_flags
 }
 
 requires_deep_scan if {
@@ -754,7 +754,7 @@ The MCP Security Gateway is the enforcement point for all security controls. It 
 
 1. **Identity verification** (SPIFFE)
 2. **Authorization enforcement** (OPA)
-3. **Content inspection** (SafeZone, LLM guards)
+3. **Content inspection** (DLP engine, LLM guards)
 4. **Tool verification** (registry, hash checking)
 5. **Secret substitution** (late-binding tokens)
 6. **Step-up gating** (sync enforcement for high-risk tools)
@@ -799,8 +799,8 @@ Example request (canonical / portable across clients and languages):
 │  │                         FAST PATH (<5ms added latency)                          │   │
 │  │                                                                                 │   │
 │  │   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐   ┌──────────┐      │   │
-│  │   │  Size    │   │  Body    │   │  SPIFFE  │   │   OPA    │   │ SafeZone │      │   │
-│  │   │  Limit   │──▶│ Capture  │──▶│   Auth   │──▶│  Policy  │──▶│   DLP    │      │   │
+│  │   │  Size    │   │  Body    │   │  SPIFFE  │   │   OPA    │   │   DLP    │      │   │
+│  │   │  Limit   │──▶│ Capture  │──▶│   Auth   │──▶│  Policy  │──▶│  Engine  │      │   │
 │  │   │          │   │          │   │ (SVID)   │   │ (embed)  │   │ (embed)  │      │   │
 │  │   └──────────┘   └──────────┘   └──────────┘   └──────────┘   └──────────┘      │   │
 │  │                                                      │             │            │   │
@@ -1007,39 +1007,46 @@ func (s *SessionContext) detectsExfiltrationPattern(session *AgentSession) bool 
 }
 ```
 
-### 7.5 DLP with SafeZone
+### 7.5 DLP Engine (Provider-Agnostic)
 
-SafeZone provides embedded PII detection and redaction:
+The gateway uses a provider-agnostic DLP interface so teams can use:
+- The built-in scanner included in this POC (default)
+- A third-party embedded DLP library
+- A customer-managed external DLP service
 
 ```go
-import safezone "github.com/thyrisAI/safe-zone"
-
-type DLPScanner struct {
-    scanner *safezone.Scanner
-}
-
-func (d *DLPScanner) Scan(content string) *ScanResult {
-    findings := d.scanner.Scan(content)
-
-    result := &ScanResult{
-        Flags: []string{},
-    }
-
-    for _, finding := range findings {
-        switch finding.Type {
-        case safezone.PII:
-            result.Flags = append(result.Flags, "potential_pii")
-        case safezone.Credential:
-            result.Flags = append(result.Flags, "blocked_content")
-            result.BlockReason = "credential detected"
-        case safezone.Suspicious:
-            result.Flags = append(result.Flags, "potential_injection")
-        }
-    }
-
-    return result
+type DLPScanner interface {
+    Scan(content string) ScanResult
 }
 ```
+
+Current POC base (production starting point): `BuiltInScanner` with Go regex and checksum/context-aware rules for credentials, PII, and suspicious patterns. This behavior is implemented in `POC/internal/gateway/middleware/dlp.go`.
+
+All providers must map to normalized gateway outcomes so policy behavior is stable:
+- `blocked_content` (hard block path)
+- `potential_pii` (classification/risk signal)
+- `potential_injection` (classification/risk signal)
+
+#### 7.5.1 DLP Provider Modes
+
+| Mode | Example | Operational Notes |
+|------|---------|-------------------|
+| Embedded built-in (default) | `BuiltInScanner` in gateway code | Fastest and simplest deployment |
+| Embedded external library | Customer-selected DLP library | Keep provider optional, not mandatory |
+| External DLP service | Customer SIEM/DLP platform | Adds network dependency and service trust boundary |
+
+#### 7.5.2 DLP Rule CRUD as a Security-Critical Control Plane
+
+If patterns/rules become externally manageable via CLI/API, rule management becomes a new attack vector (tampering/evasion/DoS via rule drift or malicious regex).
+
+Required controls for production:
+1. **Strict RBAC** for rule CRUD (separate from regular app/operator roles)
+2. **Signed + versioned rule artifacts** with integrity verification before activation
+3. **Validation gates** (regex safety, schema checks, deny catastrophic backtracking patterns)
+4. **Staged rollout** (shadow/audit mode before block mode)
+5. **Audit trail** for rule lifecycle (who/what/when/why + diff + approval)
+6. **Instant rollback** to last known-good rule set
+7. **Policy guardrails** for fail-open/fail-closed behavior by risk class and egress profile
 
 ### 7.6 Tiered LLM Scanning
 
@@ -1565,7 +1572,7 @@ func (g *Gateway) buildMiddlewareChain() http.Handler {
         g.auditMiddleware(),
         g.toolRegistryMiddleware(),
         g.opaPolicyMiddleware(),
-        g.safeZoneScanMiddleware(),
+        g.dlpScanMiddleware(),
         g.sessionContextMiddleware(),
         g.stepUpGatingMiddleware(),
         g.deepScanDispatchMiddleware(),
@@ -1597,7 +1604,7 @@ The following input fields are added to the OPA evaluation context for UI-relate
 ```rego
 # Extended input structure for UI-aware policy evaluation
 # {
-#   ...existing fields (spiffe_id, tool, resource, safezone_flags, session)...
+#   ...existing fields (spiffe_id, tool, resource, dlp_flags, session)...
 #   "ui": {
 #     "enabled": true,
 #     "resource_uri": "ui://dashboard/analytics.html",
@@ -1815,7 +1822,7 @@ ui:
 │  │                                                                                   │ │
 │  │  ┌──────────────────────────────────────────────────────────────────────────────┐ │ │
 │  │  │  FAST PATH (<5ms)                                                            │ │ │
-│  │  │  Size → Body → SPIFFE Auth → OPA (embed) → SafeZone (embed) →                │ │ │
+│  │  │  Size → Body → SPIFFE Auth → OPA (embed) → DLP Engine (embed/adapter) →       │ │ │
 │  │  │  Tool Registry → Session Context → Rate Limit → Circuit Breaker              │ │ │
 │  │  └──────────────────────────────────────────────────────────────────────────────┘ │ │
 │  │                                           │                                       │ │
@@ -1862,7 +1869,7 @@ ui:
 | SPIKE Nexus | 2+ replicas | Active-passive |
 | SPIKE Keepers | 3-5 instances | Shamir 3-of-5 threshold |
 | OPA | Embedded Go library | ~40μs evaluation |
-| SafeZone | Embedded Go library | ~0.5-2ms scan |
+| DLP Engine | Built-in scanner by default; provider adapters optional | ~0.5-2ms for built-in scanner |
 | Prompt Guard 2 | Local ONNX or Groq | ~10-20ms local, ~50-150ms Groq |
 | Llama Guard 4 | Groq only | ~150-400ms |
 | Tool Registry | ConfigMap + hot reload | 60s refresh |
@@ -1919,7 +1926,7 @@ ui:
 | HTTP Server | `net/http` | Native, performant |
 | SPIFFE | `go-spiffe/v2` | Official SDK |
 | OPA | `github.com/open-policy-agent/opa/rego` | Embedded evaluation |
-| DLP | `github.com/thyrisAI/safe-zone` | Go-native PII detection |
+| DLP | Built-in scanner (`internal/gateway/middleware/dlp.go`) + optional adapters | Provider-agnostic DLP integration |
 | Prompt Guard | `github.com/yalue/onnxruntime_go` | Local inference |
 | Middleware | `github.com/justinas/alice` | Composable chain |
 
@@ -1946,8 +1953,8 @@ func (g *Gateway) buildMiddlewareChain() http.Handler {
         // 6. OPA policy evaluation (embedded)
         g.opaPolicyMiddleware(),
 
-        // 7. SafeZone DLP scan (embedded)
-        g.safeZoneScanMiddleware(),
+        // 7. DLP scan (built-in scanner by default, pluggable providers)
+        g.dlpScanMiddleware(),
 
         // 8. Session context update
         g.sessionContextMiddleware(),
@@ -2075,8 +2082,8 @@ spec:
               value: "/config/tool-registry.yaml"
             - name: OPA_BUNDLE_URL
               value: "https://opa-bundle-server.policy-system/agent-authorization"
-            - name: SAFEZONE_CONFIG_PATH
-              value: "/config/safezone.yaml"
+            - name: DLP_CONFIG_PATH
+              value: "/config/dlp.yaml"
             - name: PROMPT_GUARD_MODEL_PATH
               value: "/models/prompt-guard-2-86m"
             - name: DEEP_SCAN_MODE
@@ -2157,7 +2164,7 @@ spec:
 |-----------|------------------|-------|
 | SPIFFE ID extraction | ~100μs | mTLS already terminated |
 | OPA Rego evaluation | ~40μs | In-process |
-| SafeZone PII scan | ~0.5-2ms | Pattern matching |
+| DLP scan (built-in default) | ~0.5-2ms | Pattern matching; provider dependent if external |
 | Tool Registry lookup | ~50μs | In-memory map |
 | Session Context update | ~100μs | In-memory |
 | Token validation | ~2-5ms | SPIKE network call |
@@ -2177,7 +2184,7 @@ spec:
 | SPIRE unreachable | Fail closed (block) | No identity = no access |
 | SPIKE unreachable | Fail closed (block) | Can't substitute tokens |
 | OPA evaluation error | Fail closed (block) | No policy = no access |
-| SafeZone error | Fail open (allow) | DLP is defense-in-depth (consider fail-closed for external egress) |
+| DLP engine error | Risk-based fail mode | Default can fail open for low-risk/internal; fail closed for high-risk/external egress |
 | Deep scan unavailable | Degrade to fast path | Async scanning is optional |
 | Step-up guard unavailable | Fail closed (high-risk only) | High-impact actions require deterministic gating |
 | Tool Registry stale | Use cached (warn) | Eventual consistency acceptable |
@@ -2273,7 +2280,7 @@ All operations are logged with full context:
   },
   "security": {
     "tool_hash_verified": true,
-    "safezone_flags": [],
+    "dlp_flags": [],
     "session_risk_score": 0.2,
     "tokens_substituted": 1,
     "deep_scan_triggered": false
@@ -2496,7 +2503,7 @@ All gateway decisions should be emitted as **structured JSON events** with stabl
 - `trace_id`, `span_id`, `request_id`, `session_id`
 - `agent.spiffe_id`, `tool.server`, `tool.name`, `tool.risk_level`, `tool.hash_verified`
 - `authorization.opa_decision_id`, `authorization.bundle_digest`, `registry.digest`
-- `security.safezone_flags`, `security.step_up_applied`, `security.deep_scan_triggered`
+- `security.dlp_flags`, `security.step_up_applied`, `security.deep_scan_triggered`
 - `egress.destination`, `egress.is_external`, `data.classification`
 - `ui.enabled`, `ui.resource_uri`, `ui.resource_content_hash`, `ui.call_origin`, `ui.capability_grant_mode`
 
@@ -3123,6 +3130,55 @@ For sensitive content:
 - Require **step‑up gating** or **human approval** before injection.
 - Prefer “summary only” views that exclude raw data.
 
+### 10.16 The 3 Rs Operating Doctrine (Repair, Rotate, Repave)
+
+This architecture adopts the 3 Rs as an operational doctrine:
+
+1. **Repair**  
+   - Design for self-healing service behavior and redundant deployment topologies in managed K8s/cloud environments.
+   - Use health checks, circuit breakers, and automated recovery to keep the control plane resilient under failure.
+2. **Rotate**  
+   - Treat identity and credential material as short-lived by default.
+   - Use SPIFFE SVID rotation and referential secret patterns (SPIKE token substitution) to minimize credential half-life.
+3. **Repave**  
+   - Prefer full-environment rebuilds over long-lived mutable systems when compromise is suspected.
+   - Use immutable artifacts and repeatable deployment pipelines so a clean trusted state can be re-established quickly.
+
+The 3 Rs are the practical counterpart to zero trust for agentic systems: recover fast, reduce credential exposure windows, and remove persistence opportunities for advanced threats.
+
+### 10.17 Gateway-Mediated LLM Provider Access (Model Egress Governance)
+
+Many enterprises will use external model providers for most LLM inference. For those environments, model-provider access should be governed at the same boundary as tool access.
+
+#### 10.17.1 Why this belongs in the architecture
+
+If model calls are made directly from apps/agents:
+- API keys spread across services and teams
+- TLS and endpoint validation become inconsistent
+- Residency and provider policy enforcement fragments
+- Auditability is split across multiple systems
+
+Central mediation at the gateway preserves one policy boundary and one evidence model.
+
+#### 10.17.2 Recommended control pattern
+
+1. **Credentials by reference**: applications pass model credential references, not raw provider keys.
+2. **Provider allowlists**: explicit approved provider/model endpoint catalog.
+3. **Endpoint trust policy**: strict TLS validation, certificate identity checks, and endpoint pinning policy where feasible.
+4. **DNS integrity checks**: DNSSEC-aware validation where provider/domain support exists, with policy fallback controls where it does not.
+5. **Data residency gate**: policy enforcement that blocks model egress violating jurisdiction/tenant residency requirements.
+6. **Unified audit**: model calls logged with policy decision IDs, endpoint metadata, residency decision, and request classification.
+
+#### 10.17.3 Gateway vs. separate component
+
+Default recommendation:
+- Keep enforcement policy and decision authority in the gateway.
+- Implement model egress mediation as a gateway module first for consistency and lower integration cost.
+
+Scale recommendation:
+- Introduce a dedicated **LLM Egress Broker** only when throughput or organizational boundaries require separation.
+- Even then, keep it policy-coupled to the gateway (same trust model, same audit schema, same approval semantics).
+
 ---
 
 ## 11. Security Analysis
@@ -3138,6 +3194,7 @@ For sensitive content:
 | Cross-tool manipulation | | | ✅ | ✅ | **High** |
 | Prompt injection | | | | ✅ | **High** |
 | Data exfiltration | | | ✅ | ✅ | **High** (with response firewall + step-up) |
+| External model provider hijack/misdirection | ✅ | ✅ | ✅ | ✅ | **Medium** (requires model egress governance controls) |
 | Authorization bypass | ✅ | ✅ | ✅ | | **Full** |
 | Model artifact compromise | | | | ✅ | **Medium** (digest/signature verification) |
 | Active content (MCP-UI) | | | ✅ | ✅ | **High** (capability gating + CSP mediation + content scan) |
@@ -3161,6 +3218,7 @@ For sensitive content:
 | UI resource rug-pull | ✅ Full | UI Resource Registry hash verification |
 | Permission escalation via UI | ✅ Full | Permissions denied by default, stripped by gateway |
 | Nested frame attacks via UI | ✅ Full | frameDomains hard-denied at gateway |
+| Provider endpoint spoofing / misrouting | ✅ Medium | Gateway model egress policy (TLS identity + DNS integrity + residency gating) |
 
 ### 11.3 Residual Risks
 
@@ -3174,6 +3232,7 @@ For sensitive content:
 | Novel UI XSS vectors | Static pattern scanning has limits | Host sandbox isolation + CSP enforcement + periodic security review |
 | Social engineering via UI | App can present misleading interfaces | Step-up gating for high-risk actions + user education |
 | Covert channels in sandbox | Timing/storage-based exfiltration | Monitor anomalous app behavior patterns + short session TTLs |
+| External model egress policy drift | Provider policy not centrally enforced | Gateway-mediated model egress controls + signed allowlist updates |
 
 ---
 
@@ -3185,7 +3244,7 @@ For sensitive content:
 |----------|----------------------|
 | SPIFFE auth middleware | SPIRE infrastructure |
 | Embedded OPA | Policy bundle server |
-| SafeZone integration | None |
+| DLP engine integration (built-in default) | None |
 | Basic Tool Registry (desc+schema hashes) | None |
 | Audit logging | OTEL collector |
 
@@ -3221,6 +3280,7 @@ For sensitive content:
 | Model artifact integrity checks | Model digests/signatures |
 | Behavioral baselines | Session context |
 | Human approval workflows | UI integration |
+| Gateway-mediated model egress controls | Provider catalog + policy + residency governance |
 | Compliance dashboard | All components |
 | Runbooks and DR testing | All components |
 
@@ -3296,7 +3356,8 @@ This is **not required for v1**, but may become compelling if constrained decodi
 - [SEP-1865: MCP Apps Pull Request](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1865)
 
 ### Implementation
-- [SafeZone DLP Library](https://github.com/thyrisAI/safe-zone)
+- [POC Built-In DLP Scanner (`dlp.go`)](POC/internal/gateway/middleware/dlp.go)
+- [Example Third-Party DLP Provider](https://github.com/thyrisAI/safe-zone)
 - [Groq Guard Models](https://console.groq.com/docs/content-moderation)
 - [Llama Prompt Guard 2](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M)
 
