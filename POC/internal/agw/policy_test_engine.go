@@ -2,11 +2,16 @@ package agw
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
 )
@@ -205,6 +210,182 @@ func RunPolicyTestOffline(spiffeID, tool, rawParams, opaPolicyDir, toolRegistryP
 	return out, nil
 }
 
+func RunPolicyTestRuntime(
+	spiffeID, tool, rawParams, opaPolicyDir, toolRegistryPath, keydbURL, gatewayURL, sessionID string,
+) (PolicyTestOfflineOutput, error) {
+	out, err := RunPolicyTestOffline(spiffeID, tool, rawParams, opaPolicyDir, toolRegistryPath)
+	if err != nil {
+		return out, err
+	}
+
+	out.Mode = "full"
+	out.Note = ""
+	blocked := out.BlockingLayer
+
+	add := func(step int, layer, result, detail string) {
+		out.Layers = append(out.Layers, PolicyTestLayer{
+			Step:   step,
+			Layer:  layer,
+			Result: result,
+			Detail: detail,
+		})
+	}
+	skip := func(step int, layer string) {
+		add(step, layer, "SKIP", fmt.Sprintf("blocked at layer %d", blocked))
+	}
+	fail := func(step int, layer, detail string) {
+		add(step, layer, "FAIL", detail)
+		blocked = step
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	keydbURL = strings.TrimSpace(keydbURL)
+	if keydbURL == "" {
+		return out, fmt.Errorf("keydb URL is empty (set --keydb-url or AGW_KEYDB_URL)")
+	}
+	kdb, err := NewKeyDB(keydbURL)
+	if err != nil {
+		return out, err
+	}
+	defer func() { _ = kdb.Close() }()
+
+	gatewayURL = strings.TrimSpace(gatewayURL)
+	if gatewayURL == "" {
+		return out, fmt.Errorf("gateway URL is empty (set --gateway-url or AGW_GATEWAY_URL)")
+	}
+	client := NewClient(gatewayURL)
+
+	paramsJSON := strings.TrimSpace(rawParams)
+	if paramsJSON == "" {
+		paramsJSON = "{}"
+	}
+
+	sessionRisk := 0.0
+	sessionID = strings.TrimSpace(sessionID)
+
+	// Layer 7: Session context check.
+	if blocked > 0 {
+		skip(7, "Session Context")
+	} else if sessionID == "" {
+		add(7, "Session Context", "SKIP", "no session-id provided")
+	} else {
+		score, found, err := kdb.GetSessionRiskScore(ctx, sessionID)
+		if err != nil {
+			fail(7, "Session Context", fmt.Sprintf("session lookup failed: %v", err))
+		} else if !found {
+			fail(7, "Session Context", fmt.Sprintf("session_id=%s not found", sessionID))
+		} else {
+			sessionRisk = score
+			add(7, "Session Context", "PASS", fmt.Sprintf("risk_score=%.2f", score))
+		}
+	}
+
+	// Layer 8: Step-up gating check from risk_thresholds.yaml.
+	if blocked > 0 {
+		skip(8, "Step-Up Gating")
+	} else {
+		riskPath := resolveRiskThresholdsPath(opaPolicyDir)
+		riskCfg, err := middleware.LoadRiskConfig(riskPath)
+		if err != nil {
+			fail(8, "Step-Up Gating", fmt.Sprintf("load risk config failed: %v", err))
+		} else {
+			totalRisk := riskScoreToTotal(sessionRisk)
+			switch {
+			case totalRisk <= riskCfg.Thresholds.FastPathMax:
+				add(8, "Step-Up Gating", "PASS", fmt.Sprintf("total_risk=%d gate=fast_path", totalRisk))
+			case totalRisk <= riskCfg.Thresholds.StepUpMax:
+				add(8, "Step-Up Gating", "PASS", fmt.Sprintf("total_risk=%d gate=step_up", totalRisk))
+			case totalRisk <= riskCfg.Thresholds.ApprovalMax:
+				fail(8, "Step-Up Gating", fmt.Sprintf("total_risk=%d gate=approval_required", totalRisk))
+			default:
+				fail(8, "Step-Up Gating", fmt.Sprintf("total_risk=%d gate=deny", totalRisk))
+			}
+		}
+	}
+
+	// Layer 9: Deep scan availability.
+	if blocked > 0 {
+		skip(9, "Deep Scan")
+	} else {
+		if strings.TrimSpace(os.Getenv("GUARD_API_KEY")) == "" {
+			add(9, "Deep Scan", "SKIP", "guard model not configured")
+		} else {
+			add(9, "Deep Scan", "PASS", "GUARD_API_KEY configured")
+		}
+	}
+
+	// Layer 10: Rate limiter state from KeyDB counters.
+	if blocked > 0 {
+		skip(10, "Rate Limiter")
+	} else {
+		rpm := envIntOrDefault("RATE_LIMIT_RPM", 600)
+		burst := envIntOrDefault("RATE_LIMIT_BURST", 100)
+		counters, err := kdb.GetRateLimitCounters(ctx, out.SPIFFEID, rpm, burst)
+		if err != nil {
+			fail(10, "Rate Limiter", fmt.Sprintf("rate-limit lookup failed: %v", err))
+		} else if counters.Remaining <= 0 {
+			fail(10, "Rate Limiter", fmt.Sprintf("remaining=%d/%d", counters.Remaining, counters.Limit))
+		} else {
+			add(10, "Rate Limiter", "PASS", fmt.Sprintf("remaining=%d/%d", counters.Remaining, counters.Limit))
+		}
+	}
+
+	// Layer 11: Circuit breaker state from gateway admin endpoint.
+	if blocked > 0 {
+		skip(11, "Circuit Breaker")
+	} else {
+		cb, err := client.GetCircuitBreaker(ctx, out.Tool)
+		if err != nil {
+			fail(11, "Circuit Breaker", fmt.Sprintf("circuit-breaker lookup failed: %v", err))
+		} else if strings.EqualFold(strings.TrimSpace(cb.State), "open") {
+			fail(11, "Circuit Breaker", "state=open")
+		} else {
+			add(11, "Circuit Breaker", "PASS", fmt.Sprintf("state=%s", cb.State))
+		}
+	}
+
+	// Layer 12: Token substitution check.
+	if blocked > 0 {
+		skip(12, "Token Substitution")
+	} else {
+		tokens := middleware.FindSPIKETokens(paramsJSON)
+		if strings.Contains(paramsJSON, "$SPIKE{") && len(tokens) == 0 {
+			fail(12, "Token Substitution", "invalid SPIKE token syntax")
+		} else if len(tokens) == 0 {
+			add(12, "Token Substitution", "PASS", "no SPIKE tokens in params")
+		} else {
+			for _, tokenStr := range tokens {
+				if _, err := middleware.ParseSPIKEToken(tokenStr); err != nil {
+					fail(12, "Token Substitution", fmt.Sprintf("invalid token %q: %v", tokenStr, err))
+					break
+				}
+			}
+			if blocked == 0 {
+				add(12, "Token Substitution", "PASS", fmt.Sprintf("token_count=%d syntax=valid", len(tokens)))
+			}
+		}
+	}
+
+	// Layer 13: Audit log check (simulated dry-run only).
+	if blocked > 0 {
+		skip(13, "Audit Log")
+	} else {
+		add(13, "Audit Log", "PASS", "(would log)")
+	}
+
+	if blocked == 0 {
+		out.Verdict = "ALLOWED"
+		out.BlockingLayer = 0
+	} else {
+		out.Verdict = "DENIED"
+		out.BlockingLayer = blocked
+	}
+
+	return out, nil
+}
+
 func RenderPolicyTestOfflineJSON(out PolicyTestOfflineOutput) ([]byte, error) {
 	b, err := json.Marshal(out)
 	if err != nil {
@@ -215,7 +396,11 @@ func RenderPolicyTestOfflineJSON(out PolicyTestOfflineOutput) ([]byte, error) {
 
 func RenderPolicyTestOfflineTable(out PolicyTestOfflineOutput) (string, error) {
 	var buf bytes.Buffer
-	_, _ = fmt.Fprintf(&buf, "DRY RUN (offline): %s calling %s\n\n", out.SPIFFEID, out.Tool)
+	mode := strings.TrimSpace(out.Mode)
+	if mode == "" {
+		mode = "offline"
+	}
+	_, _ = fmt.Fprintf(&buf, "DRY RUN (%s): %s calling %s\n\n", mode, out.SPIFFEID, out.Tool)
 
 	tw := tabwriter.NewWriter(&buf, 0, 4, 2, ' ', 0)
 	_, _ = fmt.Fprintln(tw, "STEP\tLAYER\tRESULT\tDETAIL")
@@ -225,8 +410,10 @@ func RenderPolicyTestOfflineTable(out PolicyTestOfflineOutput) (string, error) {
 	_ = tw.Flush()
 
 	_, _ = fmt.Fprintln(&buf, "")
-	if out.Verdict == "ALLOWED" {
+	if out.Verdict == "ALLOWED" && strings.EqualFold(mode, "offline") {
 		_, _ = fmt.Fprintln(&buf, "VERDICT: ALLOWED (offline layers 1-6)")
+	} else if out.Verdict == "ALLOWED" {
+		_, _ = fmt.Fprintln(&buf, "VERDICT: ALLOWED")
 	} else {
 		_, _ = fmt.Fprintf(&buf, "VERDICT: DENIED (blocked at layer %d)\n", out.BlockingLayer)
 	}
@@ -250,4 +437,35 @@ func extractTrustDomain(spiffeID string) (string, bool) {
 		return "", false
 	}
 	return parts[0], true
+}
+
+func resolveRiskThresholdsPath(opaPolicyDir string) string {
+	trimmed := strings.TrimSpace(strings.TrimRight(opaPolicyDir, "/"))
+	if trimmed == "" {
+		return filepath.Join("config", "risk_thresholds.yaml")
+	}
+	return filepath.Join(filepath.Dir(trimmed), "risk_thresholds.yaml")
+}
+
+func riskScoreToTotal(score float64) int {
+	total := int(score * 10.0)
+	if total < 0 {
+		return 0
+	}
+	if total > 12 {
+		return 12
+	}
+	return total
+}
+
+func envIntOrDefault(key string, def int) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return def
+	}
+	return v
 }

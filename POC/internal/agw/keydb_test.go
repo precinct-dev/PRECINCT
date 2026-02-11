@@ -66,3 +66,92 @@ func TestKeyDB_ListAndGetRateLimits_WithTTL(t *testing.T) {
 	}
 }
 
+func TestKeyDB_GetSessionRiskScore(t *testing.T) {
+	mr := miniredis.RunT(t)
+	ctx := context.Background()
+
+	kdb, err := NewKeyDB("redis://" + mr.Addr())
+	if err != nil {
+		t.Fatalf("NewKeyDB err: %v", err)
+	}
+	t.Cleanup(func() { _ = kdb.Close() })
+
+	spiffeID := "spiffe://poc.local/agents/example/dev"
+	sessionID := "sid-runtime-test"
+	key := "session:" + spiffeID + ":" + sessionID
+
+	mr.Set(key, `{"RiskScore":0.73}`)
+	mr.SetTTL(key, 30*time.Minute)
+	mr.RPush(key+":actions", `{"Tool":"read"}`)
+
+	score, found, err := kdb.GetSessionRiskScore(ctx, sessionID)
+	if err != nil {
+		t.Fatalf("GetSessionRiskScore err: %v", err)
+	}
+	if !found {
+		t.Fatalf("expected session risk to be found")
+	}
+	if score < 0.72 || score > 0.74 {
+		t.Fatalf("expected risk around 0.73, got %f", score)
+	}
+
+	missingScore, missingFound, err := kdb.GetSessionRiskScore(ctx, "sid-does-not-exist")
+	if err != nil {
+		t.Fatalf("GetSessionRiskScore(missing) err: %v", err)
+	}
+	if missingFound || missingScore != 0 {
+		t.Fatalf("expected missing session to return not found, got score=%f found=%v", missingScore, missingFound)
+	}
+}
+
+func TestKeyDB_GetRateLimitCounters(t *testing.T) {
+	mr := miniredis.RunT(t)
+	ctx := context.Background()
+
+	kdb, err := NewKeyDB("redis://" + mr.Addr())
+	if err != nil {
+		t.Fatalf("NewKeyDB err: %v", err)
+	}
+	t.Cleanup(func() { _ = kdb.Close() })
+
+	spiffeID := "spiffe://poc.local/agents/example/dev"
+	rpm := 600
+	burst := 100
+
+	// Missing key => Found=false with burst fallback.
+	missing, err := kdb.GetRateLimitCounters(ctx, spiffeID, rpm, burst)
+	if err != nil {
+		t.Fatalf("GetRateLimitCounters(missing) err: %v", err)
+	}
+	if missing.Found {
+		t.Fatalf("expected missing counters Found=false, got %+v", missing)
+	}
+	if missing.Remaining != burst || missing.Limit != rpm {
+		t.Fatalf("unexpected missing counters fallback: %+v", missing)
+	}
+
+	if err := kdb.SetTokensForTest(ctx, spiffeID, 55.1, 20*time.Second); err != nil {
+		t.Fatalf("SetTokensForTest err: %v", err)
+	}
+	got, err := kdb.GetRateLimitCounters(ctx, spiffeID, rpm, burst)
+	if err != nil {
+		t.Fatalf("GetRateLimitCounters(found) err: %v", err)
+	}
+	if !got.Found {
+		t.Fatalf("expected Found=true, got %+v", got)
+	}
+	if got.Remaining != 55 {
+		t.Fatalf("expected remaining=55, got %+v", got)
+	}
+	if got.Limit != rpm || got.Burst != burst {
+		t.Fatalf("unexpected limit/burst: %+v", got)
+	}
+	if got.TTLSeconds <= 0 {
+		t.Fatalf("expected ttl > 0, got %+v", got)
+	}
+
+	_, err = kdb.GetRateLimitCounters(ctx, " ", rpm, burst)
+	if err == nil {
+		t.Fatalf("expected error for empty spiffe-id")
+	}
+}

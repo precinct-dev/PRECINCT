@@ -1,11 +1,17 @@
 package agw
 
 import (
+	"context"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/alicebob/miniredis/v2"
 )
 
 func writePolicyTestFixtures(t *testing.T) (opaDir string, registryPath string) {
@@ -37,6 +43,28 @@ func writePolicyTestFixtures(t *testing.T) (opaDir string, registryPath string) 
 `
 	if err := os.WriteFile(registryPath, []byte(registry), 0o644); err != nil {
 		t.Fatalf("write registry: %v", err)
+	}
+
+	riskPath := filepath.Join(tmp, "risk_thresholds.yaml")
+	riskCfg := `thresholds:
+  fast_path_max: 3
+  step_up_max: 6
+  approval_max: 9
+guard:
+  injection_threshold: 0.30
+  jailbreak_threshold: 0.30
+unknown_tool_defaults:
+  impact: 2
+  reversibility: 2
+  exposure: 2
+  novelty: 3
+dlp:
+  credentials: block
+  injection: flag
+  pii: flag
+`
+	if err := os.WriteFile(riskPath, []byte(riskCfg), 0o644); err != nil {
+		t.Fatalf("write risk config: %v", err)
 	}
 
 	return opaDir, registryPath
@@ -215,5 +243,223 @@ func TestRenderPolicyTestOfflineTableAndJSON(t *testing.T) {
 	}
 	if !strings.Contains(string(b), fmt.Sprintf(`"tool":"%s"`, out.Tool)) {
 		t.Fatalf("expected tool field in json, got %s", string(b))
+	}
+}
+
+func TestRunPolicyTestRuntime_Allowed(t *testing.T) {
+	opaDir, registryPath := writePolicyTestFixtures(t)
+
+	mr := miniredis.RunT(t)
+	kdb, err := NewKeyDB("redis://" + mr.Addr())
+	if err != nil {
+		t.Fatalf("NewKeyDB: %v", err)
+	}
+	t.Cleanup(func() { _ = kdb.Close() })
+
+	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	sessionID := "sid-runtime-ok"
+	if err := mr.Set("session:"+spiffeID+":"+sessionID, `{"RiskScore":0.15}`); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+	if err := kdb.SetTokensForTest(context.Background(), spiffeID, 55.0, 30*time.Second); err != nil {
+		t.Fatalf("seed ratelimit: %v", err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/admin/circuit-breakers/tavily_search" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"circuit_breakers":[{"tool":"tavily_search","state":"closed","failures":0,"threshold":5,"reset_timeout_seconds":30,"last_state_change":null}]}`))
+	}))
+	t.Cleanup(ts.Close)
+
+	t.Setenv("GUARD_API_KEY", "")
+
+	out, err := RunPolicyTestRuntime(
+		spiffeID,
+		"tavily_search",
+		`{"query":"runtime-ok"}`,
+		opaDir,
+		registryPath,
+		"redis://"+mr.Addr(),
+		ts.URL,
+		sessionID,
+	)
+	if err != nil {
+		t.Fatalf("RunPolicyTestRuntime failed: %v", err)
+	}
+	if out.Verdict != "ALLOWED" {
+		t.Fatalf("expected ALLOWED verdict, got %+v", out)
+	}
+	if len(out.Layers) != 13 {
+		t.Fatalf("expected 13 layers, got %+v", out.Layers)
+	}
+	if out.Layers[6].Step != 7 || out.Layers[6].Result != "PASS" {
+		t.Fatalf("expected layer 7 PASS, got %+v", out.Layers[6])
+	}
+	if out.Layers[8].Step != 9 || out.Layers[8].Result != "SKIP" {
+		t.Fatalf("expected layer 9 SKIP (no GUARD_API_KEY), got %+v", out.Layers[8])
+	}
+	if out.Note != "" {
+		t.Fatalf("expected empty note in runtime mode, got %q", out.Note)
+	}
+}
+
+func TestRunPolicyTestRuntime_Layer7MissingSessionFails(t *testing.T) {
+	opaDir, registryPath := writePolicyTestFixtures(t)
+	mr := miniredis.RunT(t)
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"circuit_breakers":[{"tool":"tavily_search","state":"closed","failures":0,"threshold":5,"reset_timeout_seconds":30}]}`))
+	}))
+	t.Cleanup(ts.Close)
+
+	out, err := RunPolicyTestRuntime(
+		"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+		"tavily_search",
+		`{"query":"runtime"}`,
+		opaDir,
+		registryPath,
+		"redis://"+mr.Addr(),
+		ts.URL,
+		"sid-not-found",
+	)
+	if err != nil {
+		t.Fatalf("RunPolicyTestRuntime failed: %v", err)
+	}
+	if out.Verdict != "DENIED" || out.BlockingLayer != 7 {
+		t.Fatalf("expected layer-7 denial, got %+v", out)
+	}
+}
+
+func TestRunPolicyTestRuntime_Layer10RateLimitFails(t *testing.T) {
+	opaDir, registryPath := writePolicyTestFixtures(t)
+	mr := miniredis.RunT(t)
+	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	sessionID := "sid-rate-limit"
+
+	if err := mr.Set("session:"+spiffeID+":"+sessionID, `{"RiskScore":0.10}`); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	kdb, err := NewKeyDB("redis://" + mr.Addr())
+	if err != nil {
+		t.Fatalf("NewKeyDB: %v", err)
+	}
+	t.Cleanup(func() { _ = kdb.Close() })
+	if err := kdb.SetTokensForTest(context.Background(), spiffeID, 0.0, 30*time.Second); err != nil {
+		t.Fatalf("seed ratelimit: %v", err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"circuit_breakers":[{"tool":"tavily_search","state":"closed","failures":0,"threshold":5,"reset_timeout_seconds":30}]}`))
+	}))
+	t.Cleanup(ts.Close)
+
+	out, err := RunPolicyTestRuntime(
+		spiffeID,
+		"tavily_search",
+		`{"query":"runtime-rate-limit"}`,
+		opaDir,
+		registryPath,
+		"redis://"+mr.Addr(),
+		ts.URL,
+		sessionID,
+	)
+	if err != nil {
+		t.Fatalf("RunPolicyTestRuntime failed: %v", err)
+	}
+	if out.Verdict != "DENIED" || out.BlockingLayer != 10 {
+		t.Fatalf("expected layer-10 denial, got %+v", out)
+	}
+}
+
+func TestRunPolicyTestRuntime_Layer11CircuitOpenFails(t *testing.T) {
+	opaDir, registryPath := writePolicyTestFixtures(t)
+	mr := miniredis.RunT(t)
+	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	sessionID := "sid-cb-open"
+
+	if err := mr.Set("session:"+spiffeID+":"+sessionID, `{"RiskScore":0.10}`); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	kdb, err := NewKeyDB("redis://" + mr.Addr())
+	if err != nil {
+		t.Fatalf("NewKeyDB: %v", err)
+	}
+	t.Cleanup(func() { _ = kdb.Close() })
+	if err := kdb.SetTokensForTest(context.Background(), spiffeID, 55.0, 30*time.Second); err != nil {
+		t.Fatalf("seed ratelimit: %v", err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"circuit_breakers":[{"tool":"tavily_search","state":"open","failures":5,"threshold":5,"reset_timeout_seconds":30}]}`))
+	}))
+	t.Cleanup(ts.Close)
+
+	out, err := RunPolicyTestRuntime(
+		spiffeID,
+		"tavily_search",
+		`{"query":"runtime-cb-open"}`,
+		opaDir,
+		registryPath,
+		"redis://"+mr.Addr(),
+		ts.URL,
+		sessionID,
+	)
+	if err != nil {
+		t.Fatalf("RunPolicyTestRuntime failed: %v", err)
+	}
+	if out.Verdict != "DENIED" || out.BlockingLayer != 11 {
+		t.Fatalf("expected layer-11 denial, got %+v", out)
+	}
+}
+
+func TestRunPolicyTestRuntime_Layer12InvalidTokenSyntaxFails(t *testing.T) {
+	opaDir, registryPath := writePolicyTestFixtures(t)
+	mr := miniredis.RunT(t)
+	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	sessionID := "sid-token-invalid"
+
+	if err := mr.Set("session:"+spiffeID+":"+sessionID, `{"RiskScore":0.10}`); err != nil {
+		t.Fatalf("seed session: %v", err)
+	}
+
+	kdb, err := NewKeyDB("redis://" + mr.Addr())
+	if err != nil {
+		t.Fatalf("NewKeyDB: %v", err)
+	}
+	t.Cleanup(func() { _ = kdb.Close() })
+	if err := kdb.SetTokensForTest(context.Background(), spiffeID, 55.0, 30*time.Second); err != nil {
+		t.Fatalf("seed ratelimit: %v", err)
+	}
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"circuit_breakers":[{"tool":"tavily_search","state":"closed","failures":0,"threshold":5,"reset_timeout_seconds":30}]}`))
+	}))
+	t.Cleanup(ts.Close)
+
+	out, err := RunPolicyTestRuntime(
+		spiffeID,
+		"tavily_search",
+		`{"query":"$SPIKE{ref:nothex}"}`,
+		opaDir,
+		registryPath,
+		"redis://"+mr.Addr(),
+		ts.URL,
+		sessionID,
+	)
+	if err != nil {
+		t.Fatalf("RunPolicyTestRuntime failed: %v", err)
+	}
+	if out.Verdict != "DENIED" || out.BlockingLayer != 12 {
+		t.Fatalf("expected layer-12 denial, got %+v", out)
 	}
 }
