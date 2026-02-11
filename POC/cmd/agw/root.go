@@ -64,5 +64,6 @@ func newRootCmd() *cobra.Command {
 	rootCmd.AddCommand(newPolicyCmd())
 	rootCmd.AddCommand(newResetCmd())
 	rootCmd.AddCommand(newSecretCmd())
+	rootCmd.AddCommand(newGDPRCmd())
 	return rootCmd
 }
