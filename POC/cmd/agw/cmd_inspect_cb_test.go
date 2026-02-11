@@ -22,7 +22,7 @@ func TestAgwInspectCircuitBreaker_JSON_OK(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"inspect", "circuit-breaker", "--gateway-url", ts.URL, "--format", "json"}, &stdout, &stderr)
+	code := run([]string{"inspect", "circuit-breaker", "--gateway-url", ts.URL, "--format", "json"}, strings.NewReader(""), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d (stderr=%q)", code, stderr.String())
 	}
@@ -54,7 +54,7 @@ func TestAgwInspectCircuitBreaker_SpecificTool(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"inspect", "circuit-breaker", "bash", "--gateway-url", ts.URL, "--format", "json"}, &stdout, &stderr)
+	code := run([]string{"inspect", "circuit-breaker", "bash", "--gateway-url", ts.URL, "--format", "json"}, strings.NewReader(""), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d (stderr=%q)", code, stderr.String())
 	}
@@ -71,7 +71,7 @@ func TestAgwInspectCircuitBreaker_Table_Default(t *testing.T) {
 	t.Cleanup(ts.Close)
 
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"inspect", "circuit-breaker", "--gateway-url", ts.URL}, &stdout, &stderr)
+	code := run([]string{"inspect", "circuit-breaker", "--gateway-url", ts.URL}, strings.NewReader(""), &stdout, &stderr)
 	if code != 0 {
 		t.Fatalf("expected exit 0, got %d (stderr=%q)", code, stderr.String())
 	}
@@ -83,7 +83,7 @@ func TestAgwInspectCircuitBreaker_Table_Default(t *testing.T) {
 
 func TestAgwInspectCircuitBreaker_Unreachable_Exit1(t *testing.T) {
 	var stdout, stderr bytes.Buffer
-	code := run([]string{"inspect", "circuit-breaker", "--gateway-url", "http://127.0.0.1:1", "--format", "table"}, &stdout, &stderr)
+	code := run([]string{"inspect", "circuit-breaker", "--gateway-url", "http://127.0.0.1:1", "--format", "table"}, strings.NewReader(""), &stdout, &stderr)
 	if code != 1 {
 		t.Fatalf("expected exit 1, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
 	}
