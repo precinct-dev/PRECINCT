@@ -21,11 +21,35 @@ PARENT_ID=""
 while [ $ELAPSED -lt $MAX_WAIT ]; do
     # IMPORTANT: We must attach entries to the *currently running* agent node ID.
     # The SPIRE server data directory persists across compose runs, so multiple
-    # join_token agents can remain attested. The most recently attested agent
-    # is listed last; choosing the first can bind entries to a stale node ID,
-    # causing Workload API calls to return "No identity issued".
-    PARENT_ID=$($SPIRE agent list -socketPath "$SOCK" 2>/dev/null \
-        | grep 'SPIFFE ID' | tail -1 | awk '{print $NF}')
+    # join_token agents can remain attested. We prefer the newest non-expired
+    # agent based on Expiration time to avoid binding entries to stale IDs.
+    AGENT_LIST="$($SPIRE agent list -socketPath "$SOCK" 2>/dev/null || true)"
+    if [ -n "$AGENT_LIST" ]; then
+        NOW_UTC="$(date -u '+%Y-%m-%d %H:%M:%S')"
+        PARENT_ID="$(printf '%s\n' "$AGENT_LIST" | awk -v now="$NOW_UTC" '
+            /SPIFFE ID[[:space:]]*:/ {
+                id=$NF
+            }
+            /Expiration time[[:space:]]*:/ {
+                expiry=$4" "$5
+                if (expiry >= now) {
+                    if (best_expiry == "" || expiry > best_expiry) {
+                        best_expiry=expiry
+                        best_id=id
+                    }
+                }
+            }
+            END {
+                if (best_id != "") {
+                    print best_id
+                }
+            }
+        ')"
+        # Fallback: if expiration parsing fails, use the most recently listed attested agent.
+        if [ -z "$PARENT_ID" ]; then
+            PARENT_ID="$(printf '%s\n' "$AGENT_LIST" | grep 'SPIFFE ID' | tail -1 | awk '{print $NF}')"
+        fi
+    fi
     if [ -n "$PARENT_ID" ]; then
         break
     fi

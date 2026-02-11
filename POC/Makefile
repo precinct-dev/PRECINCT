@@ -485,8 +485,26 @@ COMPOSE_PARENT_ID := spiffe://$(COMPOSE_TRUST_DOMAIN)/spire/agent/join_token
 register-spire:
 	@echo "Registering SPIRE workload entries..."
 	@echo "  Detecting SPIRE agent identity..."
-	@PARENT_ID=$$($(COMPOSE_SPIRE_EXEC) agent list -socketPath $(COMPOSE_SPIRE_SOCK) 2>/dev/null | \
-		grep 'SPIFFE ID' | head -1 | awk '{print $$NF}'); \
+	@AGENT_LIST=$$($(COMPOSE_SPIRE_EXEC) agent list -socketPath $(COMPOSE_SPIRE_SOCK) 2>/dev/null || true); \
+	PARENT_ID=""; \
+	if [ -n "$$AGENT_LIST" ]; then \
+		NOW_UTC=$$(date -u '+%Y-%m-%d %H:%M:%S'); \
+		PARENT_ID=$$(printf '%s\n' "$$AGENT_LIST" | awk -v now="$$NOW_UTC" '\
+			/SPIFFE ID[[:space:]]*:/ { id=$$NF } \
+			/Expiration time[[:space:]]*:/ { \
+				expiry=$$4" "$$5; \
+				if (expiry >= now) { \
+					if (best_expiry == "" || expiry > best_expiry) { \
+						best_expiry=expiry; \
+						best_id=id; \
+					} \
+				} \
+			} \
+			END { if (best_id != "") print best_id }'); \
+		if [ -z "$$PARENT_ID" ]; then \
+			PARENT_ID=$$(printf '%s\n' "$$AGENT_LIST" | grep 'SPIFFE ID' | tail -1 | awk '{print $$NF}'); \
+		fi; \
+	fi; \
 	if [ -z "$$PARENT_ID" ]; then \
 		echo "  No agent entry yet, using default parent: $(COMPOSE_PARENT_ID)"; \
 		PARENT_ID="$(COMPOSE_PARENT_ID)"; \
