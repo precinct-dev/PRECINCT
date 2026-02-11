@@ -1,6 +1,7 @@
 package agw
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -81,6 +82,20 @@ type circuitBreakersResponse struct {
 	CircuitBreakers []CircuitBreakerEntry `json:"circuit_breakers"`
 }
 
+type CircuitBreakerResetEntry struct {
+	Tool          string `json:"tool"`
+	PreviousState string `json:"previous_state"`
+	NewState      string `json:"new_state"`
+}
+
+type CircuitBreakersResetOutput struct {
+	Reset []CircuitBreakerResetEntry `json:"reset"`
+}
+
+type circuitBreakersResetResponse struct {
+	Reset []CircuitBreakerResetEntry `json:"reset"`
+}
+
 func (c *Client) GetCircuitBreakers(ctx context.Context) ([]CircuitBreakerEntry, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/admin/circuit-breakers", nil)
 	if err != nil {
@@ -136,4 +151,45 @@ func (c *Client) GetCircuitBreaker(ctx context.Context, tool string) (*CircuitBr
 		return nil, fmt.Errorf("unexpected circuit_breakers length=%d", len(parsed.CircuitBreakers))
 	}
 	return &parsed.CircuitBreakers[0], nil
+}
+
+func (c *Client) ResetCircuitBreakers(ctx context.Context, tool string) (CircuitBreakersResetOutput, error) {
+	tool = strings.TrimSpace(tool)
+	if tool == "" {
+		return CircuitBreakersResetOutput{}, fmt.Errorf("tool is empty")
+	}
+
+	reqBody, err := json.Marshal(map[string]string{"tool": tool})
+	if err != nil {
+		return CircuitBreakersResetOutput{}, fmt.Errorf("marshal reset request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/admin/circuit-breakers/reset", bytes.NewReader(reqBody))
+	if err != nil {
+		return CircuitBreakersResetOutput{}, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return CircuitBreakersResetOutput{}, fmt.Errorf("gateway request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var apiErr struct {
+			Error string `json:"error"`
+		}
+		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
+		if strings.TrimSpace(apiErr.Error) != "" {
+			return CircuitBreakersResetOutput{}, fmt.Errorf("gateway returned status_code=%d: %s", resp.StatusCode, apiErr.Error)
+		}
+		return CircuitBreakersResetOutput{}, fmt.Errorf("gateway returned status_code=%d", resp.StatusCode)
+	}
+
+	var parsed circuitBreakersResetResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		return CircuitBreakersResetOutput{}, fmt.Errorf("decode /admin/circuit-breakers/reset JSON: %w", err)
+	}
+	return CircuitBreakersResetOutput{Reset: parsed.Reset}, nil
 }

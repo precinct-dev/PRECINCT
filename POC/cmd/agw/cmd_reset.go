@@ -8,6 +8,6 @@ func newResetCmd() *cobra.Command {
 		Short: "Reset operational state (mutating commands)",
 	}
 	cmd.AddCommand(newResetRateLimitCmd())
+	cmd.AddCommand(newResetCircuitBreakerCmd())
 	return cmd
 }
-
