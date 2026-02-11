@@ -150,6 +150,20 @@ verify_otel_collector_health() {
     "http://otel-collector:13133/" >/dev/null
 }
 
+wait_for_spike_keeper_shard_resync() {
+  # SPIKE Nexus periodically pushes shards back to Keeper.
+  # After Keeper repave, wait long enough for at least one sync cycle before
+  # repaving SPIKE Nexus (which needs Keeper shard availability at startup).
+  local wait_seconds="${REPAVE_SPIKE_KEEPER_RECOVERY_WAIT_SECONDS:-20}"
+  if ! [[ "${wait_seconds}" =~ ^[0-9]+$ ]]; then
+    echo "ERROR: REPAVE_SPIKE_KEEPER_RECOVERY_WAIT_SECONDS must be an integer number of seconds" >&2
+    return 1
+  fi
+
+  echo "[repave-all] waiting ${wait_seconds}s for SPIKE shard re-sync (nexus -> keeper)"
+  sleep "${wait_seconds}"
+}
+
 repave_one_main() {
   local svc="$1"
   ensure_running "${svc}"
@@ -179,7 +193,13 @@ repave_one_main() {
   "${compose_main[@]}" rm -f "${svc}"
 
   echo "[repave] starting new container and waiting for health..."
-  "${compose_main[@]}" up -d --wait --wait-timeout 300 "${svc}"
+  if [[ "${svc}" == "mcp-security-gateway" ]]; then
+    # Gateway depends on one-shot init jobs that may already have completed;
+    # avoid re-triggering those dependencies during repave.
+    "${compose_main[@]}" up -d --no-deps --wait --wait-timeout 300 "${svc}"
+  else
+    "${compose_main[@]}" up -d --wait --wait-timeout 300 "${svc}"
+  fi
 
   cid="$(container_id_for "${svc}")"
   if [[ -z "${cid}" ]]; then
@@ -325,7 +345,7 @@ repave_one_phoenix() {
 }
 
 repave_all() {
-  local ts_start ts_compact report_file start_s total_duration_s
+  local total_duration_s
   ts_start="$(now_utc_iso)"
   ts_compact="$(now_utc_compact)"
   mkdir -p "${reports_dir}"
@@ -333,8 +353,9 @@ repave_all() {
   start_s="${SECONDS}"
 
   # Build rows as we go so we can emit a report even on failure.
-  local rows_json='[]'
-  local failed_component="" failed_reason=""
+  rows_json='[]'
+  failed_component=""
+  failed_reason=""
 
   finalize_report() {
     local ts_end dur
@@ -403,6 +424,15 @@ repave_all() {
       --arg h "${REPAIRED_HEALTH}" \
       --arg d "${REPAIRED_DURATION}" \
       '. + [{container:$c, before:$b, after:$a, health:$h, duration:($d|tonumber)}]')"
+
+    if [[ "${svc}" == "spike-keeper-1" ]]; then
+      if ! wait_for_spike_keeper_shard_resync; then
+        failed_component="${svc}"
+        failed_reason="failed while waiting for shard re-sync"
+        echo "ERROR: stop-on-failure: keeper shard re-sync wait failed; aborting remaining repave steps" >&2
+        exit 1
+      fi
+    fi
   done
 
   total_duration_s=$((SECONDS - start_s))
