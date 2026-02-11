@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -44,6 +46,113 @@ func TestAgwStatus_JSON_OK(t *testing.T) {
 	}
 	if len(parsed.Components) != 1 || parsed.Components[0].Name != "gateway" || parsed.Components[0].Status != "ok" {
 		t.Fatalf("unexpected parsed JSON: %+v", parsed)
+	}
+}
+
+func TestAgwInspectIdentity_JSON(t *testing.T) {
+	tmp := t.TempDir()
+	opaDir := filepath.Join(tmp, "opa")
+	if err := os.MkdirAll(opaDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	grants := `tool_grants:
+  - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/*-researcher/dev"
+    description: "Research agents"
+    allowed_tools: ["read"]
+    max_data_classification: internal
+    requires_approval_for: ["bash"]
+`
+	registry := `tools:
+  - name: "read"
+    risk_level: "low"
+    requires_step_up: false
+  - name: "bash"
+    risk_level: "critical"
+    requires_step_up: true
+`
+	if err := os.WriteFile(filepath.Join(opaDir, "tool_grants.yaml"), []byte(grants), 0o644); err != nil {
+		t.Fatalf("write grants: %v", err)
+	}
+	registryPath := filepath.Join(tmp, "tool-registry.yaml")
+	if err := os.WriteFile(registryPath, []byte(registry), 0o644); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{
+			"inspect", "identity", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+			"--opa-policy-dir", opaDir,
+			"--tool-registry", registryPath,
+			"--format", "json",
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if code != 0 {
+		t.Fatalf("expected exit 0, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+
+	var parsed struct {
+		SPIFFEID      string `json:"spiffe_id"`
+		MatchedGrants []struct {
+			SPIFFEPattern string `json:"spiffe_pattern"`
+		} `json:"matched_grants"`
+		Tools []struct {
+			Tool       string `json:"tool"`
+			Authorized bool   `json:"authorized"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &parsed); err != nil {
+		t.Fatalf("invalid JSON: %v output=%q", err, stdout.String())
+	}
+	if parsed.SPIFFEID == "" || len(parsed.MatchedGrants) == 0 || len(parsed.Tools) == 0 {
+		t.Fatalf("unexpected parsed output: %+v", parsed)
+	}
+}
+
+func TestAgwInspectIdentity_NoMatch_Exit1(t *testing.T) {
+	tmp := t.TempDir()
+	opaDir := filepath.Join(tmp, "opa")
+	if err := os.MkdirAll(opaDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(opaDir, "tool_grants.yaml"), []byte(`tool_grants:
+  - spiffe_pattern: "spiffe://poc.local/agents/*"
+    description: "agents"
+    allowed_tools: ["read"]
+    max_data_classification: internal
+    requires_approval_for: []
+`), 0o644); err != nil {
+		t.Fatalf("write grants: %v", err)
+	}
+	registryPath := filepath.Join(tmp, "tool-registry.yaml")
+	if err := os.WriteFile(registryPath, []byte(`tools:
+  - name: "read"
+    risk_level: "low"
+    requires_step_up: false
+`), 0o644); err != nil {
+		t.Fatalf("write registry: %v", err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{
+			"inspect", "identity", "spiffe://different.domain/agent/dev",
+			"--opa-policy-dir", opaDir,
+			"--tool-registry", registryPath,
+		},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("expected exit 1, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "no matching grants") {
+		t.Fatalf("expected no matching grants error, got %q", stderr.String())
 	}
 }
 
