@@ -96,6 +96,20 @@ type circuitBreakersResetResponse struct {
 	Reset []CircuitBreakerResetEntry `json:"reset"`
 }
 
+type PolicyReloadOutput struct {
+	Status         string `json:"status"`
+	Timestamp      string `json:"timestamp"`
+	RegistryTools  int    `json:"registry_tools"`
+	OPAPolicies    int    `json:"opa_policies"`
+	CosignVerified bool   `json:"cosign_verified"`
+}
+
+type policyReloadErrorResponse struct {
+	Status         string `json:"status"`
+	Error          string `json:"error"`
+	CosignVerified bool   `json:"cosign_verified"`
+}
+
 func (c *Client) GetCircuitBreakers(ctx context.Context) ([]CircuitBreakerEntry, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/admin/circuit-breakers", nil)
 	if err != nil {
@@ -192,4 +206,32 @@ func (c *Client) ResetCircuitBreakers(ctx context.Context, tool string) (Circuit
 		return CircuitBreakersResetOutput{}, fmt.Errorf("decode /admin/circuit-breakers/reset JSON: %w", err)
 	}
 	return CircuitBreakersResetOutput{Reset: parsed.Reset}, nil
+}
+
+func (c *Client) ReloadPolicy(ctx context.Context) (PolicyReloadOutput, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/admin/policy/reload", nil)
+	if err != nil {
+		return PolicyReloadOutput{}, fmt.Errorf("create request: %w", err)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return PolicyReloadOutput{}, fmt.Errorf("gateway request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var apiErr policyReloadErrorResponse
+		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
+		if strings.TrimSpace(apiErr.Error) != "" {
+			return PolicyReloadOutput{}, fmt.Errorf("gateway returned status_code=%d: %s", resp.StatusCode, apiErr.Error)
+		}
+		return PolicyReloadOutput{}, fmt.Errorf("gateway returned status_code=%d", resp.StatusCode)
+	}
+
+	var out PolicyReloadOutput
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return PolicyReloadOutput{}, fmt.Errorf("decode /admin/policy/reload JSON: %w", err)
+	}
+	return out, nil
 }

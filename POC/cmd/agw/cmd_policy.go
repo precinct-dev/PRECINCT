@@ -8,5 +8,6 @@ func newPolicyCmd() *cobra.Command {
 		Short: "Inspect and test policy configuration",
 	}
 	cmd.AddCommand(newPolicyListCmd())
+	cmd.AddCommand(newPolicyReloadCmd())
 	return cmd
 }
