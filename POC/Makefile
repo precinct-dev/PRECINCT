@@ -1,4 +1,4 @@
-.PHONY: help up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo k8s-up k8s-down ci benchmark security-scan \
+.PHONY: help up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down ci benchmark security-scan \
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
        compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
        k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -235,6 +235,56 @@ agw-operate-demo: ## Epic 2 operate demo: ensure stack, build agw, run E2E opera
 		echo "agw-operate-demo: PASS"; \
 	else \
 		echo "agw-operate-demo: FAIL"; \
+		exit 1; \
+	fi
+
+compliance-demo: ## Epic 3 compliance demo: evidence collect + report + GDPR operations
+	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
+		echo "Phoenix network not found. Running make phoenix-up..."; \
+		$(MAKE) phoenix-up; \
+	fi
+	@required="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"; \
+	ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+	healthy=1; \
+	for s in $$required; do \
+		line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+		state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+		health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+		if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+			healthy=0; \
+			break; \
+		fi; \
+	done; \
+	if [ "$$healthy" -eq 0 ]; then \
+		echo "Core services not fully healthy. Running make up..."; \
+		if ! $(MAKE) up; then \
+			echo "make up returned non-zero. Re-checking service health..."; \
+			ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+			recovered=1; \
+			for s in $$required; do \
+				line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+				state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+				health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+				if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+					recovered=0; \
+					break; \
+				fi; \
+			done; \
+			if [ "$$recovered" -eq 0 ]; then \
+				echo "ERROR: services are not healthy after make up."; \
+				exit 1; \
+			fi; \
+			echo "Services are healthy despite make up non-zero; continuing."; \
+		fi; \
+	else \
+		echo "Core services already running and healthy. Skipping make up."; \
+	fi
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	@if bash tests/e2e/test_agw_compliance.sh; then \
+		echo "compliance-demo: PASS"; \
+	else \
+		echo "compliance-demo: FAIL"; \
 		exit 1; \
 	fi
 
