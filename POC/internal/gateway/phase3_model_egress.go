@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -331,6 +332,16 @@ func (g *Gateway) resolveProviderTarget(provider string, attrs map[string]any) (
 	endpoint := strings.TrimSpace(getStringAttr(attrs, overrideKey, ""))
 	if endpoint == "" {
 		endpoint = strings.TrimSpace(getStringAttr(attrs, "provider_endpoint", ""))
+	}
+	// Compose/K8s demo determinism: allow an operator-set endpoint override via env var.
+	// This keeps demo flows self-contained (no external network or real API keys).
+	//
+	// Examples:
+	// - MODEL_PROVIDER_ENDPOINT_GROQ=http://host.docker.internal:8083/openai/v1/chat/completions
+	// - MODEL_PROVIDER_ENDPOINT_OPENAI=...
+	if endpoint == "" {
+		envKey := "MODEL_PROVIDER_ENDPOINT_" + strings.ToUpper(provider)
+		endpoint = strings.TrimSpace(os.Getenv(envKey))
 	}
 
 	if endpoint == "" {

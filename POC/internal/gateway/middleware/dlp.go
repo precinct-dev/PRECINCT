@@ -1,6 +1,9 @@
 package middleware
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -42,24 +45,26 @@ type BuiltInScanner struct {
 	piiPatterns        []*regexp.Regexp
 	customPIIChecks    []piiCheckFunc
 	suspiciousPatterns []*regexp.Regexp
+	rulesetVersion     string
+	rulesetDigest      string
 }
 
 // NewBuiltInScanner creates a new built-in DLP scanner
 func NewBuiltInScanner() *BuiltInScanner {
-	return &BuiltInScanner{
+	s := &BuiltInScanner{
 		credentialPatterns: []*regexp.Regexp{
 			// API keys and tokens
-			regexp.MustCompile(`\bsk-proj-[a-zA-Z0-9]{20,}\b`),                              // OpenAI project keys
-			regexp.MustCompile(`\bsk-[a-zA-Z0-9]{32,}\b`),                                   // OpenAI keys
-			regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),                                      // AWS access keys
-			regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36,}\b`),                                  // GitHub personal access tokens
-			regexp.MustCompile(`\bgho_[a-zA-Z0-9]{36,}\b`),                                  // GitHub OAuth tokens
-			regexp.MustCompile(`\bghs_[a-zA-Z0-9]{36,}\b`),                                  // GitHub server-to-server tokens
-			regexp.MustCompile(`\bghr_[a-zA-Z0-9]{36,}\b`),                                  // GitHub refresh tokens
-			regexp.MustCompile(`\bglpat-[a-zA-Z0-9_\-]{20,}\b`),                             // GitLab personal access tokens
-			regexp.MustCompile(`\bxox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}\b`), // Slack tokens
+			regexp.MustCompile(`\bsk-proj-[a-zA-Z0-9]{20,}\b`),                                // OpenAI project keys
+			regexp.MustCompile(`\bsk-[a-zA-Z0-9]{32,}\b`),                                     // OpenAI keys
+			regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`),                                        // AWS access keys
+			regexp.MustCompile(`\bghp_[a-zA-Z0-9]{36,}\b`),                                    // GitHub personal access tokens
+			regexp.MustCompile(`\bgho_[a-zA-Z0-9]{36,}\b`),                                    // GitHub OAuth tokens
+			regexp.MustCompile(`\bghs_[a-zA-Z0-9]{36,}\b`),                                    // GitHub server-to-server tokens
+			regexp.MustCompile(`\bghr_[a-zA-Z0-9]{36,}\b`),                                    // GitHub refresh tokens
+			regexp.MustCompile(`\bglpat-[a-zA-Z0-9_\-]{20,}\b`),                               // GitLab personal access tokens
+			regexp.MustCompile(`\bxox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}\b`),   // Slack tokens
 			regexp.MustCompile(`(?i)\bzai_api_key\s*[:=]\s*[a-f0-9]{32}\.[A-Za-z0-9]{12,}\b`), // ZAI API keys
-			regexp.MustCompile(`-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----`),                   // Private keys (RSA, EC, PKCS#8 etc.)
+			regexp.MustCompile(`-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----`),                     // Private keys (RSA, EC, PKCS#8 etc.)
 
 			// Obvious credential patterns in key=value format or JSON
 			regexp.MustCompile(`(?i)\bpassword\s*[:=]\s*[^\s]{8,}`),
@@ -123,6 +128,35 @@ func NewBuiltInScanner() *BuiltInScanner {
 			regexp.MustCompile(`(?i)(DAN mode|do anything now)`),
 		},
 	}
+
+	// RFA-owgw.7: Expose deterministic ruleset metadata so audit events and
+	// policy decisions can be traced to the exact DLP pattern set in effect.
+	// This is "best-effort" metadata; enforcement does not depend on it.
+	s.rulesetVersion = "builtin/v1"
+	s.rulesetDigest = computeBuiltInRulesetDigest(s)
+
+	return s
+}
+
+func computeBuiltInRulesetDigest(s *BuiltInScanner) string {
+	h := sha256.New()
+	for _, re := range s.credentialPatterns {
+		_, _ = h.Write([]byte("cred:" + re.String() + "\n"))
+	}
+	for _, re := range s.piiPatterns {
+		_, _ = h.Write([]byte("pii:" + re.String() + "\n"))
+	}
+	for _, re := range s.suspiciousPatterns {
+		_, _ = h.Write([]byte("suspicious:" + re.String() + "\n"))
+	}
+	_, _ = h.Write([]byte(fmt.Sprintf("custom_pii_checks:%d\n", len(s.customPIIChecks))))
+	return "sha256:" + hex.EncodeToString(h.Sum(nil))
+}
+
+// ActiveRulesetMetadata returns the built-in ruleset version and digest.
+// This implements DLPScannerMetadataProvider.
+func (s *BuiltInScanner) ActiveRulesetMetadata() (string, string) {
+	return s.rulesetVersion, s.rulesetDigest
 }
 
 // Scan performs DLP scanning on the given content
