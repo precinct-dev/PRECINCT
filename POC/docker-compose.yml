@@ -30,7 +30,7 @@ services:
       retries: 5
       start_period: 30s
     networks:
-      - agentic-net
+      - control-plane
 
   # SPIRE Token Generator - One-shot init service to generate fresh join tokens
   spire-token-generator:
@@ -46,7 +46,7 @@ services:
       - spire-server-socket:/tmp/spire-server:ro
       - spire-join-token:/token
     networks:
-      - agentic-net
+      - control-plane
     restart: "no"  # Run once and exit
 
   # SPIRE Agent - Workload attestation agent with Docker attestor
@@ -75,7 +75,7 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - agentic-net
+      - control-plane
     # Privileged mode required for Docker socket access.
     # Host PID namespace required so the Docker workload attestor can resolve
     # PIDs from other containers' PID namespaces via SO_PEERCRED on the
@@ -96,7 +96,7 @@ services:
       - ./scripts/register-spire-entries.sh:/register.sh:ro
     entrypoint: ["/bin/sh", "/register.sh"]
     networks:
-      - agentic-net
+      - control-plane
     restart: "no"
 
   # SPIKE Nexus - Late-binding secrets vault with SPIFFE mTLS (RFA-a2y.1)
@@ -142,7 +142,7 @@ services:
       # Avoid IPv6 localhost resolution ([::1]) issues; services bind IPv4 in-container.
       - HEALTHCHECK_URL=https://127.0.0.1:8443/
     networks:
-      - agentic-net
+      - secrets-plane
     labels:
       - "spiffe-id=spike-nexus"
       - "component=secrets"
@@ -177,7 +177,7 @@ services:
       # Avoid IPv6 localhost resolution ([::1]) issues; Keeper listens on IPv4 in-container.
       - HEALTHCHECK_ADDR=127.0.0.1:8443
     networks:
-      - agentic-net
+      - secrets-plane
     labels:
       - "spiffe-id=spike-keeper-1"
       - "component=secrets"
@@ -223,7 +223,7 @@ services:
       - SPIKE_SYSTEM_LOG_LEVEL=DEBUG  # Verbose for bootstrap troubleshooting
     command: ["-init"]
     networks:
-      - agentic-net
+      - secrets-plane
     labels:
       - "spiffe-id=spike-bootstrap"
     restart: "no"
@@ -305,7 +305,7 @@ services:
 
         echo 'spike-seeder: done'
     networks:
-      - agentic-net
+      - secrets-plane
     labels:
       - "spiffe-id=spike-seeder"
     restart: "no"
@@ -329,7 +329,7 @@ services:
       - keydb-data:/data
       - keydb-certs:/certs:ro      # RFA-8z8.2: SVID PEM files from keydb-svid-init
     networks:
-      - agentic-net
+      - data-plane
     labels:
       - "spiffe-id=keydb"          # RFA-8z8.2: SPIRE workload attestation
       - "component=session-store"
@@ -362,7 +362,7 @@ services:
       - CERT_DIR=/certs
     entrypoint: ["/bin/sh", "-c", "/usr/local/bin/keydb-svid-refresh.sh init"]
     networks:
-      - agentic-net
+      - control-plane
     labels:
       - "spiffe-id=keydb"
     restart: "no"
@@ -381,10 +381,8 @@ services:
       dockerfile: Dockerfile
     container_name: mock-mcp-server
     hostname: mock-mcp-server
-    ports:
-      - "8082:8082"
     networks:
-      - agentic-net
+      - tool-plane
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/health"]
       interval: 5s
@@ -400,10 +398,8 @@ services:
       dockerfile: Dockerfile
     container_name: mock-guard-model
     hostname: mock-guard-model
-    ports:
-      - "8083:8080"
     networks:
-      - agentic-net
+      - tool-plane
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
       interval: 5s
@@ -477,6 +473,9 @@ services:
       - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}  # RFA-8ak: Small burst bucket so 200-call test triggers 429 quickly
     networks:
       - agentic-net
+      - tool-plane
+      - secrets-plane
+      - data-plane
       - phoenix-net  # RFA-80d: Reach otel-collector on phoenix-observability-network
     labels:
       - "spiffe-id=mcp-security-gateway"
@@ -492,6 +491,22 @@ networks:
   agentic-net:
     driver: bridge
     name: agentic-security-network
+  tool-plane:
+    driver: bridge
+    internal: true
+    name: agentic-security-tool-plane
+  secrets-plane:
+    driver: bridge
+    internal: true
+    name: agentic-security-secrets-plane
+  data-plane:
+    driver: bridge
+    internal: true
+    name: agentic-security-data-plane
+  control-plane:
+    driver: bridge
+    internal: true
+    name: agentic-security-control-plane
   phoenix-net:
     external: true
     name: phoenix-observability-network
