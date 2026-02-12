@@ -1,8 +1,8 @@
 # Agentic AI Security Reference Architecture
 
-## Authentication, Authorization, and Secrets Management for MCP-Based Agent Systems
+## Authentication, Authorization, and Secrets Management for Agentic Systems (MCP and Beyond)
 
-**Version 2.2 — Consolidated Reference Architecture (MCP-UI Security)**
+**Version 2.3 — Consolidated Reference Architecture (UASGS + Phase 3 Hardened Controls)**
 
 *Ramiro | February 2026*
 
@@ -25,9 +25,19 @@ The architecture integrates four core technologies:
 | **SPIFFE/SPIRE** | Workload identity | Cryptographic agent identity via SVIDs |
 | **SPIKE** | Secrets management | SPIFFE-native secrets with late-binding tokens |
 | **OPA** | Authorization | Fine-grained, policy-as-code authorization |
-| **MCP Security Gateway** | Enforcement | Inline inspection, tool verification, DLP |
+| **Unified Agentic Security Gateway System (UASGS)** | Enforcement | Inline inspection, tool/model/ingress governance, DLP |
 
-The architecture specifically addresses **single-purpose, recyclable agents without long-term memory**—ephemeral workloads that require identity establishment, authorization verification, and secrets access within short-lived execution contexts.
+The architecture supports both:
+- **single-purpose, recyclable agents without long-term memory** (ephemeral workloads), and
+- **stateful agents with governed memory/context lifecycles** (Phase 3 profile),
+while keeping identity, authorization, and secrets controls consistent.
+
+Phase 3 extends this architecture into a full multi-plane control system:
+- LLM/model egress plane
+- context/memory plane
+- tool plane (MCP and non-MCP adapters)
+- loop governance plane
+- ingress/event plane
 
 ### Key Innovations
 
@@ -51,11 +61,16 @@ The architecture specifically addresses **single-purpose, recyclable agents with
 4. [SPIFFE for Agent Identity](#4-spiffe-for-agent-identity)
 5. [SPIKE for Secrets Management](#5-spike-for-secrets-management)
 6. [OPA for Authorization](#6-opa-for-authorization)
-7. [MCP Security Gateway](#7-mcp-security-gateway)
+7. [Unified Agentic Security Gateway System (UASGS)](#7-unified-agentic-security-gateway-system-uasgs)
    - 7.9 [MCP-UI (Apps Extension) Security](#79-mcp-ui-apps-extension-security)
+   - 7.10 [Mandatory Model Mediation (Production Baseline)](#710-mandatory-model-mediation-production-baseline)
+   - 7.11 [Context Admission Invariants (Hard Requirements)](#711-context-admission-invariants-hard-requirements)
+   - 7.12 [Ingress Connector Conformance (Non-MITM by Default)](#712-ingress-connector-conformance-non-mitm-by-default)
 8. [Production Reference Architecture](#8-production-reference-architecture)
 9. [Go Implementation Guide](#9-go-implementation-guide)
 10. [Operational Considerations](#10-operational-considerations)
+    - 10.13.7 [Enforcement Profiles (Resolved Defaults)](#10137-enforcement-profiles-resolved-defaults)
+    - 10.18 [HIPAA Prompt-Safety Technical Profile](#1018-hipaa-prompt-safety-technical-profile)
 11. [Security Analysis](#11-security-analysis)
 12. [Implementation Roadmap](#12-implementation-roadmap)
 13. [References](#13-references)
@@ -223,7 +238,7 @@ The paper "Securing the Model Context Protocol (MCP): Risks, Controls, and Gover
 | Authentication & Authorization | Identity verification, fine-grained permissions | SPIFFE + OPA |
 | Provenance Tracking | Origin and integrity of tools and data | Tool Registry with hashes |
 | Isolation & Sandboxing | Contain breaches, limit blast radius | Container + NetworkPolicy + gVisor |
-| Inline Policy Enforcement | Real-time traffic inspection and filtering | MCP Security Gateway |
+| Inline Policy Enforcement | Real-time traffic inspection and filtering | UASGS |
 | Centralized Governance | Single control point for policies and audit | OPA bundles + OTEL |
 
 ### 3.4 MCP Apps Extension (SEP-1865)
@@ -577,7 +592,7 @@ path "secrets/internal-services/*":
 path "*":
   token_redemption:
     allowed_spiffe_ids:
-      - "spiffe://acme.corp/gateways/mcp-security-gateway/*"
+      - "spiffe://acme.corp/gateways/uasgs-gateway/*"
 ```
 
 ### 5.7 Defense Analysis
@@ -616,7 +631,7 @@ Open Policy Agent (OPA) provides a general-purpose policy engine that evaluates 
 | Resource usage | Shared with application | Separate container |
 | Policy updates | In-process bundle refresh | Independent refresh |
 
-**Recommendation**: Embed OPA as a Go library for the MCP Security Gateway. The latency improvement is critical for a proxy in the hot path.
+**Recommendation**: Embed OPA as a Go library for UASGS. The latency improvement is critical for a proxy in the hot path.
 
 ### 6.3 Rego Policies for Agent Authorization
 
@@ -746,11 +761,11 @@ tool_grants:
 
 ---
 
-## 7. MCP Security Gateway
+## 7. Unified Agentic Security Gateway System (UASGS)
 
-### 7.1 Gateway Purpose and Position
+### 7.1 System Purpose and Position
 
-The MCP Security Gateway is the enforcement point for all security controls. It sits between agents and MCP servers, providing:
+UASGS is the enforcement point for all security controls. It sits between agents and external capabilities (tools, model providers, ingress sources), providing:
 
 1. **Identity verification** (SPIFFE)
 2. **Authorization enforcement** (OPA)
@@ -762,6 +777,8 @@ The MCP Security Gateway is the enforcement point for all security controls. It 
 8. **Session tracking** (cross-tool correlation)
 9. **Audit logging** (comprehensive telemetry)
 10. **MCP-UI governance** (extension capability gating, CSP/permissions mediation, UI resource scanning)
+11. **Model egress governance** (provider policy, trust checks, residency controls)
+12. **Ingress admission governance** (connector envelope, replay/schema/identity checks)
 
 #### 7.1.1 Gateway Interface: MCP JSON-RPC `tools/call` (Canonical)
 
@@ -786,6 +803,8 @@ Example request (canonical / portable across clients and languages):
   "id": 1
 }
 ```
+
+Note: MCP `tools/call` remains the canonical tool invocation interface. Phase 3 extends UASGS with additional interfaces for model egress, memory, ingress admission, and DLP RuleOps control-plane operations.
 
 **Legacy shortcut (deprecated / migration-only):** some deployments may accept `method: "<tool_name>"` with tool-specific params. This is not MCP-spec compliant and should not be treated as the primary integration path. The gateway may support it temporarily to ease migrations, but documentation and SDKs should prefer `tools/call`.
 
@@ -1041,12 +1060,34 @@ If patterns/rules become externally manageable via CLI/API, rule management beco
 
 Required controls for production:
 1. **Strict RBAC** for rule CRUD (separate from regular app/operator roles)
-2. **Signed + versioned rule artifacts** with integrity verification before activation
-3. **Validation gates** (regex safety, schema checks, deny catastrophic backtracking patterns)
-4. **Staged rollout** (shadow/audit mode before block mode)
-5. **Audit trail** for rule lifecycle (who/what/when/why + diff + approval)
-6. **Instant rollback** to last known-good rule set
-7. **Policy guardrails** for fail-open/fail-closed behavior by risk class and egress profile
+2. **Dual approval** for regulated/high-risk rulesets (separation of duties)
+3. **Signed + versioned rule artifacts** with integrity verification before activation
+4. **Validation gates** (regex safety, schema checks, deny catastrophic backtracking patterns)
+5. **Staged rollout** (shadow/audit mode before block mode)
+6. **Audit trail** for rule lifecycle (who/what/when/why + diff + approval)
+7. **Instant rollback** to last known-good rule set
+8. **Policy guardrails** for fail-open/fail-closed behavior by risk class and egress profile
+
+Recommended RuleOps state machine:
+
+`DRAFT -> VALIDATED -> APPROVED -> SIGNED -> CANARY -> ACTIVE -> DEPRECATED -> RETIRED`
+
+Recommended RuleOps API surface:
+- `POST /v1/dlp/rulesets/create`
+- `POST /v1/dlp/rulesets/validate`
+- `POST /v1/dlp/rulesets/approve`
+- `POST /v1/dlp/rulesets/promote`
+- `POST /v1/dlp/rulesets/rollback`
+- `GET /v1/dlp/rulesets/active`
+
+Required RuleOps audit events:
+- `dlp.ruleset.created`
+- `dlp.ruleset.validated`
+- `dlp.ruleset.approved`
+- `dlp.ruleset.signed`
+- `dlp.ruleset.promoted`
+- `dlp.ruleset.rollback`
+- `dlp.ruleset.activation_denied`
 
 ### 7.6 Tiered LLM Scanning
 
@@ -1770,7 +1811,7 @@ ui:
 
 #### 7.9.11 Threat Model Summary for MCP-UI
 
-| Threat | Gateway Control | Residual Risk |
+| Threat | UASGS Control | Residual Risk |
 |--------|----------------|---------------|
 | **XSS via UI resource** | Content scanning (dangerous pattern detection), hash verification, CSP mediation | Novel XSS vectors that evade static patterns. Mitigated by host sandbox. |
 | **Clickjacking** | CSP `frameDomains` always denied, step-up gating for high-risk app-driven calls | Social engineering within the sandboxed app itself. |
@@ -1782,81 +1823,88 @@ ui:
 | **Service worker persistence** | Blocked by content scanning pattern | Obfuscated service worker registration. Mitigated by host sandbox restrictions. |
 | **WebRTC data channel exfiltration** | Blocked by content scanning pattern | Obfuscated WebRTC usage. Mitigated by host CSP enforcement. |
 
+### 7.10 Mandatory Model Mediation (Production Baseline)
+
+For production profiles, model-provider traffic must be mediated by UASGS. Enforce all three together:
+
+1. **Policy gate**: model calls denied unless decision path is UASGS-mediated.
+2. **Identity gate**: only UASGS model-plane workload identity may egress to provider endpoints.
+3. **Network gate**: cluster/cloud egress policy blocks direct provider access from agent workloads.
+
+This closes bypass ambiguity and makes model-provider governance auditable.
+
+### 7.11 Context Admission Invariants (Hard Requirements)
+
+All model-bound context must satisfy:
+
+- `no-scan-no-send`
+- `no-provenance-no-persist`
+- `no-verification-no-load`
+- `minimum-necessary`
+
+Regulated profile behavior:
+- high-risk prompt findings are fail-closed by default
+- detected PHI/PII in prompt path is denied or tokenized before model egress
+
+### 7.12 Ingress Connector Conformance (Non-MITM by Default)
+
+UASGS remains protocol-agnostic and does not need to be a universal transparent MITM.
+
+Production requirement:
+- ingress adapters/connectors must pass conformance checks and register signed manifests before enablement
+- non-conformant connectors are denied at registration and runtime
+- every admitted event must carry trace/session/decision linkage
+
 ---
 
 ## 8. Production Reference Architecture
 
 ### 8.1 Complete Architecture Diagram
 
-```
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              CONTROL PLANE                                             │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐  ┌────────────────┐  │
-│  │   SPIRE Server   │  │  OPA Bundle      │  │  SPIKE Keepers   │  │ Tool Registry  │  │
-│  │   (HA Cluster)   │  │  Server          │  │  (Shamir shards) │  │ (allowlist)    │  │
-│  └────────┬─────────┘  └────────┬─────────┘  └────────┬─────────┘  └───────┬────────┘  │
-└───────────┼─────────────────────┼─────────────────────┼────────────────────┼───────────┘
-            │                     │                     │                    │
-            ▼                     ▼                     ▼                    ▼
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                              DATA PLANE                                                │
-│                                                                                        │
-│  ┌───────────────────────────────────────────────────────────────────────────────────┐ │
-│  │                        Agent Execution Environment                                │ │
-│  │                                                                                   │ │
-│  │   ┌─────────────────────────────────────────────────────────────────────────┐     │ │
-│  │   │                           AI Agent                                      │     │ │
-│  │   │                                                                         │     │ │
-│  │   │   Memory contains:                     Memory does NOT contain:         │     │ │
-│  │   │   • SPIFFE ID (via SVID)              • Actual API keys                 │     │ │
-│  │   │   • Secret TOKENS ($SPIKE{...})       • Database passwords              │     │ │
-│  │   │   • Tool responses                     • Any real credentials           │     │ │
-│  │   └──────────────────────────────────────────────────────────────────┬──────┘     │ │
-│  │                                                                      │            │ │
-│  └──────────────────────────────────────────────────────────────────────┼────────────┘ │
-│                                                                         │              │
-│                                                                         │ mTLS (SVID)  │
-│                                                                         ▼              │
-│  ┌───────────────────────────────────────────────────────────────────────────────────┐ │
-│  │                        MCP SECURITY GATEWAY (Go)                                  │ │
-│  │                                                                                   │ │
-│  │  ┌──────────────────────────────────────────────────────────────────────────────┐ │ │
-│  │  │  FAST PATH (<5ms)                                                            │ │ │
-│  │  │  Size → Body → SPIFFE Auth → OPA (embed) → DLP Engine (embed/adapter) →       │ │ │
-│  │  │  Tool Registry → Session Context → Rate Limit → Circuit Breaker              │ │ │
-│  │  └──────────────────────────────────────────────────────────────────────────────┘ │ │
-│  │                                           │                                       │ │
-│  │  ┌────────────────────────────────────────┼──────────────────────────────────┐    │ │
-│  │  │  DEEP PATH (async)                     │ flagged/sampled                  │    │ │
-│  │  │  Prompt Guard 2 86M → Llama Guard 4 12B → Alert/Block                     │    │ │
-│  │  └────────────────────────────────────────┼──────────────────────────────────┘    │ │
-│  │                                           │                                       │ │
-│  │  ┌────────────────────────────────────────┼──────────────────────────────────┐    │ │
-│  │  │  SUBSTITUTION ENGINE                   │                                  │    │ │
-│  │  │  Find $SPIKE{} → Validate → Redeem → Substitute → Audit                   │    │ │
-│  │  └────────────────────────────────────────┼──────────────────────────────────┘    │ │
-│  │                                           │                                       │ │
-│  └───────────────────────────────────────────┼───────────────────────────────────────┘ │
-│                                              │                                         │
-│           ┌──────────────────────────────────┼──────────────────────────────┐          │
-│           │                                  │                              │          │
-│           ▼                                  ▼                              ▼          │
-│  ┌─────────────────┐              ┌─────────────────┐              ┌─────────────────┐ │
-│  │  MCP Server     │              │  MCP Server     │              │  MCP Server     │ │
-│  │  (gVisor +      │              │  (gVisor +      │              │  (gVisor +      │ │
-│  │   NetworkPolicy)│              │   NetworkPolicy)│              │   NetworkPolicy)│ │
-│  └─────────────────┘              └─────────────────┘              └─────────────────┘ │
-│                                                                                        │
-└────────────────────────────────────────────────────────────────────────────────────────┘
-            │
-            ▼
-┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                           OBSERVABILITY PLANE                                          │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐                      │
-│  │  Jaeger/Tempo    │  │  Prometheus      │  │  Loki/ES         │                      │
-│  │  (Traces)        │  │  (Metrics)       │  │  (Logs/Audit)    │                      │
-│  └──────────────────┘  └──────────────────┘  └──────────────────┘                      │
-└────────────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+  subgraph CP["Control Plane"]
+    SPIRE["SPIRE/SPIFFE Identity"]
+    OPA["OPA Policy Bundles"]
+    SPIKE["SPIKE Nexus/Keepers"]
+    REG["Tool/UI Registry + DLP RuleOps"]
+    CONF["Connector Conformance Manifests"]
+  end
+
+  subgraph AG["Agent Execution Environments"]
+    AGENT["Agent Runtime (Any Framework)"]
+    MEM["Memory Service (Tiered, Governed)"]
+    ING["Ingress Connectors (Webhook/Queue/Schedule)"]
+  end
+
+  subgraph U["Unified Agentic Security Gateway System (UASGS)"]
+    FAST["Fast Path: Identity -> Policy -> DLP -> Registry -> Session -> Rate/CB"]
+    DEEP["Deep Path: Prompt Guards / Classifiers"]
+    SUB["Substitution Engine (SPIKE refs)"]
+    MEP["Model Egress Plane"]
+    TP["Tool Plane (MCP + non-MCP adapters)"]
+    IAP["Ingress Admission Plane"]
+    CAP["Context Admission + Prompt Safety"]
+    AUD["Audit + Reason Codes"]
+  end
+
+  subgraph EXT["External Systems"]
+    TOOLS["Tool Providers / APIs / CLI Adapters"]
+    LLM["External/Internal Model Providers"]
+    OBS["OTel + Logs + Immutable Audit Store"]
+  end
+
+  AGENT --> U
+  ING --> IAP
+  MEM --> CAP
+  U --> TOOLS
+  U --> LLM
+  U --> OBS
+  SPIRE --> U
+  OPA --> U
+  SPIKE --> SUB
+  REG --> U
+  CONF --> IAP
 ```
 
 ### 8.2 Component Specifications
@@ -1864,14 +1912,18 @@ ui:
 | Component | Configuration | Notes |
 |-----------|--------------|-------|
 | SPIRE Server | 3-node HA cluster | PostgreSQL backend |
-| SPIRE Agent | DaemonSet | One per node |
+| SPIRE Agent | DaemonSet (K8s) or host service (VM/container) | One per node/host |
 | SVID TTL | 1 hour (X.509), 5 min (JWT) | Balance security vs. rotation |
 | SPIKE Nexus | 2+ replicas | Active-passive |
 | SPIKE Keepers | 3-5 instances | Shamir 3-of-5 threshold |
 | OPA | Embedded Go library | ~40μs evaluation |
 | DLP Engine | Built-in scanner by default; provider adapters optional | ~0.5-2ms for built-in scanner |
+| DLP RuleOps Control Plane | Signed ruleset lifecycle + staged rollout + rollback | Security-critical control-plane workflow |
 | Prompt Guard 2 | Local ONNX or Groq | ~10-20ms local, ~50-150ms Groq |
 | Llama Guard 4 | Groq only | ~150-400ms |
+| Model Egress Plane | Provider catalog + trust/residency/budget policy | Mandatory mediation in production profiles |
+| Ingress Admission Plane | Connector envelope validation + replay/schema/source controls | Connector conformance required for production |
+| Context Admission Plane | Prompt safety + provenance + minimization gates | Enforces `no-scan-no-send` and related invariants |
 | Tool Registry | ConfigMap + hot reload | 60s refresh |
 | UI Resource Registry | ConfigMap + hot reload | Extends Tool Registry with `ui://` content hashes |
 | UI Capability Grants | OPA policy data | Per-server/tenant UI permission model |
@@ -1979,6 +2031,15 @@ func (g *Gateway) buildMiddlewareChain() http.Handler {
 }
 ```
 
+Phase 3 note:
+- The chain above is the canonical **tool-plane request path**.
+- Production UASGS implementations should add sibling enforced paths for:
+  - model egress (`/v1/model/call`) with mandatory mediation gates
+  - ingress admission (`/v1/ingress/submit`) with connector conformance checks
+  - context admission (`/v1/context/admit`) with prompt-safety invariants
+  - DLP RuleOps admin APIs (`/v1/dlp/rulesets/*`) with RBAC/SOD/signing gates
+- These paths share the same identity, policy, and audit contracts.
+
 ### 9.3 Substitution Engine
 
 ```go
@@ -2042,30 +2103,309 @@ func (s *SubstitutionEngine) ProcessRequest(
 }
 ```
 
-### 9.4 Kubernetes Deployment
+### 9.4 Shared Multi-Plane Contracts (Go Reference)
+
+```go
+package uasgs
+
+import "time"
+
+type EnforcementProfile string
+
+const (
+    ProfileDev               EnforcementProfile = "dev"
+    ProfileProdStandard      EnforcementProfile = "prod_standard"
+    ProfileProdRegulatedHIPAA EnforcementProfile = "prod_regulated_hipaa"
+)
+
+type ReasonCode string
+
+const (
+    ConnectorConformanceDenied             ReasonCode = "CONNECTOR_CONFORMANCE_DENIED"
+    ModelProviderDenied                    ReasonCode = "MODEL_PROVIDER_DENIED"
+    ModelProviderBudgetExhausted           ReasonCode = "MODEL_PROVIDER_BUDGET_EXHAUSTED"
+    ModelProviderResidencyDenied           ReasonCode = "MODEL_PROVIDER_RESIDENCY_DENIED"
+    ModelProviderTrustValidationFailed     ReasonCode = "MODEL_PROVIDER_TRUST_VALIDATION_FAILED"
+    ModelProviderDegradedNoApprovedFallback ReasonCode = "MODEL_PROVIDER_DEGRADED_NO_APPROVED_FALLBACK"
+    ModelProviderDirectEgressBlocked       ReasonCode = "MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED"
+    PromptSafetyDeniedPHI                  ReasonCode = "PROMPT_SAFETY_DENIED_PHI"
+    PromptSafetyDeniedPII                  ReasonCode = "PROMPT_SAFETY_DENIED_PII"
+    PromptSafetyTokenizationRequired       ReasonCode = "PROMPT_SAFETY_TOKENIZATION_REQUIRED"
+    PromptSafetyOverrideRequired           ReasonCode = "PROMPT_SAFETY_OVERRIDE_REQUIRED"
+)
+
+type Decision struct {
+    Allow        bool
+    ReasonCode   ReasonCode
+    DecisionID   string
+    PolicyDigest string
+    EvaluatedAt  time.Time
+}
+
+type CallerContext struct {
+    SPIFFEID string
+    Tenant   string
+    SessionID string
+    RunID    string
+    Profile  EnforcementProfile
+}
+```
+
+### 9.5 Model Egress Handler (Go Reference)
+
+```go
+package uasgs
+
+import "net/http"
+
+type ModelCallRequest struct {
+    Provider        string `json:"provider"`
+    Model           string `json:"model"`
+    CredentialRef   string `json:"credential_ref"`
+    Purpose         string `json:"purpose"`
+    Tenant          string `json:"tenant"`
+    DataClass       string `json:"data_classification"`
+    ResidencyIntent string `json:"residency_intent"`
+    BudgetProfile   string `json:"budget_profile"`
+    LatencyTier     string `json:"latency_tier"`
+    SessionID       string `json:"session_id"`
+}
+
+func (g *Gateway) HandleModelCall(w http.ResponseWriter, r *http.Request) {
+    caller, err := g.AuthenticateCaller(r.Context(), r)
+    if err != nil { g.Deny(w, http.StatusUnauthorized); return }
+
+    req, err := DecodeJSON[ModelCallRequest](r)
+    if err != nil { g.Deny(w, http.StatusBadRequest); return }
+
+    // Mandatory mediation contract: all model egress decisions happen here.
+    decision := g.Policy.DecideModelEgress(r.Context(), caller, req)
+    if !decision.Allow {
+        g.AuditDecision(r.Context(), decision, caller, "model.egress.denied")
+        g.DenyWithReason(w, http.StatusForbidden, decision)
+        return
+    }
+
+    endpoint, err := g.ProviderCatalog.Resolve(req.Provider, req.Model, req.ResidencyIntent)
+    if err != nil { g.DenyWithReason(w, http.StatusForbidden, Decision{Allow: false, ReasonCode: ModelProviderDenied}); return }
+    if err := g.Trust.VerifyEndpoint(r.Context(), endpoint); err != nil {
+        g.DenyWithReason(w, http.StatusForbidden, Decision{Allow: false, ReasonCode: ModelProviderTrustValidationFailed})
+        return
+    }
+    if err := g.Budget.Reserve(r.Context(), caller.Tenant, req.BudgetProfile); err != nil {
+        g.DenyWithReason(w, http.StatusPaymentRequired, Decision{Allow: false, ReasonCode: ModelProviderBudgetExhausted})
+        return
+    }
+
+    cred, err := g.Secrets.ResolveRef(r.Context(), req.CredentialRef, caller.SPIFFEID)
+    if err != nil { g.Deny(w, http.StatusForbidden); return }
+    resp, egressErr := g.ModelProxy.Forward(r.Context(), endpoint, req, cred)
+    if egressErr != nil {
+        fallback := g.Fallback.Try(r.Context(), caller, req, egressErr)
+        if !fallback.Ok {
+            g.DenyWithReason(w, http.StatusBadGateway, Decision{Allow: false, ReasonCode: ModelProviderDegradedNoApprovedFallback})
+            return
+        }
+        WriteJSON(w, fallback.Response)
+        return
+    }
+
+    g.AuditDecision(r.Context(), decision, caller, "model.egress.allowed")
+    WriteJSON(w, resp)
+}
+```
+
+### 9.6 Ingress Admission Handler (Go Reference)
+
+```go
+package uasgs
+
+import "net/http"
+
+type IngressEnvelope struct {
+    EventID      string `json:"event_id"`
+    SourceType   string `json:"source_type"`
+    SourceID     string `json:"source_id"`
+    Schema       string `json:"schema"`
+    PayloadRef   string `json:"payload_ref"`
+    Tenant       string `json:"tenant"`
+    ReceivedAt   string `json:"received_at"`
+    ReplayGuard  string `json:"replay_guard"`
+}
+
+func (g *Gateway) HandleIngressSubmit(w http.ResponseWriter, r *http.Request) {
+    caller, err := g.AuthenticateCaller(r.Context(), r)
+    if err != nil { g.Deny(w, http.StatusUnauthorized); return }
+
+    env, err := DecodeJSON[IngressEnvelope](r)
+    if err != nil { g.Deny(w, http.StatusBadRequest); return }
+
+    // Connector conformance and signed-manifest checks are mandatory in production.
+    if caller.Profile != ProfileDev {
+        if !g.ConnectorRegistry.IsConformant(caller.SPIFFEID) {
+            g.DenyWithReason(w, http.StatusForbidden, Decision{Allow: false, ReasonCode: ConnectorConformanceDenied})
+            return
+        }
+    }
+
+    if err := g.Ingress.VerifySource(r.Context(), env); err != nil { g.Deny(w, http.StatusForbidden); return }
+    if err := g.Ingress.VerifyReplay(r.Context(), env.EventID, env.ReplayGuard); err != nil { g.Deny(w, http.StatusConflict); return }
+    if err := g.Ingress.ValidateSchema(r.Context(), env.Schema, env.PayloadRef); err != nil { g.Deny(w, http.StatusUnprocessableEntity); return }
+
+    decision := g.Policy.DecideIngress(r.Context(), caller, env)
+    if !decision.Allow {
+        g.AuditDecision(r.Context(), decision, caller, "ingress.denied")
+        g.DenyWithReason(w, http.StatusForbidden, decision)
+        return
+    }
+
+    run := g.RunQueue.EnqueueFromIngress(r.Context(), caller, env, decision.DecisionID)
+    g.AuditDecision(r.Context(), decision, caller, "ingress.allowed")
+    WriteJSON(w, run)
+}
+```
+
+### 9.7 Context Admission + HIPAA Prompt Safety (Go Reference)
+
+```go
+package uasgs
+
+import "net/http"
+
+type ContextAdmissionRequest struct {
+    SourceType   string `json:"source_type"`
+    Content      string `json:"content"`
+    Purpose      string `json:"purpose"`
+    ClassificationIntent string `json:"classification_intent"`
+}
+
+type ContextAdmissionResult struct {
+    ContentRef   string     `json:"content_ref"`
+    Classification string   `json:"classification"`
+    Findings     []string   `json:"findings"`
+    Decision     Decision   `json:"decision"`
+}
+
+func (g *Gateway) HandleContextAdmit(w http.ResponseWriter, r *http.Request) {
+    caller, err := g.AuthenticateCaller(r.Context(), r)
+    if err != nil { g.Deny(w, http.StatusUnauthorized); return }
+    req, err := DecodeJSON[ContextAdmissionRequest](r)
+    if err != nil { g.Deny(w, http.StatusBadRequest); return }
+
+    normalized := g.Context.Normalize(req.Content)
+    findings := g.Context.ScanSafety(normalized) // injection + pii/phi + policy
+
+    // no-scan-no-send / minimum-necessary invariants
+    minimized := g.Context.Minimize(normalized, req.Purpose)
+    if caller.Profile == ProfileProdRegulatedHIPAA {
+        if g.Context.HasPHI(findings) || g.Context.HasPII(findings) {
+            tokenized, ok := g.Context.TryTokenize(minimized)
+            if !ok {
+                g.DenyWithReason(w, http.StatusForbidden, Decision{Allow: false, ReasonCode: PromptSafetyDeniedPHI})
+                return
+            }
+            minimized = tokenized
+        }
+    }
+
+    decision := g.Policy.DecideContextAdmission(r.Context(), caller, req, findings)
+    if !decision.Allow {
+        g.AuditDecision(r.Context(), decision, caller, "context.admission.denied")
+        g.DenyWithReason(w, http.StatusForbidden, decision)
+        return
+    }
+
+    ref := g.Context.StoreAsReference(r.Context(), caller, minimized, findings)
+    WriteJSON(w, ContextAdmissionResult{
+        ContentRef: ref,
+        Classification: g.Context.Classification(findings),
+        Findings: findings,
+        Decision: decision,
+    })
+}
+```
+
+### 9.8 DLP RuleOps Controller (Go Reference)
+
+```go
+package uasgs
+
+import (
+    "fmt"
+    "net/http"
+)
+
+type RulesetState string
+
+const (
+    RulesetDraft      RulesetState = "DRAFT"
+    RulesetValidated  RulesetState = "VALIDATED"
+    RulesetApproved   RulesetState = "APPROVED"
+    RulesetSigned     RulesetState = "SIGNED"
+    RulesetCanary     RulesetState = "CANARY"
+    RulesetActive     RulesetState = "ACTIVE"
+    RulesetDeprecated RulesetState = "DEPRECATED"
+    RulesetRetired    RulesetState = "RETIRED"
+)
+
+func (g *Gateway) HandleRulePromote(w http.ResponseWriter, r *http.Request) {
+    caller, err := g.AuthenticateCaller(r.Context(), r)
+    if err != nil || !g.RuleOps.Authorize(caller, "ruleset.promote") {
+        g.Deny(w, http.StatusForbidden); return
+    }
+
+    cmd, err := DecodeJSON[PromoteRulesetCommand](r)
+    if err != nil { g.Deny(w, http.StatusBadRequest); return }
+
+    rs, err := g.RuleRepo.Get(cmd.RulesetID)
+    if err != nil { g.Deny(w, http.StatusNotFound); return }
+    if rs.State != RulesetSigned {
+        g.Deny(w, http.StatusConflict); return
+    }
+    if !rs.HasDualApprovalForRiskClass() {
+        g.Deny(w, http.StatusForbidden); return
+    }
+    if err := g.RuleOps.VerifyBundleSignature(rs.BundleDigest, rs.Signature); err != nil {
+        g.Deny(w, http.StatusForbidden); return
+    }
+    if err := g.RuleOps.RunCanaryChecks(rs); err != nil {
+        g.Deny(w, http.StatusPreconditionFailed); return
+    }
+
+    if err := g.RuleRepo.Activate(rs.ID); err != nil {
+        g.Deny(w, http.StatusInternalServerError); return
+    }
+    g.Audit.Emit(r.Context(), "dlp.ruleset.promoted", map[string]any{
+        "ruleset_id": rs.ID, "bundle_digest": rs.BundleDigest, "actor": caller.SPIFFEID,
+    })
+    WriteJSON(w, map[string]string{"status": fmt.Sprintf("%s -> %s", RulesetSigned, RulesetActive)})
+}
+```
+
+### 9.9 Kubernetes Deployment
 
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mcp-security-gateway
-  namespace: mcp-gateway
+  name: uasgs-gateway
+  namespace: uasgs-system
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: mcp-security-gateway
+      app: uasgs-gateway
   template:
     metadata:
       labels:
-        app: mcp-security-gateway
+        app: uasgs-gateway
       annotations:
-        spiffe.io/spiffe-id: "spiffe://acme.corp/gateways/mcp-security-gateway/prod"
+        spiffe.io/spiffe-id: "spiffe://acme.corp/gateways/uasgs-gateway/prod"
     spec:
-      serviceAccountName: mcp-security-gateway
+      serviceAccountName: uasgs-gateway
       containers:
         - name: gateway
-          image: acme.corp/mcp-security-gateway:v1.0.0
+          image: acme.corp/uasgs-gateway:v1.0.0
           ports:
             - containerPort: 8443
               name: https
@@ -2111,7 +2451,7 @@ spec:
             path: /run/spire/sockets
         - name: config
           configMap:
-            name: mcp-gateway-config
+            name: uasgs-gateway-config
         - name: models
           persistentVolumeClaim:
             claimName: prompt-guard-model
@@ -2133,10 +2473,10 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: mcp-gateway
+              name: uasgs-system
           podSelector:
             matchLabels:
-              app: mcp-security-gateway
+              app: uasgs-gateway
       ports:
         - protocol: TCP
           port: 8080
@@ -2153,6 +2493,20 @@ spec:
         - ipBlock:
             cidr: 10.0.0.0/8  # Internal only by default
 ```
+
+Phase 3 companion deployment guidance (same trust model):
+
+- Deploy ingress connectors as separate workloads with:
+  - signed connector manifest
+  - connector conformance version label
+  - restricted egress to UASGS ingress admission endpoint only
+- Deploy RuleOps admin API in a restricted namespace/segment with:
+  - admin-only RBAC
+  - mandatory approval workflow integration
+  - immutable audit sink wiring
+- If model egress throughput requires separation, deploy an LLM egress broker:
+  - keep policy authority in UASGS
+  - keep event schema and reason codes identical to UASGS contracts
 
 ---
 
@@ -2184,7 +2538,7 @@ spec:
 | SPIRE unreachable | Fail closed (block) | No identity = no access |
 | SPIKE unreachable | Fail closed (block) | Can't substitute tokens |
 | OPA evaluation error | Fail closed (block) | No policy = no access |
-| DLP engine error | Risk-based fail mode | Default can fail open for low-risk/internal; fail closed for high-risk/external egress |
+| DLP engine error | Risk-based fail mode | `prod_standard` and `prod_regulated_hipaa` fail closed for high-risk/regulated flows; low-risk internal paths may be policy-tuned |
 | Deep scan unavailable | Degrade to fast path | Async scanning is optional |
 | Step-up guard unavailable | Fail closed (high-risk only) | High-impact actions require deterministic gating |
 | Tool Registry stale | Use cached (warn) | Eventual consistency acceptable |
@@ -2438,7 +2792,7 @@ Local development should be runnable from a single command and still preserve th
 
 Recommended approach:
 1. Provide a `docker compose` profile that boots:
-   - `mcp-security-gateway`
+   - `uasgs-gateway`
    - `opa-bundle-server` (or a local bundle mount)
    - `tool-registry` (static file for local)
    - `otel-collector` + a local log sink (stdout/json or Loki)
@@ -2840,7 +3194,7 @@ These profiles are intended to make the architecture deployable in the environme
 **Typical runtime**: Docker Desktop / OrbStack / Colima.
 
 **Recommended components**
-- `mcp-security-gateway`
+- `uasgs-gateway`
 - `spire-server` + `spire-agent` (dev-mode attestation; clearly labeled)
 - `opa-bundle` (local file mount or local bundle server)
 - `tool-registry` (static allowlist file)
@@ -2866,7 +3220,7 @@ These profiles are intended to make the architecture deployable in the environme
 **Recommended components**
 - Systemd-managed `spire-agent` on each VM (host-level)
 - A small number of containerized services:
-  - `mcp-security-gateway`
+  - `uasgs-gateway`
   - `spike-nexus` (+ keepers if HA is needed)
   - `opa-bundle-server` (or signed bundle file mounts)
   - `otel-collector`
@@ -2956,6 +3310,31 @@ For anything called “production”, all of the following must be true:
 4. **Audit is durable**: audit events are shipped to immutable storage with a defined retention policy.
 5. **Correlation works**: you can reconstruct a session end-to-end via `session_id` + `trace_id` + `decision_id`.
 6. **Break-glass is bounded**: emergency policy overrides are time-boxed, authenticated, and produce explicit audit events.
+7. **Model egress is mediated**: no direct provider egress from agent workloads (policy + identity + network gates).
+8. **Context invariants are enforced**: `no-scan-no-send`, `no-provenance-no-persist`, `no-verification-no-load`, `minimum-necessary`.
+9. **Profile conformance is real**: deployed controls match `prod_standard` or `prod_regulated_hipaa` expectations.
+
+#### 10.13.7 Enforcement Profiles (Resolved Defaults)
+
+To align teams on predictable behavior, use explicit enforcement profiles:
+
+`dev`
+- boundary governance enabled
+- relaxed connector set
+- prompt safety in monitor+block mode for high-risk findings
+
+`prod_standard`
+- mandatory model mediation (policy + identity + network gates)
+- connector conformance required
+- context admission fail-closed for high-risk findings
+- artifact enforcement profile default: `proxy-enforced`
+
+`prod_regulated_hipaa`
+- all `prod_standard` controls
+- HIPAA prompt safety profile enabled
+- raw PHI/PII prompt pass-through denied by default (deny or tokenize)
+- provider region/retention constraints enforced before model egress
+- artifact enforcement profile default: `proxy+SDK-token`
 
 ### 10.14 Developer Contract vs. Platform Responsibilities
 
@@ -2963,8 +3342,8 @@ This section makes adoption explicit and minimizes friction: developers should o
 
 #### 10.14.1 Developer Contract (What App Teams Must Do)
 
-**D1. Route agent/tool traffic through the Gateway**
-- Configure the MCP client to use the gateway endpoint (no direct tool calls in production).
+**D1. Route agent/tool/model traffic through UASGS**
+- Configure the client/runtime to use UASGS endpoints (no direct tool calls or model-provider calls in production).
 - Treat “gateway denied” as a normal outcome (handle retries, fallbacks, and “approval required”).
 
 **D2. Onboard tools through the Tool Registry workflow**
@@ -2987,6 +3366,10 @@ This section makes adoption explicit and minimizes friction: developers should o
 - UI resources start in `audit-only` mode and require security review before promotion to `allow`.
 - Declare only the minimum CSP domains and permissions required. Avoid requesting camera/microphone/geolocation unless the tool's core function requires it.
 
+**D7. Submit model-bound context through admission controls**
+- Treat context admission as mandatory (`no-scan-no-send`, `no-provenance-no-persist`, `no-verification-no-load`, `minimum-necessary`).
+- For regulated workloads, design prompts/workflows expecting deny-or-tokenize outcomes for PHI/PII.
+
 **What developers should NOT have to do**
 - Manage certs, tokens, secret rotation, or policy engines directly.
 - Implement prompt-injection defenses in prompts as the primary control surface.
@@ -2998,7 +3381,7 @@ This section makes adoption explicit and minimizes friction: developers should o
 
 **P2. Policy and enforcement**
 - OPA bundle distribution, policy testing, and safe rollouts (canary + rollback).
-- Deterministic enforcement at the gateway (tool allowlist, schema validation, step-up gating, response firewall).
+- Deterministic enforcement at UASGS (tool allowlist, schema validation, step-up gating, response firewall, model egress mediation).
 
 **P3. Secrets safety**
 - SPIKE late-binding tokens, gateway substitution, and strict non-logging of secret material.
@@ -3016,6 +3399,10 @@ This section makes adoption explicit and minimizes friction: developers should o
   - tool registration + policy scaffolding + linting
   - local compose profile
   - promotion workflow dev→staging→prod with gates
+
+**P7. RuleOps and connector governance**
+- DLP RuleOps lifecycle with RBAC/SOD, signing, canary, rollback, and immutable audit events.
+- Ingress connector conformance validation and signed manifest checks before production enablement.
 
 #### 10.14.3 Illusion of Choice (Safe Flexibility vs. Hard Boundaries)
 
@@ -3035,6 +3422,11 @@ This section makes adoption explicit and minimizes friction: developers should o
 Agents that can “download and update their own information” introduce a classic supply‑chain‑style risk: **untrusted content becomes part of the agent’s reasoning context**. The architecture should treat external context as hostile by default and make ingestion safe even with lower‑capability models.
 
 **Required controls (mandatory, not optional)**
+0. **Context invariants (always-on)**  
+   - `no-scan-no-send`  
+   - `no-provenance-no-persist`  
+   - `no-verification-no-load`  
+   - `minimum-necessary` for model-bound context  
 1. **Quarantine + provenance**  
    - Fetch external content in a dedicated “retrieval” sandbox with no secrets.  
    - Store content with source URL, timestamp, hash, and trust level.  
@@ -3168,6 +3560,16 @@ Central mediation at the gateway preserves one policy boundary and one evidence 
 4. **DNS integrity checks**: DNSSEC-aware validation where provider/domain support exists, with policy fallback controls where it does not.
 5. **Data residency gate**: policy enforcement that blocks model egress violating jurisdiction/tenant residency requirements.
 6. **Unified audit**: model calls logged with policy decision IDs, endpoint metadata, residency decision, and request classification.
+7. **Cost/QoS policy**: provider budgets, latency tiers, fallback chain, and deterministic failure semantics.
+8. **No-bypass enforcement**: policy + identity + network gates block direct model-provider egress from agent workloads.
+
+Recommended reason codes for operator/debug visibility:
+- `MODEL_PROVIDER_DENIED`
+- `MODEL_PROVIDER_BUDGET_EXHAUSTED`
+- `MODEL_PROVIDER_RESIDENCY_DENIED`
+- `MODEL_PROVIDER_TRUST_VALIDATION_FAILED`
+- `MODEL_PROVIDER_DEGRADED_NO_APPROVED_FALLBACK`
+- `MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED`
 
 #### 10.17.3 Gateway vs. separate component
 
@@ -3179,14 +3581,51 @@ Scale recommendation:
 - Introduce a dedicated **LLM Egress Broker** only when throughput or organizational boundaries require separation.
 - Even then, keep it policy-coupled to the gateway (same trust model, same audit schema, same approval semantics).
 
+### 10.18 HIPAA Prompt-Safety Technical Profile
+
+For regulated workloads, use `prod_regulated_hipaa` defaults:
+
+- detected PHI/PII in model-bound prompt paths is denied or tokenized by default
+- prompt minimization is required before model egress decision
+- re-identification is a separate privileged capability with step-up controls
+- any emergency override must emit explicit reason code + elevated audit marker
+
+Recommended reason codes:
+- `PROMPT_SAFETY_DENIED_PHI`
+- `PROMPT_SAFETY_DENIED_PII`
+- `PROMPT_SAFETY_TOKENIZATION_REQUIRED`
+- `PROMPT_SAFETY_OVERRIDE_REQUIRED`
+
+### 10.19 Portable Implementation Course of Action (Recommended)
+
+To keep this architecture solid for teams using different stacks, use this implementation strategy:
+
+1. **Treat contracts as the product, not one codebase**
+   - publish stable contracts for model egress, ingress admission, context admission, and RuleOps
+   - include reason-code catalogs, profile definitions, and state machines as normative artifacts
+2. **Separate normative controls from reference implementations**
+   - mark each control as `MUST`, `SHOULD`, or `MAY`
+   - keep Go/K8s examples as one reference path, not the only valid path
+3. **Ship conformance test suites**
+   - policy conformance tests (decision parity by profile)
+   - connector conformance tests
+   - RuleOps lifecycle tests (approval/signing/canary/rollback)
+   - prompt-safety profile tests (`prod_regulated_hipaa`)
+4. **Provide platform packs, not platform lock-in**
+   - maintain reference packs for Kubernetes, VM/container services, and on-prem patterns
+   - require identical audit schema and reason codes across packs
+5. **Gate production claims on conformance outcomes**
+   - any implementation path is acceptable if it passes the same contract and conformance gates
+   - this preserves portability without sacrificing security invariants
+
 ---
 
 ## 11. Security Analysis
 
 ### 11.1 Defense Coverage Matrix
 
-| Threat | SPIFFE | SPIKE (Token) | OPA | Gateway | Coverage |
-|--------|--------|---------------|-----|---------|----------|
+| Threat | SPIFFE | SPIKE (Token) | OPA | UASGS | Coverage |
+|--------|--------|---------------|-----|-------|----------|
 | Identity spoofing | ✅ | | | | **Full** |
 | Credential exfiltration | | ✅ | | | **Full** |
 | Tool poisoning | | | ✅ | ✅ | **Full** |
@@ -3194,7 +3633,7 @@ Scale recommendation:
 | Cross-tool manipulation | | | ✅ | ✅ | **High** |
 | Prompt injection | | | | ✅ | **High** |
 | Data exfiltration | | | ✅ | ✅ | **High** (with response firewall + step-up) |
-| External model provider hijack/misdirection | ✅ | ✅ | ✅ | ✅ | **Medium** (requires model egress governance controls) |
+| External model provider hijack/misdirection | ✅ | ✅ | ✅ | ✅ | **High** (with mandatory model mediation + trust policy + no-bypass enforcement) |
 | Authorization bypass | ✅ | ✅ | ✅ | | **Full** |
 | Model artifact compromise | | | | ✅ | **Medium** (digest/signature verification) |
 | Active content (MCP-UI) | | | ✅ | ✅ | **High** (capability gating + CSP mediation + content scan) |
@@ -3218,7 +3657,7 @@ Scale recommendation:
 | UI resource rug-pull | ✅ Full | UI Resource Registry hash verification |
 | Permission escalation via UI | ✅ Full | Permissions denied by default, stripped by gateway |
 | Nested frame attacks via UI | ✅ Full | frameDomains hard-denied at gateway |
-| Provider endpoint spoofing / misrouting | ✅ Medium | Gateway model egress policy (TLS identity + DNS integrity + residency gating) |
+| Provider endpoint spoofing / misrouting | ✅ High | UASGS model egress policy (TLS identity + DNS integrity + residency gating + no-bypass gates) |
 
 ### 11.3 Residual Risks
 
@@ -3232,7 +3671,7 @@ Scale recommendation:
 | Novel UI XSS vectors | Static pattern scanning has limits | Host sandbox isolation + CSP enforcement + periodic security review |
 | Social engineering via UI | App can present misleading interfaces | Step-up gating for high-risk actions + user education |
 | Covert channels in sandbox | Timing/storage-based exfiltration | Monitor anomalous app behavior patterns + short session TTLs |
-| External model egress policy drift | Provider policy not centrally enforced | Gateway-mediated model egress controls + signed allowlist updates |
+| External model egress policy drift | Drift can still occur through misconfiguration or stale bundles | Mandatory model mediation (policy + identity + network gates) + signed allowlist updates + profile conformance checks |
 
 ---
 
@@ -3280,7 +3719,12 @@ Scale recommendation:
 | Model artifact integrity checks | Model digests/signatures |
 | Behavioral baselines | Session context |
 | Human approval workflows | UI integration |
-| Gateway-mediated model egress controls | Provider catalog + policy + residency governance |
+| UASGS-mediated model egress controls | Provider catalog + policy + residency governance |
+| Mandatory model mediation enforcement | Policy + identity + network gates |
+| Ingress connector conformance framework | Adapter SDK/spec + signed manifest validation |
+| DLP RuleOps control plane | Ruleset lifecycle + canary + rollback + audit events |
+| HIPAA prompt safety technical profile | Prompt minimization + PHI/PII deny/tokenize workflow |
+| Enforcement profiles (`dev`, `prod_standard`, `prod_regulated_hipaa`) | Policy bundles + runtime configuration gates |
 | Compliance dashboard | All components |
 | Runbooks and DR testing | All components |
 
@@ -3357,12 +3801,12 @@ This is **not required for v1**, but may become compelling if constrained decodi
 
 ### Implementation
 - [POC Built-In DLP Scanner (`dlp.go`)](POC/internal/gateway/middleware/dlp.go)
-- [Example Third-Party DLP Provider](https://github.com/thyrisAI/safe-zone)
+- [DLP Provider-Agnostic Architecture Section](#75-dlp-engine-provider-agnostic)
 - [Groq Guard Models](https://console.groq.com/docs/content-moderation)
 - [Llama Prompt Guard 2](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M)
 
 ---
 
-*Document Version: 2.2*
+*Document Version: 2.3*
 *Last Updated: February 2026*
 *Classification: Internal - Technical Reference Architecture*
