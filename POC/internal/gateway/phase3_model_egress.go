@@ -368,7 +368,11 @@ func (g *Gateway) resolveProviderTarget(provider string, attrs map[string]any) (
 	if host == "" {
 		return nil, fmt.Errorf("provider endpoint host is empty")
 	}
-	if target.Scheme != "https" && !isLocalHost(host) {
+	// Production posture: require HTTPS. Dev/POC exception: allow HTTP only to
+	// localhost/host.docker.internal or single-label internal service names
+	// (e.g., docker-compose service DNS) to keep demos deterministic without
+	// publishing tool-plane ports to the host.
+	if target.Scheme != "https" && !isLocalHost(host) && !isSingleLabelHostname(host) {
 		return nil, fmt.Errorf("provider endpoint must use https outside local development")
 	}
 
@@ -516,4 +520,14 @@ func isLocalHost(host string) bool {
 	default:
 		return false
 	}
+}
+
+func isSingleLabelHostname(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	// Single-label hostnames are typical in docker-compose (service DNS names)
+	// and are treated as local-dev-only for non-TLS provider endpoints.
+	return !strings.Contains(host, ".")
 }

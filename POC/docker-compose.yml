@@ -463,8 +463,9 @@ services:
       # Demo determinism: always point the deep scan guard model to the local mock service.
       - GUARD_MODEL_ENDPOINT=http://mock-guard-model:8080/openai/v1  # RFA-6fse.3: deterministic, no external keys/network
       # Phase 3 model egress demo determinism: route Groq provider calls to local mock endpoint.
-      # Use host.docker.internal so gateway local-dev HTTP exception applies without weakening TLS checks.
-      - MODEL_PROVIDER_ENDPOINT_GROQ=http://host.docker.internal:8083/openai/v1/chat/completions
+      # Keep this internal-only: agent containers are not attached to tool-plane, so they cannot
+      # bypass the gateway by calling mock-guard-model directly.
+      - MODEL_PROVIDER_ENDPOINT_GROQ=http://mock-guard-model:8080/openai/v1/chat/completions
       - GUARD_MODEL_NAME=${GUARD_MODEL_NAME:-}  # RFA-j6c: Guard model identifier (default: llama-prompt-guard-2-86m)
       # Demo determinism: ensure deep scan is enabled (non-empty key) without requiring real credentials.
       - GUARD_API_KEY=demo-guard-key  # RFA-6fse.3: deterministic, dummy key
