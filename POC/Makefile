@@ -1,8 +1,8 @@
-.PHONY: help compose-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate ci benchmark security-scan \
-	       setup register-spire k8s-register-spire test-integration test-opa build build-images \
-	       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
-	       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
-	       upgrade-demo repave-demo phoenix-up phoenix-down phoenix-reset
+.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate ci benchmark security-scan \
+		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
+		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
+		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
+		       upgrade-demo repave-demo phoenix-up phoenix-down phoenix-reset
 
 # Container image config
 REGISTRY ?= ghcr.io
@@ -33,6 +33,9 @@ help: ## Show available targets
 
 compose-verify: ## Verify Compose third-party images are digest-pinned (no :latest)
 	@bash scripts/compose-verify.sh
+
+compose-bootstrap-verify: ## Verify one-shot bootstrap containers completed successfully
+	@bash scripts/compose-bootstrap-verify.sh
 
 up: compose-verify ## Start Docker Compose stack (waits for all services healthy)
 	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
@@ -79,9 +82,10 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 			exit 1; \
 		fi; \
 		echo "Core services are ready despite compose wait timeout; continuing."; \
-	fi
-	@echo "Running register-spire for any additional entries..."
-	$(MAKE) register-spire
+		fi
+		@$(MAKE) compose-bootstrap-verify
+		@echo "Running register-spire for any additional entries..."
+		$(MAKE) register-spire
 
 down: ## Stop Docker Compose stack
 	docker compose down
