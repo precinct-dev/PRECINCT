@@ -33,7 +33,7 @@ from pydantic_ai.models.instrumented import InstrumentationSettings
 from openinference.instrumentation.pydantic_ai import OpenInferenceSpanProcessor
 
 # Shared SDK -- replaces ~120 lines of inline GatewayClient boilerplate
-from mcp_gateway_sdk import GatewayClient, GatewayError
+from mcp_gateway_sdk import GatewayClient, GatewayError, build_spike_token_ref
 
 logger = logging.getLogger("pydantic_researcher")
 
@@ -49,6 +49,11 @@ SPIFFE_ID = os.environ.get(
 )
 OTEL_ENDPOINT = os.environ.get("OTEL_ENDPOINT", "http://localhost:4317")
 LLM_MODEL = os.environ.get("LLM_MODEL", "groq:llama-3.3-70b-versatile")
+MODEL_USE_GATEWAY = os.environ.get("MODEL_USE_GATEWAY", "true").lower() != "false"
+MODEL_GATEWAY_BASE_URL = os.environ.get("MODEL_GATEWAY_BASE_URL", f"{GATEWAY_URL}/openai/v1")
+MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "groq")
+GROQ_LM_SPIKE_REF = os.environ.get("GROQ_LM_SPIKE_REF", "")
+MODEL_API_KEY_REF = os.environ.get("MODEL_API_KEY_REF", "")
 SESSION_ID = os.environ.get("SESSION_ID", str(uuid.uuid4()))
 
 # POC directory for file reads.
@@ -56,6 +61,40 @@ POC_DIR = os.environ.get(
     "POC_DIR",
     str(pathlib.Path(__file__).resolve().parent.parent.parent),
 )
+
+
+def normalize_model_name(raw_model: str) -> str:
+    model = (raw_model or "").strip()
+    if ":" in model:
+        return model.split(":", 1)[1]
+    if "/" in model:
+        return model.split("/", 1)[1]
+    return model
+
+
+def resolve_model_api_key_ref() -> str:
+    explicit_ref = os.environ.get("MODEL_API_KEY_REF", MODEL_API_KEY_REF)
+    if explicit_ref:
+        return explicit_ref
+    spike_ref = os.environ.get("GROQ_LM_SPIKE_REF", GROQ_LM_SPIKE_REF)
+    if spike_ref:
+        return build_spike_token_ref(spike_ref, exp_seconds=3600)
+    return ""
+
+
+def resolve_llm_model() -> str:
+    use_gateway = os.environ.get("MODEL_USE_GATEWAY", str(MODEL_USE_GATEWAY)).lower() != "false"
+    llm_model = os.environ.get("LLM_MODEL", LLM_MODEL)
+    if use_gateway:
+        return f"openai:{normalize_model_name(llm_model)}"
+    return llm_model
+
+
+if MODEL_USE_GATEWAY:
+    os.environ.setdefault("OPENAI_BASE_URL", os.environ.get("MODEL_GATEWAY_BASE_URL", MODEL_GATEWAY_BASE_URL))
+    key_ref = resolve_model_api_key_ref()
+    if key_ref:
+        os.environ.setdefault("OPENAI_API_KEY", key_ref)
 
 
 # ---------------------------------------------------------------------------
@@ -141,7 +180,7 @@ class AgentDeps:
 
 # Create the PydanticAI agent with structured output and instrumentation.
 qa_agent = Agent(
-    LLM_MODEL,
+    resolve_llm_model(),
     deps_type=AgentDeps,
     output_type=GroundedAnswer,
     instrument=InstrumentationSettings(),

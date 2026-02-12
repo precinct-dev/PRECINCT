@@ -117,7 +117,7 @@ func TestGatewayMTLSIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("mTLS request failed: %v", err)
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("Expected 200, got %d", resp.StatusCode)
@@ -254,7 +254,7 @@ func TestGatewayMTLSReverseProxy(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Gateway -> upstream mTLS request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("Expected 200 from upstream, got %d", resp.StatusCode)

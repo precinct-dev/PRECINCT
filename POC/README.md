@@ -73,6 +73,20 @@ make down && make up
 
 Phoenix UI is available at `http://localhost:6006` for trace inspection.
 
+## Git Hooks (beads)
+
+The repo includes a root `.beads` symlink to `POC/.beads` so `bd` git hooks can
+resolve the beads database when commits are made from subdirectories.
+
+If you ever see a pre-commit warning about a missing beads database, treat it as
+a warning (not a failed commit) and set:
+
+```bash
+export BEADS_DIR=.beads
+```
+
+from the repository root before committing.
+
 
 ## Directory Structure
 
@@ -149,6 +163,7 @@ scripts/                  Setup and operational scripts
 | [docs/deployment-guide.md](docs/deployment-guide.md) | Deployment guide (Docker Compose, K8s, Phoenix) |
 | [docs/configuration-reference.md](docs/configuration-reference.md) | All environment variables and configuration files |
 | [docs/agentic-security-architecture.skill.md](docs/agentic-security-architecture.skill.md) | AI coding assistant skill file |
+| [docs/process/acceptance-criteria-baselines.md](docs/process/acceptance-criteria-baselines.md) | Story-writing method for ACs when baseline test failures exist |
 | [sdk/go/README.md](sdk/go/README.md) | Go SDK documentation and usage |
 | [sdk/python/README.md](sdk/python/README.md) | Python SDK documentation and usage |
 

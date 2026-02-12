@@ -803,7 +803,9 @@ default allow = {"allow": true, "reason": "allowed"}
 	if err != nil {
 		t.Fatalf("Failed to create OPA engine: %v", err)
 	}
-	defer engine.Close()
+	defer func() {
+		_ = engine.Close()
+	}()
 
 	input := UIPolicyInput{
 		UI: UIInput{

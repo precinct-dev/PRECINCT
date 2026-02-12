@@ -163,7 +163,7 @@ func ValidateResponse(req *JSONRPCRequest, resp *JSONRPCResponse) error {
 		return fmt.Errorf("response ID mismatch: expected %d, got %d", req.ID, resp.ID)
 	}
 
-	hasResult := resp.Result != nil && len(resp.Result) > 0
+	hasResult := len(resp.Result) > 0
 	hasError := resp.Error != nil
 
 	if hasResult == hasError {

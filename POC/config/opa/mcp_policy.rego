@@ -37,13 +37,25 @@ allow := {
     "allow": true,
     "reason": "allowed"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     path_allowed(input.tool, input.params)
     destination_allowed(input.tool, input.params)
     step_up_satisfied(input.tool, input.step_up_token)
     session_risk_acceptable
+}
+
+# True when at least one grant matches the caller SPIFFE ID.
+matching_grant_exists if {
+    some grant in tool_grants
+    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
+}
+
+# True when any matching grant authorizes the requested tool.
+tool_authorized_for_spiffe(tool) if {
+    some grant in tool_grants
+    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
+    tool_authorized(tool, grant.allowed_tools)
 }
 
 # RFA-qq0.15: Session risk check
@@ -186,25 +198,23 @@ allow := {
     "allow": false,
     "reason": "no_matching_grant"
 } if {
-    count([grant | some grant in tool_grants; spiffe_matches(input.spiffe_id, grant.spiffe_pattern)]) == 0
+    not matching_grant_exists
 }
 
 allow := {
     "allow": false,
     "reason": "tool_not_authorized"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    not tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    not tool_authorized_for_spiffe(input.tool)
 }
 
 allow := {
     "allow": false,
     "reason": "path_denied"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     not path_allowed(input.tool, input.params)
 }
 
@@ -212,9 +222,8 @@ allow := {
     "allow": false,
     "reason": "destination_denied"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     path_allowed(input.tool, input.params)
     not destination_allowed(input.tool, input.params)
 }
@@ -223,9 +232,8 @@ allow := {
     "allow": false,
     "reason": "step_up_required"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     path_allowed(input.tool, input.params)
     destination_allowed(input.tool, input.params)
     not step_up_satisfied(input.tool, input.step_up_token)
@@ -235,9 +243,8 @@ allow := {
     "allow": false,
     "reason": "session_risk_too_high"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     path_allowed(input.tool, input.params)
     destination_allowed(input.tool, input.params)
     step_up_satisfied(input.tool, input.step_up_token)

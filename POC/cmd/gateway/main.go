@@ -55,7 +55,9 @@ func main() {
 		if err != nil {
 			os.Exit(1)
 		}
-		resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			os.Exit(1)
+		}
 		if resp.StatusCode != http.StatusOK {
 			os.Exit(1)
 		}

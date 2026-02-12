@@ -51,6 +51,13 @@ type Gateway struct {
 	registryStop         func()                            // RFA-dh9: stop function for registry fsnotify watcher
 	mcpTransport         mcpclient.Transport               // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
 	mcpTransportMu       sync.Mutex                        // RFA-9ol: protects lazy initialization of mcpTransport
+	modelPlanePolicy     *modelPlanePolicyEngine           // RFA-owgw.2: model plane policy enforcement
+	ingressPolicy        *ingressPlanePolicyEngine         // RFA-owgw.3: ingress plane admission controls
+	contextPolicy        *contextPlanePolicyEngine         // RFA-owgw.5: context and memory admission governance
+	loopPolicy           *loopPlanePolicyEngine            // RFA-owgw.4: loop plane immutable external limits
+	toolPolicy           *toolPlanePolicyEngine            // RFA-owgw.6: tool plane protocol adapters and capability registry v2
+	rlmPolicy            *rlmGovernanceEngine              // RFA-owgw.11: recursive language model governance
+	dlpRuleOps           *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
 }
 
 // New creates a new gateway instance
@@ -79,7 +86,10 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tool registry: %w", err)
 	}
-	dlpScanner := middleware.NewBuiltInScanner()
+	dlpRuleOps, dlpScanner, err := newDLPRuleOpsManager()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize DLP RuleOps manager: %w", err)
+	}
 	deepScanner := middleware.NewDeepScannerWithConfig(middleware.DeepScannerConfig{
 		APIKey:       cfg.GuardAPIKey,
 		Timeout:      time.Duration(cfg.DeepScanTimeout) * time.Second,
@@ -295,6 +305,13 @@ func New(cfg *Config) (*Gateway, error) {
 		spikeRedeemer:        spikeRedeemer,
 		sessionStore:         sessionStore,
 		registryStop:         registryStop,
+		modelPlanePolicy:     newModelPlanePolicyEngine(),
+		ingressPolicy:        newIngressPlanePolicyEngine(),
+		contextPolicy:        newContextPlanePolicyEngine(),
+		loopPolicy:           newLoopPlanePolicyEngine(),
+		toolPolicy:           newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
+		rlmPolicy:            newRLMGovernanceEngine(),
+		dlpRuleOps:           dlpRuleOps,
 	}, nil
 }
 
@@ -359,6 +376,12 @@ func (g *Gateway) Handler() http.Handler {
 	// Admin endpoints (not exposed externally in the POC; no auth required).
 	mux.Handle("/admin/circuit-breakers", http.HandlerFunc(g.adminCircuitBreakersHandler))
 	mux.Handle("/admin/circuit-breakers/", http.HandlerFunc(g.adminCircuitBreakersHandler))
+	mux.Handle("/admin/circuit-breakers/reset", http.HandlerFunc(g.adminCircuitBreakersResetHandler))
+	mux.Handle("/admin/policy/reload", http.HandlerFunc(g.adminPolicyReloadHandler))
+	mux.Handle("/admin/dlp/rulesets", http.HandlerFunc(g.adminDLPRulesetsHandler))
+	mux.Handle("/admin/dlp/rulesets/", http.HandlerFunc(g.adminDLPRulesetsHandler))
+	mux.Handle("/admin/loop/runs", http.HandlerFunc(g.adminLoopRunsHandler))
+	mux.Handle("/admin/loop/runs/", http.HandlerFunc(g.adminLoopRunsHandler))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
@@ -396,6 +419,9 @@ func (g *Gateway) proxyHandler() http.Handler {
 		)
 		defer span.End()
 
+		// Wrap response writer to capture status code for span and internal route handling.
+		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
 		// Demo-only, fast-path endpoint for deterministic rate-limit proofs.
 		//
 		// This path is intentionally handled inside the normal middleware chain
@@ -430,6 +456,35 @@ func (g *Gateway) proxyHandler() http.Handler {
 			return
 		}
 
+		// Phase 3 walking skeleton: internal plane entry points are served
+		// from the gateway boundary under /v1/* and still pass the full middleware chain.
+		if g.handlePhase3PlaneEntry(proxyRW, r.WithContext(ctx)) {
+			result := "allowed"
+			if proxyRW.statusCode >= 400 {
+				result = "denied"
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "phase3_plane_entry"),
+			)
+			return
+		}
+		// OpenAI-compatible model egress path. This route keeps external model calls
+		// inside UASGS policy controls while remaining SDK/framework friendly.
+		if g.handleModelCompatEntry(proxyRW, r.WithContext(ctx)) {
+			result := "allowed"
+			if proxyRW.statusCode >= 400 {
+				result = "denied"
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "phase3_model_egress"),
+			)
+			return
+		}
+
 		// Extract MCP method from request body (already captured by BodyCapture middleware)
 		mcpMethod, mcpParams := g.extractMCPMethodAndParams(ctx)
 		reqInfo := NewMCPRequestInfo(mcpMethod, mcpParams)
@@ -442,9 +497,6 @@ func (g *Gateway) proxyHandler() http.Handler {
 		if tenant == "" {
 			tenant = "default"
 		}
-
-		// Wrap response writer to capture status code for span
-		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		// RFA-9ol: Branch on transport mode.
 		// "mcp" uses the MCP Streamable HTTP transport for JSON-RPC.
@@ -1232,7 +1284,7 @@ func (g *Gateway) demoRugpullToggleHandler(enable bool) http.HandlerFunc {
 			_, _ = w.Write([]byte(`{"error":"failed to reach upstream demo endpoint"}`))
 			return
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		body, _ := io.ReadAll(resp.Body)
 
 		w.Header().Set("Content-Type", "application/json")
@@ -1252,6 +1304,29 @@ type circuitBreakerEntry struct {
 
 type circuitBreakersResponse struct {
 	CircuitBreakers []circuitBreakerEntry `json:"circuit_breakers"`
+}
+
+type circuitBreakerResetRequest struct {
+	Tool string `json:"tool"`
+}
+
+type circuitBreakerResetEntry struct {
+	Tool          string `json:"tool"`
+	PreviousState string `json:"previous_state"`
+	NewState      string `json:"new_state"`
+}
+
+type circuitBreakersResetResponse struct {
+	Reset []circuitBreakerResetEntry `json:"reset"`
+}
+
+type policyReloadResponse struct {
+	Status         string `json:"status"`
+	Timestamp      string `json:"timestamp,omitempty"`
+	RegistryTools  int    `json:"registry_tools,omitempty"`
+	OPAPolicies    int    `json:"opa_policies,omitempty"`
+	CosignVerified bool   `json:"cosign_verified"`
+	Error          string `json:"error,omitempty"`
 }
 
 // adminCircuitBreakersHandler serves:
@@ -1321,6 +1396,114 @@ func (g *Gateway) adminCircuitBreakersHandler(w http.ResponseWriter, r *http.Req
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(circuitBreakersResponse{CircuitBreakers: out})
+}
+
+// adminCircuitBreakersResetHandler serves:
+//   - POST /admin/circuit-breakers/reset
+func (g *Gateway) adminCircuitBreakersResetHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req circuitBreakerResetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "invalid request body"})
+		return
+	}
+
+	if req.Tool == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]string{"error": "tool is required"})
+		return
+	}
+
+	tools := g.registry.ToolNames()
+	targetTools := make([]string, 0, len(tools))
+	if req.Tool == "*" {
+		targetTools = append(targetTools, tools...)
+	} else {
+		found := false
+		for _, t := range tools {
+			if t == req.Tool {
+				found = true
+				break
+			}
+		}
+		if !found {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]string{"error": fmt.Sprintf("unknown tool: %s", req.Tool)})
+			return
+		}
+		targetTools = append(targetTools, req.Tool)
+	}
+
+	before := g.circuitBreaker.Snapshot()
+	previousState := before.State.String()
+	g.circuitBreaker.Reset()
+
+	after := g.circuitBreaker.Snapshot()
+	newState := after.State.String()
+
+	result := make([]circuitBreakerResetEntry, 0, len(targetTools))
+	for _, t := range targetTools {
+		result = append(result, circuitBreakerResetEntry{
+			Tool:          t,
+			PreviousState: previousState,
+			NewState:      newState,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(circuitBreakersResetResponse{Reset: result})
+}
+
+// adminPolicyReloadHandler serves:
+//   - POST /admin/policy/reload
+//
+// It triggers an explicit hot-reload for both tool registry and OPA policies
+// through the same public reload paths used by their fsnotify watchers.
+func (g *Gateway) adminPolicyReloadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	registryResult, err := g.registry.Reload()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(policyReloadResponse{
+			Status:         "failed",
+			Error:          err.Error(),
+			CosignVerified: false,
+		})
+		return
+	}
+
+	opaResult, err := g.opa.Reload()
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(policyReloadResponse{
+			Status:         "failed",
+			Error:          err.Error(),
+			CosignVerified: registryResult.CosignVerified,
+		})
+		return
+	}
+
+	_ = json.NewEncoder(w).Encode(policyReloadResponse{
+		Status:         "reloaded",
+		Timestamp:      time.Now().UTC().Format(time.RFC3339),
+		RegistryTools:  registryResult.ToolCount,
+		OPAPolicies:    opaResult.PolicyCount,
+		CosignVerified: registryResult.CosignVerified,
+	})
 }
 
 // checkUIResourceReadAllowed checks whether a ui:// resource read is permitted.

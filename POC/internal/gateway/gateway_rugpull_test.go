@@ -39,7 +39,9 @@ func TestFilterAndCacheToolsListResponse_StripsMismatchedTool_AndAudits(t *testi
 	if err != nil {
 		t.Fatalf("NewAuditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	registry, err := middleware.NewToolRegistry(filepath.Join(pocRoot, "config", "tool-registry.yaml"))
 	if err != nil {

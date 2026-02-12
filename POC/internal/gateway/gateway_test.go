@@ -2,7 +2,11 @@ package gateway
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
 	"net/http"
@@ -331,7 +335,9 @@ func TestGatewayDevModePreservesPhase1Behavior(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
-	defer gw.Close()
+	defer func() {
+		_ = gw.Close()
+	}()
 
 	// In dev mode, SPIFFE TLS should NOT be enabled
 	if gw.SPIFFETLSEnabled() {
@@ -557,47 +563,6 @@ func newTestGatewayForMCPTransportProxyHandler(t *testing.T, upstreamURL string,
 	}
 	t.Cleanup(func() { _ = gw.Close() })
 	return gw
-}
-
-// newTestGatewayWithUIGating creates a gateway backed by a mock upstream and a
-// temporary UI capability grants file. Returns the full gateway handler (with entire
-// middleware chain).
-func newTestGatewayWithUIGating(t *testing.T, upstreamHandler http.HandlerFunc, uiEnabled bool, grantsYAML string) http.Handler {
-	t.Helper()
-
-	upstream := httptest.NewServer(upstreamHandler)
-	t.Cleanup(upstream.Close)
-
-	// Write grants YAML to temp file
-	tmpDir := t.TempDir()
-	grantsPath := filepath.Join(tmpDir, "grants.yaml")
-	if err := os.WriteFile(grantsPath, []byte(grantsYAML), 0644); err != nil {
-		t.Fatalf("Failed to write grants file: %v", err)
-	}
-
-	uiConfig := UIConfigDefaults()
-	uiConfig.Enabled = uiEnabled
-	uiConfig.DefaultMode = "deny" // default: deny unless grant says otherwise
-
-	cfg := &Config{
-		UpstreamURL:            upstream.URL,
-		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
-		AuditLogPath:           "",
-		OPAPolicyPath:          testutil.OPAPolicyPath(),
-		MaxRequestSizeBytes:    1024 * 1024,
-		SPIFFEMode:             "dev",
-		UI:                     uiConfig,
-		UICapabilityGrantsPath: grantsPath,
-	}
-
-	gw, err := New(cfg)
-	if err != nil {
-		t.Fatalf("Failed to create gateway: %v", err)
-	}
-	t.Cleanup(func() { _ = gw.Close() })
-
-	return gw.Handler()
 }
 
 // upstreamToolsListWithUI returns a mock upstream handler that responds to any
@@ -2512,7 +2477,7 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 			w.WriteHeader(http.StatusOK)
 
 			// Send the endpoint event
-			fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
 			flusher.Flush()
 
 			// Register this SSE connection
@@ -2598,7 +2563,7 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 			// Send response via all SSE connections
 			mu.Lock()
 			for _, conn := range sseConns {
-				fmt.Fprintf(conn.w, "event: message\ndata: %s\n\n", string(respJSON))
+				_, _ = fmt.Fprintf(conn.w, "event: message\ndata: %s\n\n", string(respJSON))
 				conn.f.Flush()
 			}
 			mu.Unlock()
@@ -3055,7 +3020,7 @@ func TestMCPTransport_UpstreamDropsMidStream(t *testing.T) {
 			if hijacker, ok := w.(http.Hijacker); ok {
 				conn, _, _ := hijacker.Hijack()
 				if conn != nil {
-					conn.Close()
+					_ = conn.Close()
 				}
 			}
 		}
@@ -3695,6 +3660,289 @@ func TestAdminCircuitBreakers_ListAndGet(t *testing.T) {
 			if e.LastStateChange == nil {
 				t.Fatalf("expected last_state_change set after trip, got nil")
 			}
+		}
+	})
+}
+
+func TestAdminCircuitBreakers_Reset(t *testing.T) {
+	reg, err := middleware.NewToolRegistry(writeTempToolRegistry(t))
+	if err != nil {
+		t.Fatalf("NewToolRegistry: %v", err)
+	}
+
+	cb := middleware.NewCircuitBreaker(middleware.CircuitBreakerConfig{
+		FailureThreshold: 5,
+		ResetTimeout:     time.Hour,
+		SuccessThreshold: 2,
+	}, nil)
+
+	g := &Gateway{
+		registry:       reg,
+		circuitBreaker: cb,
+	}
+
+	t.Run("reset_specific_tool", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			cb.RecordFailure()
+		}
+
+		body := bytes.NewBufferString(`{"tool":"bash"}`)
+		req := httptest.NewRequest(http.MethodPost, "/admin/circuit-breakers/reset", body)
+		rec := httptest.NewRecorder()
+
+		g.adminCircuitBreakersResetHandler(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Reset []struct {
+				Tool          string `json:"tool"`
+				PreviousState string `json:"previous_state"`
+				NewState      string `json:"new_state"`
+			} `json:"reset"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+
+		if len(parsed.Reset) != 1 {
+			t.Fatalf("expected 1 reset entry, got %d", len(parsed.Reset))
+		}
+		if parsed.Reset[0].Tool != "bash" {
+			t.Fatalf("expected tool=bash, got %q", parsed.Reset[0].Tool)
+		}
+		if parsed.Reset[0].PreviousState != "open" {
+			t.Fatalf("expected previous_state=open, got %q", parsed.Reset[0].PreviousState)
+		}
+		if parsed.Reset[0].NewState != "closed" {
+			t.Fatalf("expected new_state=closed, got %q", parsed.Reset[0].NewState)
+		}
+		if cb.State() != middleware.CircuitClosed {
+			t.Fatalf("expected circuit breaker closed, got %s", cb.State().String())
+		}
+	})
+
+	t.Run("reset_all_tools", func(t *testing.T) {
+		for i := 0; i < 5; i++ {
+			cb.RecordFailure()
+		}
+
+		body := bytes.NewBufferString(`{"tool":"*"}`)
+		req := httptest.NewRequest(http.MethodPost, "/admin/circuit-breakers/reset", body)
+		rec := httptest.NewRecorder()
+
+		g.adminCircuitBreakersResetHandler(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Reset []struct {
+				Tool          string `json:"tool"`
+				PreviousState string `json:"previous_state"`
+				NewState      string `json:"new_state"`
+			} `json:"reset"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+
+		if len(parsed.Reset) != 2 {
+			t.Fatalf("expected 2 reset entries, got %d", len(parsed.Reset))
+		}
+		for _, e := range parsed.Reset {
+			if e.PreviousState != "open" {
+				t.Fatalf("expected previous_state=open, got %q", e.PreviousState)
+			}
+			if e.NewState != "closed" {
+				t.Fatalf("expected new_state=closed, got %q", e.NewState)
+			}
+		}
+		if cb.State() != middleware.CircuitClosed {
+			t.Fatalf("expected circuit breaker closed, got %s", cb.State().String())
+		}
+	})
+
+	t.Run("unknown_tool_404", func(t *testing.T) {
+		body := bytes.NewBufferString(`{"tool":"does-not-exist"}`)
+		req := httptest.NewRequest(http.MethodPost, "/admin/circuit-breakers/reset", body)
+		rec := httptest.NewRecorder()
+
+		g.adminCircuitBreakersResetHandler(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed map[string]string
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		expected := "unknown tool: does-not-exist"
+		if parsed["error"] != expected {
+			t.Fatalf("expected error=%q, got %q", expected, parsed["error"])
+		}
+	})
+}
+
+func TestAdminPolicyReload(t *testing.T) {
+	newOPA := func(t *testing.T) *middleware.OPAEngine {
+		t.Helper()
+		opa, err := middleware.NewOPAEngine(testutil.OPAPolicyDir(), middleware.OPAEngineConfig{})
+		if err != nil {
+			t.Fatalf("NewOPAEngine: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = opa.Close()
+		})
+		return opa
+	}
+
+	t.Run("success", func(t *testing.T) {
+		reg, err := middleware.NewToolRegistry(writeTempToolRegistry(t))
+		if err != nil {
+			t.Fatalf("NewToolRegistry: %v", err)
+		}
+
+		g := &Gateway{
+			registry: reg,
+			opa:      newOPA(t),
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/policy/reload", nil)
+		rec := httptest.NewRecorder()
+		g.adminPolicyReloadHandler(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status=%d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Status         string `json:"status"`
+			Timestamp      string `json:"timestamp"`
+			RegistryTools  int    `json:"registry_tools"`
+			OPAPolicies    int    `json:"opa_policies"`
+			CosignVerified bool   `json:"cosign_verified"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if parsed.Status != "reloaded" {
+			t.Fatalf("expected status=reloaded, got %q", parsed.Status)
+		}
+		if _, err := time.Parse(time.RFC3339, parsed.Timestamp); err != nil {
+			t.Fatalf("expected RFC3339 timestamp, got %q (err=%v)", parsed.Timestamp, err)
+		}
+		if parsed.RegistryTools != 2 {
+			t.Fatalf("expected registry_tools=2, got %d", parsed.RegistryTools)
+		}
+		if parsed.OPAPolicies <= 0 {
+			t.Fatalf("expected opa_policies > 0, got %d", parsed.OPAPolicies)
+		}
+		if parsed.CosignVerified {
+			t.Fatalf("expected cosign_verified=false in dev mode, got true")
+		}
+	})
+
+	t.Run("registry_parse_failure_returns_400", func(t *testing.T) {
+		configPath := writeTempToolRegistry(t)
+		reg, err := middleware.NewToolRegistry(configPath)
+		if err != nil {
+			t.Fatalf("NewToolRegistry: %v", err)
+		}
+		if err := os.WriteFile(configPath, []byte("tools: ["), 0644); err != nil {
+			t.Fatalf("write invalid yaml: %v", err)
+		}
+
+		g := &Gateway{
+			registry: reg,
+			opa:      newOPA(t),
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/policy/reload", nil)
+		rec := httptest.NewRecorder()
+		g.adminPolicyReloadHandler(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Status         string `json:"status"`
+			Error          string `json:"error"`
+			CosignVerified bool   `json:"cosign_verified"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if parsed.Status != "failed" {
+			t.Fatalf("expected status=failed, got %q", parsed.Status)
+		}
+		if !strings.Contains(parsed.Error, "failed to parse config file") {
+			t.Fatalf("expected parse error, got %q", parsed.Error)
+		}
+		if parsed.CosignVerified {
+			t.Fatalf("expected cosign_verified=false on failure")
+		}
+	})
+
+	t.Run("cosign_verification_failure_returns_400", func(t *testing.T) {
+		configPath := writeTempToolRegistry(t)
+		reg, err := middleware.NewToolRegistry(configPath)
+		if err != nil {
+			t.Fatalf("NewToolRegistry: %v", err)
+		}
+
+		pub, _, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			t.Fatalf("GenerateKey: %v", err)
+		}
+		pubDER, err := x509.MarshalPKIXPublicKey(pub)
+		if err != nil {
+			t.Fatalf("MarshalPKIXPublicKey: %v", err)
+		}
+		pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+		if err := reg.SetPublicKey(pubPEM); err != nil {
+			t.Fatalf("SetPublicKey: %v", err)
+		}
+
+		invalidSig := base64.StdEncoding.EncodeToString(make([]byte, ed25519.SignatureSize))
+		if err := os.WriteFile(configPath+".sig", []byte(invalidSig), 0644); err != nil {
+			t.Fatalf("write invalid sig: %v", err)
+		}
+
+		g := &Gateway{
+			registry: reg,
+			opa:      newOPA(t),
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/policy/reload", nil)
+		rec := httptest.NewRecorder()
+		g.adminPolicyReloadHandler(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Status         string `json:"status"`
+			Error          string `json:"error"`
+			CosignVerified bool   `json:"cosign_verified"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if parsed.Status != "failed" {
+			t.Fatalf("expected status=failed, got %q", parsed.Status)
+		}
+		if !strings.Contains(parsed.Error, "signature verification failed") {
+			t.Fatalf("expected signature verification error, got %q", parsed.Error)
+		}
+		if parsed.CosignVerified {
+			t.Fatalf("expected cosign_verified=false when verification fails")
 		}
 	})
 }

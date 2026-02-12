@@ -12,15 +12,19 @@ type Config struct {
 	UpstreamURL            string
 	OPAPolicyDir           string
 	ToolRegistryConfigPath string
-	AuditLogPath           string
-	OPAPolicyPath          string
-	MaxRequestSizeBytes    int64
-	SPIFFEMode             string // "dev" or "prod"
-	LogLevel               string
-	GroqAPIKey             string
-	GuardModelEndpoint     string // base URL for guard model API (default: Groq)
-	GuardModelName         string // model identifier for guard model (default: llama-prompt-guard-2-86m)
-	GuardAPIKey            string // API key for guard model (default: falls back to GroqAPIKey)
+	// CapabilityRegistryV2Path is a placeholder for Phase 3 "tool plane" evolution.
+	// The POC does not require a V2 registry file to exist; the engine may treat it
+	// as optional. (RFA-owgw.6)
+	CapabilityRegistryV2Path string
+	AuditLogPath             string
+	OPAPolicyPath            string
+	MaxRequestSizeBytes      int64
+	SPIFFEMode               string // "dev" or "prod"
+	LogLevel                 string
+	GroqAPIKey               string
+	GuardModelEndpoint       string // base URL for guard model API (default: Groq)
+	GuardModelName           string // model identifier for guard model (default: llama-prompt-guard-2-86m)
+	GuardAPIKey              string // API key for guard model (default: falls back to GroqAPIKey)
 	// DLP_INJECTION_POLICY env var overrides dlp.injection YAML config (RFA-sd7).
 	// Only injection gets an env var override:
 	//   - credentials=block is a security invariant (must not be easily toggled via env var)
@@ -210,49 +214,50 @@ func ConfigFromEnv() *Config {
 	}
 
 	return &Config{
-		Port:                    port,
-		UpstreamURL:             getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
-		OPAPolicyDir:            getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
-		ToolRegistryConfigPath:  getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
-		AuditLogPath:            getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
-		OPAPolicyPath:           getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
-		MaxRequestSizeBytes:     maxRequestSize,
-		SPIFFEMode:              getEnvOrDefault("SPIFFE_MODE", "dev"),
-		LogLevel:                getEnvOrDefault("LOG_LEVEL", "info"),
-		GroqAPIKey:              getEnvOrDefault("GROQ_API_KEY", ""),
-		GuardModelEndpoint:      getEnvOrDefault("GUARD_MODEL_ENDPOINT", "https://api.groq.com/openai/v1"),
-		GuardModelName:          getEnvOrDefault("GUARD_MODEL_NAME", "meta-llama/llama-prompt-guard-2-86m"),
-		GuardAPIKey:             getEnvOrDefault("GUARD_API_KEY", getEnvOrDefault("GROQ_API_KEY", "")),
-		DLPInjectionPolicy:      getEnvOrDefault("DLP_INJECTION_POLICY", ""),
-		DeepScanTimeout:         deepScanTimeout,
-		DeepScanFallback:        deepScanFallback,
-		RateLimitRPM:            rateLimitRPM,
-		RateLimitBurst:          rateLimitBurst,
-		CircuitFailureThreshold: circuitFailureThreshold,
-		CircuitResetTimeout:     circuitResetTimeout,
-		CircuitSuccessThreshold: circuitSuccessThreshold,
-		HandleTTL:               handleTTL,
-		DestinationsConfigPath:  getEnvOrDefault("DESTINATIONS_CONFIG_PATH", "/config/destinations.yaml"),
-		RiskThresholdsPath:      getEnvOrDefault("RISK_THRESHOLDS_PATH", "/config/risk_thresholds.yaml"),
-		AllowedBasePath:         allowedBasePath,
-		UIConfigPath:            uiConfigPath,
-		UI:                      uiConfig,
-		UICapabilityGrantsPath:  getEnvOrDefault("UI_CAPABILITY_GRANTS_PATH", "/config/opa/ui_capability_grants.yaml"),
-		SPIKENexusURL:           getEnvOrDefault("SPIKE_NEXUS_URL", ""),
-		SPIFFETrustDomain:       getEnvOrDefault("SPIFFE_TRUST_DOMAIN", "poc.local"),
-		SPIFFEListenPort:        spiffeListenPort,
-		OTelEndpoint:            os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), // empty = no-op (AC6)
-		OTelServiceName:         getEnvOrDefault("OTEL_SERVICE_NAME", "mcp-security-gateway"),
-		KeyDBURL:                getEnvOrDefault("KEYDB_URL", ""),
-		KeyDBPoolMin:            keyDBPoolMin,
-		KeyDBPoolMax:            keyDBPoolMax,
-		SessionTTL:              sessionTTL,
-		ToolRegistryPublicKey:   getEnvOrDefault("TOOL_REGISTRY_PUBLIC_KEY", ""),
-		MCPTransportMode:        getEnvOrDefault("MCP_TRANSPORT_MODE", "mcp"),
-		MCPProbeTimeout:         mcpProbeTimeout,
-		MCPDetectTimeout:        mcpDetectTimeout,
-		MCPRequestTimeout:       mcpRequestTimeout,
-		DemoRugpullAdminEnabled: demoRugpullAdminEnabled,
+		Port:                     port,
+		UpstreamURL:              getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
+		OPAPolicyDir:             getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
+		ToolRegistryConfigPath:   getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
+		CapabilityRegistryV2Path: getEnvOrDefault("CAPABILITY_REGISTRY_V2_PATH", ""),
+		AuditLogPath:             getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
+		OPAPolicyPath:            getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
+		MaxRequestSizeBytes:      maxRequestSize,
+		SPIFFEMode:               getEnvOrDefault("SPIFFE_MODE", "dev"),
+		LogLevel:                 getEnvOrDefault("LOG_LEVEL", "info"),
+		GroqAPIKey:               getEnvOrDefault("GROQ_API_KEY", ""),
+		GuardModelEndpoint:       getEnvOrDefault("GUARD_MODEL_ENDPOINT", "https://api.groq.com/openai/v1"),
+		GuardModelName:           getEnvOrDefault("GUARD_MODEL_NAME", "meta-llama/llama-prompt-guard-2-86m"),
+		GuardAPIKey:              getEnvOrDefault("GUARD_API_KEY", getEnvOrDefault("GROQ_API_KEY", "")),
+		DLPInjectionPolicy:       getEnvOrDefault("DLP_INJECTION_POLICY", ""),
+		DeepScanTimeout:          deepScanTimeout,
+		DeepScanFallback:         deepScanFallback,
+		RateLimitRPM:             rateLimitRPM,
+		RateLimitBurst:           rateLimitBurst,
+		CircuitFailureThreshold:  circuitFailureThreshold,
+		CircuitResetTimeout:      circuitResetTimeout,
+		CircuitSuccessThreshold:  circuitSuccessThreshold,
+		HandleTTL:                handleTTL,
+		DestinationsConfigPath:   getEnvOrDefault("DESTINATIONS_CONFIG_PATH", "/config/destinations.yaml"),
+		RiskThresholdsPath:       getEnvOrDefault("RISK_THRESHOLDS_PATH", "/config/risk_thresholds.yaml"),
+		AllowedBasePath:          allowedBasePath,
+		UIConfigPath:             uiConfigPath,
+		UI:                       uiConfig,
+		UICapabilityGrantsPath:   getEnvOrDefault("UI_CAPABILITY_GRANTS_PATH", "/config/opa/ui_capability_grants.yaml"),
+		SPIKENexusURL:            getEnvOrDefault("SPIKE_NEXUS_URL", ""),
+		SPIFFETrustDomain:        getEnvOrDefault("SPIFFE_TRUST_DOMAIN", "poc.local"),
+		SPIFFEListenPort:         spiffeListenPort,
+		OTelEndpoint:             os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), // empty = no-op (AC6)
+		OTelServiceName:          getEnvOrDefault("OTEL_SERVICE_NAME", "mcp-security-gateway"),
+		KeyDBURL:                 getEnvOrDefault("KEYDB_URL", ""),
+		KeyDBPoolMin:             keyDBPoolMin,
+		KeyDBPoolMax:             keyDBPoolMax,
+		SessionTTL:               sessionTTL,
+		ToolRegistryPublicKey:    getEnvOrDefault("TOOL_REGISTRY_PUBLIC_KEY", ""),
+		MCPTransportMode:         getEnvOrDefault("MCP_TRANSPORT_MODE", "mcp"),
+		MCPProbeTimeout:          mcpProbeTimeout,
+		MCPDetectTimeout:         mcpDetectTimeout,
+		MCPRequestTimeout:        mcpRequestTimeout,
+		DemoRugpullAdminEnabled:  demoRugpullAdminEnabled,
 	}
 }
 

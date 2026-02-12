@@ -327,12 +327,7 @@ func ComputeRiskScore(
 
 	// If tool is unknown, use defaults with max novelty
 	if toolDef == nil {
-		return RiskDimension{
-			Impact:        defaults.Impact,
-			Reversibility: defaults.Reversibility,
-			Exposure:      defaults.Exposure,
-			Novelty:       defaults.Novelty,
-		}
+		return RiskDimension(defaults)
 	}
 
 	// --- Impact dimension (0-3) ---

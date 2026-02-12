@@ -38,7 +38,9 @@ allow = true {
 	if err != nil {
 		t.Fatalf("Failed to create OPA engine: %v", err)
 	}
-	defer engine.Close()
+	defer func() {
+		_ = engine.Close()
+	}()
 
 	if engine == nil {
 		t.Fatal("Engine should not be nil")
@@ -78,7 +80,9 @@ allow = {
 	if err != nil {
 		t.Fatalf("Failed to create OPA engine: %v", err)
 	}
-	defer engine.Close()
+	defer func() {
+		_ = engine.Close()
+	}()
 
 	tests := []struct {
 		name       string
@@ -177,7 +181,9 @@ default allow = {
 	if err != nil {
 		t.Fatalf("Failed to create OPA engine: %v", err)
 	}
-	defer engine.Close()
+	defer func() {
+		_ = engine.Close()
+	}()
 
 	// Test initial policy (should deny)
 	input := OPAInput{
@@ -267,7 +273,9 @@ default allow = {"allow": true, "reason": "allowed"}
 	if err != nil {
 		t.Fatalf("Failed to create OPA engine: %v", err)
 	}
-	defer engine.Close()
+	defer func() {
+		_ = engine.Close()
+	}()
 
 	tests := []struct {
 		name      string
@@ -462,7 +470,9 @@ default allow = {"allow": true, "reason": "allowed"}
 	if err != nil {
 		t.Fatalf("Failed to create OPA engine: %v", err)
 	}
-	defer engine.Close()
+	defer func() {
+		_ = engine.Close()
+	}()
 
 	// Even with clean content and normal session, context policy should deny
 	// because the policy is not loaded (no mcp.context package)
@@ -569,7 +579,9 @@ allow := {"allow": false, "reason": "path_denied"} if {
 			if err != nil {
 				t.Fatalf("Failed to create OPA engine: %v", err)
 			}
-			defer engine.Close()
+			defer func() {
+				_ = engine.Close()
+			}()
 
 			input := OPAInput{
 				SPIFFEID: "spiffe://test/agent",
@@ -613,7 +625,9 @@ default allow = {
 	if err != nil {
 		t.Fatalf("Failed to create OPA engine: %v", err)
 	}
-	defer engine.Close()
+	defer func() {
+		_ = engine.Close()
+	}()
 
 	input := OPAInput{
 		SPIFFEID: "spiffe://test/agent",

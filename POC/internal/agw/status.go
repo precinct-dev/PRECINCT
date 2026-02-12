@@ -152,7 +152,9 @@ func checkKeyDB(ctx context.Context, cfg Config, deps Deps) ComponentStatus {
 	if err != nil {
 		return ComponentStatus{Name: "keydb", Status: "fail", Details: map[string]any{"error": err.Error()}}
 	}
-	defer client.Close()
+	defer func() {
+		_ = client.Close()
+	}()
 
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -270,7 +272,7 @@ func checkHTTP(ctx context.Context, deps Deps, name, url string, details map[str
 		}
 		return ComponentStatus{Name: name, Status: status, Details: map[string]any{"error": err.Error()}}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return ComponentStatus{Name: name, Status: "fail", Details: map[string]any{"status_code": resp.StatusCode}}
 	}
@@ -294,7 +296,7 @@ func getGatewayHealth(ctx context.Context, c *http.Client, url string) (*Gateway
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("gateway unhealthy: status_code=%d", resp.StatusCode)
 	}

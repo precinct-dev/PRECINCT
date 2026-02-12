@@ -47,7 +47,7 @@ func NewSPIFFETLSConfig(ctx context.Context) (*SPIFFETLSConfig, error) {
 	// Log the SVID we received for operational visibility
 	svid, err := x509Source.GetX509SVID()
 	if err != nil {
-		x509Source.Close()
+		_ = x509Source.Close()
 		return nil, fmt.Errorf("failed to get X509 SVID: %w", err)
 	}
 	log.Printf("SPIFFE mTLS: obtained SVID %s (cert expires: %s)",

@@ -244,6 +244,14 @@ func (cb *CircuitBreaker) RecordFailure() {
 	}
 }
 
+// Reset forces the circuit breaker back to closed state and clears counters.
+// This is intended for operator/admin recovery flows.
+func (cb *CircuitBreaker) Reset() {
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	cb.transitionTo(CircuitClosed)
+}
+
 // transitionTo changes the circuit state (must be called with lock held)
 func (cb *CircuitBreaker) transitionTo(newState CircuitState) {
 	oldState := cb.state

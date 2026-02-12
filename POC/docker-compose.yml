@@ -128,6 +128,9 @@ services:
       - SPIKE_NEXUS_KEEPER_PEERS=https://spike-keeper-1:8443
       - SPIKE_NEXUS_SHAMIR_THRESHOLD=1
       - SPIKE_NEXUS_SHAMIR_SHARES=1
+      # RFA-67xd: repave reliability. Nexus periodically re-contributes keeper shards;
+      # short interval ensures keeper shard recovery before next dependent restart.
+      - SPIKE_NEXUS_KEEPER_UPDATE_INTERVAL=5s
       - SPIKE_SYSTEM_LOG_LEVEL=INFO
       - SPIKE_TRUST_ROOT=poc.local
       - SPIKE_TRUST_ROOT_NEXUS=poc.local
@@ -248,16 +251,58 @@ services:
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
-        set -e
+        set -eu
         echo 'spike-seeder: waiting for SPIKE Nexus readiness...'
         sleep 5
         echo 'spike-seeder: seeding ref=deadbeef'
-        spike secret put deadbeef value=test-secret-value-12345
+        seeded=0
+        attempt=1
+        max_attempts=15
+        while [ "$$attempt" -le "$$max_attempts" ]; do
+          echo "spike-seeder: secret put attempt $$attempt/$$max_attempts"
+          PUT_OUT="$$(spike secret put deadbeef value=test-secret-value-12345 2>&1 || true)"
+          echo "$$PUT_OUT"
+
+          LIST_OUT="$$(spike secret list 2>&1 || true)"
+          echo "$$LIST_OUT"
+
+          if ! echo "$$PUT_OUT" | grep -qi "Error:" && echo "$$LIST_OUT" | grep -q "deadbeef"; then
+            seeded=1
+            break
+          fi
+
+          attempt=$$((attempt + 1))
+          sleep 2
+        done
+
+        if [ "$$seeded" -ne 1 ]; then
+          echo 'spike-seeder: warning: failed to seed deadbeef after retries (continuing for POC compatibility)'
+        fi
+
         echo 'spike-seeder: creating gateway-read ACL policy'
-        spike policy create --name=gateway-read \
+        policy_created=0
+        attempt=1
+        while [ "$$attempt" -le "$$max_attempts" ]; do
+          echo "spike-seeder: policy create attempt $$attempt/$$max_attempts"
+          POLICY_OUT="$$(spike policy create --name=gateway-read \
           --path-pattern='.*' \
           --spiffeid-pattern='^spiffe://poc.local/gateways/.*' \
-          --permissions=read
+          --permissions=read 2>&1 || true)"
+          echo "$$POLICY_OUT"
+
+          if ! echo "$$POLICY_OUT" | grep -qi "Error:"; then
+            policy_created=1
+            break
+          fi
+
+          attempt=$$((attempt + 1))
+          sleep 2
+        done
+
+        if [ "$$policy_created" -ne 1 ]; then
+          echo 'spike-seeder: warning: failed to create policy after retries (continuing for POC compatibility)'
+        fi
+
         echo 'spike-seeder: done'
     networks:
       - agentic-net
@@ -400,6 +445,7 @@ services:
       - DEMO_RUGPULL_ADMIN_ENABLED=1  # Demo-only: gateway mediates upstream rugpull toggles (RFA-1r0x)
       - OPA_POLICY_DIR=/config/opa
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
+      - CAPABILITY_REGISTRY_V2_PATH=/config/capability-registry-v2.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760
       - SPIFFE_MODE=dev
       - SPIFFE_TRUST_DOMAIN=poc.local
@@ -420,6 +466,9 @@ services:
       - DEEP_SCAN_FALLBACK=${DEEP_SCAN_FALLBACK:-fail_closed}  # RFA-o9z: "fail_closed" (default) or "fail_open"
       # Demo determinism: always point the deep scan guard model to the local mock service.
       - GUARD_MODEL_ENDPOINT=http://mock-guard-model:8080/openai/v1  # RFA-6fse.3: deterministic, no external keys/network
+      # Phase 3 model egress demo determinism: route Groq provider calls to local mock endpoint.
+      # Use host.docker.internal so gateway local-dev HTTP exception applies without weakening TLS checks.
+      - MODEL_PROVIDER_ENDPOINT_GROQ=http://host.docker.internal:8083/openai/v1/chat/completions
       - GUARD_MODEL_NAME=${GUARD_MODEL_NAME:-}  # RFA-j6c: Guard model identifier (default: llama-prompt-guard-2-86m)
       # Demo determinism: ensure deep scan is enabled (non-empty key) without requiring real credentials.
       - GUARD_API_KEY=demo-guard-key  # RFA-6fse.3: deterministic, dummy key

@@ -41,7 +41,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "healthcheck: x509 source: %v\n", err)
 		os.Exit(1)
 	}
-	defer x509Source.Close()
+	defer func() {
+		_ = x509Source.Close()
+	}()
 
 	tlsCfg := tlsconfig.MTLSClientConfig(x509Source, x509Source, tlsconfig.AuthorizeAny())
 	client := &http.Client{
@@ -56,7 +58,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "healthcheck: GET %s: %v\n", url, err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// Any response proves mTLS works. Only 5xx indicates the service itself is unhealthy.
 	if resp.StatusCode >= 500 {

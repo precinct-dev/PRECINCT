@@ -27,9 +27,15 @@ func TestDeleteRateLimitKeysForSPIFFEID_DeletesTokensAndLastFill(t *testing.T) {
 	defer cancel()
 
 	spiffe := "spiffe://poc.local/agents/test/dev"
-	mr.Set("ratelimit:"+spiffe+":tokens", "1.5")
-	mr.Set("ratelimit:"+spiffe+":last_fill", "123")
-	mr.Set("unrelated", "keep")
+	if err := mr.Set("ratelimit:"+spiffe+":tokens", "1.5"); err != nil {
+		t.Fatalf("seed tokens: %v", err)
+	}
+	if err := mr.Set("ratelimit:"+spiffe+":last_fill", "123"); err != nil {
+		t.Fatalf("seed last_fill: %v", err)
+	}
+	if err := mr.Set("unrelated", "keep"); err != nil {
+		t.Fatalf("seed unrelated key: %v", err)
+	}
 
 	n, keys, err := DeleteRateLimitKeysForSPIFFEID(ctx, rdb, spiffe)
 	if err != nil {
@@ -38,7 +44,7 @@ func TestDeleteRateLimitKeysForSPIFFEID_DeletesTokensAndLastFill(t *testing.T) {
 	if n != 2 {
 		t.Fatalf("expected deleted=2, got %d (keys=%v)", n, keys)
 	}
-	if mr.Exists("ratelimit:" + spiffe + ":tokens") || mr.Exists("ratelimit:"+spiffe+":last_fill") {
+	if mr.Exists("ratelimit:"+spiffe+":tokens") || mr.Exists("ratelimit:"+spiffe+":last_fill") {
 		t.Fatalf("expected ratelimit keys removed")
 	}
 	if !mr.Exists("unrelated") {
@@ -51,10 +57,18 @@ func TestDeleteAllRateLimitKeys_DeletesOnlyRatelimitPrefix(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 
-	mr.Set("ratelimit:spiffe://a:tokens", "1")
-	mr.Set("ratelimit:spiffe://a:last_fill", "1")
-	mr.Set("ratelimit:spiffe://b:tokens", "1")
-	mr.Set("session:spiffe://a", "keep")
+	if err := mr.Set("ratelimit:spiffe://a:tokens", "1"); err != nil {
+		t.Fatalf("seed key: %v", err)
+	}
+	if err := mr.Set("ratelimit:spiffe://a:last_fill", "1"); err != nil {
+		t.Fatalf("seed key: %v", err)
+	}
+	if err := mr.Set("ratelimit:spiffe://b:tokens", "1"); err != nil {
+		t.Fatalf("seed key: %v", err)
+	}
+	if err := mr.Set("session:spiffe://a", "keep"); err != nil {
+		t.Fatalf("seed key: %v", err)
+	}
 
 	n, err := DeleteAllRateLimitKeys(ctx, rdb)
 	if err != nil {
@@ -70,4 +84,3 @@ func TestDeleteAllRateLimitKeys_DeletesOnlyRatelimitPrefix(t *testing.T) {
 		t.Fatalf("expected non-ratelimit keys to remain")
 	}
 }
-

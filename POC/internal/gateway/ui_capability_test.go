@@ -10,6 +10,20 @@ import (
 	"github.com/example/agentic-security-poc/internal/testutil"
 )
 
+func mustWriteTestFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+}
+
+func mustUnmarshalJSON(t *testing.T, data []byte, target any) {
+	t.Helper()
+	if err := json.Unmarshal(data, target); err != nil {
+		t.Fatalf("unmarshal JSON: %v", err)
+	}
+}
+
 // --- Grant Loading Tests ---
 
 func TestLoadUICapabilityGrants_ValidFile(t *testing.T) {
@@ -39,9 +53,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	if err := os.WriteFile(tmpFile, []byte(yamlContent), 0644); err != nil {
-		t.Fatalf("Failed to write temp file: %v", err)
-	}
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	grants, err := LoadUICapabilityGrants(tmpFile)
 	if err != nil {
@@ -138,7 +150,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	uiConfig := UIConfigDefaults()
 	uiConfig.Enabled = true
@@ -196,7 +208,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -228,7 +240,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -284,7 +296,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -310,7 +322,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -336,7 +348,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -407,7 +419,7 @@ func TestApplyUICapabilityGating_DenyModeStripsMetaUI(t *testing.T) {
 
 	// Verify _meta.ui was stripped
 	var result map[string]interface{}
-	json.Unmarshal(processed, &result)
+	mustUnmarshalJSON(t, processed, &result)
 	resultMap := result["result"].(map[string]interface{})
 	toolList := resultMap["tools"].([]interface{})
 
@@ -464,7 +476,7 @@ func TestApplyUICapabilityGating_DenyModePreservesOtherMeta(t *testing.T) {
 	}
 
 	var result map[string]interface{}
-	json.Unmarshal(processed, &result)
+	mustUnmarshalJSON(t, processed, &result)
 	toolList := result["result"].(map[string]interface{})["tools"].([]interface{})
 	tool := toolList[0].(map[string]interface{})
 
@@ -495,7 +507,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -518,7 +530,7 @@ ui_capability_grants:
 
 	// Verify _meta.ui is preserved
 	var result map[string]interface{}
-	json.Unmarshal(processed, &result)
+	mustUnmarshalJSON(t, processed, &result)
 	toolList := result["result"].(map[string]interface{})["tools"].([]interface{})
 	tool := toolList[0].(map[string]interface{})
 
@@ -561,7 +573,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -591,7 +603,7 @@ ui_capability_grants:
 	}
 
 	var result map[string]interface{}
-	json.Unmarshal(processed, &result)
+	mustUnmarshalJSON(t, processed, &result)
 	toolList := result["result"].(map[string]interface{})["tools"].([]interface{})
 
 	for _, toolItem := range toolList {
@@ -643,7 +655,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -666,7 +678,7 @@ ui_capability_grants:
 
 	// _meta.ui should be preserved for all tools
 	var result map[string]interface{}
-	json.Unmarshal(processed, &result)
+	mustUnmarshalJSON(t, processed, &result)
 	toolList := result["result"].(map[string]interface{})["tools"].([]interface{})
 	tool := toolList[0].(map[string]interface{})
 
@@ -702,7 +714,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -725,7 +737,7 @@ ui_capability_grants:
 
 	// _meta.ui should be stripped despite grant saying "allow"
 	var result map[string]interface{}
-	json.Unmarshal(processed, &result)
+	mustUnmarshalJSON(t, processed, &result)
 	toolList := result["result"].(map[string]interface{})["tools"].([]interface{})
 	tool := toolList[0].(map[string]interface{})
 
@@ -804,7 +816,7 @@ func TestApplyUICapabilityGating_ToolsWithNoMetaUI(t *testing.T) {
 
 	// Standard tools should be unmodified
 	var result map[string]interface{}
-	json.Unmarshal(processed, &result)
+	mustUnmarshalJSON(t, processed, &result)
 	toolList := result["result"].(map[string]interface{})["tools"].([]interface{})
 	tool := toolList[0].(map[string]interface{})
 
@@ -832,7 +844,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -862,7 +874,7 @@ ui_capability_grants:
 	}
 
 	var result map[string]interface{}
-	json.Unmarshal(processed, &result)
+	mustUnmarshalJSON(t, processed, &result)
 	toolList := result["result"].(map[string]interface{})["tools"].([]interface{})
 
 	for _, toolItem := range toolList {
@@ -932,7 +944,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -959,7 +971,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -989,7 +1001,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 
@@ -1068,7 +1080,7 @@ ui_capability_grants:
 `
 	tmpDir := t.TempDir()
 	tmpFile := filepath.Join(tmpDir, "grants.yaml")
-	os.WriteFile(tmpFile, []byte(yamlContent), 0644)
+	mustWriteTestFile(t, tmpFile, yamlContent)
 
 	gating := NewUICapabilityGating(uiConfig, tmpFile)
 	grant := gating.LookupGrant("srv", "tnt")
