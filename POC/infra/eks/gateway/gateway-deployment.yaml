@@ -65,6 +65,9 @@ spec:
             # Tool registry configuration (mounted from ConfigMap)
             - name: TOOL_REGISTRY_CONFIG_PATH
               value: "/config/tool-registry.yaml"
+            # Unified capability registry v2 (Phase 3 tool/model governance)
+            - name: CAPABILITY_REGISTRY_V2_PATH
+              value: "/config/capability-registry-v2.yaml"
             # Maximum request body size (10 MB)
             - name: MAX_REQUEST_SIZE_BYTES
               value: "10485760"
@@ -119,6 +122,11 @@ spec:
               mountPath: /config/tool-registry.yaml
               subPath: tool-registry.yaml
               readOnly: true
+            # Capability registry v2 (from ConfigMap)
+            - name: config-registry
+              mountPath: /config/capability-registry-v2.yaml
+              subPath: capability-registry-v2.yaml
+              readOnly: true
             # Writable tmp directory for audit logs and runtime data
             - name: gateway-tmp
               mountPath: /tmp
@@ -138,7 +146,7 @@ spec:
         - name: spire-agent-socket
           hostPath:
             path: /run/spire/sockets
-            type: Directory
+            type: DirectoryOrCreate
         # OPA policy files from ConfigMap
         - name: config-opa
           configMap:
@@ -166,6 +174,8 @@ spec:
             items:
               - key: tool-registry.yaml
                 path: tool-registry.yaml
+              - key: capability-registry-v2.yaml
+                path: capability-registry-v2.yaml
             optional: false
         # Writable tmp for audit logs and runtime data
         - name: gateway-tmp
