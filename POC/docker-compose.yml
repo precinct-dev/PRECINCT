@@ -147,6 +147,13 @@ services:
       - "spiffe-id=spike-nexus"
       - "component=secrets"
       - "service=spike"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
 
   # SPIKE Keeper 1 - Shamir key shard holder for Nexus root key recovery (RFA-oyg)
   # Single Keeper with threshold=1, shares=1 is minimum viable for POC.
@@ -182,6 +189,13 @@ services:
       - "spiffe-id=spike-keeper-1"
       - "component=secrets"
       - "service=spike"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     restart: "no"
 
   # SPIKE Bootstrap - One-shot init container to deliver root encryption key (RFA-oyg)
@@ -388,6 +402,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
 
   # Mock Guard Model - Canned "OpenAI chat completions" endpoint for Deep Scan (RFA-6fse.3)
   # Allows demo-compose to deterministically exercise Step 10 deep scan deny behavior
@@ -405,6 +426,13 @@ services:
       interval: 5s
       timeout: 3s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
 
   # MCP Security Gateway - Security enforcement point for all MCP requests
   mcp-security-gateway:
@@ -478,6 +506,13 @@ services:
       - secrets-plane
       - data-plane
       - phoenix-net  # RFA-80d: Reach otel-collector on phoenix-observability-network
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
     labels:
       - "spiffe-id=mcp-security-gateway"
       - "component=gateway"
