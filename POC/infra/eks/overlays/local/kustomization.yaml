@@ -53,6 +53,7 @@ configMapGenerator:
     behavior: replace
     files:
       - tool-registry.yaml=gateway-config/tool-registry.yaml
+      - capability-registry-v2.yaml=gateway-config/capability-registry-v2.yaml
       - mcp_policy.rego=gateway-config/mcp_policy.rego
       - ui_policy.rego=gateway-config/ui_policy.rego
       - ui_csp_policy.rego=gateway-config/ui_csp_policy.rego
@@ -469,6 +470,34 @@ patches:
                   limits:
                     cpu: 100m
                     memory: 256Mi
+
+  # --------------------------------------------------------------------------
+  # SPIKE Jobs: delete from local overlay output (applied by `make k8s-up` only
+  # after SPIRE workload registration, to avoid transient bootstrap Error pods).
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Job
+      name: spike-bootstrap
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: spike-bootstrap
+        namespace: spike-system
+
+  - target:
+      kind: Job
+      name: spike-secret-seeder
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: spike-secret-seeder
+        namespace: spike-system
 
   # SPIKE Nexus: replace HTTPS probes with TCP socket (JSON patch)
   # SPIKE requires mTLS; kubelet can't provide SPIFFE client certs.
