@@ -1,6 +1,6 @@
 # Token Generator - Creates fresh SPIRE join tokens for agent attestation
-FROM ghcr.io/spiffe/spire-server:1.10.0 as spire
-FROM busybox:1.36
+FROM ghcr.io/spiffe/spire-server:1.10.0@sha256:26daa394b3bfbc9dcadc734e9b110ce7ac5f2e1fe16050eb4418772280748b5e as spire
+FROM busybox:1.36@sha256:b9598f8c98e24d0ad42c1742c32516772c3aa2151011ebaf639089bd18c605b8
 
 # Copy SPIRE server binary for token generation
 COPY --from=spire /opt/spire/bin/spire-server /opt/spire/bin/spire-server
