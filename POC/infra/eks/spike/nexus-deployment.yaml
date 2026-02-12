@@ -119,7 +119,7 @@ spec:
         - name: spire-agent-socket
           hostPath:
             path: /run/spire/sockets
-            type: Directory
+            type: DirectoryOrCreate
         # Writable tmp for SPIKE runtime
         - name: spike-tmp
           emptyDir:

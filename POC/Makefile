@@ -1,4 +1,4 @@
-.PHONY: help up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down ci benchmark security-scan \
+.PHONY: help up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate ci benchmark security-scan \
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
        compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
        k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -54,6 +54,22 @@ up: ## Start Docker Compose stack (waits for all services healthy)
 				echo "  Not ready: $$s (state=$$state health=$$health)"; \
 			fi; \
 		done; \
+		if [ "$$ok" -ne 1 ]; then \
+			echo "Attempting gateway-only recovery after compose dependency timeout..."; \
+			docker compose up -d --no-deps mcp-security-gateway >/dev/null 2>&1 || true; \
+			sleep 5; \
+			ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+			ok=1; \
+			for s in $$required_running; do \
+				line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+				state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+				health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+				if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+					ok=0; \
+					echo "  Still not ready: $$s (state=$$state health=$$health)"; \
+				fi; \
+			done; \
+		fi; \
 		if [ "$$ok" -ne 1 ]; then \
 			echo "ERROR: Compose startup failed and required services are not ready."; \
 			docker compose ps; \
@@ -364,12 +380,16 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo "Waiting for SPIKE Keeper..."
 	-kubectl -n spike-system rollout status deployment/spike-keeper --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIKE Keeper not yet ready"
-	@echo "Waiting for SPIKE Bootstrap job..."
-	-kubectl -n spike-system wait --for=condition=complete job/spike-bootstrap --timeout=120s 2>/dev/null || \
-		echo "WARNING: SPIKE Bootstrap not yet complete"
 	@echo "Waiting for SPIKE Nexus (SQLite mode)..."
 	-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIKE Nexus not yet ready"
+	@echo "Applying SPIKE Bootstrap job (after SPIRE registration)..."
+	-kubectl -n spike-system apply -f infra/eks/spike/bootstrap-job.yaml >/dev/null 2>&1 || true
+	@echo "Waiting for SPIKE Bootstrap job..."
+	-kubectl -n spike-system wait --for=condition=complete job/spike-bootstrap --timeout=240s 2>/dev/null || \
+		echo "WARNING: SPIKE Bootstrap not yet complete"
+	@echo "Applying SPIKE Secret Seeder job (after bootstrap)..."
+	-kubectl -n spike-system apply -f infra/eks/spike/seeder-job.yaml >/dev/null 2>&1 || true
 	@echo "Waiting for SPIKE Secret Seeder job..."
 	-kubectl -n spike-system wait --for=condition=complete job/spike-secret-seeder --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIKE Secret Seeder not yet complete"
@@ -396,6 +416,29 @@ k8s-down: ## Tear down local K8s deployment
 	-kubectl delete validatingwebhookconfigurations gatekeeper-validating-webhook-configuration --ignore-not-found 2>/dev/null
 	-kubectl delete mutatingwebhookconfigurations gatekeeper-mutating-webhook-configuration --ignore-not-found 2>/dev/null
 	-kubectl -n spire-system delete pvc -l app.kubernetes.io/name=spire-server --ignore-not-found 2>/dev/null
+
+k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first)
+	@set -e; \
+	overlays="local dev staging prod"; \
+	for o in $$overlays; do \
+		echo "Building overlay: $$o"; \
+		kustomize build "infra/eks/overlays/$$o" >"/tmp/uasgs-k8s-$$o.yaml"; \
+	done; \
+	if command -v kubeconform >/dev/null 2>&1; then \
+		for o in $$overlays; do \
+			echo "Schema validation (kubeconform): $$o"; \
+			kubeconform -summary -strict -ignore-missing-schemas "/tmp/uasgs-k8s-$$o.yaml"; \
+		done; \
+	else \
+		echo "WARNING: kubeconform not installed, skipping schema validation"; \
+	fi; \
+	echo "Validating Phase 3 capability registry wiring..."; \
+	for o in $$overlays; do \
+		file="/tmp/uasgs-k8s-$$o.yaml"; \
+		grep -q 'CAPABILITY_REGISTRY_V2_PATH' "$$file" || { echo "Missing CAPABILITY_REGISTRY_V2_PATH in $$o overlay"; exit 1; }; \
+		grep -q 'capability-registry-v2.yaml' "$$file" || { echo "Missing capability-registry-v2.yaml mount/data in $$o overlay"; exit 1; }; \
+	done; \
+	echo "k8s-validate: PASS"
 
 # ---------------------------------------------------------------------------
 # CI / Quality
