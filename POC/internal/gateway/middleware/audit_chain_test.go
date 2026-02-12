@@ -30,7 +30,9 @@ func TestAuditChainIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	// Test 1: First event has genesis prev_hash (SHA-256 of empty string)
 	genesisHash := sha256.Sum256([]byte(""))
@@ -62,7 +64,9 @@ func TestAuditChainIntegrity(t *testing.T) {
 	if err := json.Unmarshal(scanner.Bytes(), &firstEvent); err != nil {
 		t.Fatalf("Failed to unmarshal first event: %v", err)
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		t.Fatalf("Failed to close audit file: %v", err)
+	}
 
 	if firstEvent.PrevHash != expectedGenesis {
 		t.Errorf("First event prev_hash = %s, want genesis %s", firstEvent.PrevHash, expectedGenesis)
@@ -109,7 +113,9 @@ func TestAuditChainIntegrity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to open audit file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	scanner = bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -168,7 +174,9 @@ func TestChainBreakDetection(t *testing.T) {
 			Path:       "/test",
 		})
 	}
-	auditor.Close()
+	if err := auditor.Close(); err != nil {
+		t.Fatalf("Failed to close auditor: %v", err)
+	}
 
 	// Tamper with middle event (line 5)
 	file, err := os.Open(auditPath)
@@ -184,7 +192,9 @@ func TestChainBreakDetection(t *testing.T) {
 		if lineNum == 5 {
 			// Tamper with this line by changing a field
 			var event AuditEvent
-			json.Unmarshal(scanner.Bytes(), &event)
+			if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+				t.Fatalf("Failed to parse event while tampering: %v", err)
+			}
 			event.Action = "TAMPERED"
 			tamperedBytes, _ := json.Marshal(event)
 			lines = append(lines, string(tamperedBytes))
@@ -192,7 +202,9 @@ func TestChainBreakDetection(t *testing.T) {
 			lines = append(lines, scanner.Text())
 		}
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		t.Fatalf("Failed to close file after read: %v", err)
+	}
 
 	// Write tampered content back
 	file, err = os.Create(auditPath)
@@ -200,9 +212,13 @@ func TestChainBreakDetection(t *testing.T) {
 		t.Fatalf("Failed to write tampered file: %v", err)
 	}
 	for _, line := range lines {
-		file.WriteString(line + "\n")
+		if _, err := file.WriteString(line + "\n"); err != nil {
+			t.Fatalf("Failed to write tampered line: %v", err)
+		}
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		t.Fatalf("Failed to close tampered file: %v", err)
+	}
 
 	// Verify chain - should detect tampering
 	result, err := VerifyAuditChain(auditPath)
@@ -249,7 +265,9 @@ func TestAuditorWithoutJSONL(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	// Should not panic
 	auditor.Log(AuditEvent{
@@ -291,7 +309,9 @@ func TestChainResume(t *testing.T) {
 			Action:    "action",
 		})
 	}
-	auditor1.Close()
+	if err := auditor1.Close(); err != nil {
+		t.Fatalf("Failed to close auditor1: %v", err)
+	}
 
 	// Second auditor: resume and write 5 more events
 	auditor2, err := NewAuditor(auditPath, bundlePath, registryPath)
@@ -304,7 +324,9 @@ func TestChainResume(t *testing.T) {
 			Action:    "action",
 		})
 	}
-	auditor2.Close()
+	if err := auditor2.Close(); err != nil {
+		t.Fatalf("Failed to close auditor2: %v", err)
+	}
 
 	// Verify entire chain is valid
 	result, err := VerifyAuditChain(auditPath)
@@ -345,14 +367,20 @@ func TestAsyncAuditFlush(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	// Log 100 events rapidly
 	for i := 0; i < 100; i++ {
@@ -387,8 +415,12 @@ func TestAsyncAuditChainIntegrity(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
@@ -411,7 +443,9 @@ func TestAsyncAuditChainIntegrity(t *testing.T) {
 	}
 
 	// Close drains the channel, ensuring all writes complete
-	auditor.Close()
+	if err := auditor.Close(); err != nil {
+		t.Fatalf("Failed to close auditor: %v", err)
+	}
 
 	// Verify the entire chain is valid
 	result, err := VerifyAuditChain(auditPath)
@@ -440,8 +474,12 @@ func TestAsyncAuditCloseIdempotent(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
@@ -477,14 +515,20 @@ func TestAsyncAuditFlushMultiple(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	// First batch
 	for i := 0; i < 10; i++ {
@@ -527,8 +571,12 @@ func TestAsyncAuditNoDataLoss(t *testing.T) {
 	bundlePath := filepath.Join(tmpDir, "bundle.rego")
 	registryPath := filepath.Join(tmpDir, "registry.yaml")
 
-	os.WriteFile(bundlePath, []byte("package test"), 0644)
-	os.WriteFile(registryPath, []byte("tools: []"), 0644)
+	if err := os.WriteFile(bundlePath, []byte("package test"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry: %v", err)
+	}
 
 	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
 	if err != nil {
@@ -545,14 +593,18 @@ func TestAsyncAuditNoDataLoss(t *testing.T) {
 	}
 
 	// Close ensures all events are written
-	auditor.Close()
+	if err := auditor.Close(); err != nil {
+		t.Fatalf("Failed to close auditor: %v", err)
+	}
 
 	// Count events in file
 	file, err := os.Open(auditPath)
 	if err != nil {
 		t.Fatalf("Failed to open audit file: %v", err)
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	lineCount := 0
 	scanner := bufio.NewScanner(file)

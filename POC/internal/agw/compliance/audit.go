@@ -18,7 +18,9 @@ func LoadAuditJSONLEntries(path string) ([]map[string]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	var entries []map[string]any
 	sc := bufio.NewScanner(f)
@@ -101,7 +103,9 @@ func WriteAuditSnapshotJSONL(dstPath string, entries []map[string]any) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	w := bufio.NewWriter(f)
 	for _, e := range entries {
@@ -118,4 +122,3 @@ func WriteAuditSnapshotJSONL(dstPath string, entries []map[string]any) error {
 	}
 	return w.Flush()
 }
-

@@ -283,10 +283,9 @@ func TestUIConfigValidate_ValidConfigs(t *testing.T) {
 			if err != nil {
 				t.Errorf("Expected no error for valid config (%s), got: %v", tc.mode, err)
 			}
-			// "allow" should produce a warning but NOT an error
-			if tc.mode == "allow" && len(warnings) == 0 {
-				// Only warns when enabled=true AND mode=allow
-				// defaults have enabled=false, so no warning expected here
+			// Only warns when enabled=true AND mode=allow.
+			if tc.mode == "allow" && cfg.Enabled && len(warnings) == 0 {
+				t.Error("Expected warning when enabled=true and default_mode=allow")
 			}
 		})
 	}

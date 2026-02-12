@@ -45,7 +45,7 @@ func newMockLegacySSEServer(t *testing.T) *httptest.Server {
 
 			// Send the endpoint event with the message URL.
 			// The URL uses the server's own address.
-			fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
 			flusher.Flush()
 
 			// Register this writer for sending responses
@@ -96,7 +96,7 @@ func newMockLegacySSEServer(t *testing.T) *httptest.Server {
 			// Send the response via ALL SSE streams
 			mu.Lock()
 			for i, sw := range sseWriters {
-				fmt.Fprintf(sw, "event: message\ndata: %s\n\n", string(respJSON))
+				_, _ = fmt.Fprintf(sw, "event: message\ndata: %s\n\n", string(respJSON))
 				sseFlushed[i].Flush()
 			}
 			mu.Unlock()
@@ -122,7 +122,9 @@ func TestLegacySSETransport_Connect_ReceivesEndpoint(t *testing.T) {
 	if err := transport.Connect(ctx); err != nil {
 		t.Fatalf("Connect failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	// Verify the message URL was set
 	transport.mu.Lock()
@@ -148,7 +150,9 @@ func TestLegacySSETransport_Connect_Idempotent(t *testing.T) {
 	if err := transport.Connect(ctx); err != nil {
 		t.Fatalf("First Connect failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	// Second connect should be no-op
 	if err := transport.Connect(ctx); err != nil {
@@ -186,7 +190,7 @@ func TestLegacySSETransport_Connect_NoEndpointEvent(t *testing.T) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
 		// Send a non-endpoint event, then close the connection
-		fmt.Fprintf(w, "event: ping\ndata: keep-alive\n\n")
+		_, _ = fmt.Fprintf(w, "event: ping\ndata: keep-alive\n\n")
 		flusher.Flush()
 		// Close without sending endpoint
 	}))
@@ -217,7 +221,9 @@ func TestLegacySSETransport_Send_ToolsCall(t *testing.T) {
 	if err := transport.Connect(ctx); err != nil {
 		t.Fatalf("Connect failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	req := &JSONRPCRequest{
 		JSONRPC: "2.0",
@@ -261,7 +267,9 @@ func TestLegacySSETransport_Send_ToolsList(t *testing.T) {
 	if err := transport.Connect(ctx); err != nil {
 		t.Fatalf("Connect failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	req := &JSONRPCRequest{
 		JSONRPC: "2.0",
@@ -317,7 +325,7 @@ func TestLegacySSETransport_Send_Timeout(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
-			fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
 			flusher.Flush()
 			<-r.Context().Done()
 		case r.Method == http.MethodPost && r.URL.Path == "/message":
@@ -334,7 +342,9 @@ func TestLegacySSETransport_Send_Timeout(t *testing.T) {
 	if err := transport.Connect(ctx); err != nil {
 		t.Fatalf("Connect failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	// Use a very short context deadline to trigger timeout quickly
 	sendCtx, sendCancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -426,7 +436,9 @@ func TestLegacySSETransport_DispatchByID(t *testing.T) {
 	if err := transport.Connect(ctx); err != nil {
 		t.Fatalf("Connect failed: %v", err)
 	}
-	defer transport.Close(context.Background())
+	defer func() {
+		_ = transport.Close(context.Background())
+	}()
 
 	// Send two requests with different IDs
 	req1 := &JSONRPCRequest{JSONRPC: "2.0", ID: 10, Method: "tools/call",

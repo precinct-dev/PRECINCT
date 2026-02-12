@@ -2,6 +2,7 @@ package agw
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"sort"
@@ -29,6 +30,14 @@ func NewKeyDBClient(keydbURL string) (*redis.Client, error) {
 
 type KeyDB struct {
 	client *redis.Client
+}
+
+type RateLimitCounters struct {
+	Found      bool `json:"found"`
+	Remaining  int  `json:"remaining"`
+	Limit      int  `json:"limit"`
+	Burst      int  `json:"burst"`
+	TTLSeconds int  `json:"ttl_seconds"`
 }
 
 func NewKeyDB(url string) (*KeyDB, error) {
@@ -103,6 +112,98 @@ func (k *KeyDB) GetRateLimit(ctx context.Context, spiffeID string, rpm, burst in
 		return nil, nil
 	}
 	return e, err
+}
+
+func (k *KeyDB) GetRateLimitCounters(ctx context.Context, spiffeID string, rpm, burst int) (RateLimitCounters, error) {
+	spiffeID = strings.TrimSpace(spiffeID)
+	if spiffeID == "" {
+		return RateLimitCounters{}, fmt.Errorf("spiffe-id is empty")
+	}
+
+	entry, err := k.GetRateLimit(ctx, spiffeID, rpm, burst)
+	if err != nil {
+		return RateLimitCounters{}, err
+	}
+	if entry == nil {
+		return RateLimitCounters{
+			Found:      false,
+			Remaining:  burst,
+			Limit:      rpm,
+			Burst:      burst,
+			TTLSeconds: 0,
+		}, nil
+	}
+
+	return RateLimitCounters{
+		Found:      true,
+		Remaining:  entry.Remaining,
+		Limit:      entry.Limit,
+		Burst:      entry.Burst,
+		TTLSeconds: entry.TTLSeconds,
+	}, nil
+}
+
+func (k *KeyDB) GetSessionRiskScore(ctx context.Context, sessionID string) (float64, bool, error) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return 0, false, fmt.Errorf("session-id is empty")
+	}
+
+	var cursor uint64
+	pattern := "session:*:" + sessionID
+
+	for {
+		keys, next, err := k.client.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return 0, false, fmt.Errorf("scan session keys: %w", err)
+		}
+		for _, key := range keys {
+			if strings.HasSuffix(key, ":actions") {
+				continue
+			}
+			raw, err := k.client.Get(ctx, key).Bytes()
+			if err != nil {
+				if err == redis.Nil {
+					continue
+				}
+				return 0, false, fmt.Errorf("get session key %s: %w", key, err)
+			}
+
+			var payload map[string]any
+			if err := json.Unmarshal(raw, &payload); err != nil {
+				return 0, false, fmt.Errorf("unmarshal session key %s: %w", key, err)
+			}
+
+			if score, ok := parseRiskScore(payload); ok {
+				return score, true, nil
+			}
+			return 0, false, fmt.Errorf("session key %s missing RiskScore", key)
+		}
+		cursor = next
+		if cursor == 0 {
+			break
+		}
+	}
+
+	return 0, false, nil
+}
+
+func parseRiskScore(payload map[string]any) (float64, bool) {
+	for _, key := range []string{"RiskScore", "risk_score"} {
+		v, exists := payload[key]
+		if !exists {
+			continue
+		}
+		switch n := v.(type) {
+		case float64:
+			return n, true
+		case int:
+			return float64(n), true
+		case int64:
+			return float64(n), true
+		}
+	}
+	return 0, false
 }
 
 func (k *KeyDB) getByTokensKey(ctx context.Context, key, spiffeID string, rpm, burst int) (*RateLimitEntry, error) {

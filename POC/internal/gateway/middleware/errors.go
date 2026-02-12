@@ -15,6 +15,7 @@ import (
 type GatewayError struct {
 	Code           string         `json:"code"`
 	Message        string         `json:"message"`
+	ReasonCode     string         `json:"reason_code,omitempty"`
 	Middleware     string         `json:"middleware"`
 	MiddlewareStep int            `json:"middleware_step"`
 	DecisionID     string         `json:"decision_id"`

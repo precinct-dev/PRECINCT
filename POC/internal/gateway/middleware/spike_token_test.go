@@ -614,6 +614,72 @@ func TestTokenSubstitutionWithScopeResolver(t *testing.T) {
 	})
 }
 
+func TestTokenSubstitution_HeaderAuthorization_SubstitutesSPIKEToken(t *testing.T) {
+	ownerSPIFFEID := "spiffe://poc.local/agent/test-agent"
+
+	echoHeaderHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(r.Header.Get("Authorization")))
+	})
+
+	var handler http.Handler = echoHeaderHandler
+	handler = TokenSubstitution(handler, NewPOCSecretRedeemerWithOwner(ownerSPIFFEID), nil, nil)
+	handler = SPIFFEAuth(handler, "dev")
+	handler = BodyCapture(handler)
+
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", ownerSPIFFEID)
+	req.Header.Set("Authorization", "Bearer $SPIKE{ref:abc123,exp:3600}")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	authHeader := rr.Body.String()
+	if strings.Contains(authHeader, "$SPIKE{") {
+		t.Fatalf("Authorization header still contains SPIKE token: %s", authHeader)
+	}
+	if !strings.Contains(authHeader, "secret-value-for-abc123") {
+		t.Fatalf("Expected substituted secret in Authorization header, got %s", authHeader)
+	}
+}
+
+func TestTokenSubstitution_HeaderAuthorization_OwnershipDenied(t *testing.T) {
+	ownerSPIFFEID := "spiffe://poc.local/agent/token-owner"
+	callerSPIFFEID := "spiffe://poc.local/agent/other-caller"
+
+	echoHeaderHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(r.Header.Get("Authorization")))
+	})
+
+	var handler http.Handler = echoHeaderHandler
+	handler = TokenSubstitution(handler, NewPOCSecretRedeemerWithOwner(ownerSPIFFEID), nil, nil)
+	handler = SPIFFEAuth(handler, "dev")
+	handler = BodyCapture(handler)
+
+	req := httptest.NewRequest(http.MethodPost, "/openai/v1/chat/completions", bytes.NewBufferString(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", callerSPIFFEID)
+	req.Header.Set("Authorization", "Bearer $SPIKE{ref:abc123,exp:3600}")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403 for ownership mismatch, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "token_ownership_failed") {
+		t.Fatalf("Expected token_ownership_failed error, got body=%s", rr.Body.String())
+	}
+	if strings.Contains(rr.Body.String(), "secret-value-for-abc123") {
+		t.Fatalf("Secret leaked in error response body: %s", rr.Body.String())
+	}
+}
+
 // testScopeResolverAdapter adapts a function to the ScopeResolver interface for testing.
 type testScopeResolverAdapter struct {
 	resolveFn func(toolName string) (string, string, string, bool)

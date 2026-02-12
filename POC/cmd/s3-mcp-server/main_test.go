@@ -577,7 +577,9 @@ func TestHTTP_UnknownMethod(t *testing.T) {
 	srv.ServeHTTP(w, req)
 
 	var resp JSONRPCResponse
-	json.NewDecoder(w.Body).Decode(&resp)
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 	if resp.Error == nil {
 		t.Error("expected error for unknown method")
 	}
@@ -595,7 +597,9 @@ func TestHTTP_InvalidJSON(t *testing.T) {
 	srv.ServeHTTP(w, req)
 
 	var resp JSONRPCResponse
-	json.NewDecoder(w.Body).Decode(&resp)
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
 	if resp.Error == nil {
 		t.Error("expected parse error")
 	}

@@ -1,8 +1,8 @@
-.PHONY: help up down test lint clean logs demo demo-compose demo-k8s k8s-up k8s-down ci benchmark security-scan \
+.PHONY: help up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate ci benchmark security-scan \
        setup register-spire k8s-register-spire test-integration test-opa build build-images \
-       compliance-report test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
-       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry \
-       phoenix-up phoenix-down phoenix-reset
+       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
+       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
+       upgrade-demo repave-demo phoenix-up phoenix-down phoenix-reset
 
 # Container image config
 REGISTRY ?= ghcr.io
@@ -38,20 +38,112 @@ up: ## Start Docker Compose stack (waits for all services healthy)
 		exit 1; \
 	fi
 	@echo "Building and starting services (waiting for all health checks)..."
-	docker compose up -d --build --wait --wait-timeout 180
-	@echo "All services healthy."
+	@if docker compose up -d --build --wait --wait-timeout 180; then \
+		echo "All services healthy."; \
+	else \
+		echo "WARN: docker compose --wait timed out. Checking core service readiness..."; \
+		ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+		ok=1; \
+		required_running="spire-server spire-agent spike-keeper-1 spike-nexus keydb mock-mcp-server mock-guard-model mcp-security-gateway"; \
+		for s in $$required_running; do \
+			line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+			state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+			health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+			if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+				ok=0; \
+				echo "  Not ready: $$s (state=$$state health=$$health)"; \
+			fi; \
+		done; \
+		if [ "$$ok" -ne 1 ]; then \
+			echo "Attempting gateway-only recovery after compose dependency timeout..."; \
+			docker compose up -d --no-deps mcp-security-gateway >/dev/null 2>&1 || true; \
+			sleep 5; \
+			ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+			ok=1; \
+			for s in $$required_running; do \
+				line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+				state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+				health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+				if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+					ok=0; \
+					echo "  Still not ready: $$s (state=$$state health=$$health)"; \
+				fi; \
+			done; \
+		fi; \
+		if [ "$$ok" -ne 1 ]; then \
+			echo "ERROR: Compose startup failed and required services are not ready."; \
+			docker compose ps; \
+			exit 1; \
+		fi; \
+		echo "Core services are ready despite compose wait timeout; continuing."; \
+	fi
 	@echo "Running register-spire for any additional entries..."
 	$(MAKE) register-spire
 
 down: ## Stop Docker Compose stack
 	docker compose down
 
-repave: ## Repave a single Docker Compose component container (ex: make repave COMPONENT=keydb)
+repave: ## Repave containers. Default: full-stack in dependency order. Optional: single component (ex: make repave COMPONENT=keydb)
+	@if [ -n "$(COMPONENT)" ]; then \
+		bash scripts/repave.sh "$(COMPONENT)"; \
+	else \
+		bash scripts/repave.sh --all; \
+	fi
+
+upgrade-check: ## Show current vs latest versions (containers, Go modules, Python deps) in table + JSON
+	@bash scripts/upgrade-check.sh --format table
+	@echo ""
+	@bash scripts/upgrade-check.sh --format json
+
+upgrade: ## Upgrade a single component (ex: make upgrade COMPONENT=keydb VERIFY=1)
 	@if [ -z "$(COMPONENT)" ]; then \
-		echo "ERROR: COMPONENT is required (ex: make repave COMPONENT=keydb)"; \
+		echo "ERROR: COMPONENT is required (ex: make upgrade COMPONENT=keydb)"; \
 		exit 1; \
 	fi
-	@bash scripts/repave.sh "$(COMPONENT)"
+	@args="--component $(COMPONENT)"; \
+	if [ "$(VERIFY)" = "1" ]; then args="$$args --verify"; fi; \
+	bash scripts/upgrade.sh $$args
+
+upgrade-all: ## Upgrade all non-pinned components (ex: make upgrade-all VERIFY=1)
+	@args="--all"; \
+	if [ "$(VERIFY)" = "1" ]; then args="$$args --verify"; fi; \
+	bash scripts/upgrade.sh $$args
+
+upgrade-demo: ## Stakeholder demo: upgrade check + upgrade + simulated test failure rollback
+	@required="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"; \
+	ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+	healthy=1; \
+	for s in $$required; do \
+		line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+		state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+		health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+		if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+			healthy=0; \
+			break; \
+		fi; \
+	done; \
+	if [ "$$healthy" -eq 0 ]; then \
+		echo "Core services not fully healthy. Running make up..."; \
+		$(MAKE) up; \
+	else \
+		echo "Core services already running and healthy. Skipping make up."; \
+	fi; \
+	if bash tests/e2e/test_upgrade.sh; then \
+		echo "upgrade-demo: PASS"; \
+	else \
+		echo "upgrade-demo: FAIL"; \
+		exit 1; \
+	fi
+
+repave-demo: up ## Epic 5 demo: single repave + full repave + status + demo-compose validation
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	@if bash tests/e2e/test_repave.sh; then \
+		echo "repave-demo: PASS"; \
+	else \
+		echo "repave-demo: FAIL"; \
+		exit 1; \
+	fi
 
 test: ## Run all tests (unit + OPA)
 	@echo "Running unit tests..."
@@ -110,6 +202,138 @@ demo-compose: ## Run E2E demo (Docker Compose)
 
 demo-k8s: ## Run E2E demo (K8s)
 	@bash demo/run.sh k8s
+
+agw-demo: ## Stakeholder demo: validate agw CLI against live Docker Compose stack
+	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
+		echo "Phoenix network not found. Running make phoenix-up..."; \
+		$(MAKE) phoenix-up; \
+	fi
+	@required="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"; \
+	ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+	healthy=1; \
+	for s in $$required; do \
+		line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+		state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+		health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+		if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+			healthy=0; \
+			break; \
+		fi; \
+	done; \
+	if [ "$$healthy" -eq 0 ]; then \
+		echo "Core services not fully healthy. Running make up..."; \
+		$(MAKE) up; \
+	else \
+		echo "Core services already running and healthy. Skipping make up."; \
+	fi
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	@if bash tests/e2e/test_agw_cli.sh; then \
+		echo "agw-demo: PASS"; \
+	else \
+		echo "agw-demo: FAIL"; \
+		exit 1; \
+	fi
+
+agw-operate-demo: ## Epic 2 operate demo: ensure stack, build agw, run E2E operate script
+	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
+		echo "Phoenix network not found. Running make phoenix-up..."; \
+		$(MAKE) phoenix-up; \
+	fi
+	@required="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"; \
+	ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+	healthy=1; \
+	for s in $$required; do \
+		line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+		state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+		health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+		if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+			healthy=0; \
+			break; \
+		fi; \
+	done; \
+	if [ "$$healthy" -eq 0 ]; then \
+		echo "Core services not fully healthy. Running make up..."; \
+		if ! $(MAKE) up; then \
+			echo "make up returned non-zero. Re-checking service health..."; \
+			ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+			recovered=1; \
+			for s in $$required; do \
+				line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+				state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+				health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+				if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+					recovered=0; \
+					break; \
+				fi; \
+			done; \
+			if [ "$$recovered" -eq 0 ]; then \
+				echo "ERROR: services are not healthy after make up."; \
+				exit 1; \
+			fi; \
+			echo "Services are healthy despite make up non-zero; continuing."; \
+		fi; \
+	else \
+		echo "Core services already running and healthy. Skipping make up."; \
+	fi
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	@if bash tests/e2e/test_agw_operate.sh; then \
+		echo "agw-operate-demo: PASS"; \
+	else \
+		echo "agw-operate-demo: FAIL"; \
+		exit 1; \
+	fi
+
+compliance-demo: ## Epic 3 compliance demo: evidence collect + report + GDPR operations
+	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
+		echo "Phoenix network not found. Running make phoenix-up..."; \
+		$(MAKE) phoenix-up; \
+	fi
+	@required="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"; \
+	ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+	healthy=1; \
+	for s in $$required; do \
+		line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+		state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+		health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+		if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+			healthy=0; \
+			break; \
+		fi; \
+	done; \
+	if [ "$$healthy" -eq 0 ]; then \
+		echo "Core services not fully healthy. Running make up..."; \
+		if ! $(MAKE) up; then \
+			echo "make up returned non-zero. Re-checking service health..."; \
+			ps_out="$$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"; \
+			recovered=1; \
+			for s in $$required; do \
+				line="$$(printf '%s\n' "$$ps_out" | awk -v svc="$$s" '$$1==svc {print}')"; \
+				state="$$(printf '%s\n' "$$line" | awk '{print $$2}')"; \
+				health="$$(printf '%s\n' "$$line" | awk '{print $$3}')"; \
+				if [ -z "$$line" ] || [ "$$state" != "running" ] || { [ -n "$$health" ] && [ "$$health" != "healthy" ]; }; then \
+					recovered=0; \
+					break; \
+				fi; \
+			done; \
+			if [ "$$recovered" -eq 0 ]; then \
+				echo "ERROR: services are not healthy after make up."; \
+				exit 1; \
+			fi; \
+			echo "Services are healthy despite make up non-zero; continuing."; \
+		fi; \
+	else \
+		echo "Core services already running and healthy. Skipping make up."; \
+	fi
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	@if bash tests/e2e/test_agw_compliance.sh; then \
+		echo "compliance-demo: PASS"; \
+	else \
+		echo "compliance-demo: FAIL"; \
+		exit 1; \
+	fi
 
 # ---------------------------------------------------------------------------
 # Kubernetes (Docker Desktop K8s + local registry)
@@ -335,8 +559,26 @@ COMPOSE_PARENT_ID := spiffe://$(COMPOSE_TRUST_DOMAIN)/spire/agent/join_token
 register-spire:
 	@echo "Registering SPIRE workload entries..."
 	@echo "  Detecting SPIRE agent identity..."
-	@PARENT_ID=$$($(COMPOSE_SPIRE_EXEC) agent list -socketPath $(COMPOSE_SPIRE_SOCK) 2>/dev/null | \
-		grep 'SPIFFE ID' | head -1 | awk '{print $$NF}'); \
+	@AGENT_LIST=$$($(COMPOSE_SPIRE_EXEC) agent list -socketPath $(COMPOSE_SPIRE_SOCK) 2>/dev/null || true); \
+	PARENT_ID=""; \
+	if [ -n "$$AGENT_LIST" ]; then \
+		NOW_UTC=$$(date -u '+%Y-%m-%d %H:%M:%S'); \
+		PARENT_ID=$$(printf '%s\n' "$$AGENT_LIST" | awk -v now="$$NOW_UTC" '\
+			/SPIFFE ID[[:space:]]*:/ { id=$$NF } \
+			/Expiration time[[:space:]]*:/ { \
+				expiry=$$4" "$$5; \
+				if (expiry >= now) { \
+					if (best_expiry == "" || expiry > best_expiry) { \
+						best_expiry=expiry; \
+						best_id=id; \
+					} \
+				} \
+			} \
+			END { if (best_id != "") print best_id }'); \
+		if [ -z "$$PARENT_ID" ]; then \
+			PARENT_ID=$$(printf '%s\n' "$$AGENT_LIST" | grep 'SPIFFE ID' | tail -1 | awk '{print $$NF}'); \
+		fi; \
+	fi; \
 	if [ -z "$$PARENT_ID" ]; then \
 		echo "  No agent entry yet, using default parent: $(COMPOSE_PARENT_ID)"; \
 		PARENT_ID="$(COMPOSE_PARENT_ID)"; \
@@ -407,6 +649,16 @@ compliance-report: test-compliance
 	fi
 	$(COMPLIANCE_PYTHON) tools/compliance/generate.py --audit-log $(AUDIT_LOG) --project-root .
 
+compliance-evidence:
+	@if [ -z "$(FRAMEWORK)" ]; then \
+		echo "Usage: make compliance-evidence FRAMEWORK=soc2 [SIGN=1] [COSIGN_KEY=.cosign/cosign.key]"; \
+		exit 1; \
+	fi
+	@args=""; \
+	if [ "$(SIGN)" = "1" ]; then args="$$args --sign"; fi; \
+	if [ -n "$(COSIGN_KEY)" ]; then args="$$args --cosign-key $(COSIGN_KEY)"; fi; \
+	go run ./cmd/agw compliance collect --framework "$(FRAMEWORK)" $$args
+
 test-compliance: $(COMPLIANCE_VENV)
 	cd tools/compliance && $(CURDIR)/$(COMPLIANCE_PYTHON) -m pytest test_generate.py -v
 
@@ -418,7 +670,7 @@ gdpr-delete:
 		echo "Usage: make gdpr-delete SPIFFE_ID=spiffe://poc.local/agents/example"; \
 		exit 1; \
 	fi
-	go run ./cmd/gdpr-delete/ "$(SPIFFE_ID)"
+	go run ./cmd/agw gdpr delete "$(SPIFFE_ID)" --confirm
 
 SPIRE_SOCK := /tmp/spire-server/private/api.sock
 SPIRE_EXEC := kubectl -n spire-system exec spire-server-0 -- /opt/spire/bin/spire-server

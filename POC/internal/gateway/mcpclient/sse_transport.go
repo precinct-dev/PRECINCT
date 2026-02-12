@@ -142,7 +142,7 @@ func (t *LegacySSETransport) ConnectWithTimeout(ctx context.Context, handshakeTi
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return fmt.Errorf("SSE endpoint returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -169,21 +169,21 @@ func (t *LegacySSETransport) ConnectWithTimeout(ctx context.Context, handshakeTi
 	select {
 	case result := <-epCh:
 		if result.err != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return result.err
 		}
 		endpointURL = result.url
 	case <-timer.C:
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return fmt.Errorf("SSE endpoint event timed out after %v", handshakeTimeout)
 	case <-ctx.Done():
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return ctx.Err()
 	}
 
 	messageURL, err := resolveMessageURL(t.baseURL, endpointURL)
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return fmt.Errorf("invalid endpoint URL %q: %w", endpointURL, err)
 	}
 	t.messageURL = messageURL
@@ -232,7 +232,7 @@ func (t *LegacySSETransport) Connect(ctx context.Context) error {
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return fmt.Errorf("SSE endpoint returned status %d: %s", resp.StatusCode, string(body))
 	}
 
@@ -246,13 +246,13 @@ func (t *LegacySSETransport) Connect(ctx context.Context) error {
 	// Read events until we find the "endpoint" event
 	endpointURL, err := t.readEndpointEvent(ctx, scanner)
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return err
 	}
 
 	messageURL, err := resolveMessageURL(t.baseURL, endpointURL)
 	if err != nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		return fmt.Errorf("invalid endpoint URL %q: %w", endpointURL, err)
 	}
 	t.messageURL = messageURL
@@ -347,7 +347,9 @@ func (t *LegacySSETransport) Send(ctx context.Context, req *JSONRPCRequest) (*JS
 	if err != nil {
 		return nil, fmt.Errorf("POST to message URL failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// The server acknowledges the POST (200 or 202). The actual response
 	// comes via the SSE stream.
@@ -402,7 +404,7 @@ func (t *LegacySSETransport) Close(_ context.Context) error {
 
 	// Close the SSE response body to unblock the scanner
 	if t.sseResp != nil {
-		t.sseResp.Body.Close()
+		_ = t.sseResp.Body.Close()
 		t.sseResp = nil
 	}
 

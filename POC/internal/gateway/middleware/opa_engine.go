@@ -1,5 +1,7 @@
 package middleware
 
+//lint:file-ignore SA1019 OPA v1 migration is tracked separately; this engine intentionally uses compatibility packages for now.
+
 import (
 	"context"
 	"fmt"
@@ -9,9 +11,9 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/open-policy-agent/opa/rego"
-	"github.com/open-policy-agent/opa/storage"
-	"github.com/open-policy-agent/opa/storage/inmem"
+	"github.com/open-policy-agent/opa/rego"          //nolint:staticcheck // OPA v1 migration tracked separately.
+	"github.com/open-policy-agent/opa/storage"       //nolint:staticcheck // OPA v1 migration tracked separately.
+	"github.com/open-policy-agent/opa/storage/inmem" //nolint:staticcheck // OPA v1 migration tracked separately.
 	"gopkg.in/yaml.v3"
 )
 
@@ -32,9 +34,15 @@ type OPAEngine struct {
 	query           *rego.PreparedEvalQuery
 	contextQuery    *rego.PreparedEvalQuery  // RFA-xwc: query for mcp.context policy
 	uiPolicyQueries *uiPolicyPreparedQueries // RFA-j2d.7: queries for mcp.ui.policy rules
+	policyCount     int
 	mu              sync.RWMutex
 	watcher         *fsnotify.Watcher
 	stopChan        chan struct{}
+}
+
+// OPAEngineReloadResult captures metadata from a policy reload operation.
+type OPAEngineReloadResult struct {
+	PolicyCount int
 }
 
 // uiPolicyPreparedQueries holds the compiled queries for each rule in the
@@ -233,10 +241,34 @@ func (e *OPAEngine) loadPolicies() error {
 	e.query = &prepared
 	e.contextQuery = contextQueryPtr
 	e.uiPolicyQueries = uiQueries
+	e.policyCount = 0
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		if filepath.Ext(file.Name()) == ".rego" {
+			e.policyCount++
+		}
+	}
 	e.mu.Unlock()
 
 	log.Printf("OPA policies loaded successfully from %s", e.policyDir)
 	return nil
+}
+
+// PolicyCount returns the number of compiled .rego policy files in the current engine state.
+func (e *OPAEngine) PolicyCount() int {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.policyCount
+}
+
+// Reload performs a policy reload from disk and returns summary metadata.
+func (e *OPAEngine) Reload() (OPAEngineReloadResult, error) {
+	if err := e.loadPolicies(); err != nil {
+		return OPAEngineReloadResult{}, err
+	}
+	return OPAEngineReloadResult{PolicyCount: e.PolicyCount()}, nil
 }
 
 // Evaluate evaluates OPA policy with given input
@@ -420,7 +452,7 @@ func (e *OPAEngine) startWatcher() error {
 
 	// Watch policy directory
 	if err := watcher.Add(e.policyDir); err != nil {
-		watcher.Close()
+		_ = watcher.Close()
 		return fmt.Errorf("failed to watch policy directory: %w", err)
 	}
 
@@ -444,7 +476,7 @@ func (e *OPAEngine) watchLoop() {
 				ext := filepath.Ext(event.Name)
 				if ext == ".rego" || ext == ".yaml" || ext == ".yml" {
 					log.Printf("Policy file changed: %s, reloading...", event.Name)
-					if err := e.loadPolicies(); err != nil {
+					if _, err := e.Reload(); err != nil {
 						log.Printf("Warning: failed to reload policies: %v (keeping previous policy)", err)
 					} else {
 						log.Printf("Policies reloaded successfully")

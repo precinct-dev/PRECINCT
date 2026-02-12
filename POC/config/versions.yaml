@@ -1,0 +1,30 @@
+components:
+  spire-server:
+    image: ghcr.io/spiffe/spire-server
+    version: "1.10.0"
+    pinned: true
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent
+    version: "1.10.0"
+    pinned: true
+  spike-nexus:
+    image: ghcr.io/spiffe/spike-nexus
+    version: "0.8.0"
+    pinned: true
+  spike-keeper:
+    image: ghcr.io/spiffe/spike-keeper
+    version: "0.8.0"
+    pinned: true
+  keydb:
+    image: eqalpha/keydb
+    version: "latest"
+    pinned: false
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib
+    version: "latest"
+    pinned: false
+  phoenix:
+    image: arizephoenix/phoenix
+    version: "latest"
+    pinned: false
+

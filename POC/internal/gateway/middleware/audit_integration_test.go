@@ -51,7 +51,9 @@ func TestAuditChain_IntegrationScenario(t *testing.T) {
 			StatusCode: 200,
 		})
 	}
-	auditor.Close()
+	if err := auditor.Close(); err != nil {
+		t.Fatalf("Failed to close auditor: %v", err)
+	}
 
 	// AC1 & AC4: Verify first event has genesis hash
 	file, err := os.Open(auditPath)
@@ -68,7 +70,9 @@ func TestAuditChain_IntegrationScenario(t *testing.T) {
 	if err := json.Unmarshal(scanner.Bytes(), &firstEvent); err != nil {
 		t.Fatalf("Failed to unmarshal first event: %v", err)
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		t.Fatalf("Failed to close audit file: %v", err)
+	}
 
 	// Verify genesis hash (SHA-256 of empty string)
 	genesisHash := sha256.Sum256([]byte(""))
@@ -106,7 +110,9 @@ func TestAuditChain_IntegrationScenario(t *testing.T) {
 			t.Errorf("AC2 FAILED: Event %d registry_digest not 64 chars (SHA-256): %d", eventCount, len(event.RegistryDigest))
 		}
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		t.Fatalf("Failed to close audit file: %v", err)
+	}
 
 	if eventCount != 15 {
 		t.Errorf("Expected 15 events, got %d", eventCount)
@@ -139,10 +145,14 @@ func TestAuditChain_IntegrationScenario(t *testing.T) {
 	scanner = bufio.NewScanner(file)
 	for scanner.Scan() {
 		var event AuditEvent
-		json.Unmarshal(scanner.Bytes(), &event)
+		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
+			t.Fatalf("Failed to decode event: %v", err)
+		}
 		events = append(events, event)
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		t.Fatalf("Failed to close audit file: %v", err)
+	}
 
 	// Tamper with event 7 (middle of chain)
 	events[6].Action = "TAMPERED_ACTION"
@@ -154,9 +164,13 @@ func TestAuditChain_IntegrationScenario(t *testing.T) {
 	}
 	for _, event := range events {
 		jsonBytes, _ := json.Marshal(event)
-		file.Write(append(jsonBytes, '\n'))
+		if _, err := file.Write(append(jsonBytes, '\n')); err != nil {
+			t.Fatalf("Failed to write event: %v", err)
+		}
 	}
-	file.Close()
+	if err := file.Close(); err != nil {
+		t.Fatalf("Failed to close audit file: %v", err)
+	}
 
 	// Verify chain breaks
 	result, err = VerifyAuditChain(auditPath)
@@ -222,7 +236,9 @@ allow if {
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	// Simulate realistic gateway events
 	scenarios := []struct {

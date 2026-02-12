@@ -81,7 +81,9 @@ func (t *StreamableHTTPTransport) Initialize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("initialize request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -123,7 +125,9 @@ func (t *StreamableHTTPTransport) Initialize(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("notifications/initialized failed: %w", err)
 	}
-	defer notifResp.Body.Close()
+	defer func() {
+		_ = notifResp.Body.Close()
+	}()
 	// Notifications may return 200 or 204; we accept both.
 	if notifResp.StatusCode != http.StatusOK && notifResp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(notifResp.Body)
@@ -149,13 +153,15 @@ func (t *StreamableHTTPTransport) Send(ctx context.Context, req *JSONRPCRequest)
 	if err != nil {
 		return nil, fmt.Errorf("send failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	// 404 = session expired. Re-initialize and retry once.
 	if resp.StatusCode == http.StatusNotFound {
 		// Drain the original response body before retrying.
 		_, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 
 		if err := t.reInitialize(ctx); err != nil {
 			return nil, fmt.Errorf("re-initialize after 404 failed: %w", err)
@@ -166,7 +172,9 @@ func (t *StreamableHTTPTransport) Send(ctx context.Context, req *JSONRPCRequest)
 		if err != nil {
 			return nil, fmt.Errorf("retry after re-initialize failed: %w", err)
 		}
-		defer resp.Body.Close()
+		defer func() {
+			_ = resp.Body.Close()
+		}()
 	}
 
 	if resp.StatusCode != http.StatusOK {
@@ -242,7 +250,9 @@ func (t *StreamableHTTPTransport) Close(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("DELETE request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	return nil
 }
@@ -310,16 +320,6 @@ func (t *StreamableHTTPTransport) doPostWithSID(ctx context.Context, payload int
 	}
 
 	return t.httpClient.Do(req)
-}
-
-// doPostNotification reads the session ID under RLock and sends a notification POST.
-// This is the public-facing version for callers NOT already holding the lock.
-func (t *StreamableHTTPTransport) doPostNotification(ctx context.Context, notif *JSONRPCNotification) (*http.Response, error) {
-	t.mu.RLock()
-	sid := t.sessionID
-	t.mu.RUnlock()
-
-	return t.doPostNotificationWithSID(ctx, notif, sid)
 }
 
 // doPostNotificationWithSID marshals a notification and POSTs it with an explicit

@@ -864,7 +864,9 @@ func TestDeepScanMiddleware_AuditEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
 		APIKey:       "test-key",
@@ -947,7 +949,9 @@ func TestDeepScanMiddleware_AuditEvent_OnError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
 		APIKey:       "test-key",
@@ -1812,7 +1816,9 @@ func TestChunkAuditEvent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	defer func() {
+		_ = auditor.Close()
+	}()
 
 	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
 		APIKey:       "test-key",

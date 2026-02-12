@@ -55,11 +55,11 @@ Agent -> Gateway (9090) -> [13-step middleware chain] -> Docker MCP Server (8081
    pip install -r requirements.txt
    ```
 
-4. LLM API key (for DSPy). Set one of:
+4. Seed provider secret in SPIKE (reference-based, no raw key in `.env`):
    ```bash
-   export GROQ_API_KEY=<your-key>   # Default: groq/llama-3.3-70b-versatile
-   # Or override the model:
-   export LLM_MODEL=openai/gpt-4    # Uses OPENAI_API_KEY
+   cd POC
+   ./build/bin/agw secret put groq-lm-key "<your-groq-key>" --confirm
+   export GROQ_LM_SPIKE_REF=groq-lm-key
    ```
 
 ## Running the Agent
@@ -80,6 +80,10 @@ python agent.py "zero trust architecture for AI agents"
 | `SPIFFE_ID` | `spiffe://poc.local/agents/mcp-client/dspy-researcher/dev` | Agent SPIFFE identity |
 | `OTEL_ENDPOINT` | `http://localhost:4317` | OpenTelemetry collector gRPC endpoint |
 | `LLM_MODEL` | `groq/llama-3.3-70b-versatile` | DSPy LLM model identifier |
+| `MODEL_USE_GATEWAY` | `true` | Route LLM calls through gateway OpenAI-compatible endpoint |
+| `MODEL_GATEWAY_BASE_URL` | `http://localhost:9090/openai/v1` | Base URL for model egress route |
+| `GROQ_LM_SPIKE_REF` | empty | SPIKE secret reference ID for Groq key (SDK builds `$SPIKE{...}` token) |
+| `MODEL_API_KEY_REF` | empty | Full SPIKE token reference override (`Bearer $SPIKE{...}`) |
 | `SESSION_ID` | auto-generated UUID | Session ID for trace correlation |
 
 ## Running Tests

@@ -50,7 +50,9 @@ func TestCollectStatus_AllComponentsOK(t *testing.T) {
 
 	// Redis
 	mr := miniredis.RunT(t)
-	mr.Set("k1", "v1")
+	if err := mr.Set("k1", "v1"); err != nil {
+		t.Fatalf("seed redis: %v", err)
+	}
 	redisURL := "redis://" + mr.Addr()
 
 	deps := DefaultDeps()
@@ -94,4 +96,3 @@ func TestCollectStatus_ComponentFilterUnknown(t *testing.T) {
 		t.Fatalf("expected error for unknown component, got nil")
 	}
 }
-

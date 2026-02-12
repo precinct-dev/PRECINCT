@@ -72,7 +72,9 @@ func newResetRateLimitCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer client.Close()
+			defer func() {
+				_ = client.Close()
+			}()
 
 			if all {
 				n, err := agw.DeleteAllRateLimitKeys(ctx, client)
