@@ -102,7 +102,7 @@ spec:
         - name: spire-agent-socket
           hostPath:
             path: /run/spire/sockets
-            type: Directory
+            type: DirectoryOrCreate
         - name: spike-bootstrap-state
           configMap:
             name: spike-bootstrap-state
