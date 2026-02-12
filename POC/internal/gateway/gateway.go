@@ -51,6 +51,13 @@ type Gateway struct {
 	registryStop         func()                            // RFA-dh9: stop function for registry fsnotify watcher
 	mcpTransport         mcpclient.Transport               // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
 	mcpTransportMu       sync.Mutex                        // RFA-9ol: protects lazy initialization of mcpTransport
+	modelPlanePolicy     *modelPlanePolicyEngine           // RFA-owgw.2: model plane policy enforcement
+	ingressPolicy        *ingressPlanePolicyEngine         // RFA-owgw.3: ingress plane admission controls
+	contextPolicy        *contextPlanePolicyEngine         // RFA-owgw.5: context and memory admission governance
+	loopPolicy           *loopPlanePolicyEngine            // RFA-owgw.4: loop plane immutable external limits
+	toolPolicy           *toolPlanePolicyEngine            // RFA-owgw.6: tool plane protocol adapters and capability registry v2
+	rlmPolicy            *rlmGovernanceEngine              // RFA-owgw.11: recursive language model governance
+	dlpRuleOps           *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
 }
 
 // New creates a new gateway instance
@@ -79,7 +86,10 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create tool registry: %w", err)
 	}
-	dlpScanner := middleware.NewBuiltInScanner()
+	dlpRuleOps, dlpScanner, err := newDLPRuleOpsManager()
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize DLP RuleOps manager: %w", err)
+	}
 	deepScanner := middleware.NewDeepScannerWithConfig(middleware.DeepScannerConfig{
 		APIKey:       cfg.GuardAPIKey,
 		Timeout:      time.Duration(cfg.DeepScanTimeout) * time.Second,
@@ -295,6 +305,13 @@ func New(cfg *Config) (*Gateway, error) {
 		spikeRedeemer:        spikeRedeemer,
 		sessionStore:         sessionStore,
 		registryStop:         registryStop,
+		modelPlanePolicy:     newModelPlanePolicyEngine(),
+		ingressPolicy:        newIngressPlanePolicyEngine(),
+		contextPolicy:        newContextPlanePolicyEngine(),
+		loopPolicy:           newLoopPlanePolicyEngine(),
+		toolPolicy:           newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
+		rlmPolicy:            newRLMGovernanceEngine(),
+		dlpRuleOps:           dlpRuleOps,
 	}, nil
 }
 
@@ -361,6 +378,10 @@ func (g *Gateway) Handler() http.Handler {
 	mux.Handle("/admin/circuit-breakers/", http.HandlerFunc(g.adminCircuitBreakersHandler))
 	mux.Handle("/admin/circuit-breakers/reset", http.HandlerFunc(g.adminCircuitBreakersResetHandler))
 	mux.Handle("/admin/policy/reload", http.HandlerFunc(g.adminPolicyReloadHandler))
+	mux.Handle("/admin/dlp/rulesets", http.HandlerFunc(g.adminDLPRulesetsHandler))
+	mux.Handle("/admin/dlp/rulesets/", http.HandlerFunc(g.adminDLPRulesetsHandler))
+	mux.Handle("/admin/loop/runs", http.HandlerFunc(g.adminLoopRunsHandler))
+	mux.Handle("/admin/loop/runs/", http.HandlerFunc(g.adminLoopRunsHandler))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
@@ -398,6 +419,9 @@ func (g *Gateway) proxyHandler() http.Handler {
 		)
 		defer span.End()
 
+		// Wrap response writer to capture status code for span and internal route handling.
+		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
 		// Demo-only, fast-path endpoint for deterministic rate-limit proofs.
 		//
 		// This path is intentionally handled inside the normal middleware chain
@@ -432,6 +456,35 @@ func (g *Gateway) proxyHandler() http.Handler {
 			return
 		}
 
+		// Phase 3 walking skeleton: internal plane entry points are served
+		// from the gateway boundary under /v1/* and still pass the full middleware chain.
+		if g.handlePhase3PlaneEntry(proxyRW, r.WithContext(ctx)) {
+			result := "allowed"
+			if proxyRW.statusCode >= 400 {
+				result = "denied"
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "phase3_plane_entry"),
+			)
+			return
+		}
+		// OpenAI-compatible model egress path. This route keeps external model calls
+		// inside UASGS policy controls while remaining SDK/framework friendly.
+		if g.handleModelCompatEntry(proxyRW, r.WithContext(ctx)) {
+			result := "allowed"
+			if proxyRW.statusCode >= 400 {
+				result = "denied"
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "phase3_model_egress"),
+			)
+			return
+		}
+
 		// Extract MCP method from request body (already captured by BodyCapture middleware)
 		mcpMethod, mcpParams := g.extractMCPMethodAndParams(ctx)
 		reqInfo := NewMCPRequestInfo(mcpMethod, mcpParams)
@@ -444,9 +497,6 @@ func (g *Gateway) proxyHandler() http.Handler {
 		if tenant == "" {
 			tenant = "default"
 		}
-
-		// Wrap response writer to capture status code for span
-		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
 		// RFA-9ol: Branch on transport mode.
 		// "mcp" uses the MCP Streamable HTTP transport for JSON-RPC.
