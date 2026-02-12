@@ -42,6 +42,8 @@ from agent import (
     ReportSynthesis,
     format_report,
     run_research,
+    normalize_model_name,
+    resolve_model_api_key_ref,
     SPIFFE_ID,
 )
 import dspy
@@ -58,6 +60,18 @@ SPIFFE_ID_DSPY = "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 POC_DIR = os.environ.get(
     "POC_DIR",
     str(pathlib.Path(__file__).resolve().parent.parent.parent),
+)
+INTEGRATION_ALLOWED_BASE_PATH = os.environ.get(
+    "INTEGRATION_ALLOWED_BASE_PATH",
+    os.environ.get("ALLOWED_BASE_PATH", "/app"),
+)
+INTEGRATION_READ_PATH = os.environ.get(
+    "INTEGRATION_READ_PATH",
+    f"{INTEGRATION_ALLOWED_BASE_PATH}/docker-compose.yml",
+)
+INTEGRATION_AUDIT_PATH = os.environ.get(
+    "INTEGRATION_AUDIT_PATH",
+    f"{INTEGRATION_ALLOWED_BASE_PATH}/Makefile",
 )
 
 
@@ -106,15 +120,30 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     response_mode = "normal"  # "normal", "deny_403", "deny_503"
     call_log = []
 
+    @staticmethod
+    def _extract_tool(request_data: dict) -> tuple[str, dict]:
+        method = request_data.get("method", "")
+        params = request_data.get("params", {}) or {}
+        if method == "tools/call":
+            tool_name = params.get("name", "")
+            args = params.get("arguments", {}) or {}
+            if not isinstance(args, dict):
+                args = {}
+            return tool_name, args
+        return method, params if isinstance(params, dict) else {}
+
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
         request_data = json.loads(body) if body else {}
+        tool_name, tool_params = self._extract_tool(request_data)
         spiffe_id = self.headers.get("X-SPIFFE-ID", "")
 
         MockGatewayHandler.call_log.append({
             "method": request_data.get("method", ""),
             "params": request_data.get("params", {}),
+            "tool_name": tool_name,
+            "tool_params": tool_params,
             "spiffe_id": spiffe_id,
             "id": request_data.get("id"),
         })
@@ -149,8 +178,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return
 
         # Normal mode -- return mock MCP response
-        method = request_data.get("method", "")
-        if method == "tavily_search":
+        if tool_name == "tavily_search":
             result = {
                 "results": [
                     {
@@ -160,7 +188,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     }
                 ]
             }
-        elif method == "read":
+        elif tool_name == "read":
             result = {
                 "content": "# Sample file content\nThis is a reference document about security."
             }
@@ -290,6 +318,17 @@ class TestGatewayClient:
 
         assert "connect" in str(exc_info.value).lower() or "Connection" in str(exc_info.value)
         client.close()
+
+    def test_normalize_model_name(self):
+        assert normalize_model_name("groq/llama-3.3-70b-versatile") == "llama-3.3-70b-versatile"
+        assert normalize_model_name("openai:gpt-4o-mini") == "gpt-4o-mini"
+        assert normalize_model_name("gpt-4o") == "gpt-4o"
+
+    def test_resolve_model_api_key_ref_from_spike_ref(self, monkeypatch):
+        monkeypatch.setenv("MODEL_API_KEY_REF", "")
+        monkeypatch.setenv("GROQ_LM_SPIKE_REF", "deadbeef")
+        token = resolve_model_api_key_ref()
+        assert token == "Bearer $SPIKE{ref:deadbeef,exp:3600}"
 
 
 class TestGatewayWebSearch:
@@ -455,9 +494,10 @@ class TestMCPProtocol:
 
         assert len(handler.call_log) == 1
         call = handler.call_log[0]
-        assert call["method"] == "tavily_search"
-        assert call["params"]["query"] == "test"
-        assert call["params"]["max_results"] == 3
+        assert call["method"] == "tools/call"
+        assert call["tool_name"] == "tavily_search"
+        assert call["tool_params"]["query"] == "test"
+        assert call["tool_params"]["max_results"] == 3
         assert call["id"] is not None
         client.close()
 
@@ -475,9 +515,9 @@ class TestMCPProtocol:
         client.call("read", file_path="/test/file2.md")
 
         assert len(handler.call_log) == 4
-        methods = [c["method"] for c in handler.call_log]
-        assert methods.count("tavily_search") == 2
-        assert methods.count("read") == 2
+        tools = [c["tool_name"] for c in handler.call_log]
+        assert tools.count("tavily_search") == 2
+        assert tools.count("read") == 2
 
         for call in handler.call_log:
             assert call["spiffe_id"] == SPIFFE_ID_DSPY
@@ -531,7 +571,7 @@ class TestGatewayIntegration:
     def test_file_read_through_gateway(self, check_gateway_health):
         """Read a local file through the gateway successfully."""
         with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
-            result = client.call("read", file_path=f"{POC_DIR}/docker-compose.yml")
+            result = client.call("read", file_path=INTEGRATION_READ_PATH)
 
         assert result is not None
 
@@ -571,7 +611,7 @@ class TestGatewayIntegration:
     def test_audit_events_logged(self, check_gateway_health):
         """Verify gateway logs audit events for tool calls."""
         with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
-            client.call("read", file_path=f"{POC_DIR}/Makefile")
+            client.call("read", file_path=INTEGRATION_AUDIT_PATH)
         assert True
 
 

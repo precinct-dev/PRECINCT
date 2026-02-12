@@ -522,6 +522,12 @@ run_demo_cycle() {
         DEMO_RUGPULL_ADMIN_URL="$url"
 
         if [ "$SKIP_SETUP" = false ]; then
+            # Compose determinism: stale SPIKE Nexus state can cause bootstrap
+            # verification loops and token redemption failures. Reset Nexus data
+            # before cycle 1 so demo-compose starts from a known good state.
+            log "Resetting SPIKE Nexus state for deterministic compose demo (local-only)"
+            docker compose -f "$POC_DIR/docker-compose.yml" down >/dev/null 2>&1 || true
+            docker volume rm spike-nexus-data >/dev/null 2>&1 || true
             start_compose
         fi
         # Clear rate-limit keys and restart gateway to reset circuit breaker
@@ -608,6 +614,8 @@ run_demo_cycle() {
 
     local go_ok=0
     local py_ok=0
+    local phase3_ok=0
+    local model_ref_ok=0
 
     run_go_demo "$url" "$network" || go_ok=1
     echo ""
@@ -628,6 +636,24 @@ run_demo_cycle() {
 
     run_python_demo "$url" "$network" || py_ok=1
     echo ""
+
+    # Phase 3 compose proof: exercise ingress -> context -> model -> tool
+    # and denied reason-coded paths from the operator-facing E2E harness.
+    if [ "$mode" = "compose" ]; then
+        # Go/Python demos can legitimately consume most of the per-SPIFFE
+        # burst window. Reset before Phase 3 scenarios so they validate plane
+        # controls (not residual rate-limit state).
+        log "Clearing rate-limit keys and restarting gateway for Phase 3 scenarios"
+        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
+        docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
+        wait_for_health "http://localhost:9090" || exit 1
+
+        log "Running Phase 3 compose scenario"
+        bash "$POC_DIR/tests/e2e/scenario_f_phase3_planes.sh" || phase3_ok=1
+        log "Running model egress SPIKE-reference scenario"
+        bash "$POC_DIR/tests/e2e/scenario_g_model_egress_ref.sh" || model_ref_ok=1
+        echo ""
+    fi
 
     # RFA-9i2: Allow async audit writer to flush before collecting proofs.
     sleep 2
@@ -650,16 +676,18 @@ run_demo_cycle() {
 
     # Summary
     echo -e "${BOLD}============================================${RESET}"
-    if [ "$go_ok" -eq 0 ] && [ "$py_ok" -eq 0 ]; then
+    if [ "$go_ok" -eq 0 ] && [ "$py_ok" -eq 0 ] && [ "$phase3_ok" -eq 0 ] && [ "$model_ref_ok" -eq 0 ]; then
         echo -e "  ${GREEN}ALL DEMOS PASSED ($mode)${RESET}"
     else
         [ "$go_ok" -ne 0 ] && echo -e "  ${RED}Go demo had failures${RESET}"
         [ "$py_ok" -ne 0 ] && echo -e "  ${RED}Python demo had failures${RESET}"
+        [ "$phase3_ok" -ne 0 ] && echo -e "  ${RED}Phase 3 compose scenario had failures${RESET}"
+        [ "$model_ref_ok" -ne 0 ] && echo -e "  ${RED}Model egress SPIKE-reference scenario had failures${RESET}"
     fi
     echo -e "${BOLD}============================================${RESET}"
     echo ""
 
-    return $((go_ok + py_ok))
+    return $((go_ok + py_ok + phase3_ok + model_ref_ok))
 }
 
 # --------------------------------------------------------------------------

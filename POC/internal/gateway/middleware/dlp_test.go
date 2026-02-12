@@ -60,6 +60,12 @@ func TestBuiltInScanner_Credentials(t *testing.T) {
 			wantFlag: "blocked_content",
 		},
 		{
+			name:     "ZAI API key pattern",
+			content:  "ZAI_API_KEY=0512604e84a04b9d9bbc2ddb85e903a3.796zjbhSNfgjkret",
+			wantCred: true,
+			wantFlag: "blocked_content",
+		},
+		{
 			name:     "Clean content",
 			content:  "Hello, world! This is a normal message.",
 			wantCred: false,
@@ -1230,5 +1236,46 @@ func TestFormatSecurityFlags(t *testing.T) {
 				t.Errorf("FormatSecurityFlags() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+type metadataOnlyScanner struct{}
+
+func (m *metadataOnlyScanner) Scan(content string) ScanResult {
+	return ScanResult{
+		HasCredentials: true,
+		Flags:          []string{"blocked_content"},
+	}
+}
+
+func (m *metadataOnlyScanner) ActiveRulesetMetadata() (string, string) {
+	return "v-test", "digest-test"
+}
+
+func TestDLPMiddleware_IncludesRulesetMetadataInDecision(t *testing.T) {
+	scanner := &metadataOnlyScanner{}
+	handler := DLPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}), scanner)
+
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	req = req.WithContext(WithRequestBody(context.Background(), []byte("any payload")))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for credential block, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var ge GatewayError
+	if err := json.Unmarshal(rec.Body.Bytes(), &ge); err != nil {
+		t.Fatalf("decode gateway error: %v body=%s", err, rec.Body.String())
+	}
+	if ge.Details["dlp_ruleset_version"] != "v-test" {
+		t.Fatalf("expected dlp_ruleset_version=v-test, got %v", ge.Details["dlp_ruleset_version"])
+	}
+	if ge.Details["dlp_ruleset_digest"] != "digest-test" {
+		t.Fatalf("expected dlp_ruleset_digest=digest-test, got %v", ge.Details["dlp_ruleset_digest"])
 	}
 }
