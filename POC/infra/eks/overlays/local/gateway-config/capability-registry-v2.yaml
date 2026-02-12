@@ -1,0 +1,10 @@
+# Capability Registry v2 (placeholder)
+#
+# This file is mounted into the gateway Pod at /config/capability-registry-v2.yaml
+# by the local Kustomize overlay. The current Phase 2 POC does not enforce a v2
+# capability registry yet, but the overlay expects this file to exist so
+# `kubectl apply -k infra/eks/overlays/local/` works on a clean checkout.
+#
+# Future Phase 3 implementations may replace this with an actual registry schema.
+capabilities: []
+
