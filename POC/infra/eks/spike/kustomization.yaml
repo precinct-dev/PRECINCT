@@ -17,9 +17,13 @@ resources:
   - keeper-deployment.yaml
   # Bootstrap
   - bootstrap-rbac.yaml
-  - bootstrap-job.yaml
   # Seeder
   - seeder-rbac.yaml
-  - seeder-job.yaml
+  #
+  # NOTE (RFA-q9tc): The bootstrap and seeder Jobs are intentionally NOT applied
+  # via kustomize because they require SPIRE workload registration to have
+  # completed first. The local `make k8s-up` target applies these jobs only
+  # after running `make k8s-register-spire` to avoid confusing transient "Error"
+  # pods from early job attempts.
   # NetworkPolicies
   - spike-networkpolicies.yaml
