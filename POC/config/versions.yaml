@@ -17,8 +17,9 @@ components:
     pinned: true
   keydb:
     image: eqalpha/keydb
-    version: "latest"
-    pinned: false
+    # Keep in sync with docker-compose.yml digest pin.
+    version: "sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac"
+    pinned: true
   otel-collector:
     image: otel/opentelemetry-collector-contrib
     version: "latest"
@@ -27,4 +28,3 @@ components:
     image: arizephoenix/phoenix
     version: "latest"
     pinned: false
-
