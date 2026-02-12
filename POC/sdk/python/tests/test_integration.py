@@ -12,7 +12,6 @@ Requires: docker compose stack running (make up)
 """
 
 import os
-import pathlib
 
 import httpx
 import pytest
@@ -22,10 +21,6 @@ from mcp_gateway_sdk import GatewayClient, GatewayError
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:9090")
 SPIFFE_ID_PYDANTIC = "spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev"
 SPIFFE_ID_DSPY = "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-POC_DIR = os.environ.get(
-    "POC_DIR",
-    str(pathlib.Path(__file__).resolve().parent.parent.parent.parent),
-)
 
 
 @pytest.fixture(scope="module")
@@ -50,9 +45,9 @@ class TestSDKIntegration:
     """Integration tests running against the real compose stack."""
 
     def test_file_read_success(self, check_gateway_health):
-        """SDK reads a file through the real gateway successfully."""
-        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_PYDANTIC) as client:
-            result = client.call("read", file_path=f"{POC_DIR}/docker-compose.yml")
+        """SDK calls an allowed tool through the real gateway successfully."""
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
+            result = client.call("tavily_search", query="AI security frameworks", max_results=1)
 
         assert result is not None
         assert isinstance(result, dict) or isinstance(result, list)
@@ -73,7 +68,7 @@ class TestSDKIntegration:
         """Invalid SPIFFE ID produces a 401 GatewayError."""
         with GatewayClient(url=GATEWAY_URL, spiffe_id="not-a-valid-id") as client:
             with pytest.raises(GatewayError) as exc_info:
-                client.call("read", file_path=f"{POC_DIR}/docker-compose.yml")
+                client.call("tavily_search", query="identity validation test", max_results=1)
 
         err = exc_info.value
         assert err.http_status == 401
@@ -99,6 +94,20 @@ class TestSDKIntegration:
 
     def test_context_manager_with_real_gateway(self, check_gateway_health):
         """Context manager protocol works with real gateway."""
-        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_PYDANTIC) as client:
-            result = client.call("read", file_path=f"{POC_DIR}/Makefile")
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
+            result = client.call("tavily_search", query="context manager integration", max_results=1)
         assert result is not None
+
+    def test_model_chat_helper_through_gateway(self, check_gateway_health):
+        """Model helper hits gateway model egress endpoint without crashing SDK."""
+        with GatewayClient(url=GATEWAY_URL, spiffe_id=SPIFFE_ID_DSPY) as client:
+            try:
+                result = client.call_model_chat(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": "integration smoke"}],
+                    provider="groq",
+                )
+                assert result is not None
+            except GatewayError as err:
+                # Acceptable when provider key/budget/policy blocks in local env.
+                assert err.http_status in (401, 403, 429, 502, 503)

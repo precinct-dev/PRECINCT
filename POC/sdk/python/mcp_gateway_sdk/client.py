@@ -165,6 +165,60 @@ class GatewayClient:
             display_name=method,
         )
 
+    def call_model_chat(
+        self,
+        *,
+        model: str,
+        messages: list[dict[str, Any]],
+        provider: str = "groq",
+        api_key_ref: Optional[str] = None,
+        api_key_header: str = "Authorization",
+        endpoint: str = "/openai/v1/chat/completions",
+        residency_intent: str = "us",
+        budget_profile: str = "standard",
+        extra_headers: Optional[dict[str, str]] = None,
+        **extra_payload: Any,
+    ) -> Any:
+        """Call the gateway's OpenAI-compatible model egress endpoint.
+
+        This helper keeps model calls behind the gateway's model-plane controls
+        while preserving a simple SDK interface for agent frameworks.
+        """
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+        }
+        payload.update(extra_payload)
+
+        path = endpoint if endpoint.startswith("/") else f"/{endpoint}"
+        url = f"{self.url}{path}"
+        headers = {
+            "Content-Type": "application/json",
+            "X-SPIFFE-ID": self.spiffe_id,
+            "X-Session-ID": self.session_id,
+            "X-Model-Provider": provider,
+            "X-Residency-Intent": residency_intent,
+            "X-Budget-Profile": budget_profile,
+        }
+        if api_key_ref:
+            headers[api_key_header] = api_key_ref
+        if extra_headers:
+            headers.update(extra_headers)
+
+        resp = self._client.post(url, json=payload, headers=headers)
+        if resp.status_code >= 400:
+            self._raise_gateway_error(resp)
+
+        try:
+            return resp.json()
+        except Exception:
+            raise GatewayError(
+                code="invalid_response",
+                message=f"Invalid JSON response (HTTP {resp.status_code}): "
+                        f"{resp.text[:200]}",
+                http_status=resp.status_code,
+            )
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

@@ -79,6 +79,77 @@ func TestNewClient_WithOptions(t *testing.T) {
 	}
 }
 
+func TestCallModelChat_HeadersAndEndpoint(t *testing.T) {
+	var gotPath string
+	var gotAuth string
+	var gotProvider string
+	var gotPayload map[string]any
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		gotProvider = r.Header.Get("X-Model-Provider")
+		if err := json.NewDecoder(r.Body).Decode(&gotPayload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-1","choices":[{"index":0}]}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "spiffe://test/agent", WithSessionID("sess-model"), WithHTTPClient(srv.Client()))
+	resp, err := c.CallModelChat(context.Background(), ModelChatRequest{
+		Model:        "llama-3.3-70b-versatile",
+		Messages:     []map[string]any{{"role": "user", "content": "hello"}},
+		Provider:     "groq",
+		APIKeyRef:    "Bearer $SPIKE{ref:deadbeef,exp:3600}",
+		ExtraPayload: map[string]any{"temperature": 0.1},
+	})
+	if err != nil {
+		t.Fatalf("CallModelChat failed: %v", err)
+	}
+	if resp["id"] != "chatcmpl-1" {
+		t.Fatalf("unexpected response: %#v", resp)
+	}
+	if gotPath != "/openai/v1/chat/completions" {
+		t.Fatalf("path=%q want=/openai/v1/chat/completions", gotPath)
+	}
+	if gotProvider != "groq" {
+		t.Fatalf("provider header=%q want=groq", gotProvider)
+	}
+	if gotAuth != "Bearer $SPIKE{ref:deadbeef,exp:3600}" {
+		t.Fatalf("authorization header mismatch: %q", gotAuth)
+	}
+	if gotPayload["model"] != "llama-3.3-70b-versatile" {
+		t.Fatalf("payload model mismatch: %#v", gotPayload["model"])
+	}
+}
+
+func TestCallModelChat_DenialParsesGatewayError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"code":"authz_policy_denied","message":"denied","middleware":"opa_policy","middleware_step":6}`))
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "spiffe://test/agent", WithHTTPClient(srv.Client()))
+	_, err := c.CallModelChat(context.Background(), ModelChatRequest{
+		Model:    "llama-3.3-70b-versatile",
+		Messages: []map[string]any{{"role": "user", "content": "hello"}},
+	})
+	var ge *GatewayError
+	if !errors.As(err, &ge) {
+		t.Fatalf("expected GatewayError, got %T (%v)", err, err)
+	}
+	if ge.HTTPStatus != http.StatusForbidden {
+		t.Fatalf("status=%d want=403", ge.HTTPStatus)
+	}
+	if ge.Code != "authz_policy_denied" {
+		t.Fatalf("code=%q want=authz_policy_denied", ge.Code)
+	}
+}
+
 // --- Unit Tests: JSON-RPC Envelope Construction ---
 
 func TestCall_JSONRPCEnvelope(t *testing.T) {
@@ -116,11 +187,18 @@ func TestCall_JSONRPCEnvelope(t *testing.T) {
 	if received.JSONRPC != "2.0" {
 		t.Errorf("jsonrpc = %q, want %q", received.JSONRPC, "2.0")
 	}
-	if received.Method != "tavily_search" {
-		t.Errorf("method = %q, want %q", received.Method, "tavily_search")
+	if received.Method != "tools/call" {
+		t.Errorf("method = %q, want %q", received.Method, "tools/call")
 	}
-	if received.Params["query"] != "AI security" {
-		t.Errorf("params.query = %v, want %q", received.Params["query"], "AI security")
+	if received.Params["name"] != "tavily_search" {
+		t.Errorf("params.name = %v, want %q", received.Params["name"], "tavily_search")
+	}
+	args, ok := received.Params["arguments"].(map[string]any)
+	if !ok {
+		t.Fatalf("params.arguments missing or wrong type: %#v", received.Params["arguments"])
+	}
+	if args["query"] != "AI security" {
+		t.Errorf("params.arguments.query = %v, want %q", args["query"], "AI security")
 	}
 	if received.ID <= 0 {
 		t.Errorf("id should be > 0, got %d", received.ID)
@@ -181,7 +259,7 @@ func TestCall_ParsesGatewayErrorFromJSON(t *testing.T) {
 		json.NewEncoder(w).Encode(GatewayError{
 			Code:        "authz_policy_denied",
 			Message:     "OPA policy denied access",
-			Middleware:   "opa",
+			Middleware:  "opa",
 			Step:        6,
 			DecisionID:  "dec-123",
 			TraceID:     "trace-456",
@@ -546,7 +624,7 @@ func TestIntegration_DenialWithFullEnvelope(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{
 			"code":            "authz_policy_denied",
 			"message":         "OPA policy denied tool access for agent",
-			"middleware":       "opa",
+			"middleware":      "opa",
 			"middleware_step": 6,
 			"decision_id":     "dec-abc-123",
 			"trace_id":        "4bf92f3577b34da6a3ce929d0e0e4736",
@@ -612,7 +690,7 @@ func TestIntegration_503RetryThenSuccess(t *testing.T) {
 			json.NewEncoder(w).Encode(map[string]any{
 				"code":            "circuit_open",
 				"message":         "Circuit breaker is open",
-				"middleware":       "circuit_breaker",
+				"middleware":      "circuit_breaker",
 				"middleware_step": 12,
 			})
 			return
@@ -726,7 +804,7 @@ func TestIntegration_DLPDenialWithDetails(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{
 			"code":            "dlp_credentials_detected",
 			"message":         "Request body contains potential credentials",
-			"middleware":       "dlp",
+			"middleware":      "dlp",
 			"middleware_step": 7,
 			"decision_id":     "dec-dlp-001",
 			"trace_id":        "abc123",
@@ -769,7 +847,7 @@ func TestIntegration_RateLimitDenial(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{
 			"code":            "ratelimit_exceeded",
 			"message":         "Rate limit exceeded for this agent",
-			"middleware":       "rate_limiter",
+			"middleware":      "rate_limiter",
 			"middleware_step": 11,
 			"decision_id":     "dec-rl-001",
 			"trace_id":        "xyz789",
@@ -804,7 +882,7 @@ func TestIntegration_AuthDenial(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{
 			"code":            "auth_invalid_identity",
 			"message":         "SPIFFE ID not in trust domain",
-			"middleware":       "spiffe_auth",
+			"middleware":      "spiffe_auth",
 			"middleware_step": 3,
 			"decision_id":     "dec-auth-001",
 			"trace_id":        "trace-auth",
