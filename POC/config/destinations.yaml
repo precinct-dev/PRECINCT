@@ -10,6 +10,7 @@ allowed_destinations:
   - "localhost"
   - "127.0.0.1"
   - "host.docker.internal"
+  - "mock-guard-model"
 
   # Tavily search API
   - "api.tavily.com"

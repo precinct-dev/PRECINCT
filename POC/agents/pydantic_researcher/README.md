@@ -65,11 +65,11 @@ The `GroundedAnswer` model includes:
    pip install -r requirements.txt
    ```
 
-4. LLM API key. Set one of:
+4. Seed provider secret in SPIKE (reference-based, no raw key in `.env`):
    ```bash
-   export GROQ_API_KEY=<your-key>   # Default: groq:llama-3.3-70b-versatile
-   # Or override the model:
-   export LLM_MODEL=openai:gpt-4    # Uses OPENAI_API_KEY
+   cd POC
+   ./build/bin/agw secret put groq-lm-key "<your-groq-key>" --confirm
+   export GROQ_LM_SPIKE_REF=groq-lm-key
    ```
 
 ## Running the Agent
@@ -90,6 +90,10 @@ python agent.py "What are the key differences between SPIFFE and traditional OAu
 | `SPIFFE_ID` | `spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev` | Agent SPIFFE identity |
 | `OTEL_ENDPOINT` | `http://localhost:4317` | OpenTelemetry collector gRPC endpoint |
 | `LLM_MODEL` | `groq:llama-3.3-70b-versatile` | PydanticAI model identifier |
+| `MODEL_USE_GATEWAY` | `true` | Route LLM calls through gateway OpenAI-compatible endpoint |
+| `MODEL_GATEWAY_BASE_URL` | `http://localhost:9090/openai/v1` | Base URL for model egress route |
+| `GROQ_LM_SPIKE_REF` | empty | SPIKE secret reference ID for Groq key (SDK builds `$SPIKE{...}` token) |
+| `MODEL_API_KEY_REF` | empty | Full SPIKE token reference override (`Bearer $SPIKE{...}`) |
 | `SESSION_ID` | auto-generated UUID | Session ID for trace correlation |
 | `POC_DIR` | Auto-detected from script location | POC directory path |
 

@@ -16,6 +16,12 @@ type DLPScanner interface {
 	Scan(content string) ScanResult
 }
 
+// DLPScannerMetadataProvider is an optional extension that exposes active
+// ruleset metadata for runtime decision traceability.
+type DLPScannerMetadataProvider interface {
+	ActiveRulesetMetadata() (version string, digest string)
+}
+
 // ScanResult contains the results of a DLP scan
 type ScanResult struct {
 	HasCredentials bool
@@ -52,6 +58,7 @@ func NewBuiltInScanner() *BuiltInScanner {
 			regexp.MustCompile(`\bghr_[a-zA-Z0-9]{36,}\b`),                                  // GitHub refresh tokens
 			regexp.MustCompile(`\bglpat-[a-zA-Z0-9_\-]{20,}\b`),                             // GitLab personal access tokens
 			regexp.MustCompile(`\bxox[baprs]-[0-9]{10,13}-[0-9]{10,13}-[a-zA-Z0-9]{24,}\b`), // Slack tokens
+			regexp.MustCompile(`(?i)\bzai_api_key\s*[:=]\s*[a-f0-9]{32}\.[A-Za-z0-9]{12,}\b`), // ZAI API keys
 			regexp.MustCompile(`-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----`),                   // Private keys (RSA, EC, PKCS#8 etc.)
 
 			// Obvious credential patterns in key=value format or JSON
@@ -279,6 +286,11 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 
 		// Scan the request body
 		result := scanner.Scan(string(body))
+		dlpRulesetVersion, dlpRulesetDigest := "", ""
+		if provider, ok := scanner.(DLPScannerMetadataProvider); ok {
+			dlpRulesetVersion, dlpRulesetDigest = provider.ActiveRulesetMetadata()
+			ctx = WithDLPRulesetMetadata(ctx, dlpRulesetVersion, dlpRulesetDigest)
+		}
 
 		// Handle scanner errors - fail open
 		if result.Error != nil {
@@ -316,7 +328,11 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 					Message:        "Request contains sensitive credentials",
 					Middleware:     "dlp_scan",
 					MiddlewareStep: 7,
-					Remediation:    "Remove credentials from the request body before retrying.",
+					Details: map[string]any{
+						"dlp_ruleset_version": dlpRulesetVersion,
+						"dlp_ruleset_digest":  dlpRulesetDigest,
+					},
+					Remediation: "Remove credentials from the request body before retrying.",
 				})
 				return
 			}
@@ -336,7 +352,11 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 					Message:        "Request contains suspicious injection patterns",
 					Middleware:     "dlp_scan",
 					MiddlewareStep: 7,
-					Remediation:    "Remove injection patterns from the request body before retrying.",
+					Details: map[string]any{
+						"dlp_ruleset_version": dlpRulesetVersion,
+						"dlp_ruleset_digest":  dlpRulesetDigest,
+					},
+					Remediation: "Remove injection patterns from the request body before retrying.",
 				})
 				return
 			}
@@ -356,7 +376,11 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 					Message:        "Request contains personally identifiable information",
 					Middleware:     "dlp_scan",
 					MiddlewareStep: 7,
-					Remediation:    "Remove PII from the request body before retrying.",
+					Details: map[string]any{
+						"dlp_ruleset_version": dlpRulesetVersion,
+						"dlp_ruleset_digest":  dlpRulesetDigest,
+					},
+					Remediation: "Remove PII from the request body before retrying.",
 				})
 				return
 			}

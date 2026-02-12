@@ -26,7 +26,7 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from openinference.instrumentation.dspy import DSPyInstrumentor
 
 # Shared SDK -- replaces ~120 lines of inline GatewayClient boilerplate
-from mcp_gateway_sdk import GatewayClient, GatewayError
+from mcp_gateway_sdk import GatewayClient, GatewayError, build_spike_token_ref
 
 logger = logging.getLogger("dspy_researcher")
 
@@ -42,7 +42,33 @@ SPIFFE_ID = os.environ.get(
 )
 OTEL_ENDPOINT = os.environ.get("OTEL_ENDPOINT", "http://localhost:4317")
 LLM_MODEL = os.environ.get("LLM_MODEL", "groq/llama-3.3-70b-versatile")
+MODEL_USE_GATEWAY = os.environ.get("MODEL_USE_GATEWAY", "true").lower() != "false"
+MODEL_GATEWAY_BASE_URL = os.environ.get("MODEL_GATEWAY_BASE_URL", f"{GATEWAY_URL}/openai/v1")
+MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "groq")
+GROQ_LM_SPIKE_REF = os.environ.get("GROQ_LM_SPIKE_REF", "")
+MODEL_API_KEY_REF = os.environ.get("MODEL_API_KEY_REF", "")
 SESSION_ID = os.environ.get("SESSION_ID", str(uuid.uuid4()))
+
+
+def normalize_model_name(raw_model: str) -> str:
+    """Normalize model identifier to a provider-agnostic model name."""
+    model = (raw_model or "").strip()
+    if "/" in model:
+        return model.split("/", 1)[1]
+    if ":" in model:
+        return model.split(":", 1)[1]
+    return model
+
+
+def resolve_model_api_key_ref() -> str:
+    """Resolve model API credential as a SPIKE reference token."""
+    explicit_ref = os.environ.get("MODEL_API_KEY_REF", MODEL_API_KEY_REF)
+    if explicit_ref:
+        return explicit_ref
+    spike_ref = os.environ.get("GROQ_LM_SPIKE_REF", GROQ_LM_SPIKE_REF)
+    if spike_ref:
+        return build_spike_token_ref(spike_ref, exp_seconds=3600)
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -353,10 +379,29 @@ def run_research(
         except Exception as exc:
             logger.warning("Failed to setup tracing (continuing without): %s", exc)
 
-    # Configure DSPy LLM
-    lm = dspy.LM(LLM_MODEL)
+    # Configure DSPy LLM through the gateway model egress path by default.
+    use_gateway = os.environ.get("MODEL_USE_GATEWAY", str(MODEL_USE_GATEWAY)).lower() != "false"
+    model_gateway_base_url = os.environ.get("MODEL_GATEWAY_BASE_URL", MODEL_GATEWAY_BASE_URL)
+    model_provider = os.environ.get("MODEL_PROVIDER", MODEL_PROVIDER)
+    if use_gateway:
+        lm = dspy.LM(
+            f"openai/{normalize_model_name(LLM_MODEL)}",
+            api_base=model_gateway_base_url,
+            api_key=resolve_model_api_key_ref(),
+            extra_headers={"X-Model-Provider": model_provider},
+        )
+    else:
+        lm = dspy.LM(LLM_MODEL)
     dspy.configure(lm=lm)
-    logger.info("DSPy configured with LLM: %s", LLM_MODEL)
+    if use_gateway:
+        logger.info(
+            "DSPy configured via model gateway (provider=%s, model=%s, base=%s)",
+            model_provider,
+            normalize_model_name(LLM_MODEL),
+            model_gateway_base_url,
+        )
+    else:
+        logger.info("DSPy configured with direct provider model: %s", LLM_MODEL)
 
     gateway_client = GatewayClient(
         url=gateway_url,
