@@ -23,18 +23,36 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     response_mode = "normal"  # normal | deny_403 | deny_503 | deny_401 | deny_429
     call_log: list[dict] = []
 
+    @staticmethod
+    def _extract_tool(request_data: dict) -> tuple[str, dict]:
+        method = request_data.get("method", "")
+        params = request_data.get("params", {}) or {}
+        if method == "tools/call":
+            tool_name = params.get("name", "")
+            args = params.get("arguments", {}) or {}
+            if not isinstance(args, dict):
+                args = {}
+            return tool_name, args
+        return method, params if isinstance(params, dict) else {}
+
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
         request_data = json.loads(body) if body else {}
+        tool_name, tool_params = self._extract_tool(request_data)
         spiffe_id = self.headers.get("X-SPIFFE-ID", "")
         session_id = self.headers.get("X-Session-ID", "")
 
         MockGatewayHandler.call_log.append({
+            "path": self.path,
             "method": request_data.get("method", ""),
             "params": request_data.get("params", {}),
+            "tool_name": tool_name,
+            "tool_params": tool_params,
             "spiffe_id": spiffe_id,
             "session_id": session_id,
+            "authorization": self.headers.get("Authorization", ""),
+            "model_provider": self.headers.get("X-Model-Provider", ""),
             "id": request_data.get("id"),
             "jsonrpc": request_data.get("jsonrpc"),
         })
@@ -59,7 +77,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                 "decision_id": "dec-test-002",
                 "trace_id": "trace-test-002",
                 "remediation": "Request access via admin portal",
-                "details": {"tool": request_data.get("method", "")},
+                "details": {"tool": tool_name},
             })
             return
 
@@ -87,8 +105,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             return
 
         # Normal mode -- return a mock MCP JSON-RPC response
-        method = request_data.get("method", "")
-        if method == "tavily_search":
+        if tool_name == "tavily_search":
             result = {
                 "results": [
                     {
@@ -98,7 +115,7 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
                     }
                 ]
             }
-        elif method == "read":
+        elif tool_name == "read":
             result = {
                 "content": "# Reference Document\nSample content for testing."
             }

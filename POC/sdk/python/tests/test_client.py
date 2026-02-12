@@ -96,9 +96,11 @@ class TestJSONRPCEnvelope:
         assert len(handler.call_log) == 1
         call = handler.call_log[0]
         assert call["jsonrpc"] == "2.0"
-        assert call["method"] == "tavily_search"
-        assert call["params"]["query"] == "test"
-        assert call["params"]["max_results"] == 3
+        assert call["method"] == "tools/call"
+        assert call["params"]["name"] == "tavily_search"
+        assert call["tool_name"] == "tavily_search"
+        assert call["tool_params"]["query"] == "test"
+        assert call["tool_params"]["max_results"] == 3
         assert call["id"] is not None
         assert isinstance(call["id"], int)
         client.close()
@@ -147,6 +149,54 @@ class TestHeaders:
         client.call("read", file_path="/test.md")
 
         assert handler.call_log[0]["session_id"] == "sess-42"
+        client.close()
+
+
+# ---------------------------------------------------------------------------
+# Model egress helper tests
+# ---------------------------------------------------------------------------
+
+class TestModelChatHelper:
+    """Verify call_model_chat() request shape and error handling."""
+
+    def test_model_chat_headers_and_endpoint(self, mock_gateway):
+        url, handler = mock_gateway
+        handler.call_log = []
+
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID, session_id="sess-model-1")
+        result = client.call_model_chat(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": "hello"}],
+            provider="groq",
+            api_key_ref="Bearer $SPIKE{ref:deadbeef,exp:3600}",
+        )
+
+        assert result is not None
+        assert len(handler.call_log) == 1
+        call = handler.call_log[0]
+        assert call["path"] == "/openai/v1/chat/completions"
+        assert call["model_provider"] == "groq"
+        assert call["authorization"] == "Bearer $SPIKE{ref:deadbeef,exp:3600}"
+        assert call["spiffe_id"] == SPIFFE_ID
+        assert call["session_id"] == "sess-model-1"
+        client.close()
+
+    def test_model_chat_gateway_denial_raises_gateway_error(self, mock_gateway):
+        url, handler = mock_gateway
+        handler.response_mode = "deny_403"
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID)
+
+        with pytest.raises(GatewayError) as exc_info:
+            client.call_model_chat(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": "hello"}],
+                provider="groq",
+                api_key_ref="Bearer $SPIKE{ref:deadbeef,exp:3600}",
+            )
+
+        err = exc_info.value
+        assert err.http_status == 403
+        assert err.code == "authz_policy_denied"
         client.close()
 
 
@@ -374,6 +424,7 @@ class TestGatewayErrorFromResponse:
         body = {
             "code": "dlp_credentials_detected",
             "message": "Credentials detected in request",
+            "reason_code": "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED",
             "middleware": "dlp",
             "middleware_step": 5,
             "decision_id": "dec-123",
@@ -385,6 +436,7 @@ class TestGatewayErrorFromResponse:
         err = GatewayError.from_response(403, body)
         assert err.code == "dlp_credentials_detected"
         assert err.message == "Credentials detected in request"
+        assert err.reason_code == "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED"
         assert err.middleware == "dlp"
         assert err.step == 5
         assert err.decision_id == "dec-123"

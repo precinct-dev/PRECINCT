@@ -63,24 +63,16 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer, auditor *Audi
 			return
 		}
 
-		// Get request body from context (already captured by BodyCapture middleware)
+		// Extract request body (already captured by BodyCapture middleware).
+		// Body can be empty for model egress routes that carry SPIKE tokens in headers.
 		bodyBytes := GetRequestBody(ctx)
-		if bodyBytes == nil {
-			// No body, nothing to substitute
-			span.SetAttributes(
-				attribute.Int("tokens_substituted", 0),
-				attribute.Int("spike_ref_count", 0),
-				attribute.String("mcp.result", "allowed"),
-				attribute.String("mcp.reason", "no body"),
-			)
-			next.ServeHTTP(w, r.WithContext(ctx))
-			return
+		bodyStr := ""
+		if bodyBytes != nil {
+			bodyStr = string(bodyBytes)
 		}
 
-		bodyStr := string(bodyBytes)
-
-		// Find all SPIKE tokens in the body
-		tokenStrings := FindSPIKETokens(bodyStr)
+		// Find SPIKE tokens in body + selected headers.
+		tokenStrings := collectSPIKETokens(bodyStr, r)
 		if len(tokenStrings) == 0 {
 			// No tokens found, proceed without substitution
 			span.SetAttributes(
@@ -220,16 +212,73 @@ func TokenSubstitution(next http.Handler, redeemer SecretRedeemer, auditor *Audi
 			attribute.String("mcp.reason", "tokens substituted"),
 		)
 
-		// Perform substitution
-		substitutedBody := SubstituteTokens(bodyStr, tokenMap)
-
-		// Update request body with substituted content
-		r.Body = io.NopCloser(bytes.NewBufferString(substitutedBody))
-		r.ContentLength = int64(len(substitutedBody))
+		// Perform substitution in body (if present) and supported headers.
+		if bodyBytes != nil {
+			substitutedBody := SubstituteTokens(bodyStr, tokenMap)
+			r.Body = io.NopCloser(bytes.NewBufferString(substitutedBody))
+			r.ContentLength = int64(len(substitutedBody))
+		}
+		substituteSPIKETokensInHeaders(r, tokenMap)
 
 		// Continue to next handler
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func collectSPIKETokens(body string, r *http.Request) []string {
+	seen := make(map[string]struct{})
+	for _, token := range FindSPIKETokens(body) {
+		seen[token] = struct{}{}
+	}
+	for _, headerName := range tokenSubstitutionHeaders {
+		values := r.Header.Values(headerName)
+		for _, value := range values {
+			for _, token := range FindSPIKETokens(value) {
+				seen[token] = struct{}{}
+			}
+		}
+	}
+
+	tokens := make([]string, 0, len(seen))
+	for token := range seen {
+		tokens = append(tokens, token)
+	}
+	return tokens
+}
+
+func substituteSPIKETokensInHeaders(r *http.Request, tokenMap map[string]string) {
+	for _, headerName := range tokenSubstitutionHeaders {
+		values := r.Header.Values(headerName)
+		if len(values) == 0 {
+			continue
+		}
+		updated := make([]string, 0, len(values))
+		changed := false
+		for _, value := range values {
+			nextValue := SubstituteTokens(value, tokenMap)
+			if nextValue != value {
+				changed = true
+			}
+			updated = append(updated, nextValue)
+		}
+		if !changed {
+			continue
+		}
+		r.Header.Del(headerName)
+		for _, value := range updated {
+			r.Header.Add(headerName, value)
+		}
+	}
+}
+
+var tokenSubstitutionHeaders = []string{
+	"Authorization",
+	"X-Provider-Api-Key",
+	"X-API-Key",
+	"Api-Key",
+	"X-Groq-Api-Key",
+	"X-OpenAI-Api-Key",
+	"X-ZAI-Api-Key",
 }
 
 // POCSecretRedeemer is a POC implementation of SecretRedeemer.

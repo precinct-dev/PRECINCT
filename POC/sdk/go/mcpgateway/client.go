@@ -79,6 +79,21 @@ type GatewayClient struct {
 	requestID   atomic.Int64
 }
 
+// ModelChatRequest captures gateway-model-plane call options for OpenAI-compatible
+// chat completions routing through UASGS model egress.
+type ModelChatRequest struct {
+	Model         string
+	Messages      []map[string]any
+	Provider      string
+	APIKeyRef     string
+	APIKeyHeader  string
+	Endpoint      string
+	Residency     string
+	BudgetProfile string
+	ExtraHeaders  map[string]string
+	ExtraPayload  map[string]any
+}
+
 // NewClient creates a GatewayClient for the given gateway URL and SPIFFE identity.
 //
 // The url is the gateway base URL (e.g. "http://localhost:9090").
@@ -108,6 +123,95 @@ func NewClient(url, spiffeID string, opts ...Option) *GatewayClient {
 // SessionID returns the session ID used by this client.
 func (c *GatewayClient) SessionID() string {
 	return c.sessionID
+}
+
+// CallModelChat sends an OpenAI-compatible chat completion request through the
+// gateway model egress endpoint (default: /openai/v1/chat/completions).
+func (c *GatewayClient) CallModelChat(ctx context.Context, req ModelChatRequest) (map[string]any, error) {
+	endpoint := strings.TrimSpace(req.Endpoint)
+	if endpoint == "" {
+		endpoint = "/openai/v1/chat/completions"
+	}
+	targetURL := endpoint
+	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
+		if strings.HasPrefix(endpoint, "/") {
+			targetURL = c.url + endpoint
+		} else {
+			targetURL = c.url + "/" + endpoint
+		}
+	}
+
+	provider := strings.TrimSpace(req.Provider)
+	if provider == "" {
+		provider = "groq"
+	}
+	residency := strings.TrimSpace(req.Residency)
+	if residency == "" {
+		residency = "us"
+	}
+	budgetProfile := strings.TrimSpace(req.BudgetProfile)
+	if budgetProfile == "" {
+		budgetProfile = "standard"
+	}
+
+	payload := map[string]any{
+		"model":    req.Model,
+		"messages": req.Messages,
+	}
+	for k, v := range req.ExtraPayload {
+		payload[k] = v
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("mcpgateway: failed to marshal model request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, targetURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("mcpgateway: failed to create model request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("X-SPIFFE-ID", c.spiffeID)
+	httpReq.Header.Set("X-Session-ID", c.sessionID)
+	httpReq.Header.Set("X-Model-Provider", provider)
+	httpReq.Header.Set("X-Residency-Intent", residency)
+	httpReq.Header.Set("X-Budget-Profile", budgetProfile)
+
+	apiKeyHeader := strings.TrimSpace(req.APIKeyHeader)
+	if apiKeyHeader == "" {
+		apiKeyHeader = "Authorization"
+	}
+	if strings.TrimSpace(req.APIKeyRef) != "" {
+		httpReq.Header.Set(apiKeyHeader, req.APIKeyRef)
+	}
+	for k, v := range req.ExtraHeaders {
+		httpReq.Header.Set(k, v)
+	}
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("mcpgateway: model request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("mcpgateway: failed to read model response: %w", err)
+	}
+	if resp.StatusCode >= 400 {
+		return nil, parseGatewayError(resp.StatusCode, respBody)
+	}
+
+	out := make(map[string]any)
+	if err := json.Unmarshal(respBody, &out); err != nil {
+		return nil, &GatewayError{
+			Code:       "invalid_response",
+			Message:    fmt.Sprintf("invalid JSON response (HTTP %d): %s", resp.StatusCode, truncate(string(respBody), 200)),
+			HTTPStatus: resp.StatusCode,
+		}
+	}
+	return out, nil
 }
 
 // jsonRPCRequest is the MCP JSON-RPC request envelope.
