@@ -491,6 +491,9 @@ services:
 networks:
   agentic-net:
     driver: bridge
+    # RFA-545e.2: lock down agent runtime/demo network egress (containers on this network
+    # cannot reach the public Internet; they must go through the gateway chokepoint).
+    internal: true
     name: agentic-security-network
   tool-plane:
     driver: bridge
