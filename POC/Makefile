@@ -1,8 +1,8 @@
-.PHONY: help up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate ci benchmark security-scan \
-       setup register-spire k8s-register-spire test-integration test-opa build build-images \
-       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
-       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
-       upgrade-demo repave-demo phoenix-up phoenix-down phoenix-reset
+.PHONY: help compose-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate ci benchmark security-scan \
+	       setup register-spire k8s-register-spire test-integration test-opa build build-images \
+	       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
+	       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
+	       upgrade-demo repave-demo phoenix-up phoenix-down phoenix-reset
 
 # Container image config
 REGISTRY ?= ghcr.io
@@ -31,7 +31,10 @@ help: ## Show available targets
 # Core
 # ---------------------------------------------------------------------------
 
-up: ## Start Docker Compose stack (waits for all services healthy)
+compose-verify: ## Verify Compose third-party images are digest-pinned (no :latest)
+	@bash scripts/compose-verify.sh
+
+up: compose-verify ## Start Docker Compose stack (waits for all services healthy)
 	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
 		echo "ERROR: phoenix-observability-network not found."; \
 		echo "Start the Phoenix stack first: make phoenix-up"; \

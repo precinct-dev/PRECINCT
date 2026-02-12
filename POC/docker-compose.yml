@@ -12,7 +12,7 @@
 services:
   # SPIRE Server - Identity control plane for workload attestation
   spire-server:
-    image: ghcr.io/spiffe/spire-server:1.10.0
+    image: ghcr.io/spiffe/spire-server:1.10.0@sha256:26daa394b3bfbc9dcadc734e9b110ce7ac5f2e1fe16050eb4418772280748b5e
     container_name: spire-server
     hostname: spire-server
     volumes:
@@ -207,7 +207,7 @@ services:
   # NOTE: Bootstrap depends on Keeper (not Nexus) because it sends shards TO Keepers.
   # Nexus runs in parallel, retrying until Keepers have shards.
   spike-bootstrap:
-    image: ghcr.io/spiffe/spike-bootstrap:0.8.0
+    image: ghcr.io/spiffe/spike-bootstrap:0.8.0@sha256:9a726930d6ae8ed67279d0cb19c219f14ebe3c84b30251774eb2b34ce5adc537
     container_name: spike-bootstrap
     depends_on:
       spire-entry-registrar:
@@ -247,7 +247,7 @@ services:
   # of the custom Go binary. Seeds ref "deadbeef" with a test value so demo test 18 can
   # prove full SPIKE token redemption end-to-end.
   spike-secret-seeder:
-    image: ghcr.io/spiffe/spike-pilot:0.8.0
+    image: ghcr.io/spiffe/spike-pilot:0.8.0@sha256:86b26666c171c5284c522bfb42f16473c85be6f3e3e32b1e3deaa8cd5a18eaff
     container_name: spike-secret-seeder
     depends_on:
       spike-nexus:
@@ -333,7 +333,8 @@ services:
   # connects via rediss://keydb:6380 with mTLS.
   # In SPIFFE_MODE=dev (default), only port 6379 is used (no TLS).
   keydb:
-    image: eqalpha/keydb:latest
+    # Pin by digest (manifest-list) to avoid floating tags while keeping multi-arch support.
+    image: eqalpha/keydb@sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac
     container_name: keydb
     hostname: keydb
     ports:
