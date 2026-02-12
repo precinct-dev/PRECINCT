@@ -22,6 +22,8 @@ const (
 	contextKeyUICallOrigin     contextKey = "ui_call_origin"    // RFA-j2d.7: "model" or "app"
 	contextKeyUIAppToolCalls   contextKey = "ui_app_tool_calls" // RFA-j2d.7: app session tool call count
 	contextKeyUIResourceURI    contextKey = "ui_resource_uri"   // RFA-j2d.7: ui:// resource URI
+	contextKeyDLPRulesetVer    contextKey = "dlp_ruleset_version"
+	contextKeyDLPRulesetDigest contextKey = "dlp_ruleset_digest"
 )
 
 // SecurityFlagsCollector is a mutable container for security flags that
@@ -228,4 +230,28 @@ func GetUIResourceURI(ctx context.Context) string {
 // WithUIResourceURI adds UI resource URI to context (RFA-j2d.7)
 func WithUIResourceURI(ctx context.Context, uri string) context.Context {
 	return context.WithValue(ctx, contextKeyUIResourceURI, uri)
+}
+
+// GetDLPRulesetVersion retrieves the active DLP ruleset version, if available.
+func GetDLPRulesetVersion(ctx context.Context) string {
+	if v := ctx.Value(contextKeyDLPRulesetVer); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// GetDLPRulesetDigest retrieves the active DLP ruleset digest, if available.
+func GetDLPRulesetDigest(ctx context.Context) string {
+	if v := ctx.Value(contextKeyDLPRulesetDigest); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// WithDLPRulesetMetadata stores DLP ruleset metadata on the request context so
+// it can be picked up by audit logging and error responses.
+func WithDLPRulesetMetadata(ctx context.Context, version, digest string) context.Context {
+	ctx = context.WithValue(ctx, contextKeyDLPRulesetVer, version)
+	ctx = context.WithValue(ctx, contextKeyDLPRulesetDigest, digest)
+	return ctx
 }

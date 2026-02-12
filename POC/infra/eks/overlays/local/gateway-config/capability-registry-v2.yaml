@@ -1,0 +1,23 @@
+# Local overlay copy of the Phase 3 "capability registry v2" input.
+#
+# Note: This is a deliberate copy rather than a reference to POC/config/ to
+# avoid kustomize path restrictions. Keep in sync with:
+#   POC/config/capability-registry-v2.yaml
+version: v2
+
+capabilities:
+  - id: tool.mcp.default
+    kind: tool
+    protocol: mcp
+    server: default
+    allowlist:
+      - tavily_search
+
+  - id: model.groq.openai_compat
+    kind: model
+    protocol: openai
+    provider: groq
+    endpoint: https://api.groq.com/openai/v1
+    residency:
+      - us
+

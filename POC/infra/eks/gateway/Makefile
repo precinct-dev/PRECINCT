@@ -18,8 +18,9 @@ NAMESPACE := gateway
 TOOLS_NAMESPACE := tools
 
 # Path to source config files (relative to POC root when run from this dir)
-OPA_DIR ?= ../../../config/opa
-TOOL_REGISTRY ?= ../../../config/tool-registry.yaml
+	OPA_DIR ?= ../../../config/opa
+	TOOL_REGISTRY ?= ../../../config/tool-registry.yaml
+	CAPABILITY_REGISTRY_V2 ?= ../../../config/capability-registry-v2.yaml
 
 help: ## Show this help message
 	@echo "Gateway Deployment -- EKS Targets"
@@ -36,22 +37,23 @@ deploy: deploy-configmap deploy-gateway ## Deploy all gateway components (Config
 	@echo ""
 	@echo "Gateway deployment complete. Run 'make verify' to check health."
 
-deploy-configmap: ## Create/update ConfigMap from source OPA policies and tool registry
-	@echo "=== Deploying Gateway ConfigMap ==="
-	$(KUBECTL) apply -f gateway-namespace.yaml
-	$(KUBECTL) apply -f gateway-rbac.yaml
-	@echo "Creating ConfigMap from source policy files..."
-	$(KUBECTL) -n $(NAMESPACE) create configmap gateway-config \
-		--from-file=mcp_policy.rego=$(OPA_DIR)/mcp_policy.rego \
-		--from-file=ui_policy.rego=$(OPA_DIR)/ui_policy.rego \
-		--from-file=ui_csp_policy.rego=$(OPA_DIR)/ui_csp_policy.rego \
-		--from-file=exfiltration.rego=$(OPA_DIR)/exfiltration.rego \
-		--from-file=context_policy.rego=$(OPA_DIR)/context_policy.rego \
-		--from-file=tool_grants.yaml=$(OPA_DIR)/tool_grants.yaml \
-		--from-file=ui_capability_grants.yaml=$(OPA_DIR)/ui_capability_grants.yaml \
-		--from-file=tool-registry.yaml=$(TOOL_REGISTRY) \
-		--dry-run=client -o yaml | $(KUBECTL) apply -f -
-	@echo "ConfigMap created with OPA policies and tool registry."
+	deploy-configmap: ## Create/update ConfigMap from source OPA policies and tool registry
+		@echo "=== Deploying Gateway ConfigMap ==="
+		$(KUBECTL) apply -f gateway-namespace.yaml
+		$(KUBECTL) apply -f gateway-rbac.yaml
+		@echo "Creating ConfigMap from source policy files..."
+		$(KUBECTL) -n $(NAMESPACE) create configmap gateway-config \
+			--from-file=mcp_policy.rego=$(OPA_DIR)/mcp_policy.rego \
+			--from-file=ui_policy.rego=$(OPA_DIR)/ui_policy.rego \
+			--from-file=ui_csp_policy.rego=$(OPA_DIR)/ui_csp_policy.rego \
+			--from-file=exfiltration.rego=$(OPA_DIR)/exfiltration.rego \
+			--from-file=context_policy.rego=$(OPA_DIR)/context_policy.rego \
+			--from-file=tool_grants.yaml=$(OPA_DIR)/tool_grants.yaml \
+			--from-file=ui_capability_grants.yaml=$(OPA_DIR)/ui_capability_grants.yaml \
+			--from-file=tool-registry.yaml=$(TOOL_REGISTRY) \
+			--from-file=capability-registry-v2.yaml=$(CAPABILITY_REGISTRY_V2) \
+			--dry-run=client -o yaml | $(KUBECTL) apply -f -
+		@echo "ConfigMap created with OPA policies and tool registry."
 
 deploy-gateway: ## Deploy gateway Deployment and Service
 	@echo "=== Deploying MCP Security Gateway ==="
