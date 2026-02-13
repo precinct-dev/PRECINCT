@@ -13,7 +13,8 @@
     "connector_manifest_v1": "schemas/connector_manifest_v1.schema.json"
   },
   "governance_docs": {
-    "connector_conformance_authority": "connector-conformance-authority.v2.4.md"
+    "connector_conformance_authority": "connector-conformance-authority.v2.4.md",
+    "dlp_ruleops_lifecycle": "ruleops-lifecycle.v2.4.md"
   },
   "reason_code_catalog": "reason-code-catalog.v2.4.json",
   "endpoints": [
@@ -69,6 +70,14 @@
     "/v1/connectors/activate",
     "/v1/connectors/revoke",
     "/v1/connectors/status",
-    "/v1/connectors/report"
+    "/v1/connectors/report",
+    "/admin/dlp/rulesets",
+    "/admin/dlp/rulesets/active",
+    "/admin/dlp/rulesets/create",
+    "/admin/dlp/rulesets/validate",
+    "/admin/dlp/rulesets/approve",
+    "/admin/dlp/rulesets/sign",
+    "/admin/dlp/rulesets/promote",
+    "/admin/dlp/rulesets/rollback"
   ]
 }

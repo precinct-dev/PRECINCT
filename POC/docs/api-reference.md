@@ -182,6 +182,24 @@ Host: localhost:9090
 
 ---
 
+### DLP RuleOps Admin Endpoints
+
+The DLP RuleOps lifecycle is exposed via admin endpoints:
+
+- `GET /admin/dlp/rulesets`
+- `GET /admin/dlp/rulesets/active`
+- `POST /admin/dlp/rulesets/create`
+- `POST /admin/dlp/rulesets/validate`
+- `POST /admin/dlp/rulesets/approve`
+- `POST /admin/dlp/rulesets/sign`
+- `POST /admin/dlp/rulesets/promote` (`mode=canary|active`)
+- `POST /admin/dlp/rulesets/rollback`
+
+Contract details and lifecycle semantics are defined in
+`../contracts/v2.4/ruleops-lifecycle.v2.4.md`.
+
+---
+
 ## Canonical v2.4 Contract Artifacts
 
 The frozen v2.4 control-plane contract set and reason-code catalog live in:
@@ -192,6 +210,7 @@ The frozen v2.4 control-plane contract set and reason-code catalog live in:
 - `../contracts/v2.4/schemas/plane_decision_v2.schema.json`
 - `../contracts/v2.4/schemas/connector_manifest_v1.schema.json`
 - `../contracts/v2.4/connector-conformance-authority.v2.4.md`
+- `../contracts/v2.4/ruleops-lifecycle.v2.4.md`
 - `../contracts/v2.4/reason-code-catalog.v2.4.json`
 - `../contracts/v2.4/reason-code-catalog.v2.4.md`
 - `../contracts/v2.4/CHANGELOG.md`
