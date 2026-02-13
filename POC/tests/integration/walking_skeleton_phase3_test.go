@@ -257,6 +257,34 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 	})
 	assertPlaneDecision("tool allow", code, body, 200, "TOOL_ALLOW", toolAllowRunID)
 
+	toolAdapterDenyRunID := "phase3-it-tool-adapter-deny"
+	code, body = ruleOpsPost(t, baseURL+"/v1/tool/execute", map[string]any{
+		"envelope": map[string]any{
+			"run_id":          toolAdapterDenyRunID,
+			"session_id":      sessionID,
+			"tenant":          "tenant-a",
+			"actor_spiffe_id": spiffeID,
+			"plane":           "tool",
+		},
+		"policy": map[string]any{
+			"envelope": map[string]any{
+				"run_id":          toolAdapterDenyRunID,
+				"session_id":      sessionID,
+				"tenant":          "tenant-a",
+				"actor_spiffe_id": spiffeID,
+				"plane":           "tool",
+			},
+			"action":   "tool.execute",
+			"resource": "tool/read",
+			"attributes": map[string]any{
+				"capability_id": "tool.default.mcp",
+				"tool_name":     "read",
+				"protocol":      "cli",
+			},
+		},
+	})
+	assertPlaneDecision("tool adapter deny", code, body, 403, "TOOL_ADAPTER_UNSUPPORTED", toolAdapterDenyRunID)
+
 	toolDenyRunID := "phase3-it-tool-deny"
 	code, body = ruleOpsPost(t, baseURL+"/v1/tool/execute", map[string]any{
 		"envelope": map[string]any{
@@ -410,8 +438,8 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 	})
 	assertPlaneDecision("ingress deny", code, body, 403, "INGRESS_SOURCE_UNAUTHENTICATED", ingressDenyRunID)
 
-	if len(decisionIDs) != 10 {
-		t.Fatalf("expected 10 unique plane decision ids, got %d", len(decisionIDs))
+	if len(decisionIDs) != 11 {
+		t.Fatalf("expected 11 unique plane decision ids, got %d", len(decisionIDs))
 	}
 }
 

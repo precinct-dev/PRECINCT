@@ -1,27 +1,51 @@
 # Capability Registry V2 (Phase 3)
 #
-# This file is the source-of-truth input for "capability registry v2" in the POC.
-# It is intentionally minimal today: the current gateway policy engines accept a
-# path but do not yet parse/enforce this registry.
+# This registry is enforced by /v1/tool/execute and binds capability IDs to:
+# - adapter protocol policy
+# - tool allowlists
+# - action/resource authorization
+# - optional step-up requirements for high-risk operations
 #
-# Why it exists anyway:
-# - K8s deployments mount this file into the gateway pod (see infra/eks/gateway).
-# - Local kustomize overlays generate gateway-config ConfigMaps from real files.
-# - Production implementations can extend this schema to include provider SLAs,
-#   budgets, residency, endpoint attestation, protocol adapters, etc.
-#
-# Keep this YAML stable and human-readable; treat changes as a governed lifecycle
-# (RuleOps/PolicyOps) once the parser/enforcement is implemented.
+# K8s and Compose both mount this same file path. Keep it stable and review
+# changes as part of controlled RuleOps/PolicyOps lifecycle.
 version: v2
 
 capabilities:
-  # Example tool-plane capability group (MCP). Not yet enforced.
-  - id: tool.mcp.default
+  - id: tool.default.mcp
     kind: tool
     protocol: mcp
     server: default
+    adapters:
+      - mcp
     allowlist:
+      - read
       - tavily_search
+    action_policies:
+      - action: tool.execute
+        resources:
+          - tool/read
+          - tool/search
+        allowed_tools:
+          - read
+          - tavily_search
+        require_step_up: false
+
+  - id: tool.highrisk.cli
+    kind: tool
+    protocol: cli
+    server: local
+    adapters:
+      - cli
+    allowlist:
+      - bash
+    action_policies:
+      - action: tool.execute
+        resources:
+          - tool/write
+          - tool/exec
+        allowed_tools:
+          - bash
+        require_step_up: true
 
   # Example model-plane provider entry (OpenAI-compatible). Not yet enforced.
   - id: model.groq.openai_compat
@@ -31,4 +55,3 @@ capabilities:
     endpoint: https://api.groq.com/openai/v1
     residency:
       - us
-

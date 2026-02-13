@@ -722,45 +722,66 @@ func (g *Gateway) handleToolExecute(w http.ResponseWriter, r *http.Request) {
 	attrs := req.Policy.Attributes
 	if attrs == nil {
 		attrs = map[string]any{}
+		req.Policy.Attributes = attrs
 	}
 
-	capabilityID := strings.TrimSpace(getStringAttr(attrs, "capability_id", ""))
-	toolName := strings.TrimSpace(getStringAttr(attrs, "tool_name", ""))
-	if capabilityID == "" || toolName == "" || !strings.HasPrefix(capabilityID, "tool.default.") {
-		resp := PlaneDecisionV2{
-			Decision:   DecisionDeny,
-			ReasonCode: ReasonToolCapabilityDenied,
-			Envelope:   req.Envelope,
-			TraceID:    traceID,
-			DecisionID: decisionID,
-			Metadata: map[string]any{
-				"capability_id":   capabilityID,
-				"tool_name":       toolName,
-				"required_prefix": "tool.default.",
-			},
+	policy := g.toolPolicy
+	if policy == nil {
+		policy = newToolPlanePolicyEngine("")
+	}
+	eval := policy.evaluate(req)
+	if eval.RequireStepUp {
+		token := strings.TrimSpace(getStringAttr(attrs, "approval_capability_token", ""))
+		if token == "" {
+			token = strings.TrimSpace(getStringAttr(attrs, "step_up_token", ""))
 		}
-		g.logPlaneDecision(r, resp, http.StatusForbidden)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		_ = json.NewEncoder(w).Encode(resp)
-		return
+		if token == "" {
+			token = strings.TrimSpace(getStringAttr(attrs, "approval_token", ""))
+		}
+
+		if token == "" {
+			eval.Metadata = mergeMetadata(eval.Metadata, map[string]any{
+				"step_up_state": "missing_token",
+			})
+		} else if g.approvalCapabilities == nil {
+			eval.Metadata = mergeMetadata(eval.Metadata, map[string]any{
+				"step_up_state": "approval_service_unavailable",
+			})
+		} else {
+			_, err := g.approvalCapabilities.ValidateAndConsume(token, middleware.ApprovalScope{
+				Action:        strings.TrimSpace(req.Policy.Action),
+				Resource:      strings.TrimSpace(req.Policy.Resource),
+				ActorSPIFFEID: req.Envelope.ActorSPIFFEID,
+				SessionID:     req.Envelope.SessionID,
+			})
+			if err == nil {
+				eval.RequireStepUp = false
+				eval.Decision = DecisionAllow
+				eval.Reason = ReasonToolAllow
+				eval.HTTPStatus = statusForToolReason(ReasonToolAllow)
+				eval.Metadata = mergeMetadata(eval.Metadata, map[string]any{
+					"step_up_state": "approved_token_consumed",
+				})
+			} else {
+				eval.Metadata = mergeMetadata(eval.Metadata, map[string]any{
+					"step_up_state": "invalid_or_expired_token",
+				})
+			}
+		}
 	}
 
 	resp := PlaneDecisionV2{
-		Decision:   DecisionAllow,
-		ReasonCode: ReasonToolAllow,
+		Decision:   eval.Decision,
+		ReasonCode: eval.Reason,
 		Envelope:   req.Envelope,
 		TraceID:    traceID,
 		DecisionID: decisionID,
-		Metadata: map[string]any{
-			"action":   req.Policy.Action,
-			"resource": req.Policy.Resource,
-		},
+		Metadata:   eval.Metadata,
 	}
 
-	g.logPlaneDecision(r, resp, http.StatusOK)
+	g.logPlaneDecision(r, resp, eval.HTTPStatus)
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(eval.HTTPStatus)
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
