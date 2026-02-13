@@ -2,7 +2,7 @@
 
 ## Authentication, Authorization, and Secrets Management for Agentic Systems (MCP and Beyond)
 
-**Version 2.3 — Consolidated Reference Architecture (UASGS + Phase 3 Hardened Controls)**
+**Version 2.4 — Consolidated Reference Architecture (UASGS + Phase 3 Hardened Controls)**
 
 *Ramiro | February 2026*
 
@@ -3765,6 +3765,28 @@ This is **not required for v1**, but may become compelling if constrained decodi
 - Requires maintaining a precise action grammar and type system.
 - Must never replace runtime enforcement—only reduce the probability of invalid actions.
 
+### 12.1 Production Closure Addendum (v2.4)
+
+This reference architecture is extended by:
+
+- `agentic-ai-security-production-readiness-gaps.md`
+- `agentic-ai-security-production-closure-architecture.md`
+
+Normative intent of this addendum:
+
+1. Keep the implementation **Kubernetes-first** as the primary production reference.
+2. Keep portability by enforcing architectural invariants, not by shipping proprietary turnkey environment packs.
+3. Complete Phase 3 governance and control-plane surfaces:
+   - connector conformance,
+   - RuleOps lifecycle,
+   - full context invariants,
+   - tool/loop governance,
+   - approval + break-glass,
+   - profile conformance.
+4. Expand compliance support as a **technical evidence system** (machine-readable first), while keeping organization-level people/process programs out of implementation scope.
+
+Use the addendum artifacts as the source for backlog decomposition and delivery sequencing.
+
 ---
 
 ## 13. References
@@ -3807,6 +3829,6 @@ This is **not required for v1**, but may become compelling if constrained decodi
 
 ---
 
-*Document Version: 2.3*
+*Document Version: 2.4*
 *Last Updated: February 2026*
 *Classification: Internal - Technical Reference Architecture*
