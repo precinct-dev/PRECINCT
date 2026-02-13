@@ -187,7 +187,7 @@ func TestIngressSubmitSourcePrincipalMismatchDenied(t *testing.T) {
 			"run_id":          "run-submit-source-mismatch",
 			"session_id":      "session-submit-source-mismatch",
 			"tenant":          "tenant-a",
-			"actor_spiffe_id": reqSPIFFE,
+			"actor_spiffe_id": manifestSPIFFE,
 			"plane":           "ingress",
 		},
 		"policy": map[string]any{
@@ -195,7 +195,7 @@ func TestIngressSubmitSourcePrincipalMismatchDenied(t *testing.T) {
 				"run_id":          "run-submit-source-mismatch",
 				"session_id":      "session-submit-source-mismatch",
 				"tenant":          "tenant-a",
-				"actor_spiffe_id": reqSPIFFE,
+				"actor_spiffe_id": manifestSPIFFE,
 				"plane":           "ingress",
 			},
 			"action":   "ingress.admit",

@@ -382,10 +382,6 @@ func (g *Gateway) Handler() http.Handler {
 	mux.Handle("/admin/circuit-breakers/", http.HandlerFunc(g.adminCircuitBreakersHandler))
 	mux.Handle("/admin/circuit-breakers/reset", http.HandlerFunc(g.adminCircuitBreakersResetHandler))
 	mux.Handle("/admin/policy/reload", http.HandlerFunc(g.adminPolicyReloadHandler))
-	mux.Handle("/admin/dlp/rulesets", http.HandlerFunc(g.adminDLPRulesetsHandler))
-	mux.Handle("/admin/dlp/rulesets/", http.HandlerFunc(g.adminDLPRulesetsHandler))
-	mux.Handle("/admin/loop/runs", http.HandlerFunc(g.adminLoopRunsHandler))
-	mux.Handle("/admin/loop/runs/", http.HandlerFunc(g.adminLoopRunsHandler))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
@@ -469,6 +465,29 @@ func (g *Gateway) proxyHandler() http.Handler {
 				attribute.Int("status_code", proxyRW.statusCode),
 				attribute.String("mcp.result", result),
 				attribute.String("mcp.reason", "connector_conformance_entry"),
+				attribute.String("mcp.gateway.middleware", v24MiddlewareConnectorAuth),
+				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
+				attribute.String("mcp.v24.endpoint", r.URL.Path),
+			)
+			return
+		}
+
+		if g.handleV24AdminEntry(proxyRW, r.WithContext(ctx)) {
+			result := "allowed"
+			if proxyRW.statusCode >= 400 {
+				result = "denied"
+			}
+			adminMiddleware := v24MiddlewareRuleOpsAdmin
+			if strings.HasPrefix(r.URL.Path, "/admin/loop/runs") {
+				adminMiddleware = v24MiddlewareLoopAdmin
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "v24_admin_entry"),
+				attribute.String("mcp.gateway.middleware", adminMiddleware),
+				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
+				attribute.String("mcp.v24.endpoint", r.URL.Path),
 			)
 			return
 		}
@@ -484,6 +503,9 @@ func (g *Gateway) proxyHandler() http.Handler {
 				attribute.Int("status_code", proxyRW.statusCode),
 				attribute.String("mcp.result", result),
 				attribute.String("mcp.reason", "phase3_plane_entry"),
+				attribute.String("mcp.gateway.middleware", v24MiddlewarePhase3Plane),
+				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
+				attribute.String("mcp.v24.endpoint", r.URL.Path),
 			)
 			return
 		}
@@ -498,6 +520,9 @@ func (g *Gateway) proxyHandler() http.Handler {
 				attribute.Int("status_code", proxyRW.statusCode),
 				attribute.String("mcp.result", result),
 				attribute.String("mcp.reason", "phase3_model_egress"),
+				attribute.String("mcp.gateway.middleware", v24MiddlewareModelCompat),
+				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
+				attribute.String("mcp.v24.endpoint", r.URL.Path),
 			)
 			return
 		}

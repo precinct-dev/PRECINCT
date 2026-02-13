@@ -168,10 +168,13 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 
 		// Phase 3 plane entry points and OpenAI-compatible model egress are
 		// governed by dedicated UASGS contracts, not MCP tool-grant policy.
-		if strings.HasPrefix(r.URL.Path, "/v1/") || strings.HasPrefix(r.URL.Path, "/openai/v1/") {
+		if strings.HasPrefix(r.URL.Path, "/v1/") ||
+			strings.HasPrefix(r.URL.Path, "/openai/v1/") ||
+			strings.HasPrefix(r.URL.Path, "/admin/dlp/rulesets") ||
+			strings.HasPrefix(r.URL.Path, "/admin/loop/runs") {
 			span.SetAttributes(
 				attribute.String("mcp.result", "allowed"),
-				attribute.String("mcp.reason", "phase3 model/plane passthrough"),
+				attribute.String("mcp.reason", "phase3 model/plane/admin passthrough"),
 			)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return

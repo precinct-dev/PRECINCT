@@ -189,35 +189,41 @@ func evaluatePromptSafety(attrs map[string]any) (Decision, ReasonCode, int, map[
 
 func (g *Gateway) decodePlaneRequest(w http.ResponseWriter, r *http.Request, expectedPlane Plane) (PlaneRequestV2, bool) {
 	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusMethodNotAllowed,
+			middleware.ErrMCPInvalidRequest,
+			"method not allowed",
+			v24MiddlewarePhase3Plane,
+			ReasonContractInvalid,
+			map[string]any{
+				"expected_method": http.MethodPost,
+			},
+		)
 		return PlaneRequestV2{}, false
 	}
 
 	var req PlaneRequestV2
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(PlaneDecisionV2{
-			Decision:   DecisionDeny,
-			ReasonCode: ReasonContractInvalid,
-			Envelope: RunEnvelope{
-				RunID:         "unknown",
-				SessionID:     middleware.GetSessionID(r.Context()),
-				Tenant:        "unknown",
-				ActorSPIFFEID: middleware.GetSPIFFEID(r.Context()),
-				Plane:         expectedPlane,
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusBadRequest,
+			middleware.ErrMCPInvalidRequest,
+			"invalid json payload",
+			v24MiddlewarePhase3Plane,
+			ReasonContractInvalid,
+			map[string]any{
+				"expected_plane": expectedPlane,
 			},
-			TraceID:    middleware.GetTraceID(r.Context()),
-			DecisionID: middleware.GetDecisionID(r.Context()),
-			Metadata: map[string]any{
-				"error": "invalid json payload",
-			},
-		})
+		)
 		return PlaneRequestV2{}, false
 	}
 
 	if err := req.Validate(); err != nil {
 		traceID, decisionID := getDecisionCorrelationIDs(r, req.Envelope)
-		resp := PlaneDecisionV2{
+		g.logPlaneDecision(r, PlaneDecisionV2{
 			Decision:   DecisionDeny,
 			ReasonCode: ReasonContractInvalid,
 			Envelope:   req.Envelope,
@@ -226,16 +232,25 @@ func (g *Gateway) decodePlaneRequest(w http.ResponseWriter, r *http.Request, exp
 			Metadata: map[string]any{
 				"error": err.Error(),
 			},
-		}
-		g.logPlaneDecision(r, resp, http.StatusBadRequest)
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(resp)
+		}, http.StatusBadRequest)
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusBadRequest,
+			middleware.ErrContractValidationFailed,
+			"contract validation failed",
+			v24MiddlewarePhase3Plane,
+			ReasonContractInvalid,
+			map[string]any{
+				"error": err.Error(),
+			},
+		)
 		return PlaneRequestV2{}, false
 	}
 
 	if req.Envelope.Plane != expectedPlane {
 		traceID, decisionID := getDecisionCorrelationIDs(r, req.Envelope)
-		resp := PlaneDecisionV2{
+		g.logPlaneDecision(r, PlaneDecisionV2{
 			Decision:   DecisionDeny,
 			ReasonCode: ReasonContractPlaneMismatch,
 			Envelope:   req.Envelope,
@@ -245,10 +260,51 @@ func (g *Gateway) decodePlaneRequest(w http.ResponseWriter, r *http.Request, exp
 				"expected_plane": expectedPlane,
 				"got_plane":      req.Envelope.Plane,
 			},
-		}
-		g.logPlaneDecision(r, resp, http.StatusBadRequest)
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(resp)
+		}, http.StatusBadRequest)
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusBadRequest,
+			middleware.ErrContractValidationFailed,
+			"plane mismatch",
+			v24MiddlewarePhase3Plane,
+			ReasonContractPlaneMismatch,
+			map[string]any{
+				"expected_plane": expectedPlane,
+				"got_plane":      req.Envelope.Plane,
+			},
+		)
+		return PlaneRequestV2{}, false
+	}
+
+	callerSPIFFEID := strings.TrimSpace(middleware.GetSPIFFEID(r.Context()))
+	if callerSPIFFEID != "" && callerSPIFFEID != req.Envelope.ActorSPIFFEID {
+		traceID, decisionID := getDecisionCorrelationIDs(r, req.Envelope)
+		g.logPlaneDecision(r, PlaneDecisionV2{
+			Decision:   DecisionDeny,
+			ReasonCode: ReasonContractInvalid,
+			Envelope:   req.Envelope,
+			TraceID:    traceID,
+			DecisionID: decisionID,
+			Metadata: map[string]any{
+				"error":              "actor identity mismatch",
+				"caller_spiffe_id":   callerSPIFFEID,
+				"envelope_spiffe_id": req.Envelope.ActorSPIFFEID,
+			},
+		}, http.StatusForbidden)
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusForbidden,
+			middleware.ErrAuthzPolicyDenied,
+			"caller identity does not match envelope actor_spiffe_id",
+			v24MiddlewarePhase3Plane,
+			v24ReasonPolicyHookRejected,
+			map[string]any{
+				"caller_spiffe_id":   callerSPIFFEID,
+				"envelope_spiffe_id": req.Envelope.ActorSPIFFEID,
+			},
+		)
 		return PlaneRequestV2{}, false
 	}
 

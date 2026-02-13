@@ -386,22 +386,40 @@ func (g *Gateway) handleConnectorAuthorityEntry(w http.ResponseWriter, r *http.R
 
 func (g *Gateway) decodeConnectorLifecycleRequest(w http.ResponseWriter, r *http.Request) (connectorLifecycleRequest, bool) {
 	if r.Method != http.MethodPost {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": "method not allowed"})
+		g.writeConnectorRequestError(
+			w,
+			r,
+			http.StatusMethodNotAllowed,
+			middleware.ErrMCPInvalidRequest,
+			"method not allowed",
+			map[string]any{"expected_method": http.MethodPost},
+		)
 		return connectorLifecycleRequest{}, false
 	}
 	var req connectorLifecycleRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid json payload"})
+		g.writeConnectorRequestError(
+			w,
+			r,
+			http.StatusBadRequest,
+			middleware.ErrMCPInvalidRequest,
+			"invalid json payload",
+			nil,
+		)
 		return connectorLifecycleRequest{}, false
 	}
 	if req.ConnectorID == "" {
 		req.ConnectorID = strings.TrimSpace(req.Manifest.ConnectorID)
 	}
 	if strings.TrimSpace(req.ConnectorID) == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": "connector_id is required"})
+		g.writeConnectorRequestError(
+			w,
+			r,
+			http.StatusBadRequest,
+			middleware.ErrContractValidationFailed,
+			"connector_id is required",
+			nil,
+		)
 		return connectorLifecycleRequest{}, false
 	}
 	return req, true
@@ -475,28 +493,44 @@ func (g *Gateway) handleConnectorRevoke(w http.ResponseWriter, r *http.Request) 
 
 func (g *Gateway) handleConnectorStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": "method not allowed"})
+		g.writeConnectorRequestError(
+			w,
+			r,
+			http.StatusMethodNotAllowed,
+			middleware.ErrMCPInvalidRequest,
+			"method not allowed",
+			map[string]any{"expected_method": http.MethodGet},
+		)
 		return
 	}
 	connectorID := strings.TrimSpace(r.URL.Query().Get("connector_id"))
 	if connectorID == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": "connector_id query parameter is required"})
+		g.writeConnectorRequestError(
+			w,
+			r,
+			http.StatusBadRequest,
+			middleware.ErrContractValidationFailed,
+			"connector_id query parameter is required",
+			nil,
+		)
 		return
 	}
 	rec, ok := g.cca.status(connectorID)
 	traceID, decisionID := getDecisionCorrelationIDs(r, RunEnvelope{})
 	if !ok {
 		g.logConnectorAuthorityDecision(r, connectorID, "status", "deny", "connector_not_found", decisionID, traceID, http.StatusNotFound)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"connector_id": connectorID,
-			"status":       "not_found",
-			"decision_id":  decisionID,
-			"trace_id":     traceID,
-		})
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusNotFound,
+			middleware.ErrContractValidationFailed,
+			"connector not found",
+			v24MiddlewareConnectorAuth,
+			ReasonContractInvalid,
+			map[string]any{
+				"connector_id": connectorID,
+			},
+		)
 		return
 	}
 	g.logConnectorAuthorityDecision(r, connectorID, "status", "allow", "connector_found", decisionID, traceID, http.StatusOK)
@@ -515,8 +549,14 @@ func (g *Gateway) handleConnectorStatus(w http.ResponseWriter, r *http.Request) 
 
 func (g *Gateway) handleConnectorReport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": "method not allowed"})
+		g.writeConnectorRequestError(
+			w,
+			r,
+			http.StatusMethodNotAllowed,
+			middleware.ErrMCPInvalidRequest,
+			"method not allowed",
+			map[string]any{"expected_method": http.MethodGet},
+		)
 		return
 	}
 	report := g.cca.conformanceReport()
@@ -550,16 +590,50 @@ func (g *Gateway) writeConnectorOpError(w http.ResponseWriter, r *http.Request, 
 	traceID, decisionID := getDecisionCorrelationIDs(r, RunEnvelope{})
 	g.logConnectorAuthorityDecision(r, connectorID, operation, "deny", err.Error(), decisionID, traceID, http.StatusBadRequest)
 	g.cca.updateAuditRef(connectorID, decisionID, traceID, err.Error(), operation)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"connector_id": connectorID,
-		"operation":    operation,
-		"status":       "error",
-		"error":        err.Error(),
-		"decision_id":  decisionID,
-		"trace_id":     traceID,
-	})
+	writeV24GatewayError(
+		w,
+		r,
+		http.StatusBadRequest,
+		middleware.ErrContractValidationFailed,
+		err.Error(),
+		v24MiddlewareConnectorAuth,
+		ReasonContractInvalid,
+		map[string]any{
+			"connector_id": connectorID,
+			"operation":    operation,
+		},
+	)
+}
+
+func (g *Gateway) writeConnectorRequestError(
+	w http.ResponseWriter,
+	r *http.Request,
+	httpCode int,
+	errorCode string,
+	message string,
+	details map[string]any,
+) {
+	traceID, decisionID := getDecisionCorrelationIDs(r, RunEnvelope{})
+	g.logConnectorAuthorityDecision(
+		r,
+		strings.TrimSpace(r.URL.Query().Get("connector_id")),
+		"request_validation",
+		"deny",
+		message,
+		decisionID,
+		traceID,
+		httpCode,
+	)
+	writeV24GatewayError(
+		w,
+		r,
+		httpCode,
+		errorCode,
+		message,
+		v24MiddlewareConnectorAuth,
+		ReasonContractInvalid,
+		details,
+	)
 }
 
 func (g *Gateway) logConnectorAuthorityDecision(r *http.Request, connectorID, operation, decision, reason, decisionID, traceID string, httpStatus int) {

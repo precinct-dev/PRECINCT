@@ -802,6 +802,20 @@ else
     log_fail "Conformance report audit linkage" "compose-webhook last_decision_id missing"
 fi
 
+log_subheader "F4.5: Admin RuleOps endpoint correlation metadata"
+
+RULEOPS_ACTIVE_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}/admin/dlp/rulesets/active" -H "X-SPIFFE-ID: ${SPIFFE_ID}")
+RULEOPS_ACTIVE_CODE=$(echo "$RULEOPS_ACTIVE_RESPONSE" | tail -n1)
+RULEOPS_ACTIVE_BODY=$(echo "$RULEOPS_ACTIVE_RESPONSE" | sed '$d')
+RULEOPS_ACTIVE_DECISION_ID="$(extract_json_field "$RULEOPS_ACTIVE_BODY" "decision_id")"
+RULEOPS_ACTIVE_TRACE_ID="$(extract_json_field "$RULEOPS_ACTIVE_BODY" "trace_id")"
+
+if [ "$RULEOPS_ACTIVE_CODE" = "200" ] && [ -n "$RULEOPS_ACTIVE_DECISION_ID" ] && [ -n "$RULEOPS_ACTIVE_TRACE_ID" ]; then
+    log_pass "RuleOps active endpoint returns decision_id and trace_id"
+else
+    log_fail "RuleOps active endpoint correlation metadata" "Expected 200 and non-empty decision/trace IDs, got code=${RULEOPS_ACTIVE_CODE} body=${RULEOPS_ACTIVE_BODY:0:240}"
+fi
+
 log_subheader "F5: Audit evidence for multi-plane decisions"
 sleep 1
 
@@ -824,6 +838,12 @@ if [ -n "$CONNECTOR_DECISION_ID" ] && docker compose logs --no-log-prefix --tail
     log_pass "Audit log contains conformance report decision id"
 else
     log_fail "Audit linkage for conformance report decision id" "decision id ${CONNECTOR_DECISION_ID:-<empty>} not found in gateway audit logs"
+fi
+
+if [ -n "$RULEOPS_ACTIVE_DECISION_ID" ] && docker compose logs --no-log-prefix --tail 400 mcp-security-gateway 2>/dev/null | grep -q "${RULEOPS_ACTIVE_DECISION_ID}"; then
+    log_pass "Audit log contains RuleOps active decision id"
+else
+    log_fail "Audit linkage for RuleOps active decision id" "decision id ${RULEOPS_ACTIVE_DECISION_ID:-<empty>} not found in gateway audit logs"
 fi
 
 log_subheader "F6: Machine-readable artifact capture"
@@ -849,6 +869,7 @@ cat > "${ARTIFACT_PATH}" <<EOF
     {"plane":"loop","path":"deny","status_code":${LOOP_DENY_CODE:-0},"reason_code":"${LOOP_DENY_REASON}","decision_id":"${LOOP_DENY_DECISION_ID}","trace_id":"${LOOP_DENY_TRACE_ID}"}
   ],
   "connector_conformance_report_decision_id": "${CONNECTOR_DECISION_ID}"
+  ,"ruleops_active_decision_id": "${RULEOPS_ACTIVE_DECISION_ID}"
 }
 EOF
 
