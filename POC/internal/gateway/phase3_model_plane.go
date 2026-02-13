@@ -1,9 +1,19 @@
 package gateway
 
 import (
+	"crypto/ed25519"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/pem"
+	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v3"
 )
 
 type modelProviderPolicy struct {
@@ -21,6 +31,10 @@ type modelBudgetProfile struct {
 type modelPlanePolicyEngine struct {
 	mu                       sync.Mutex
 	providers                map[string]modelProviderPolicy
+	providerEndpoints        map[string]string
+	catalogVersion           string
+	catalogDigest            string
+	catalogSignatureVerified bool
 	budgetProfile            map[string]modelBudgetProfile
 	usage                    map[string]int
 	enforceMediationGate     bool
@@ -78,6 +92,14 @@ func newModelPlanePolicyEngineWithControls(enforceMediationGate, enforceHIPAAPro
 				AllowHighRiskMode: false,
 			},
 		},
+		providerEndpoints: map[string]string{
+			"groq":         "https://api.groq.com/openai/v1/chat/completions",
+			"openai":       "https://api.openai.com/v1/chat/completions",
+			"azure_openai": "",
+		},
+		catalogVersion:           "builtin",
+		catalogDigest:            "",
+		catalogSignatureVerified: false,
 		budgetProfile: map[string]modelBudgetProfile{
 			"standard": {LimitUnits: 100, NearLimitFrom: 90},
 			"tiny":     {LimitUnits: 2, NearLimitFrom: 2},
@@ -206,6 +228,9 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 		"step_up_approved": stepUpApproved,
 		"budget_profile":   budgetProfile,
 	}
+	for k, v := range m.catalogMetadata() {
+		metadata[k] = v
+	}
 	if enforcementProfile != "" {
 		metadata["enforcement_profile"] = enforcementProfile
 	}
@@ -216,6 +241,152 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 		}
 	}
 	return DecisionAllow, reason, 200, metadata
+}
+
+type modelProviderCatalogV2 struct {
+	Version   string                         `yaml:"version"`
+	Providers []modelProviderCatalogProvider `yaml:"providers"`
+}
+
+type modelProviderCatalogProvider struct {
+	Name              string   `yaml:"name"`
+	Endpoint          string   `yaml:"endpoint"`
+	AllowedModels     []string `yaml:"allowed_models"`
+	AllowedResidency  []string `yaml:"allowed_residency"`
+	AllowHighRiskMode bool     `yaml:"allow_high_risk_mode"`
+	FallbackProviders []string `yaml:"fallback_providers"`
+}
+
+func (m *modelPlanePolicyEngine) loadProviderCatalog(path string, publicKeyPath string) error {
+	if m == nil {
+		return nil
+	}
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return nil
+	}
+
+	catalogBytes, err := os.ReadFile(path)
+	if err != nil {
+		return fmt.Errorf("read model provider catalog: %w", err)
+	}
+	signatureVerified := false
+	if strings.TrimSpace(publicKeyPath) != "" {
+		if err := verifyYAMLCatalogSignature(catalogBytes, path, publicKeyPath); err != nil {
+			return fmt.Errorf("model provider catalog signature verification failed: %w", err)
+		}
+		signatureVerified = true
+	}
+
+	var catalog modelProviderCatalogV2
+	if err := yaml.Unmarshal(catalogBytes, &catalog); err != nil {
+		return fmt.Errorf("parse model provider catalog: %w", err)
+	}
+	if strings.TrimSpace(catalog.Version) == "" {
+		return fmt.Errorf("model provider catalog missing version")
+	}
+	if len(catalog.Providers) == 0 {
+		return fmt.Errorf("model provider catalog has no providers")
+	}
+
+	newProviders := make(map[string]modelProviderPolicy)
+	newEndpoints := make(map[string]string)
+	for _, p := range catalog.Providers {
+		name := strings.ToLower(strings.TrimSpace(p.Name))
+		if name == "" {
+			continue
+		}
+		models := make(map[string]bool)
+		for _, model := range p.AllowedModels {
+			if v := strings.TrimSpace(model); v != "" {
+				models[v] = true
+			}
+		}
+		if len(models) == 0 {
+			return fmt.Errorf("provider %s has empty allowed_models", name)
+		}
+		residency := make(map[string]bool)
+		for _, intent := range p.AllowedResidency {
+			if v := strings.ToLower(strings.TrimSpace(intent)); v != "" {
+				residency[v] = true
+			}
+		}
+		if len(residency) == 0 {
+			return fmt.Errorf("provider %s has empty allowed_residency", name)
+		}
+		endpoint := strings.TrimSpace(p.Endpoint)
+		if endpoint == "" {
+			return fmt.Errorf("provider %s has empty endpoint", name)
+		}
+		newEndpoints[name] = endpoint
+		newProviders[name] = modelProviderPolicy{
+			AllowedModels:     models,
+			AllowedResidency:  residency,
+			AllowHighRiskMode: p.AllowHighRiskMode,
+			FallbackProviders: p.FallbackProviders,
+		}
+	}
+	if len(newProviders) == 0 {
+		return fmt.Errorf("model provider catalog has no valid providers")
+	}
+
+	digest := sha256.Sum256(catalogBytes)
+	m.mu.Lock()
+	m.providers = newProviders
+	m.providerEndpoints = newEndpoints
+	m.catalogVersion = catalog.Version
+	m.catalogDigest = hex.EncodeToString(digest[:])
+	m.catalogSignatureVerified = signatureVerified
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *modelPlanePolicyEngine) expectedProviderEndpoint(provider string) (string, bool) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	endpoint, ok := m.providerEndpoints[strings.ToLower(strings.TrimSpace(provider))]
+	return endpoint, ok
+}
+
+func (m *modelPlanePolicyEngine) catalogMetadata() map[string]any {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return map[string]any{
+		"provider_catalog_version":            m.catalogVersion,
+		"provider_catalog_digest":             m.catalogDigest,
+		"provider_catalog_signature_verified": m.catalogSignatureVerified,
+	}
+}
+
+func verifyYAMLCatalogSignature(data []byte, catalogPath string, publicKeyPath string) error {
+	pubPEM, err := os.ReadFile(publicKeyPath)
+	if err != nil {
+		return fmt.Errorf("read public key: %w", err)
+	}
+	block, _ := pem.Decode(pubPEM)
+	if block == nil {
+		return fmt.Errorf("decode PEM public key")
+	}
+	keyAny, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("parse public key: %w", err)
+	}
+	edKey, ok := keyAny.(ed25519.PublicKey)
+	if !ok {
+		return fmt.Errorf("public key is not Ed25519")
+	}
+	sigRaw, err := os.ReadFile(catalogPath + ".sig")
+	if err != nil {
+		return fmt.Errorf("read signature file: %w", err)
+	}
+	sig, err := base64.StdEncoding.DecodeString(strings.TrimSpace(string(sigRaw)))
+	if err != nil {
+		return fmt.Errorf("decode signature: %w", err)
+	}
+	if !ed25519.Verify(edKey, data, sig) {
+		return fmt.Errorf("invalid signature")
+	}
+	return nil
 }
 
 func (m *modelPlanePolicyEngine) reserveBudget(tenant, profile string, units int) (nearLimit bool, exhausted bool) {

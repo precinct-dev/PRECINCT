@@ -306,6 +306,35 @@ func New(cfg *Config) (*Gateway, error) {
 	// Legacy SSE, with a deprecation warning for SSE.
 	// No transport is created at startup to handle Docker Compose ordering
 	// where upstream may not be ready yet.
+	modelPlanePolicy := newModelPlanePolicyEngineWithControls(
+		enforcementProfile.Controls.EnforceModelMediationGate,
+		enforcementProfile.Controls.EnforceHIPAAPromptSafety,
+	)
+	if err := modelPlanePolicy.loadProviderCatalog(cfg.ModelProviderCatalogPath, cfg.ModelProviderCatalogPublicKey); err != nil {
+		if auditor != nil {
+			auditor.Log(middleware.AuditEvent{
+				Action: "model.provider_catalog.load",
+				Result: fmt.Sprintf("status=fail path=%s error=%s", cfg.ModelProviderCatalogPath, err.Error()),
+			})
+		}
+		return nil, fmt.Errorf("failed to load model provider catalog: %w", err)
+	}
+	if err := verifyGuardArtifactIntegrity(cfg, enforcementProfile.Name, auditor); err != nil {
+		return nil, err
+	}
+	if auditor != nil {
+		meta := modelPlanePolicy.catalogMetadata()
+		auditor.Log(middleware.AuditEvent{
+			Action: "model.provider_catalog.load",
+			Result: fmt.Sprintf(
+				"status=pass version=%v digest=%v signature_verified=%v path=%s",
+				meta["provider_catalog_version"],
+				meta["provider_catalog_digest"],
+				meta["provider_catalog_signature_verified"],
+				cfg.ModelProviderCatalogPath,
+			),
+		})
+	}
 
 	return &Gateway{
 		config:               cfg,
@@ -330,7 +359,7 @@ func New(cfg *Config) (*Gateway, error) {
 		spikeRedeemer:        spikeRedeemer,
 		sessionStore:         sessionStore,
 		registryStop:         registryStop,
-		modelPlanePolicy:     newModelPlanePolicyEngineWithControls(enforcementProfile.Controls.EnforceModelMediationGate, enforcementProfile.Controls.EnforceHIPAAPromptSafety),
+		modelPlanePolicy:     modelPlanePolicy,
 		ingressPolicy:        newIngressPlanePolicyEngine(),
 		contextPolicy:        newContextPlanePolicyEngine(),
 		loopPolicy:           newLoopPlanePolicyEngine(),

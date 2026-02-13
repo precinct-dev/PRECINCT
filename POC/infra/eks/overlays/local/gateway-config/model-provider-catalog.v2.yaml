@@ -1,0 +1,37 @@
+version: "v2.0.0"
+
+providers:
+  - name: "groq"
+    endpoint: "https://api.groq.com/openai/v1/chat/completions"
+    allowed_models:
+      - "llama-3.3-70b-versatile"
+      - "llama-3.1-8b-instant"
+    allowed_residency:
+      - "us"
+    allow_high_risk_mode: false
+    fallback_providers:
+      - "openai"
+
+  - name: "openai"
+    endpoint: "https://api.openai.com/v1/chat/completions"
+    allowed_models:
+      - "gpt-4o"
+      - "gpt-4o-mini"
+    allowed_residency:
+      - "us"
+      - "eu"
+    allow_high_risk_mode: false
+    fallback_providers:
+      - "azure_openai"
+
+  - name: "azure_openai"
+    endpoint: "https://example.azure.com/openai/deployments/default/chat/completions?api-version=2024-10-21"
+    allowed_models:
+      - "gpt-4o"
+      - "gpt-4o-mini"
+    allowed_residency:
+      - "us"
+      - "eu"
+    allow_high_risk_mode: false
+    fallback_providers: []
+

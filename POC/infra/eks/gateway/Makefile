@@ -21,6 +21,7 @@ TOOLS_NAMESPACE := tools
 	OPA_DIR ?= ../../../config/opa
 	TOOL_REGISTRY ?= ../../../config/tool-registry.yaml
 	CAPABILITY_REGISTRY_V2 ?= ../../../config/capability-registry-v2.yaml
+	MODEL_PROVIDER_CATALOG ?= ../../../config/model-provider-catalog.v2.yaml
 
 help: ## Show this help message
 	@echo "Gateway Deployment -- EKS Targets"
@@ -52,6 +53,7 @@ deploy: deploy-configmap deploy-gateway ## Deploy all gateway components (Config
 			--from-file=ui_capability_grants.yaml=$(OPA_DIR)/ui_capability_grants.yaml \
 			--from-file=tool-registry.yaml=$(TOOL_REGISTRY) \
 			--from-file=capability-registry-v2.yaml=$(CAPABILITY_REGISTRY_V2) \
+			--from-file=model-provider-catalog.v2.yaml=$(MODEL_PROVIDER_CATALOG) \
 			--dry-run=client -o yaml | $(KUBECTL) apply -f -
 		@echo "ConfigMap created with OPA policies and tool registry."
 

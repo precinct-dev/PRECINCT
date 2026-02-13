@@ -54,6 +54,7 @@ configMapGenerator:
     files:
       - tool-registry.yaml=gateway-config/tool-registry.yaml
       - capability-registry-v2.yaml=gateway-config/capability-registry-v2.yaml
+      - model-provider-catalog.v2.yaml=gateway-config/model-provider-catalog.v2.yaml
       - mcp_policy.rego=gateway-config/mcp_policy.rego
       - ui_policy.rego=gateway-config/ui_policy.rego
       - ui_csp_policy.rego=gateway-config/ui_csp_policy.rego
