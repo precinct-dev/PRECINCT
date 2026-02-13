@@ -71,6 +71,19 @@ TECHNICAL_SCOPE_PATH = (
 PCI_PROFILE_DOC_PATH = (
     PROJECT_ROOT / "docs" / "compliance" / "pci-dss-technical-profile.md"
 )
+HIPAA_PROFILE_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "compliance" / "hipaa-technical-profile.md"
+)
+
+HIPAA_PROFILE_CONTROL_IDS = {
+    "GW-AUTH-001",
+    "GW-AUTHZ-001",
+    "GW-DLP-001",
+    "GW-DLP-002",
+    "GW-AUDIT-001",
+    "GW-TRANS-001",
+    "GW-SESS-001",
+}
 
 
 @pytest.fixture
@@ -287,6 +300,31 @@ class TestLoadTaxonomy:
         text = PCI_PROFILE_DOC_PATH.read_text()
         assert "## K8s-First Implementation Notes" in text
         assert "## Non-K8s Adaptation Guidance" in text
+
+    def test_hipaa_profile_document_exists_and_maps_controls(self):
+        """HIPAA profile doc exists and maps tagged HIPAA technical controls."""
+        assert HIPAA_PROFILE_DOC_PATH.exists()
+        text = HIPAA_PROFILE_DOC_PATH.read_text()
+        for control_id in sorted(HIPAA_PROFILE_CONTROL_IDS):
+            assert control_id in text
+
+    def test_hipaa_profile_doc_includes_prompt_safety_contract(self):
+        """HIPAA profile doc includes deny/tokenize/redact reason-code mapping."""
+        text = HIPAA_PROFILE_DOC_PATH.read_text()
+        assert "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED" in text
+        assert "PROMPT_SAFETY_TOKENIZATION_APPLIED" in text
+        assert "PROMPT_SAFETY_REDACTION_APPLIED" in text
+        assert "## K8s-First Implementation Notes" in text
+        assert "## Non-K8s Adaptation Guidance" in text
+
+    def test_taxonomy_hipaa_profile_tags_present(self):
+        """HIPAA profile control set is explicitly tagged in taxonomy metadata."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        control_map = {c["id"]: c for c in controls}
+        for control_id in HIPAA_PROFILE_CONTROL_IDS:
+            assert control_id in control_map
+            tags = control_map[control_id].get("profile_tags", [])
+            assert "hipaa-technical" in tags
 
 
 # ---------------------------------------------------------------------------
@@ -997,6 +1035,34 @@ class TestIntegrationFullPipeline:
             assert payload["record_count"] > 0
             assert all(r["framework"] == "PCIDSS" for r in payload["records"])
 
+    def test_cli_main_emits_hipaa_profile_bundle(self, sample_audit_entries):
+        """CLI main emits machine-readable HIPAA profile bundle outputs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audit_path = Path(tmpdir) / "audit.jsonl"
+            with open(audit_path, "w") as f:
+                for entry in sample_audit_entries:
+                    f.write(json.dumps(entry) + "\n")
+
+            output_dir = Path(tmpdir) / "output"
+            exit_code = main([
+                "--audit-log", str(audit_path),
+                "--output-dir", str(output_dir),
+                "--project-root", str(PROJECT_ROOT),
+            ])
+
+            assert exit_code == 0
+            hipaa_json = output_dir / "compliance-evidence.hipaa.json"
+            hipaa_csv = output_dir / "compliance-evidence.hipaa.csv"
+            assert hipaa_json.exists()
+            assert hipaa_csv.exists()
+
+            payload = json.loads(hipaa_json.read_text())
+            assert payload["schema_version"] == "evidence.profile.v1"
+            assert payload["profile"] == "hipaa-technical"
+            assert payload["record_count"] > 0
+            emitted_control_ids = {record["control_id"] for record in payload["records"]}
+            assert HIPAA_PROFILE_CONTROL_IDS.issubset(emitted_control_ids)
+
 
 # ---------------------------------------------------------------------------
 # Integration Tests: Evidence Cross-Referencing
@@ -1692,6 +1758,8 @@ class TestIntegrationAllOutputs:
             assert (output_dir / "compliance-evidence.v2.csv").exists()
             assert (output_dir / "compliance-evidence.pci-dss.json").exists()
             assert (output_dir / "compliance-evidence.pci-dss.csv").exists()
+            assert (output_dir / "compliance-evidence.hipaa.json").exists()
+            assert (output_dir / "compliance-evidence.hipaa.csv").exists()
 
     def test_cli_main_produces_evidence_directory(self, sample_audit_entries):
         """CLI main() copies evidence files."""

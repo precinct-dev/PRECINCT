@@ -31,6 +31,12 @@ Reason-code meaning is determined by prefix + suffix:
   - `*_APPLIED`: mitigation/override action applied.
   - `HALT_*`: loop termination boundary reached.
 
+Prompt-safety operational alignment for v2.4:
+
+- `PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED` is emitted for raw regulated prompt content in HIPAA profile mode.
+- `PROMPT_SAFETY_TOKENIZATION_APPLIED` is emitted when `prompt_action=tokenize` requests minimum-necessary tokenization.
+- `PROMPT_SAFETY_REDACTION_APPLIED` is emitted when `prompt_action=redact` requests minimum-necessary redaction.
+
 ## Deprecation Policy
 
 - Deprecation requires a replacement code and a one-minor-version overlap period.

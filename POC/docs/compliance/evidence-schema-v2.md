@@ -22,6 +22,12 @@ technical evidence bundles:
 - `compliance-evidence.pci-dss.json`
 - `compliance-evidence.pci-dss.csv`
 
+When HIPAA-tagged profile controls are present in taxonomy mappings, the generator
+also emits:
+
+- `compliance-evidence.hipaa.json`
+- `compliance-evidence.hipaa.csv`
+
 The existing analyst-focused exports are also preserved:
 
 - `compliance-report.csv`
