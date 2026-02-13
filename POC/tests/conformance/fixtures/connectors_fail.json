@@ -1,0 +1,7 @@
+{
+  "schema_version": "conformance.fixture.v1",
+  "suite": "connectors",
+  "name": "connector invalid transition denied",
+  "case_id": "invalid_transition_denied",
+  "expect": "fail"
+}

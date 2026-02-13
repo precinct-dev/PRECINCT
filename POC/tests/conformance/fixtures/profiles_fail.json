@@ -1,0 +1,7 @@
+{
+  "schema_version": "conformance.fixture.v1",
+  "suite": "profiles",
+  "name": "prod profile requires mediation",
+  "case_id": "prod_profile_requires_mediation",
+  "expect": "fail"
+}

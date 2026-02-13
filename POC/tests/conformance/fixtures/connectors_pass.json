@@ -1,0 +1,7 @@
+{
+  "schema_version": "conformance.fixture.v1",
+  "suite": "connectors",
+  "name": "connector lifecycle success",
+  "case_id": "lifecycle_success",
+  "expect": "pass"
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": "conformance.fixture.v1",
+  "suite": "contracts",
+  "name": "contracts missing artifact fails",
+  "case_id": "artifact_exists",
+  "expect": "fail",
+  "params": {
+    "path": "contracts/v2.4/does-not-exist.json"
+  }
+}

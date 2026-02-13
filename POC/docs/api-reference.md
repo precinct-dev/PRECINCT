@@ -228,6 +228,20 @@ Response includes:
 
 ---
 
+### Conformance Harness Invocation
+
+Use the fixture-driven conformance harness to generate a machine-readable report
+across contracts, connectors, RuleOps, and profile suites:
+
+- Embedded mode (CI-safe): `go run ./tests/conformance/cmd/harness --output ./build/conformance/conformance-report.json`
+- Live mode (local stack): `go run ./tests/conformance/cmd/harness --live --gateway-url http://localhost:9090 --output ./build/conformance/conformance-report.live.json`
+- CI/automation target: `make conformance`
+
+The report schema is versioned (`conformance.report.v1`) and defined at:
+`../tests/conformance/report.schema.v1.json`.
+
+---
+
 ## Canonical v2.4 Contract Artifacts
 
 The frozen v2.4 control-plane contract set and reason-code catalog live in:
