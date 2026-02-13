@@ -7,6 +7,7 @@ turnkey environment pack for any proprietary platform.
 Related references:
 - `docs/architecture/k8s-runtime-validation-campaign.md`
 - `docs/architecture/compose-backport-decision-ledger.md`
+- `docs/architecture/biotech-adaptation-reference-path.md`
 
 ## Scope and Boundary
 
