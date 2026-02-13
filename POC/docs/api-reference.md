@@ -5,7 +5,7 @@ The gateway implements the Model Context Protocol (MCP) over HTTP with JSON-RPC 
 passing all tool calls through a 13-layer security middleware chain before forwarding
 to the upstream MCP server.
 
-**Version:** 2.0.0
+**Version:** 2.4.0
 **Base URL:** `http://localhost:9090` (dev mode) or `https://localhost:9443` (SPIFFE mTLS mode)
 
 ---
@@ -27,6 +27,7 @@ to the upstream MCP server.
 10. [SPIKE Token Format](#spike-token-format)
 11. [Available Tools](#available-tools)
 12. [curl Examples](#curl-examples)
+13. [Canonical v2.4 Contract Artifacts](#canonical-v24-contract-artifacts)
 
 ---
 
@@ -178,6 +179,25 @@ Host: localhost:9090
 - `closed` -- Normal operation. All requests pass through.
 - `open` -- Too many consecutive failures. Requests are rejected with `circuit_open` (503).
 - `half-open` -- Testing recovery. Limited requests allowed through.
+
+---
+
+## Canonical v2.4 Contract Artifacts
+
+The frozen v2.4 control-plane contract set and reason-code catalog live in:
+
+- `../contracts/v2.4/contract-set.v2.4.md`
+- `../contracts/v2.4/manifest.v2.4.json`
+- `../contracts/v2.4/schemas/plane_request_v2.schema.json`
+- `../contracts/v2.4/schemas/plane_decision_v2.schema.json`
+- `../contracts/v2.4/reason-code-catalog.v2.4.json`
+- `../contracts/v2.4/reason-code-catalog.v2.4.md`
+- `../contracts/v2.4/CHANGELOG.md`
+
+Compatibility notes:
+
+- Canonical ingress path is `/v1/ingress/submit`; `/v1/ingress/admit` is retained as a compatibility alias during migration.
+- Control-plane endpoints return `reason_code`; middleware chain denials return `code`.
 
 ---
 

@@ -1,0 +1,16 @@
+{
+  "decision": "deny",
+  "reason_code": "MODEL_PROVIDER_DENIED",
+  "envelope": {
+    "run_id": "run-1002",
+    "session_id": "session-1001",
+    "tenant": "tenant-a",
+    "actor_spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+    "plane": "model"
+  },
+  "trace_id": "trace-1002",
+  "decision_id": "decision-1002",
+  "metadata": {
+    "provider": "unknown"
+  }
+}

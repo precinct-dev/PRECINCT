@@ -1,0 +1,16 @@
+{
+  "decision": "allow",
+  "reason_code": "INGRESS_ALLOW",
+  "envelope": {
+    "run_id": "run-1001",
+    "session_id": "session-1001",
+    "tenant": "tenant-a",
+    "actor_spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+    "plane": "ingress"
+  },
+  "trace_id": "trace-1001",
+  "decision_id": "decision-1001",
+  "metadata": {
+    "source_id": "connector-a"
+  }
+}

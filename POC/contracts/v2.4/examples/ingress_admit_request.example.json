@@ -1,0 +1,25 @@
+{
+  "envelope": {
+    "run_id": "run-1001",
+    "session_id": "session-1001",
+    "tenant": "tenant-a",
+    "actor_spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+    "plane": "ingress"
+  },
+  "policy": {
+    "envelope": {
+      "run_id": "run-1001",
+      "session_id": "session-1001",
+      "tenant": "tenant-a",
+      "actor_spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+      "plane": "ingress"
+    },
+    "action": "ingress.admit",
+    "resource": "ingress/event",
+    "attributes": {
+      "source_id": "connector-a",
+      "event_id": "evt-1001",
+      "event_timestamp": "2026-02-13T18:30:00Z"
+    }
+  }
+}
