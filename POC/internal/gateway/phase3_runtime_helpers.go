@@ -166,12 +166,26 @@ func evaluatePromptSafety(attrs map[string]any, enforceHIPAAPromptSafety bool) (
 		"dlp_has_suspicious":  scan.HasSuspicious,
 	}
 
-	// HIPAA: treat any PII/PHI in prompts as forbidden by default.
-	// (Operationally, a real deployment would support tokenization/redaction
-	// workflows with explicit approvals.)
+	// HIPAA profile handling for regulated prompt material:
+	// - default deny for raw regulated content
+	// - explicit quarantine outcomes when callers request tokenization/redaction
 	if enforceHIPAAPromptSafety && strings.Contains(compliance, "hipaa") {
-		if scan.HasPII || scan.HasCredentials || hasPHIHint || hasPIIHint {
-			return DecisionDeny, ReasonPromptSafetyRawDenied, http.StatusForbidden, meta, true
+		hasRegulatedContent := scan.HasPII || scan.HasCredentials || hasPHIHint || hasPIIHint
+		if hasRegulatedContent {
+			switch promptAction {
+			case "tokenize", "tokenized":
+				meta["minimum_necessary_outcome"] = "tokenize"
+				meta["prompt_safety_action"] = "tokenize"
+				return DecisionQuarantine, ReasonPromptSafetyTokenized, http.StatusForbidden, meta, true
+			case "redact", "redacted":
+				meta["minimum_necessary_outcome"] = "redact"
+				meta["prompt_safety_action"] = "redact"
+				return DecisionQuarantine, ReasonPromptSafetyRedacted, http.StatusForbidden, meta, true
+			default:
+				meta["minimum_necessary_outcome"] = "deny"
+				meta["prompt_safety_action"] = "deny_raw"
+				return DecisionDeny, ReasonPromptSafetyRawDenied, http.StatusForbidden, meta, true
+			}
 		}
 	}
 

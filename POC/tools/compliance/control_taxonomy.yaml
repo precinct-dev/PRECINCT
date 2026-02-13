@@ -6,7 +6,7 @@
 # evidence_query: jq-style filter for extracting evidence from audit logs
 
 taxonomy_metadata:
-  version: "2.2"
+  version: "2.3"
   scope_boundary:
     in_scope:
       - "Runtime, technical controls enforceable by gateway middleware, policy, or integration tests"
@@ -36,6 +36,7 @@ controls:
       gdpr: ["Art. 32"]
     evidence_type: audit_log
     evidence_query: '.spiffe_id != "" and .spiffe_id != null'
+    profile_tags: ["hipaa-technical"]
 
   - id: GW-AUTH-002
     name: "SPIFFE ID Validation"
@@ -78,6 +79,7 @@ controls:
       gdpr: ["Art. 32"]
     evidence_type: audit_log
     evidence_query: '.action == "mcp_request" and .result != null'
+    profile_tags: ["hipaa-technical"]
 
   - id: GW-AUTHZ-002
     name: "Path-Based Access Control"
@@ -133,6 +135,7 @@ controls:
       gdpr: ["Art. 25"]
     evidence_type: audit_log
     evidence_query: '.action == "mcp_request"'
+    profile_tags: ["hipaa-technical"]
 
   - id: GW-DLP-002
     name: "PII Detection in Responses"
@@ -146,6 +149,7 @@ controls:
       gdpr: ["Art. 25"]
     evidence_type: audit_log
     evidence_query: '.action == "mcp_request"'
+    profile_tags: ["hipaa-technical"]
 
   - id: GW-DLP-003
     name: "Credit Card Number Detection"
@@ -243,6 +247,7 @@ controls:
       gdpr: ["Art. 30"]
     evidence_type: audit_log
     evidence_query: '.timestamp != null and .trace_id != null'
+    profile_tags: ["hipaa-technical"]
 
   - id: GW-AUDIT-002
     name: "Decision Traceability"
@@ -340,6 +345,7 @@ controls:
       gdpr: ["Art. 32"]
     evidence_type: configuration
     evidence_query: null
+    profile_tags: ["hipaa-technical"]
 
   - id: GW-TRANS-002
     name: "Certificate-Based Identity"
@@ -411,6 +417,7 @@ controls:
       gdpr: ["Art. 32"]
     evidence_type: audit_log
     evidence_query: '.session_id != null'
+    profile_tags: ["hipaa-technical"]
 
   - id: GW-SESS-002
     name: "Risk Score Computation"

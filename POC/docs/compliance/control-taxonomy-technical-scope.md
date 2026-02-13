@@ -35,3 +35,4 @@ Primary source taxonomy:
 Companion technical profile packs:
 
 - `docs/compliance/pci-dss-technical-profile.md`
+- `docs/compliance/hipaa-technical-profile.md`

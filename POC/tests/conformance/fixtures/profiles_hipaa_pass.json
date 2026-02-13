@@ -1,0 +1,7 @@
+{
+  "schema_version": "conformance.fixture.v1",
+  "suite": "profiles",
+  "name": "hipaa profile prompt safety reason-code mapping",
+  "case_id": "hipaa_profile_prompt_safety_reason_codes",
+  "expect": "pass"
+}

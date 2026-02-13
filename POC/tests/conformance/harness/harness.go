@@ -506,6 +506,83 @@ func evalProfilesFixture(fx Fixture) (string, string, error) {
 			return "fail", "prod profile startup gate denied misconfigured mediation control", nil
 		}
 		return "pass", "prod profile boot unexpectedly allowed missing mediation control", nil
+	case "hipaa_profile_prompt_safety_reason_codes":
+		cfg, cleanup, err := newProfileGatewayConfig("dev")
+		if err != nil {
+			return "fail", "", err
+		}
+		defer cleanup()
+		cfg.MCPTransportMode = "mcp"
+		cfg.EnforcementProfile = "dev"
+		cfg.EnforceModelMediationGate = true
+		cfg.EnforceHIPAAPromptSafetyGate = true
+		cfg.EnforcementControlOverrides = true
+		gw, err := gateway.New(cfg)
+		if err != nil {
+			return "fail", fmt.Sprintf("hipaa profile boot failed: %v", err), nil
+		}
+		srv := httptest.NewServer(gw.Handler())
+		defer srv.Close()
+
+		buildPayload := func(runID string, attrs map[string]any) map[string]any {
+			return map[string]any{
+				"envelope": map[string]any{
+					"run_id":          runID,
+					"session_id":      "conformance-hipaa-profile-session",
+					"tenant":          "tenant-a",
+					"actor_spiffe_id": defaultSPIFFEID,
+					"plane":           "model",
+				},
+				"policy": map[string]any{
+					"envelope": map[string]any{
+						"run_id":          runID,
+						"session_id":      "conformance-hipaa-profile-session",
+						"tenant":          "tenant-a",
+						"actor_spiffe_id": defaultSPIFFEID,
+						"plane":           "model",
+					},
+					"action":     "model.call",
+					"resource":   "model/inference",
+					"attributes": attrs,
+				},
+			}
+		}
+
+		tokenizeAttrs := map[string]any{
+			"provider":           "openai",
+			"model":              "gpt-4o",
+			"compliance_profile": "hipaa",
+			"prompt_action":      "tokenize",
+			"prompt_has_phi":     true,
+			"prompt":             "Patient record contains SSN 123-45-6789",
+		}
+		tokenizeCode, tokenizeBody, err := postJSON(srv.URL, "/v1/model/call", defaultSPIFFEID, buildPayload("conformance-hipaa-tokenize", tokenizeAttrs))
+		if err != nil {
+			return "fail", fmt.Sprintf("hipaa tokenize request failed: %v", err), nil
+		}
+		tokenizeReason, _ := tokenizeBody["reason_code"].(string)
+		tokenizeDecision, _ := tokenizeBody["decision"].(string)
+		if tokenizeCode != http.StatusForbidden || tokenizeReason != "PROMPT_SAFETY_TOKENIZATION_APPLIED" || tokenizeDecision != "quarantine" {
+			return "fail", fmt.Sprintf("hipaa tokenize expected 403/quarantine/PROMPT_SAFETY_TOKENIZATION_APPLIED, got code=%d decision=%q reason=%q", tokenizeCode, tokenizeDecision, tokenizeReason), nil
+		}
+
+		rawAttrs := map[string]any{
+			"provider":           "openai",
+			"model":              "gpt-4o",
+			"compliance_profile": "hipaa",
+			"prompt_has_phi":     true,
+			"prompt":             "Patient record contains SSN 123-45-6789",
+		}
+		rawCode, rawBody, err := postJSON(srv.URL, "/v1/model/call", defaultSPIFFEID, buildPayload("conformance-hipaa-raw", rawAttrs))
+		if err != nil {
+			return "fail", fmt.Sprintf("hipaa raw request failed: %v", err), nil
+		}
+		rawReason, _ := rawBody["reason_code"].(string)
+		rawDecision, _ := rawBody["decision"].(string)
+		if rawCode != http.StatusForbidden || rawReason != "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED" || rawDecision != "deny" {
+			return "fail", fmt.Sprintf("hipaa raw expected 403/deny/PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED, got code=%d decision=%q reason=%q", rawCode, rawDecision, rawReason), nil
+		}
+		return "pass", "hipaa profile enforces raw deny and tokenize quarantine reason-codes", nil
 	default:
 		return "fail", "", fmt.Errorf("unsupported profiles case_id %q", fx.CaseID)
 	}

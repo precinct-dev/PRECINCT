@@ -4,7 +4,7 @@
 Reads the control taxonomy YAML, audit logs, and policy configurations to
 produce machine-readable evidence bundles (JSON + CSV) plus analyst-friendly
 CSV, XLSX, and PDF compliance reports mapping gateway controls to
-SOC 2, ISO 27001, CCPA, GDPR, and optional PCI-DSS frameworks.
+SOC 2, ISO 27001, CCPA, GDPR, and optional profile bundles (PCI-DSS, HIPAA).
 
 Usage:
     python3 tools/compliance/generate.py [--audit-log PATH] [--output-dir PATH]
@@ -737,6 +737,54 @@ def write_evidence_bundle_csv(records: list[dict[str, str]], output_path: Path) 
         writer.writerows(records)
 
 
+def profile_control_ids(
+    controls: list[dict[str, Any]],
+    profile_tag: str,
+) -> set[str]:
+    """Return control IDs tagged for a profile bundle."""
+    tag = profile_tag.strip().lower()
+    if not tag:
+        return set()
+
+    selected: set[str] = set()
+    for control in controls:
+        control_id = str(control.get("id", "")).strip()
+        if not control_id:
+            continue
+        tags = control.get("profile_tags", [])
+        if isinstance(tags, str):
+            tags = [tags]
+        normalized = {str(t).strip().lower() for t in tags if str(t).strip()}
+        if tag in normalized:
+            selected.add(control_id)
+    return selected
+
+
+def write_profile_bundle(
+    output_dir: Path,
+    profile_slug: str,
+    profile_name: str,
+    records: list[dict[str, str]],
+    generated_at: str,
+) -> None:
+    """Write a profile-scoped evidence JSON and CSV bundle."""
+    if not records:
+        return
+    bundle = {
+        "schema_version": "evidence.profile.v1",
+        "profile": profile_name,
+        "generated_at": generated_at,
+        "record_count": len(records),
+        "records": records,
+    }
+    json_path = output_dir / f"compliance-evidence.{profile_slug}.json"
+    csv_path = output_dir / f"compliance-evidence.{profile_slug}.csv"
+    write_evidence_bundle_json(bundle, json_path)
+    write_evidence_bundle_csv(records, csv_path)
+    print(f"{profile_name} evidence JSON bundle written to {json_path}")
+    print(f"{profile_name} evidence CSV bundle written to {csv_path}")
+
+
 # ---------------------------------------------------------------------------
 # XLSX generation
 # ---------------------------------------------------------------------------
@@ -1430,21 +1478,27 @@ def main(argv: list[str] | None = None) -> int:
         record for record in evidence_bundle["records"]
         if record.get("framework") == "PCIDSS"
     ]
-    if pci_records:
-        pci_bundle = {
-            "schema_version": "evidence.profile.v1",
-            "profile": "pci-dss-technical",
-            "generated_at": generated_at,
-            "record_count": len(pci_records),
-            "records": pci_records,
-        }
-        pci_json_path = output_dir / "compliance-evidence.pci-dss.json"
-        write_evidence_bundle_json(pci_bundle, pci_json_path)
-        print(f"PCI-DSS evidence JSON bundle written to {pci_json_path}")
+    write_profile_bundle(
+        output_dir,
+        "pci-dss",
+        "pci-dss-technical",
+        pci_records,
+        generated_at,
+    )
 
-        pci_csv_path = output_dir / "compliance-evidence.pci-dss.csv"
-        write_evidence_bundle_csv(pci_records, pci_csv_path)
-        print(f"PCI-DSS evidence CSV bundle written to {pci_csv_path}")
+    # Optional HIPAA profile bundle (emitted only when tagged profile rows exist)
+    hipaa_control_ids = profile_control_ids(controls, "hipaa-technical")
+    hipaa_records = [
+        record for record in evidence_bundle["records"]
+        if record.get("control_id") in hipaa_control_ids
+    ]
+    write_profile_bundle(
+        output_dir,
+        "hipaa",
+        "hipaa-technical",
+        hipaa_records,
+        generated_at,
+    )
 
     # --- CSV output ---
     csv_path = output_dir / "compliance-report.csv"
