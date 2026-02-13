@@ -21,6 +21,9 @@ func (g *Gateway) handlePhase3PlaneEntry(w http.ResponseWriter, r *http.Request)
 	}
 
 	switch r.URL.Path {
+	case "/v1/ingress/submit":
+		g.handleIngressAdmit(w, r)
+		return true
 	case "/v1/ingress/admit":
 		g.handleIngressAdmit(w, r)
 		return true
@@ -258,6 +261,41 @@ func (g *Gateway) handleIngressAdmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	traceID, decisionID := getDecisionCorrelationIDs(r, req.Envelope)
+	attrs := req.Policy.Attributes
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+
+	connectorID := getStringAttr(attrs, "connector_id", "")
+	if connectorID == "" {
+		connectorID = getStringAttr(attrs, "source_id", "")
+	}
+	connectorSig := getStringAttr(attrs, "connector_signature", "")
+
+	if connectorID != "" && g.cca != nil {
+		allowed, reason, rec := g.cca.runtimeCheck(connectorID, connectorSig)
+		if !allowed {
+			resp := PlaneDecisionV2{
+				Decision:   DecisionDeny,
+				ReasonCode: ReasonIngressSourceUnauth,
+				Envelope:   req.Envelope,
+				TraceID:    traceID,
+				DecisionID: decisionID,
+				Metadata: map[string]any{
+					"connector_id":    connectorID,
+					"connector_check": reason,
+					"connector_state": rec.State,
+				},
+			}
+			g.logPlaneDecision(r, resp, http.StatusForbidden)
+			g.cca.updateAuditRef(connectorID, decisionID, traceID, reason, "runtime_ingress_check")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		g.cca.updateAuditRef(connectorID, decisionID, traceID, "connector_active", "runtime_ingress_check")
+	}
 
 	resp := PlaneDecisionV2{
 		Decision:   DecisionAllow,

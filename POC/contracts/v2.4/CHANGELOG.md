@@ -4,5 +4,6 @@
 
 - Frozen canonical control-plane contract set for ingress/context/model/tool/loop planes.
 - Published machine-readable manifest and JSON schemas for request/response contracts.
+- Published connector manifest schema and CCA lifecycle endpoint contracts.
 - Published frozen reason-code catalog with stability and deprecation policy.
 - Added compatibility mapping for `/v1/ingress/admit` -> `/v1/ingress/submit` and model alias surfaces.
