@@ -58,6 +58,7 @@ type Gateway struct {
 	loopPolicy           *loopPlanePolicyEngine            // RFA-owgw.4: loop plane immutable external limits
 	toolPolicy           *toolPlanePolicyEngine            // RFA-owgw.6: tool plane protocol adapters and capability registry v2
 	rlmPolicy            *rlmGovernanceEngine              // RFA-owgw.11: recursive language model governance
+	breakGlass           *breakGlassManager                // RFA-l6h6.1.5: bounded break-glass emergency overrides
 	dlpRuleOps           *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
 	cca                  *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
 	ingressReplayGuard   *ingressReplayGuard               // RFA-l6h6.2.2: ingress replay/freshness guard
@@ -321,6 +322,7 @@ func New(cfg *Config) (*Gateway, error) {
 		loopPolicy:           newLoopPlanePolicyEngine(),
 		toolPolicy:           newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
 		rlmPolicy:            newRLMGovernanceEngine(),
+		breakGlass:           newBreakGlassManager(auditor),
 		dlpRuleOps:           dlpRuleOps,
 		cca:                  newConnectorConformanceAuthority(),
 		ingressReplayGuard:   newIngressReplayGuard(5*time.Minute, 15*time.Second),
@@ -490,6 +492,8 @@ func (g *Gateway) proxyHandler() http.Handler {
 				adminMiddleware = v24MiddlewareLoopAdmin
 			} else if strings.HasPrefix(r.URL.Path, approvalAdminPath) {
 				adminMiddleware = v24MiddlewareApprovalAdmin
+			} else if strings.HasPrefix(r.URL.Path, breakGlassAdminPath) {
+				adminMiddleware = v24MiddlewareBreakGlassAdmin
 			}
 			span.SetAttributes(
 				attribute.Int("status_code", proxyRW.statusCode),
