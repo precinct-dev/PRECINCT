@@ -20,6 +20,25 @@ Usage:
 
 from .client import GatewayClient
 from .errors import GatewayError
+from .runtime import (
+    build_dspy_gateway_lm,
+    build_spike_token_ref,
+    configure_dspy_gateway_lms,
+    load_dotenv,
+    normalize_model_name,
+    resolve_model_api_key_ref,
+    setup_observability,
+)
 
-__all__ = ["GatewayClient", "GatewayError"]
+__all__ = [
+    "GatewayClient",
+    "GatewayError",
+    "build_dspy_gateway_lm",
+    "build_spike_token_ref",
+    "configure_dspy_gateway_lms",
+    "load_dotenv",
+    "normalize_model_name",
+    "resolve_model_api_key_ref",
+    "setup_observability",
+]
 __version__ = "0.1.0"

