@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate ci benchmark security-scan \
+.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate ci conformance benchmark security-scan \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -19,6 +19,7 @@ K8S_REGISTRY ?= registry:5000
 AUDIT_LOG ?= /tmp/audit.jsonl
 COMPLIANCE_VENV := tools/compliance/.venv
 COMPLIANCE_PYTHON := $(COMPLIANCE_VENV)/bin/python3
+CONFORMANCE_REPORT ?= build/conformance/conformance-report.json
 
 # Default target
 help: ## Show available targets
@@ -451,8 +452,11 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 # CI / Quality
 # ---------------------------------------------------------------------------
 
-ci: lint test build-images ## Full CI pipeline (lint + test + build)
+ci: lint test conformance build-images ## Full CI pipeline (lint + test + conformance + build)
 	@echo "CI pipeline complete"
+
+conformance: ## Run fixture-driven v2.4 conformance harness and emit JSON report
+	go run ./tests/conformance/cmd/harness --output $(CONFORMANCE_REPORT)
 
 benchmark: ## Run performance benchmarks
 	@echo "Phase 1: Go Benchmarks (13-middleware chain)"

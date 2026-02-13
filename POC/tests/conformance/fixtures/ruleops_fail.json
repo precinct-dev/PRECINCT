@@ -1,0 +1,7 @@
+{
+  "schema_version": "conformance.fixture.v1",
+  "suite": "ruleops",
+  "name": "ruleops unsigned promotion denied",
+  "case_id": "unsigned_promotion_denied",
+  "expect": "fail"
+}

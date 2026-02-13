@@ -87,6 +87,7 @@ run_scenario "Scenario E: DLP Detection" "${SCRIPT_DIR}/scenario_e_dlp.sh"
 run_scenario "Section 10.13.1 Readiness Checklist" "${SCRIPT_DIR}/readiness_checklist.sh"
 run_scenario "Full 13-Middleware Chain" "${SCRIPT_DIR}/middleware_chain_verify.sh"
 run_scenario "Scenario SPIKE Nexus: Late-Binding Secrets" "${SCRIPT_DIR}/scenario_spike_nexus.sh"
+run_scenario "Scenario I: Conformance Harness" "${SCRIPT_DIR}/scenario_i_conformance_harness.sh"
 
 # ================================================================
 # Grand Summary
