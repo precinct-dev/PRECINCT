@@ -11,6 +11,7 @@ and backward-compatibility mappings.
 - Response schema: `POC/contracts/v2.4/schemas/plane_decision_v2.schema.json`
 - Connector manifest schema: `POC/contracts/v2.4/schemas/connector_manifest_v1.schema.json`
 - Connector authority lifecycle doc: `POC/contracts/v2.4/connector-conformance-authority.v2.4.md`
+- RuleOps lifecycle doc: `POC/contracts/v2.4/ruleops-lifecycle.v2.4.md`
 - Reason-code catalog: `POC/contracts/v2.4/reason-code-catalog.v2.4.json`
 - Reason-code policy: `POC/contracts/v2.4/reason-code-catalog.v2.4.md`
 - Changelog: `POC/contracts/v2.4/CHANGELOG.md`
@@ -42,6 +43,17 @@ and backward-compatibility mappings.
 - `/v1/connectors/revoke`
 - `/v1/connectors/status`
 - `/v1/connectors/report`
+
+### RuleOps Governance Endpoints
+
+- `/admin/dlp/rulesets`
+- `/admin/dlp/rulesets/active`
+- `/admin/dlp/rulesets/create`
+- `/admin/dlp/rulesets/validate`
+- `/admin/dlp/rulesets/approve`
+- `/admin/dlp/rulesets/sign`
+- `/admin/dlp/rulesets/promote`
+- `/admin/dlp/rulesets/rollback`
 
 ## Compatibility Matrix And Migration Mapping
 
