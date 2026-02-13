@@ -357,6 +357,96 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 	})
 	assertPlaneDecision("loop allow", code, body, 200, "LOOP_ALLOW", loopAllowRunID)
 
+	loopToolCallsDenyRunID := "phase3-it-loop-deny-tool-calls"
+	code, body = ruleOpsPost(t, baseURL+"/v1/loop/check", map[string]any{
+		"envelope": map[string]any{
+			"run_id":          loopToolCallsDenyRunID,
+			"session_id":      sessionID,
+			"tenant":          "tenant-a",
+			"actor_spiffe_id": spiffeID,
+			"plane":           "loop",
+		},
+		"policy": map[string]any{
+			"envelope": map[string]any{
+				"run_id":          loopToolCallsDenyRunID,
+				"session_id":      sessionID,
+				"tenant":          "tenant-a",
+				"actor_spiffe_id": spiffeID,
+				"plane":           "loop",
+			},
+			"action":   "loop.check",
+			"resource": "loop/external-governor",
+			"attributes": map[string]any{
+				"limits": map[string]any{
+					"max_steps":              10,
+					"max_tool_calls":         1,
+					"max_model_calls":        10,
+					"max_wall_time_ms":       60000,
+					"max_egress_bytes":       100000,
+					"max_model_cost_usd":     1.0,
+					"max_provider_failovers": 2,
+					"max_risk_score":         0.9,
+				},
+				"usage": map[string]any{
+					"steps":              1,
+					"tool_calls":         2,
+					"model_calls":        1,
+					"wall_time_ms":       1000,
+					"egress_bytes":       10,
+					"model_cost_usd":     0.01,
+					"provider_failovers": 0,
+					"risk_score":         0.2,
+				},
+			},
+		},
+	})
+	assertPlaneDecision("loop deny tool calls", code, body, 429, "LOOP_HALT_MAX_TOOL_CALLS", loopToolCallsDenyRunID)
+
+	loopRiskDenyRunID := "phase3-it-loop-deny-risk"
+	code, body = ruleOpsPost(t, baseURL+"/v1/loop/check", map[string]any{
+		"envelope": map[string]any{
+			"run_id":          loopRiskDenyRunID,
+			"session_id":      sessionID,
+			"tenant":          "tenant-a",
+			"actor_spiffe_id": spiffeID,
+			"plane":           "loop",
+		},
+		"policy": map[string]any{
+			"envelope": map[string]any{
+				"run_id":          loopRiskDenyRunID,
+				"session_id":      sessionID,
+				"tenant":          "tenant-a",
+				"actor_spiffe_id": spiffeID,
+				"plane":           "loop",
+			},
+			"action":   "loop.check",
+			"resource": "loop/external-governor",
+			"attributes": map[string]any{
+				"limits": map[string]any{
+					"max_steps":              10,
+					"max_tool_calls":         10,
+					"max_model_calls":        10,
+					"max_wall_time_ms":       60000,
+					"max_egress_bytes":       100000,
+					"max_model_cost_usd":     1.0,
+					"max_provider_failovers": 2,
+					"max_risk_score":         0.5,
+				},
+				"usage": map[string]any{
+					"steps":              1,
+					"tool_calls":         1,
+					"model_calls":        1,
+					"wall_time_ms":       1000,
+					"egress_bytes":       10,
+					"model_cost_usd":     0.01,
+					"provider_failovers": 0,
+					"risk_score":         0.8,
+				},
+			},
+		},
+	})
+	assertPlaneDecision("loop deny risk", code, body, 429, "LOOP_HALT_MAX_RISK_SCORE", loopRiskDenyRunID)
+
 	loopDenyRunID := "phase3-it-loop-deny"
 	code, body = ruleOpsPost(t, baseURL+"/v1/loop/check", map[string]any{
 		"envelope": map[string]any{
@@ -438,8 +528,8 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 	})
 	assertPlaneDecision("ingress deny", code, body, 403, "INGRESS_SOURCE_UNAUTHENTICATED", ingressDenyRunID)
 
-	if len(decisionIDs) != 11 {
-		t.Fatalf("expected 11 unique plane decision ids, got %d", len(decisionIDs))
+	if len(decisionIDs) != 13 {
+		t.Fatalf("expected 13 unique plane decision ids, got %d", len(decisionIDs))
 	}
 }
 
