@@ -6,6 +6,7 @@ documenting exactly where Docker Compose is portable, limited, or not applicable
 
 Use this document with:
 - `docs/architecture/deployment-patterns.md` for detailed rationale
+- `docs/architecture/non-k8s-cloud-adaptation-guide.md` for non-K8s compensating-control design
 - `docs/deployment-guide.md` for runtime operations
 - `docs/ARCHITECTURE.md` ADR-009 for architecture-level invariants
 
