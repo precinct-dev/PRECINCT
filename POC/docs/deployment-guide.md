@@ -4,6 +4,7 @@ This is the consolidated deployment guide for the Agentic AI Security Reference 
 
 For detailed architecture context, see [Deployment Patterns](architecture/deployment-patterns.md).
 For Kubernetes-first hardening decisions, see [Kubernetes-First Hardening Guide](architecture/k8s-hardening-portability-matrix.md).
+For non-K8s adaptation constraints, see [Non-K8s Cloud Adaptation Guide](architecture/non-k8s-cloud-adaptation-guide.md).
 For detailed prerequisites, see [Prerequisites](getting-started/prerequisites.md).
 For EKS IaC details, see [EKS IaC Approach](eks-iac.md).
 
