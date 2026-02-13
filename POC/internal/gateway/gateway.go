@@ -58,6 +58,7 @@ type Gateway struct {
 	toolPolicy           *toolPlanePolicyEngine            // RFA-owgw.6: tool plane protocol adapters and capability registry v2
 	rlmPolicy            *rlmGovernanceEngine              // RFA-owgw.11: recursive language model governance
 	dlpRuleOps           *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
+	cca                  *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
 }
 
 // New creates a new gateway instance
@@ -312,6 +313,7 @@ func New(cfg *Config) (*Gateway, error) {
 		toolPolicy:           newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
 		rlmPolicy:            newRLMGovernanceEngine(),
 		dlpRuleOps:           dlpRuleOps,
+		cca:                  newConnectorConformanceAuthority(),
 	}, nil
 }
 
@@ -452,6 +454,19 @@ func (g *Gateway) proxyHandler() http.Handler {
 				attribute.Int("status_code", http.StatusOK),
 				attribute.String("mcp.result", "allowed"),
 				attribute.String("mcp.reason", "demo ratelimit endpoint"),
+			)
+			return
+		}
+
+		if g.handleConnectorAuthorityEntry(proxyRW, r.WithContext(ctx)) {
+			result := "allowed"
+			if proxyRW.statusCode >= 400 {
+				result = "denied"
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "connector_conformance_entry"),
 			)
 			return
 		}

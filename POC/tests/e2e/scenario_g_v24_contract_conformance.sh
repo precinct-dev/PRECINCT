@@ -38,6 +38,57 @@ print("true" if code in codes else "false")
 PY
 }
 
+extract_expected_signature() {
+    local body="$1"
+    printf "%s" "$body" | python3 -c 'import json,sys
+try:
+    obj = json.load(sys.stdin)
+    print(obj.get("record", {}).get("expected_signature", ""))
+except Exception:
+    print("")
+'
+}
+
+compute_connector_signature() {
+    local connector_id="$1"
+    local connector_type="$2"
+    local source_principal="$3"
+    local version="$4"
+    local capabilities_json="$5"
+    python3 - "$connector_id" "$connector_type" "$source_principal" "$version" "$capabilities_json" <<'PY'
+import hashlib
+import json
+import sys
+
+connector_id = sys.argv[1].strip()
+connector_type = sys.argv[2].strip()
+source_principal = sys.argv[3].strip()
+version = sys.argv[4].strip()
+try:
+    capabilities = [str(item).strip() for item in json.loads(sys.argv[5])]
+except Exception:
+    capabilities = []
+capabilities.sort()
+
+canonical = {
+    "connector_id": connector_id,
+    "connector_type": connector_type,
+    "source_principal": source_principal,
+    "version": version,
+    "capabilities": capabilities,
+}
+payload = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
+print(hashlib.sha256(payload).hexdigest())
+PY
+}
+
+reset_rate_limit_state() {
+    local spiffe_id="$1"
+    local tokens_key="ratelimit:${spiffe_id}:tokens"
+    local last_fill_key="ratelimit:${spiffe_id}:last_fill"
+    docker compose exec -T keydb keydb-cli DEL "$tokens_key" "$last_fill_key" >/dev/null 2>&1 || true
+}
+
 assert_conformance_shape() {
     local body="$1"
     local endpoint="$2"
@@ -84,6 +135,49 @@ RUN_ID="phase3-contract-$(date +%s)"
 SESSION_ID="phase3-contract-session-${RUN_ID}"
 SPIFFE_ID="${DEFAULT_SPIFFE_ID}"
 NOW_UTC="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+CONNECTOR_ID="compose-webhook"
+CONNECTOR_SIG=""
+CONNECTOR_SIG_EXPECTED="$(compute_connector_signature "${CONNECTOR_ID}" "webhook" "${SPIFFE_ID}" "1.0" '["ingress.submit"]')"
+
+reset_rate_limit_state "${SPIFFE_ID}"
+log_info "Reset prior rate-limit keys for ${SPIFFE_ID}"
+
+gateway_post "/v1/connectors/register" "{
+  \"connector_id\": \"${CONNECTOR_ID}\",
+  \"manifest\": {
+    \"connector_id\": \"${CONNECTOR_ID}\",
+    \"connector_type\": \"webhook\",
+    \"source_principal\": \"${SPIFFE_ID}\",
+    \"version\": \"1.0\",
+    \"capabilities\": [\"ingress.submit\"],
+    \"signature\": {
+      \"algorithm\": \"sha256-manifest-v1\",
+      \"value\": \"${CONNECTOR_SIG_EXPECTED}\"
+    }
+  }
+}" "$SPIFFE_ID"
+if [ "$RESP_CODE" = "200" ]; then
+    log_pass "CCA register endpoint available"
+else
+    log_fail "CCA register endpoint available" "expected 200, got ${RESP_CODE} body=${RESP_BODY:0:200}"
+fi
+CONNECTOR_SIG="$(extract_expected_signature "$RESP_BODY")"
+if [ -n "$CONNECTOR_SIG" ]; then
+    log_pass "CCA expected signature extracted"
+else
+    log_fail "CCA expected signature extracted" "record.expected_signature missing"
+fi
+
+for op in validate approve activate; do
+    gateway_post "/v1/connectors/${op}" "{
+      \"connector_id\": \"${CONNECTOR_ID}\"
+    }" "$SPIFFE_ID"
+    if [ "$RESP_CODE" = "200" ]; then
+        log_pass "CCA ${op} endpoint available"
+    else
+        log_fail "CCA ${op} endpoint available" "expected 200, got ${RESP_CODE} body=${RESP_BODY:0:200}"
+    fi
+done
 
 # Ingress: prefer canonical /submit, fallback to legacy /admit for compatibility.
 INGRESS_PATH="/v1/ingress/submit"
@@ -106,6 +200,8 @@ gateway_post "$INGRESS_PATH" "{
     \"action\": \"ingress.admit\",
     \"resource\": \"ingress/event\",
     \"attributes\": {
+      \"connector_id\": \"${CONNECTOR_ID}\",
+      \"connector_signature\": \"${CONNECTOR_SIG}\",
       \"source_principal\": \"${SPIFFE_ID}\",
       \"event_id\": \"evt-${RUN_ID}\",
       \"event_timestamp\": \"${NOW_UTC}\"
@@ -134,6 +230,8 @@ if [ "$RESP_CODE" = "404" ]; then
         \"action\": \"ingress.admit\",
         \"resource\": \"ingress/event\",
         \"attributes\": {
+          \"connector_id\": \"${CONNECTOR_ID}\",
+          \"connector_signature\": \"${CONNECTOR_SIG}\",
           \"source_principal\": \"${SPIFFE_ID}\",
           \"event_id\": \"evt-${RUN_ID}\",
           \"event_timestamp\": \"${NOW_UTC}\"
@@ -166,6 +264,8 @@ if [ -z "$(extract_json_field "$RESP_BODY" "reason_code")" ]; then
         \"action\": \"ingress.admit\",
         \"resource\": \"ingress/event\",
         \"attributes\": {
+          \"connector_id\": \"${CONNECTOR_ID}\",
+          \"connector_signature\": \"${CONNECTOR_SIG}\",
           \"source_principal\": \"${SPIFFE_ID}\",
           \"event_id\": \"evt-${RUN_ID}\",
           \"event_timestamp\": \"${NOW_UTC}\"

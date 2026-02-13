@@ -190,6 +190,8 @@ The frozen v2.4 control-plane contract set and reason-code catalog live in:
 - `../contracts/v2.4/manifest.v2.4.json`
 - `../contracts/v2.4/schemas/plane_request_v2.schema.json`
 - `../contracts/v2.4/schemas/plane_decision_v2.schema.json`
+- `../contracts/v2.4/schemas/connector_manifest_v1.schema.json`
+- `../contracts/v2.4/connector-conformance-authority.v2.4.md`
 - `../contracts/v2.4/reason-code-catalog.v2.4.json`
 - `../contracts/v2.4/reason-code-catalog.v2.4.md`
 - `../contracts/v2.4/CHANGELOG.md`

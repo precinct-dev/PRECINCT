@@ -9,7 +9,11 @@
   },
   "schemas": {
     "plane_request_v2": "schemas/plane_request_v2.schema.json",
-    "plane_decision_v2": "schemas/plane_decision_v2.schema.json"
+    "plane_decision_v2": "schemas/plane_decision_v2.schema.json",
+    "connector_manifest_v1": "schemas/connector_manifest_v1.schema.json"
+  },
+  "governance_docs": {
+    "connector_conformance_authority": "connector-conformance-authority.v2.4.md"
   },
   "reason_code_catalog": "reason-code-catalog.v2.4.json",
   "endpoints": [
@@ -57,5 +61,14 @@
       "response_schema": "schemas/plane_decision_v2.schema.json",
       "status": "canonical"
     }
+  ],
+  "governance_endpoints": [
+    "/v1/connectors/register",
+    "/v1/connectors/validate",
+    "/v1/connectors/approve",
+    "/v1/connectors/activate",
+    "/v1/connectors/revoke",
+    "/v1/connectors/status",
+    "/v1/connectors/report"
   ]
 }

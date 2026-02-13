@@ -15,6 +15,57 @@ except Exception:
     print("")'
 }
 
+extract_expected_signature() {
+    local body="$1"
+    printf "%s" "$body" | python3 -c 'import json,sys
+try:
+    obj = json.load(sys.stdin)
+    print(obj.get("record", {}).get("expected_signature", ""))
+except Exception:
+    print("")
+'
+}
+
+compute_connector_signature() {
+    local connector_id="$1"
+    local connector_type="$2"
+    local source_principal="$3"
+    local version="$4"
+    local capabilities_json="$5"
+    python3 - "$connector_id" "$connector_type" "$source_principal" "$version" "$capabilities_json" <<'PY'
+import hashlib
+import json
+import sys
+
+connector_id = sys.argv[1].strip()
+connector_type = sys.argv[2].strip()
+source_principal = sys.argv[3].strip()
+version = sys.argv[4].strip()
+try:
+    capabilities = [str(item).strip() for item in json.loads(sys.argv[5])]
+except Exception:
+    capabilities = []
+capabilities.sort()
+
+canonical = {
+    "connector_id": connector_id,
+    "connector_type": connector_type,
+    "source_principal": source_principal,
+    "version": version,
+    "capabilities": capabilities,
+}
+payload = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
+print(hashlib.sha256(payload).hexdigest())
+PY
+}
+
+reset_rate_limit_state() {
+    local spiffe_id="$1"
+    local tokens_key="ratelimit:${spiffe_id}:tokens"
+    local last_fill_key="ratelimit:${spiffe_id}:last_fill"
+    docker compose exec -T keydb keydb-cli DEL "$tokens_key" "$last_fill_key" >/dev/null 2>&1 || true
+}
+
 log_header "Scenario F: Phase 3 Multi-Plane Compose Validation"
 
 if ! check_service_healthy "mcp-security-gateway"; then
@@ -28,6 +79,51 @@ RUN_ID="phase3-compose-$(date +%s)"
 SESSION_ID="phase3-compose-session-${RUN_ID}"
 SPIFFE_ID="${DEFAULT_SPIFFE_ID}"
 NOW_UTC="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+CONNECTOR_SIG_EXPECTED="$(compute_connector_signature "compose-webhook" "webhook" "${SPIFFE_ID}" "1.0" '["ingress.submit"]')"
+
+reset_rate_limit_state "${SPIFFE_ID}"
+log_info "Reset prior rate-limit keys for ${SPIFFE_ID}"
+
+log_subheader "F0: Connector conformance lifecycle (register -> validate -> approve -> activate)"
+
+gateway_post "/v1/connectors/register" "{
+  \"connector_id\": \"compose-webhook\",
+  \"manifest\": {
+    \"connector_id\": \"compose-webhook\",
+    \"connector_type\": \"webhook\",
+    \"source_principal\": \"${SPIFFE_ID}\",
+    \"version\": \"1.0\",
+    \"capabilities\": [\"ingress.submit\"],
+    \"signature\": {
+      \"algorithm\": \"sha256-manifest-v1\",
+      \"value\": \"${CONNECTOR_SIG_EXPECTED}\"
+    }
+  }
+}" "${SPIFFE_ID}"
+
+if [ "$RESP_CODE" = "200" ]; then
+    log_pass "Connector register endpoint accepted manifest"
+else
+    log_fail "Connector register endpoint" "Expected 200, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+CONNECTOR_SIG="$(extract_expected_signature "$RESP_BODY")"
+if [ -n "$CONNECTOR_SIG" ]; then
+    log_pass "Connector expected signature available from CCA record"
+else
+    log_fail "Connector expected signature extraction" "record.expected_signature missing"
+fi
+
+for op in validate approve activate; do
+  gateway_post "/v1/connectors/${op}" "{
+    \"connector_id\": \"compose-webhook\"
+  }" "${SPIFFE_ID}"
+  if [ "$RESP_CODE" = "200" ]; then
+      log_pass "Connector ${op} succeeded"
+  else
+      log_fail "Connector ${op}" "Expected 200, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+  fi
+done
 
 log_subheader "F1: Success path across ingress -> context -> model -> tool"
 
@@ -51,6 +147,8 @@ gateway_post "/v1/ingress/admit" "{
     \"resource\": \"ingress/event\",
     \"attributes\": {
       \"connector_type\": \"webhook\",
+      \"connector_id\": \"compose-webhook\",
+      \"connector_signature\": \"${CONNECTOR_SIG}\",
       \"source_id\": \"compose-webhook\",
       \"source_principal\": \"${SPIFFE_ID}\",
       \"event_id\": \"event-${RUN_ID}\",
@@ -265,22 +363,107 @@ else
     log_fail "Loop denied path reason code" "Expected 429/LOOP_HALT_MAX_STEPS, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
 
-log_subheader "F3: Audit evidence for multi-plane decisions"
+log_subheader "F3: Revoked connector denied at ingress runtime gate"
+reset_rate_limit_state "${SPIFFE_ID}"
+log_info "Reset rate-limit keys before revoke/deny checks"
+
+gateway_post "/v1/connectors/revoke" "{
+  \"connector_id\": \"compose-webhook\"
+}" "${SPIFFE_ID}"
+
+if [ "$RESP_CODE" = "200" ]; then
+    log_pass "Connector revoke succeeded"
+else
+    log_fail "Connector revoke" "Expected 200, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/ingress/admit" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-revoke\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"ingress\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-revoke\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"ingress\"
+    },
+    \"action\": \"ingress.admit\",
+    \"resource\": \"ingress/event\",
+    \"attributes\": {
+      \"connector_id\": \"compose-webhook\",
+      \"connector_signature\": \"${CONNECTOR_SIG}\",
+      \"source_id\": \"compose-webhook\",
+      \"source_principal\": \"${SPIFFE_ID}\",
+      \"event_id\": \"event-${RUN_ID}-revoke\",
+      \"event_timestamp\": \"${NOW_UTC}\"
+    }
+  }
+}" "${SPIFFE_ID}"
+
+if [ "$RESP_CODE" = "403" ] && [ "$(extract_reason_code "$RESP_BODY")" = "INGRESS_SOURCE_UNAUTHENTICATED" ]; then
+    log_pass "Revoked connector blocked at ingress runtime gate"
+else
+    log_fail "Revoked connector ingress deny" "Expected 403/INGRESS_SOURCE_UNAUTHENTICATED, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+log_subheader "F4: Conformance report artifact includes audit references"
+
+REPORT_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}/v1/connectors/report" -H "X-SPIFFE-ID: ${SPIFFE_ID}")
+REPORT_CODE=$(echo "$REPORT_RESPONSE" | tail -n1)
+REPORT_BODY=$(echo "$REPORT_RESPONSE" | sed '$d')
+
+if [ "$REPORT_CODE" = "200" ]; then
+    log_pass "Connector conformance report endpoint returned JSON artifact"
+else
+    log_fail "Connector conformance report endpoint" "Expected 200, got code=${REPORT_CODE} body=${REPORT_BODY:0:240}"
+fi
+
+CONNECTOR_DECISION_ID=$(printf "%s" "$REPORT_BODY" | python3 -c 'import json,sys
+try:
+    report = json.load(sys.stdin)
+    for row in report.get("connectors", []):
+        if row.get("connector_id") == "compose-webhook":
+            print(row.get("last_decision_id", ""))
+            break
+    else:
+        print("")
+except Exception:
+    print("")
+')
+if [ -n "$CONNECTOR_DECISION_ID" ]; then
+    log_pass "Conformance report links connector to audit decision id"
+else
+    log_fail "Conformance report audit linkage" "compose-webhook last_decision_id missing"
+fi
+
+log_subheader "F5: Audit evidence for multi-plane decisions"
 sleep 1
 
-AUDIT_LINES=$(docker compose logs --no-log-prefix --tail 250 mcp-security-gateway 2>/dev/null | grep "${RUN_ID}" || true)
+AUDIT_LINES=$(docker compose logs --no-log-prefix --tail 400 mcp-security-gateway 2>/dev/null | grep "${RUN_ID}" || true)
 if [ -n "$AUDIT_LINES" ]; then
     log_pass "Audit contains events correlated to Phase 3 run id"
 else
     log_fail "Audit correlation" "No audit lines found for run id ${RUN_ID}"
 fi
 
-for reason in INGRESS_ALLOW CONTEXT_ALLOW MODEL_ALLOW TOOL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED LOOP_HALT_MAX_STEPS; do
+for reason in INGRESS_ALLOW CONTEXT_ALLOW MODEL_ALLOW TOOL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED LOOP_HALT_MAX_STEPS INGRESS_SOURCE_UNAUTHENTICATED; do
     if echo "$AUDIT_LINES" | grep -q "$reason"; then
         log_pass "Audit includes reason code ${reason}"
     else
         log_fail "Audit reason code ${reason}" "Reason code not found in correlated audit lines"
     fi
 done
+
+if [ -n "$CONNECTOR_DECISION_ID" ] && docker compose logs --no-log-prefix --tail 400 mcp-security-gateway 2>/dev/null | grep -q "${CONNECTOR_DECISION_ID}"; then
+    log_pass "Audit log contains conformance report decision id"
+else
+    log_fail "Audit linkage for conformance report decision id" "decision id ${CONNECTOR_DECISION_ID:-<empty>} not found in gateway audit logs"
+fi
 
 print_summary
