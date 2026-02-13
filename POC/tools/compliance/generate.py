@@ -1282,6 +1282,19 @@ def copy_evidence(
             copied.append("evidence/e2e-test-results.txt")
             break
 
+    # 2b. Immutable sink verification artifact (K8s audit path)
+    immutable_sink_proof = (
+        project_root
+        / "tests"
+        / "e2e"
+        / "artifacts"
+        / "immutable-audit-sink-proof.json"
+    )
+    if immutable_sink_proof.exists():
+        dst_path = evidence_dir / "immutable-audit-sink-proof.json"
+        shutil.copy2(str(immutable_sink_proof), str(dst_path))
+        copied.append("evidence/immutable-audit-sink-proof.json")
+
     # 3. Policy config files
     policy_dir = evidence_dir / "policy-configs"
     policy_dir.mkdir(parents=True, exist_ok=True)

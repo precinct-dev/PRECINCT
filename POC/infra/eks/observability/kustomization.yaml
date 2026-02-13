@@ -6,3 +6,12 @@ kind: Kustomization
 resources:
   - observability-namespace.yaml
   - observability-policies.yaml
+  - otel-collector/otel-collector-rbac.yaml
+  - otel-collector/otel-collector-configmap.yaml
+  - otel-collector/otel-collector-deployment.yaml
+  - otel-collector/otel-collector-service.yaml
+  - phoenix/phoenix-rbac.yaml
+  - phoenix/phoenix-deployment.yaml
+  - phoenix/phoenix-service.yaml
+  - audit/audit-s3-config.yaml
+  - audit/audit-s3-rbac.yaml

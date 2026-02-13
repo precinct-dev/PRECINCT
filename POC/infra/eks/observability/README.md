@@ -122,6 +122,20 @@ make logs-phoenix
 make dry-run
 ```
 
+### Immutable Audit Sink Validation (K8s)
+
+```bash
+# Render full observability manifests (includes audit S3 config + RBAC)
+kustomize build .
+
+# Generate machine-readable immutable-sink proof artifact
+bash ../../tests/e2e/validate_immutable_audit_sink.sh
+```
+
+Proof artifact path:
+
+- `tests/e2e/artifacts/immutable-audit-sink-proof.json`
+
 ## Phoenix Dashboard Access
 
 Phoenix UI is exposed via NodePort:
