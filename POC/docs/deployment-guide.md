@@ -6,6 +6,7 @@ For detailed architecture context, see [Deployment Patterns](architecture/deploy
 For Kubernetes-first hardening decisions, see [Kubernetes-First Hardening Guide](architecture/k8s-hardening-portability-matrix.md).
 For K8s runtime validation checklist and campaign execution, see [K8s Runtime Validation Campaign](architecture/k8s-runtime-validation-campaign.md).
 For portability class decisions per feature, see [Compose Backport Decision Ledger](architecture/compose-backport-decision-ledger.md).
+For OpenClaw v2.4 integration details, see [OpenClaw Walking Skeleton Guide](integrations/openclaw-v24-walking-skeleton.md).
 For non-K8s adaptation constraints, see [Non-K8s Cloud Adaptation Guide](architecture/non-k8s-cloud-adaptation-guide.md).
 For detailed prerequisites, see [Prerequisites](getting-started/prerequisites.md).
 For EKS IaC details, see [EKS IaC Approach](eks-iac.md).
