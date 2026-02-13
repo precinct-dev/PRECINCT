@@ -1014,6 +1014,118 @@ else
     log_fail "Loop denied path reason code" "Expected 429/LOOP_HALT_MAX_STEPS, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
 
+gateway_post "/v1/loop/check" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-deny-loop-tool-calls\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"loop\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-deny-loop-tool-calls\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"loop\"
+    },
+    \"action\": \"loop.check\",
+    \"resource\": \"loop/external-governor\",
+    \"attributes\": {
+      \"event\": \"boundary\",
+      \"limits\": {
+        \"max_steps\": 20,
+        \"max_tool_calls\": 1,
+        \"max_model_calls\": 20,
+        \"max_wall_time_ms\": 600000,
+        \"max_egress_bytes\": 1000000,
+        \"max_model_cost_usd\": 10.0,
+        \"max_provider_failovers\": 2,
+        \"max_risk_score\": 0.9
+      },
+      \"usage\": {
+        \"steps\": 2,
+        \"tool_calls\": 2,
+        \"model_calls\": 1,
+        \"wall_time_ms\": 1200,
+        \"egress_bytes\": 120,
+        \"model_cost_usd\": 0.2,
+        \"provider_failovers\": 0,
+        \"risk_score\": 0.2
+      }
+    }
+  }
+}" "${SPIFFE_ID}"
+
+LOOP_DENY_TOOLCALLS_CODE="$RESP_CODE"
+LOOP_DENY_TOOLCALLS_REASON="$(extract_reason_code "$RESP_BODY")"
+LOOP_DENY_TOOLCALLS_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+LOOP_DENY_TOOLCALLS_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Loop deny tool_calls" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "429" ] && [ "$LOOP_DENY_TOOLCALLS_REASON" = "LOOP_HALT_MAX_TOOL_CALLS" ]; then
+    log_pass "Loop max_tool_calls overflow denied with explicit reason code"
+else
+    log_fail "Loop tool_calls denied path reason code" "Expected 429/LOOP_HALT_MAX_TOOL_CALLS, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/loop/check" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-deny-loop-risk\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"loop\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-deny-loop-risk\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"loop\"
+    },
+    \"action\": \"loop.check\",
+    \"resource\": \"loop/external-governor\",
+    \"attributes\": {
+      \"event\": \"boundary\",
+      \"limits\": {
+        \"max_steps\": 20,
+        \"max_tool_calls\": 20,
+        \"max_model_calls\": 20,
+        \"max_wall_time_ms\": 600000,
+        \"max_egress_bytes\": 1000000,
+        \"max_model_cost_usd\": 10.0,
+        \"max_provider_failovers\": 2,
+        \"max_risk_score\": 0.5
+      },
+      \"usage\": {
+        \"steps\": 2,
+        \"tool_calls\": 1,
+        \"model_calls\": 1,
+        \"wall_time_ms\": 1200,
+        \"egress_bytes\": 120,
+        \"model_cost_usd\": 0.2,
+        \"provider_failovers\": 0,
+        \"risk_score\": 0.8
+      }
+    }
+  }
+}" "${SPIFFE_ID}"
+
+LOOP_DENY_RISK_CODE="$RESP_CODE"
+LOOP_DENY_RISK_REASON="$(extract_reason_code "$RESP_BODY")"
+LOOP_DENY_RISK_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+LOOP_DENY_RISK_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Loop deny risk" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "429" ] && [ "$LOOP_DENY_RISK_REASON" = "LOOP_HALT_MAX_RISK_SCORE" ]; then
+    log_pass "Loop max_risk_score overflow denied with explicit reason code"
+else
+    log_fail "Loop risk denied path reason code" "Expected 429/LOOP_HALT_MAX_RISK_SCORE, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
 log_subheader "F3: Revoked connector denied at ingress runtime gate"
 reset_rate_limit_state "${SPIFFE_ID}"
 log_info "Reset rate-limit keys before revoke/deny checks"
@@ -1123,7 +1235,7 @@ else
     log_fail "Audit correlation" "No audit lines found for run id ${RUN_ID}"
 fi
 
-for reason in INGRESS_ALLOW INGRESS_REPLAY_DETECTED INGRESS_FRESHNESS_STALE INGRESS_SOURCE_UNAUTHENTICATED CONTEXT_ALLOW CONTEXT_NO_SCAN_NO_SEND CONTEXT_MEMORY_WRITE_DENIED CONTEXT_SCHEMA_INVALID CONTEXT_DLP_CLASSIFICATION_DENIED MODEL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED TOOL_ALLOW TOOL_CAPABILITY_DENIED LOOP_ALLOW LOOP_HALT_MAX_STEPS; do
+for reason in INGRESS_ALLOW INGRESS_REPLAY_DETECTED INGRESS_FRESHNESS_STALE INGRESS_SOURCE_UNAUTHENTICATED CONTEXT_ALLOW CONTEXT_NO_SCAN_NO_SEND CONTEXT_MEMORY_WRITE_DENIED CONTEXT_SCHEMA_INVALID CONTEXT_DLP_CLASSIFICATION_DENIED MODEL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED TOOL_ALLOW TOOL_CAPABILITY_DENIED LOOP_ALLOW LOOP_HALT_MAX_STEPS LOOP_HALT_MAX_TOOL_CALLS LOOP_HALT_MAX_RISK_SCORE; do
     if echo "$AUDIT_LINES" | grep -q "$reason"; then
         log_pass "Audit includes reason code ${reason}"
     else
@@ -1169,7 +1281,9 @@ cat > "${ARTIFACT_PATH}" <<EOF
     {"plane":"tool","path":"allow","status_code":${TOOL_ALLOW_CODE:-0},"reason_code":"${TOOL_ALLOW_REASON}","decision_id":"${TOOL_ALLOW_DECISION_ID}","trace_id":"${TOOL_ALLOW_TRACE_ID}"},
     {"plane":"tool","path":"deny","status_code":${TOOL_DENY_CODE:-0},"reason_code":"${TOOL_DENY_REASON}","decision_id":"${TOOL_DENY_DECISION_ID}","trace_id":"${TOOL_DENY_TRACE_ID}"},
     {"plane":"loop","path":"allow","status_code":${LOOP_ALLOW_CODE:-0},"reason_code":"${LOOP_ALLOW_REASON}","decision_id":"${LOOP_ALLOW_DECISION_ID}","trace_id":"${LOOP_ALLOW_TRACE_ID}"},
-    {"plane":"loop","path":"deny","status_code":${LOOP_DENY_CODE:-0},"reason_code":"${LOOP_DENY_REASON}","decision_id":"${LOOP_DENY_DECISION_ID}","trace_id":"${LOOP_DENY_TRACE_ID}"}
+    {"plane":"loop","path":"deny","status_code":${LOOP_DENY_CODE:-0},"reason_code":"${LOOP_DENY_REASON}","decision_id":"${LOOP_DENY_DECISION_ID}","trace_id":"${LOOP_DENY_TRACE_ID}"},
+    {"plane":"loop","path":"deny_tool_calls","status_code":${LOOP_DENY_TOOLCALLS_CODE:-0},"reason_code":"${LOOP_DENY_TOOLCALLS_REASON}","decision_id":"${LOOP_DENY_TOOLCALLS_DECISION_ID}","trace_id":"${LOOP_DENY_TOOLCALLS_TRACE_ID}"},
+    {"plane":"loop","path":"deny_risk","status_code":${LOOP_DENY_RISK_CODE:-0},"reason_code":"${LOOP_DENY_RISK_REASON}","decision_id":"${LOOP_DENY_RISK_DECISION_ID}","trace_id":"${LOOP_DENY_RISK_TRACE_ID}"}
   ],
   "connector_conformance_report_decision_id": "${CONNECTOR_DECISION_ID}"
   ,"ruleops_active_decision_id": "${RULEOPS_ACTIVE_DECISION_ID}"

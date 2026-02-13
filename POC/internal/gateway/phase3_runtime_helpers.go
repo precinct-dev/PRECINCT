@@ -792,54 +792,21 @@ func (g *Gateway) handleLoopCheck(w http.ResponseWriter, r *http.Request) {
 	}
 	traceID, decisionID := getDecisionCorrelationIDs(r, req.Envelope)
 
-	attrs := req.Policy.Attributes
-	if attrs == nil {
-		attrs = map[string]any{}
+	policy := g.loopPolicy
+	if policy == nil {
+		policy = newLoopPlanePolicyEngine()
 	}
-
-	limits, _ := attrs["limits"].(map[string]any)
-	usage, _ := attrs["usage"].(map[string]any)
-	if limits == nil {
-		limits = map[string]any{}
-	}
-	if usage == nil {
-		usage = map[string]any{}
-	}
-
-	maxSteps := getIntAttr(limits, "max_steps", 0)
-	steps := getIntAttr(usage, "steps", 0)
-	if maxSteps > 0 && steps > maxSteps {
-		resp := PlaneDecisionV2{
-			Decision:   DecisionDeny,
-			ReasonCode: ReasonLoopHaltMaxSteps,
-			Envelope:   req.Envelope,
-			TraceID:    traceID,
-			DecisionID: decisionID,
-			Metadata: map[string]any{
-				"max_steps": maxSteps,
-				"steps":     steps,
-			},
-		}
-		g.logPlaneDecision(r, resp, http.StatusTooManyRequests)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusTooManyRequests)
-		_ = json.NewEncoder(w).Encode(resp)
-		return
-	}
-
+	eval := policy.evaluate(req)
 	resp := PlaneDecisionV2{
-		Decision:   DecisionAllow,
-		ReasonCode: ReasonLoopAllow,
+		Decision:   eval.Decision,
+		ReasonCode: eval.Reason,
 		Envelope:   req.Envelope,
 		TraceID:    traceID,
 		DecisionID: decisionID,
-		Metadata: map[string]any{
-			"max_steps": maxSteps,
-			"steps":     steps,
-		},
+		Metadata:   eval.Metadata,
 	}
-	g.logPlaneDecision(r, resp, http.StatusOK)
+	g.logPlaneDecision(r, resp, eval.HTTPStatus)
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
+	w.WriteHeader(eval.HTTPStatus)
 	_ = json.NewEncoder(w).Encode(resp)
 }
