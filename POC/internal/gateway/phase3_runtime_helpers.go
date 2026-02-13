@@ -395,6 +395,32 @@ func (g *Gateway) handleToolExecute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	traceID, decisionID := getDecisionCorrelationIDs(r, req.Envelope)
+	attrs := req.Policy.Attributes
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+
+	capabilityID := strings.TrimSpace(getStringAttr(attrs, "capability_id", ""))
+	toolName := strings.TrimSpace(getStringAttr(attrs, "tool_name", ""))
+	if capabilityID == "" || toolName == "" || !strings.HasPrefix(capabilityID, "tool.default.") {
+		resp := PlaneDecisionV2{
+			Decision:   DecisionDeny,
+			ReasonCode: ReasonToolCapabilityDenied,
+			Envelope:   req.Envelope,
+			TraceID:    traceID,
+			DecisionID: decisionID,
+			Metadata: map[string]any{
+				"capability_id":   capabilityID,
+				"tool_name":       toolName,
+				"required_prefix": "tool.default.",
+			},
+		}
+		g.logPlaneDecision(r, resp, http.StatusForbidden)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
 
 	resp := PlaneDecisionV2{
 		Decision:   DecisionAllow,
