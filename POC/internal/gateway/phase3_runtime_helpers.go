@@ -271,6 +271,27 @@ func (g *Gateway) handleIngressAdmit(w http.ResponseWriter, r *http.Request) {
 		connectorID = getStringAttr(attrs, "source_id", "")
 	}
 	connectorSig := getStringAttr(attrs, "connector_signature", "")
+	sourcePrincipal := getStringAttr(attrs, "source_principal", "")
+
+	if sourcePrincipal != "" && req.Envelope.ActorSPIFFEID != "" && sourcePrincipal != req.Envelope.ActorSPIFFEID {
+		resp := PlaneDecisionV2{
+			Decision:   DecisionDeny,
+			ReasonCode: ReasonIngressSourceUnauth,
+			Envelope:   req.Envelope,
+			TraceID:    traceID,
+			DecisionID: decisionID,
+			Metadata: map[string]any{
+				"source_principal": sourcePrincipal,
+				"actor_spiffe_id":  req.Envelope.ActorSPIFFEID,
+				"source_check":     "source_principal_actor_mismatch",
+			},
+		}
+		g.logPlaneDecision(r, resp, http.StatusForbidden)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
 
 	if connectorID != "" && g.cca != nil {
 		allowed, reason, rec := g.cca.runtimeCheck(connectorID, connectorSig)
@@ -294,7 +315,114 @@ func (g *Gateway) handleIngressAdmit(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(resp)
 			return
 		}
+		if rec.Manifest.SourcePrincipal != "" && req.Envelope.ActorSPIFFEID != rec.Manifest.SourcePrincipal {
+			resp := PlaneDecisionV2{
+				Decision:   DecisionDeny,
+				ReasonCode: ReasonIngressSourceUnauth,
+				Envelope:   req.Envelope,
+				TraceID:    traceID,
+				DecisionID: decisionID,
+				Metadata: map[string]any{
+					"connector_id":       connectorID,
+					"source_principal":   sourcePrincipal,
+					"actor_spiffe_id":    req.Envelope.ActorSPIFFEID,
+					"manifest_principal": rec.Manifest.SourcePrincipal,
+					"source_check":       "actor_manifest_mismatch",
+				},
+			}
+			g.logPlaneDecision(r, resp, http.StatusForbidden)
+			g.cca.updateAuditRef(connectorID, decisionID, traceID, "actor_manifest_mismatch", "runtime_ingress_check")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		if sourcePrincipal != "" && rec.Manifest.SourcePrincipal != "" && sourcePrincipal != rec.Manifest.SourcePrincipal {
+			resp := PlaneDecisionV2{
+				Decision:   DecisionDeny,
+				ReasonCode: ReasonIngressSourceUnauth,
+				Envelope:   req.Envelope,
+				TraceID:    traceID,
+				DecisionID: decisionID,
+				Metadata: map[string]any{
+					"connector_id":       connectorID,
+					"source_principal":   sourcePrincipal,
+					"manifest_principal": rec.Manifest.SourcePrincipal,
+					"source_check":       "source_manifest_mismatch",
+				},
+			}
+			g.logPlaneDecision(r, resp, http.StatusForbidden)
+			g.cca.updateAuditRef(connectorID, decisionID, traceID, "source_manifest_mismatch", "runtime_ingress_check")
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
 		g.cca.updateAuditRef(connectorID, decisionID, traceID, "connector_active", "runtime_ingress_check")
+	}
+
+	eventTimestamp := getStringAttr(attrs, "event_timestamp", "")
+	if eventTimestamp != "" {
+		parsed, err := time.Parse(time.RFC3339, eventTimestamp)
+		if err != nil {
+			resp := PlaneDecisionV2{
+				Decision:   DecisionDeny,
+				ReasonCode: ReasonIngressSchemaInvalid,
+				Envelope:   req.Envelope,
+				TraceID:    traceID,
+				DecisionID: decisionID,
+				Metadata: map[string]any{
+					"error":           "event_timestamp must be RFC3339",
+					"event_timestamp": eventTimestamp,
+				},
+			}
+			g.logPlaneDecision(r, resp, http.StatusBadRequest)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+		now := time.Now().UTC()
+		if g.ingressReplayGuard != nil && !g.ingressReplayGuard.fresh(now, parsed) {
+			freshnessWindow := int(g.ingressReplayGuard.window.Seconds())
+			maxFuture := int(g.ingressReplayGuard.maxFuture.Seconds())
+			resp := PlaneDecisionV2{
+				Decision:   DecisionDeny,
+				ReasonCode: ReasonIngressFreshnessStale,
+				Envelope:   req.Envelope,
+				TraceID:    traceID,
+				DecisionID: decisionID,
+				Metadata: map[string]any{
+					"event_timestamp":          eventTimestamp,
+					"freshness_window_seconds": freshnessWindow,
+					"max_future_seconds":       maxFuture,
+				},
+			}
+			g.logPlaneDecision(r, resp, http.StatusForbidden)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(resp)
+			return
+		}
+	}
+
+	replayKey := ingressReplayKey(connectorID, attrs)
+	if replayKey != "" && g.ingressReplayGuard != nil && g.ingressReplayGuard.checkAndMark(replayKey, time.Now().UTC()) {
+		resp := PlaneDecisionV2{
+			Decision:   DecisionDeny,
+			ReasonCode: ReasonIngressReplayDetected,
+			Envelope:   req.Envelope,
+			TraceID:    traceID,
+			DecisionID: decisionID,
+			Metadata: map[string]any{
+				"replay_key": replayKey,
+			},
+		}
+		g.logPlaneDecision(r, resp, http.StatusConflict)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(resp)
+		return
 	}
 
 	resp := PlaneDecisionV2{

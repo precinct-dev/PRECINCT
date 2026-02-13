@@ -63,6 +63,15 @@ and backward-compatibility mappings.
 | `/v1/chat/completions` (OpenAI compat) | `/v1/model/call` | maps provider mediation metadata to canonical reason codes | New integrations should call `/v1/model/call` for explicit policy envelope semantics |
 | Generic middleware `code` (13-chain errors) | `reason_code` (control-plane decisions) | both retained by domain: chain errors for proxy/tool path, `reason_code` for plane governance | SDKs should preserve both fields and route by endpoint family |
 
+### Ingress Runtime Guard Notes
+
+The canonical ingress endpoint (`/v1/ingress/submit`) and compatibility alias
+(`/v1/ingress/admit`) execute identical runtime checks:
+
+- Source principal consistency checks (`INGRESS_SOURCE_UNAUTHENTICATED`)
+- Replay detection keyed by `event_id` (or `nonce`) (`INGRESS_REPLAY_DETECTED`)
+- Freshness window checks using `event_timestamp` (`INGRESS_FRESHNESS_STALE`)
+
 ## Contract Drift Notes (POC As-Built To Canonical)
 
 1. Ingress endpoint naming drift:

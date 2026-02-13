@@ -8,3 +8,4 @@
 - Published DLP RuleOps lifecycle contract (create/validate/approve/sign/promote/rollback/active).
 - Published frozen reason-code catalog with stability and deprecation policy.
 - Added compatibility mapping for `/v1/ingress/admit` -> `/v1/ingress/submit` and model alias surfaces.
+- Documented deterministic ingress runtime guards for source authenticity, replay, and freshness checks across both canonical and compatibility ingress paths.

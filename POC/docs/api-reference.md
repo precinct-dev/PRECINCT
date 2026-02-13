@@ -218,6 +218,10 @@ The frozen v2.4 control-plane contract set and reason-code catalog live in:
 Compatibility notes:
 
 - Canonical ingress path is `/v1/ingress/submit`; `/v1/ingress/admit` is retained as a compatibility alias during migration.
+- `/v1/ingress/submit` and `/v1/ingress/admit` share the same runtime enforcement:
+  source-principal checks (`INGRESS_SOURCE_UNAUTHENTICATED`), replay detection
+  (`INGRESS_REPLAY_DETECTED` via `event_id`/`nonce`), and freshness checks
+  (`INGRESS_FRESHNESS_STALE` via `event_timestamp`).
 - Control-plane endpoints return `reason_code`; middleware chain denials return `code`.
 
 ---
