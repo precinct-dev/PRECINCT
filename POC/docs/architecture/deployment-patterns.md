@@ -45,6 +45,9 @@ Step 14 (ResponseFirewall) wraps the reverse proxy and intercepts responses befo
 flow back through the chain. Token substitution (step 13) is intentionally the innermost
 middleware -- no other middleware sees real secrets.
 
+`NewToolRegistryScopeResolver` is also part of tool registry enforcement path and must be
+kept aligned with `ToolRegistryVerify` behavior when policy scopes evolve.
+
 All 13 middleware controls plus the response firewall are identical in Docker Compose
 and Kubernetes deployments because they are compiled into the same Go binary
 (`mcp-security-gateway`).
