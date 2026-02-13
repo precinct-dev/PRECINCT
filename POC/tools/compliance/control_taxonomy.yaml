@@ -1,12 +1,12 @@
 # Control Taxonomy -- Agentic Reference Architecture POC
-# Maps gateway security controls to SOC 2, ISO 27001, CCPA, and GDPR frameworks.
+# Maps gateway security controls to SOC 2, ISO 27001, CCPA, GDPR, and optional PCI-DSS frameworks.
 # Each control references the middleware step in the 13-middleware chain.
 #
 # evidence_type: audit_log | configuration | test_result
 # evidence_query: jq-style filter for extracting evidence from audit logs
 
 taxonomy_metadata:
-  version: "2.1"
+  version: "2.2"
   scope_boundary:
     in_scope:
       - "Runtime, technical controls enforceable by gateway middleware, policy, or integration tests"
@@ -562,3 +562,125 @@ controls:
       evidence_owner: platform-security
     evidence_paths:
       - evidence/audit-log-excerpt.jsonl
+
+  # ---------------------------------------------------------------------------
+  # PCI-DSS Technical Profile Pack (optional profile)
+  # ---------------------------------------------------------------------------
+  - id: PCI-AUTH-001
+    name: "Cardholder Data Access Identity Verification"
+    description: "Access requests touching cardholder-adjacent workflows require verified workload identity"
+    middleware: spiffe_auth
+    step: 3
+    frameworks:
+      pci_dss: ["8.3.1"]
+    evidence_type: audit_log
+    evidence_query: '.action == "mcp_request" and .spiffe_id != ""'
+    mapping_metadata:
+      control_scope: technical
+      control_family: PCI-AUTH
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - evidence/audit-log-excerpt.jsonl
+
+  - id: PCI-AUTHZ-001
+    name: "Need-to-Know and Deny-by-Default Authorization"
+    description: "Authorization policy enforces least privilege and deny-by-default behavior for tool access"
+    middleware: opa
+    step: 6
+    frameworks:
+      pci_dss: ["7.2.1", "7.2.5"]
+    evidence_type: configuration
+    evidence_query: null
+    mapping_metadata:
+      control_scope: technical
+      control_family: PCI-AUTHZ
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - evidence/policy-configs/opa-policy.rego
+
+  - id: PCI-DATA-001
+    name: "Cardholder Data Exposure Reduction"
+    description: "Sensitive response fields are blocked or tokenized before returning to calling agents"
+    middleware: response_firewall
+    step: 14
+    frameworks:
+      pci_dss: ["3.3.1"]
+    evidence_type: test_result
+    evidence_query: null
+    mapping_metadata:
+      control_scope: technical
+      control_family: PCI-DATA
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - internal/gateway/middleware/response_firewall_test.go
+
+  - id: PCI-CRYPT-001
+    name: "Cryptographic Secret and Key Protection Path"
+    description: "Late-binding secret substitution prevents direct exposure of cryptographic material to agents"
+    middleware: spike_redeemer
+    step: 13
+    frameworks:
+      pci_dss: ["3.5.1", "3.6.1"]
+    evidence_type: configuration
+    evidence_query: null
+    mapping_metadata:
+      control_scope: technical
+      control_family: PCI-CRYPT
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - internal/gateway/middleware/spike_redeemer.go
+
+  - id: PCI-AUDIT-001
+    name: "Cardholder Access Audit Traceability"
+    description: "Structured audit records preserve decision and session linkage for cardholder-relevant access flows"
+    middleware: audit
+    step: 4
+    frameworks:
+      pci_dss: ["10.2.1", "10.4.1"]
+    evidence_type: audit_log
+    evidence_query: '.action == "mcp_request" and .decision_id != null and .session_id != null'
+    mapping_metadata:
+      control_scope: technical
+      control_family: PCI-AUDIT
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - evidence/audit-log-excerpt.jsonl
+
+  - id: PCI-NET-001
+    name: "Inbound/Outbound Traffic Restriction Enforcement"
+    description: "Destination allowlists and policy checks constrain network paths to approved services"
+    middleware: opa
+    step: 6
+    frameworks:
+      pci_dss: ["1.2.1"]
+    evidence_type: configuration
+    evidence_query: null
+    mapping_metadata:
+      control_scope: technical
+      control_family: PCI-NET
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - evidence/policy-configs/opa-policy.rego
+
+  - id: PCI-SC-001
+    name: "Vulnerability and Integrity Gate for Runtime Artifacts"
+    description: "Supply-chain and artifact integrity checks provide vulnerability and tamper controls before promotion"
+    middleware: null
+    step: null
+    frameworks:
+      pci_dss: ["6.3.2"]
+    evidence_type: configuration
+    evidence_query: null
+    mapping_metadata:
+      control_scope: technical
+      control_family: PCI-SC
+      implementation_tier: supply_chain
+      evidence_owner: platform-security
+    evidence_paths:
+      - config/

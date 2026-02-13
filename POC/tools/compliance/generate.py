@@ -4,7 +4,7 @@
 Reads the control taxonomy YAML, audit logs, and policy configurations to
 produce machine-readable evidence bundles (JSON + CSV) plus analyst-friendly
 CSV, XLSX, and PDF compliance reports mapping gateway controls to
-SOC 2, ISO 27001, CCPA, and GDPR frameworks.
+SOC 2, ISO 27001, CCPA, GDPR, and optional PCI-DSS frameworks.
 
 Usage:
     python3 tools/compliance/generate.py [--audit-log PATH] [--output-dir PATH]
@@ -95,6 +95,26 @@ FRAMEWORK_REQUIREMENTS: dict[str, dict[str, str]] = {
         "Art. 30": "Records of Processing Activities",
         "Art. 32": "Security of Processing",
     },
+    "pci_dss": {
+        "1.2.1": "Restrict inbound and outbound traffic to necessary services",
+        "3.3.1": "Render account data unreadable when displayed/stored in logs",
+        "3.5.1": "Protect cryptographic keys used to secure account data",
+        "3.6.1": "Implement key management processes and procedures",
+        "6.3.2": "Protect system components from known vulnerabilities",
+        "7.2.1": "Access to system components and data by business need-to-know",
+        "7.2.5": "Deny all unless specifically allowed",
+        "8.3.1": "Strong authentication for access to system components",
+        "10.2.1": "Audit logs for all user access to system components/data",
+        "10.4.1": "Audit logs include user identification and event details",
+    },
+}
+
+FRAMEWORK_CODE_MAP: dict[str, str] = {
+    "soc2": "SOC2",
+    "iso27001": "ISO27001",
+    "ccpa": "CCPA",
+    "gdpr": "GDPR",
+    "pci_dss": "PCIDSS",
 }
 
 # CSV column order
@@ -584,8 +604,13 @@ def generate_rows(
         for framework_name, requirements in frameworks.items():
             if not requirements:
                 continue
+            framework_key = str(framework_name).lower()
+            framework_code = FRAMEWORK_CODE_MAP.get(
+                framework_key,
+                str(framework_name).upper(),
+            )
             for req_id in requirements:
-                req_desc = FRAMEWORK_REQUIREMENTS.get(framework_name, {}).get(
+                req_desc = FRAMEWORK_REQUIREMENTS.get(framework_key, {}).get(
                     req_id, req_id
                 )
                 impl_notes = build_implementation_notes(control)
@@ -596,7 +621,7 @@ def generate_rows(
                     "control_id": control["id"],
                     "control_name": control["name"],
                     "control_description": control["description"],
-                    "framework": framework_name.upper(),
+                    "framework": framework_code,
                     "framework_requirement": f"{req_id}: {req_desc}",
                     "status": status,
                     "evidence_type": control.get("evidence_type", ""),
@@ -722,7 +747,10 @@ FRAMEWORK_DISPLAY_NAMES: dict[str, str] = {
     "ISO27001": "ISO 27001",
     "CCPA": "CCPA",
     "GDPR": "GDPR",
+    "PCIDSS": "PCI DSS",
 }
+
+FRAMEWORK_OUTPUT_ORDER = ["SOC2", "ISO27001", "CCPA", "GDPR", "PCIDSS"]
 
 # Conditional formatting colors keyed by status.
 STATUS_COLORS: dict[str, str] = {
@@ -819,7 +847,7 @@ def write_xlsx(rows: list[dict[str, str]], output_path: Path) -> None:
 
     Sheets:
       - Summary: total controls, % implemented per framework, date, version
-      - One sheet per framework (SOC 2, ISO 27001, CCPA, GDPR)
+      - One sheet per framework (SOC 2, ISO 27001, CCPA, GDPR, PCI DSS)
     """
     output_path.parent.mkdir(parents=True, exist_ok=True)
     wb = openpyxl.Workbook()
@@ -842,7 +870,7 @@ def write_xlsx(rows: list[dict[str, str]], output_path: Path) -> None:
 
     ws_summary.append(["Framework", "Total Mappings", "Implemented", "Partial",
                         "Documented Only", "% Implemented"])
-    for fw_code in ["SOC2", "ISO27001", "CCPA", "GDPR"]:
+    for fw_code in FRAMEWORK_OUTPUT_ORDER:
         if fw_code in fw_summary:
             s = fw_summary[fw_code]
             display = FRAMEWORK_DISPLAY_NAMES.get(fw_code, fw_code)
@@ -870,7 +898,7 @@ def write_xlsx(rows: list[dict[str, str]], output_path: Path) -> None:
         ws_summary.column_dimensions[col_letter].width = min(max_len + 2, 60)
 
     # --- Per-framework sheets ---
-    frameworks_order = ["SOC2", "ISO27001", "CCPA", "GDPR"]
+    frameworks_order = FRAMEWORK_OUTPUT_ORDER
     for fw_code in frameworks_order:
         fw_rows = [r for r in rows if r["framework"] == fw_code]
         if not fw_rows:
@@ -1070,7 +1098,7 @@ def write_pdf(
     pdf.ln()
 
     pdf.set_font("Helvetica", "", 10)
-    for fw_code in ["SOC2", "ISO27001", "CCPA", "GDPR"]:
+    for fw_code in FRAMEWORK_OUTPUT_ORDER:
         if fw_code not in fw_summary:
             continue
         s = fw_summary[fw_code]
@@ -1089,11 +1117,11 @@ def write_pdf(
     pdf.ln(3)
 
     matrix = _build_control_area_matrix(rows)
-    frameworks_order = ["SOC2", "ISO27001", "CCPA", "GDPR"]
+    frameworks_order = [fw for fw in FRAMEWORK_OUTPUT_ORDER if fw in fw_summary]
 
     # Table header
-    area_col_w = 55
-    fw_col_w = 32
+    area_col_w = 45
+    fw_col_w = (190 - area_col_w) / max(len(frameworks_order), 1)
     pdf.set_font("Helvetica", "B", 9)
     pdf.cell(area_col_w, 8, "Control Area", border=1)
     for fw_code in frameworks_order:
@@ -1396,6 +1424,27 @@ def main(argv: list[str] | None = None) -> int:
     evidence_csv_path = output_dir / "compliance-evidence.v2.csv"
     write_evidence_bundle_csv(evidence_bundle["records"], evidence_csv_path)
     print(f"Evidence CSV bundle written to {evidence_csv_path}")
+
+    # Optional PCI-DSS profile bundle (emitted only when PCI rows exist)
+    pci_records = [
+        record for record in evidence_bundle["records"]
+        if record.get("framework") == "PCIDSS"
+    ]
+    if pci_records:
+        pci_bundle = {
+            "schema_version": "evidence.profile.v1",
+            "profile": "pci-dss-technical",
+            "generated_at": generated_at,
+            "record_count": len(pci_records),
+            "records": pci_records,
+        }
+        pci_json_path = output_dir / "compliance-evidence.pci-dss.json"
+        write_evidence_bundle_json(pci_bundle, pci_json_path)
+        print(f"PCI-DSS evidence JSON bundle written to {pci_json_path}")
+
+        pci_csv_path = output_dir / "compliance-evidence.pci-dss.csv"
+        write_evidence_bundle_csv(pci_records, pci_csv_path)
+        print(f"PCI-DSS evidence CSV bundle written to {pci_csv_path}")
 
     # --- CSV output ---
     csv_path = output_dir / "compliance-report.csv"

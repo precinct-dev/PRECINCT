@@ -31,3 +31,7 @@ evidence extraction path via `evidence_paths`.
 Primary source taxonomy:
 
 - `tools/compliance/control_taxonomy.yaml`
+
+Companion technical profile packs:
+
+- `docs/compliance/pci-dss-technical-profile.md`
