@@ -59,6 +59,7 @@ type Gateway struct {
 	rlmPolicy            *rlmGovernanceEngine              // RFA-owgw.11: recursive language model governance
 	dlpRuleOps           *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
 	cca                  *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
+	ingressReplayGuard   *ingressReplayGuard               // RFA-l6h6.2.2: ingress replay/freshness guard
 }
 
 // New creates a new gateway instance
@@ -314,6 +315,7 @@ func New(cfg *Config) (*Gateway, error) {
 		rlmPolicy:            newRLMGovernanceEngine(),
 		dlpRuleOps:           dlpRuleOps,
 		cca:                  newConnectorConformanceAuthority(),
+		ingressReplayGuard:   newIngressReplayGuard(5*time.Minute, 15*time.Second),
 	}, nil
 }
 

@@ -131,6 +131,11 @@ RUN_ID="phase3-compose-$(date +%s)"
 SESSION_ID="phase3-compose-session-${RUN_ID}"
 SPIFFE_ID="${DEFAULT_SPIFFE_ID}"
 NOW_UTC="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+STALE_UTC="$(python3 - <<'PY'
+from datetime import datetime, timedelta, timezone
+print((datetime.now(timezone.utc) - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ"))
+PY
+)"
 CONNECTOR_SIG_EXPECTED="$(compute_connector_signature "compose-webhook" "webhook" "${SPIFFE_ID}" "1.0" '["ingress.submit"]')"
 ARTIFACT_DIR="${POC_DIR}/tests/e2e/artifacts"
 ARTIFACT_PATH="${ARTIFACT_DIR}/scenario_f_${RUN_ID}.json"
@@ -182,7 +187,7 @@ done
 
 log_subheader "F1: Success path across ingress -> context -> model -> tool"
 
-gateway_post "/v1/ingress/admit" "{
+gateway_post "/v1/ingress/submit" "{
   \"envelope\": {
     \"run_id\": \"${RUN_ID}\",
     \"session_id\": \"${SESSION_ID}\",
@@ -226,6 +231,128 @@ if [ "$RESP_CODE" = "200" ] && [ "$INGRESS_ALLOW_REASON" = "INGRESS_ALLOW" ]; th
 else
     log_fail "Ingress phase3 success path" "Expected 200/INGRESS_ALLOW, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
+
+log_subheader "F1.1: Ingress replay/freshness checks on canonical /submit path"
+
+gateway_post "/v1/ingress/submit" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-replay-primer\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"ingress\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-replay-primer\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"ingress\"
+    },
+    \"action\": \"ingress.admit\",
+    \"resource\": \"ingress/event\",
+    \"attributes\": {
+      \"connector_id\": \"compose-webhook\",
+      \"connector_signature\": \"${CONNECTOR_SIG}\",
+      \"source_id\": \"compose-webhook\",
+      \"source_principal\": \"${SPIFFE_ID}\",
+      \"event_id\": \"event-${RUN_ID}-replay\",
+      \"event_timestamp\": \"${NOW_UTC}\"
+    }
+  }
+}" "${SPIFFE_ID}"
+
+if [ "$RESP_CODE" = "200" ] && [ "$(extract_reason_code "$RESP_BODY")" = "INGRESS_ALLOW" ]; then
+    log_pass "Ingress replay primer accepted on canonical /submit"
+else
+    log_fail "Ingress replay primer" "Expected 200/INGRESS_ALLOW, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/ingress/submit" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-replay-deny\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"ingress\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-replay-deny\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"ingress\"
+    },
+    \"action\": \"ingress.admit\",
+    \"resource\": \"ingress/event\",
+    \"attributes\": {
+      \"connector_id\": \"compose-webhook\",
+      \"connector_signature\": \"${CONNECTOR_SIG}\",
+      \"source_id\": \"compose-webhook\",
+      \"source_principal\": \"${SPIFFE_ID}\",
+      \"event_id\": \"event-${RUN_ID}-replay\",
+      \"event_timestamp\": \"${NOW_UTC}\"
+    }
+  }
+}" "${SPIFFE_ID}"
+
+INGRESS_REPLAY_CODE="$RESP_CODE"
+INGRESS_REPLAY_REASON="$(extract_reason_code "$RESP_BODY")"
+INGRESS_REPLAY_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+INGRESS_REPLAY_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Ingress replay deny" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "409" ] && [ "$INGRESS_REPLAY_REASON" = "INGRESS_REPLAY_DETECTED" ]; then
+    log_pass "Ingress replay denied with deterministic reason code"
+else
+    log_fail "Ingress replay denied path" "Expected 409/INGRESS_REPLAY_DETECTED, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/ingress/submit" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-stale-deny\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"ingress\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-stale-deny\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"ingress\"
+    },
+    \"action\": \"ingress.admit\",
+    \"resource\": \"ingress/event\",
+    \"attributes\": {
+      \"connector_id\": \"compose-webhook\",
+      \"connector_signature\": \"${CONNECTOR_SIG}\",
+      \"source_id\": \"compose-webhook\",
+      \"source_principal\": \"${SPIFFE_ID}\",
+      \"event_id\": \"event-${RUN_ID}-stale\",
+      \"event_timestamp\": \"${STALE_UTC}\"
+    }
+  }
+}" "${SPIFFE_ID}"
+
+INGRESS_STALE_CODE="$RESP_CODE"
+INGRESS_STALE_REASON="$(extract_reason_code "$RESP_BODY")"
+INGRESS_STALE_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+INGRESS_STALE_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Ingress stale deny" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "403" ] && [ "$INGRESS_STALE_REASON" = "INGRESS_FRESHNESS_STALE" ]; then
+    log_pass "Ingress stale event denied with deterministic reason code"
+else
+    log_fail "Ingress stale denied path" "Expected 403/INGRESS_FRESHNESS_STALE, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+reset_rate_limit_state "${SPIFFE_ID}"
+log_info "Reset rate-limit keys after ingress replay/freshness checks"
 
 gateway_post "/v1/context/admit" "{
   \"envelope\": {
@@ -685,7 +812,7 @@ else
     log_fail "Audit correlation" "No audit lines found for run id ${RUN_ID}"
 fi
 
-for reason in INGRESS_ALLOW INGRESS_SOURCE_UNAUTHENTICATED CONTEXT_ALLOW CONTEXT_NO_SCAN_NO_SEND MODEL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED TOOL_ALLOW TOOL_CAPABILITY_DENIED LOOP_ALLOW LOOP_HALT_MAX_STEPS; do
+for reason in INGRESS_ALLOW INGRESS_REPLAY_DETECTED INGRESS_FRESHNESS_STALE INGRESS_SOURCE_UNAUTHENTICATED CONTEXT_ALLOW CONTEXT_NO_SCAN_NO_SEND MODEL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED TOOL_ALLOW TOOL_CAPABILITY_DENIED LOOP_ALLOW LOOP_HALT_MAX_STEPS; do
     if echo "$AUDIT_LINES" | grep -q "$reason"; then
         log_pass "Audit includes reason code ${reason}"
     else
@@ -709,6 +836,8 @@ cat > "${ARTIFACT_PATH}" <<EOF
   "generated_at_utc": "${NOW_UTC}",
   "decisions": [
     {"plane":"ingress","path":"allow","status_code":${INGRESS_ALLOW_CODE:-0},"reason_code":"${INGRESS_ALLOW_REASON}","decision_id":"${INGRESS_ALLOW_DECISION_ID}","trace_id":"${INGRESS_ALLOW_TRACE_ID}"},
+    {"plane":"ingress","path":"replay_deny","status_code":${INGRESS_REPLAY_CODE:-0},"reason_code":"${INGRESS_REPLAY_REASON}","decision_id":"${INGRESS_REPLAY_DECISION_ID}","trace_id":"${INGRESS_REPLAY_TRACE_ID}"},
+    {"plane":"ingress","path":"stale_deny","status_code":${INGRESS_STALE_CODE:-0},"reason_code":"${INGRESS_STALE_REASON}","decision_id":"${INGRESS_STALE_DECISION_ID}","trace_id":"${INGRESS_STALE_TRACE_ID}"},
     {"plane":"ingress","path":"deny","status_code":${INGRESS_DENY_CODE:-0},"reason_code":"${INGRESS_DENY_REASON}","decision_id":"${INGRESS_DENY_DECISION_ID}","trace_id":"${INGRESS_DENY_TRACE_ID}"},
     {"plane":"context","path":"allow","status_code":${CONTEXT_ALLOW_CODE:-0},"reason_code":"${CONTEXT_ALLOW_REASON}","decision_id":"${CONTEXT_ALLOW_DECISION_ID}","trace_id":"${CONTEXT_ALLOW_TRACE_ID}"},
     {"plane":"context","path":"deny","status_code":${CONTEXT_DENY_CODE:-0},"reason_code":"${CONTEXT_DENY_REASON}","decision_id":"${CONTEXT_DENY_DECISION_ID}","trace_id":"${CONTEXT_DENY_TRACE_ID}"},
