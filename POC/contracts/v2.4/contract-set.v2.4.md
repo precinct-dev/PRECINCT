@@ -72,6 +72,14 @@ The canonical ingress endpoint (`/v1/ingress/submit`) and compatibility alias
 - Replay detection keyed by `event_id` (or `nonce`) (`INGRESS_REPLAY_DETECTED`)
 - Freshness window checks using `event_timestamp` (`INGRESS_FRESHNESS_STALE`)
 
+### Horizontal Hardening Notes
+
+v2.4 governance endpoints (`/v1/*`, `/admin/dlp/rulesets*`, `/admin/loop/runs*`)
+run through gateway middleware identity/policy hooks. Request failures use the
+unified gateway error envelope (`code`, `middleware`, `middleware_step`,
+`decision_id`, `trace_id`), while plane policy decisions continue to use the
+canonical `plane_decision_v2` reason-code response.
+
 ## Contract Drift Notes (POC As-Built To Canonical)
 
 1. Ingress endpoint naming drift:

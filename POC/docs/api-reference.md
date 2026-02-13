@@ -222,6 +222,12 @@ Compatibility notes:
   source-principal checks (`INGRESS_SOURCE_UNAUTHENTICATED`), replay detection
   (`INGRESS_REPLAY_DETECTED` via `event_id`/`nonce`), and freshness checks
   (`INGRESS_FRESHNESS_STALE` via `event_timestamp`).
+- v2.4 governance endpoints (`/v1/*`, `/admin/dlp/rulesets*`, `/admin/loop/runs*`)
+  run through the gateway middleware chain for SPIFFE identity enforcement and
+  policy hooks.
+- v2.4 request failures use the unified `GatewayError` envelope (`code`,
+  `middleware`, `middleware_step`, `decision_id`, `trace_id`) while control-plane
+  policy decisions continue to use the canonical `reason_code` decision envelope.
 - Control-plane endpoints return `reason_code`; middleware chain denials return `code`.
 
 ---

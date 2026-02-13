@@ -31,6 +31,18 @@ type dlpRuleOpsRequest struct {
 
 const dlpRulesetAdminPath = "/admin/dlp/rulesets"
 
+func (g *Gateway) handleV24AdminEntry(w http.ResponseWriter, r *http.Request) bool {
+	if strings.HasPrefix(r.URL.Path, dlpRulesetAdminPath) {
+		g.adminDLPRulesetsHandler(w, r)
+		return true
+	}
+	if strings.HasPrefix(r.URL.Path, "/admin/loop/runs") {
+		g.adminLoopRunsHandler(w, r)
+		return true
+	}
+	return false
+}
+
 // adminDLPRulesetsHandler exposes governed DLP RuleOps lifecycle operations.
 //
 // Supported endpoints:
@@ -44,9 +56,16 @@ const dlpRulesetAdminPath = "/admin/dlp/rulesets"
 //   - POST /admin/dlp/rulesets/rollback
 func (g *Gateway) adminDLPRulesetsHandler(w http.ResponseWriter, r *http.Request) {
 	if g == nil || g.dlpRuleOps == nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": "dlp ruleops unavailable"})
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusServiceUnavailable,
+			middleware.ErrMCPTransportFailed,
+			"dlp ruleops unavailable",
+			v24MiddlewareRuleOpsAdmin,
+			ReasonContractInvalid,
+			nil,
+		)
 		return
 	}
 
@@ -59,14 +78,14 @@ func (g *Gateway) adminDLPRulesetsHandler(w http.ResponseWriter, r *http.Request
 	switch pathSuffix {
 	case "", "/":
 		if r.Method != http.MethodGet {
-			g.writeRuleOpsMethodNotAllowed(w, "GET")
+			g.writeRuleOpsMethodNotAllowed(w, r, "GET")
 			return
 		}
 		g.handleDLPRulesetSummary(w, r)
 		return
 	case "/active":
 		if r.Method != http.MethodGet {
-			g.writeRuleOpsMethodNotAllowed(w, "GET")
+			g.writeRuleOpsMethodNotAllowed(w, r, "GET")
 			return
 		}
 		g.handleDLPRulesetActive(w, r)
@@ -127,9 +146,16 @@ func (g *Gateway) handleDLPRulesetSummary(w http.ResponseWriter, r *http.Request
 func (g *Gateway) handleDLPRulesetActive(w http.ResponseWriter, r *http.Request) {
 	active, ok := g.dlpRuleOps.ActiveRecord()
 	if !ok {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusNotFound)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": "no active ruleset"})
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusNotFound,
+			middleware.ErrContractValidationFailed,
+			"no active ruleset",
+			v24MiddlewareRuleOpsAdmin,
+			ReasonContractInvalid,
+			nil,
+		)
 		return
 	}
 	canary, hasCanary := g.dlpRuleOps.CanaryRecord()
@@ -154,10 +180,10 @@ func (g *Gateway) handleDLPRulesetActive(w http.ResponseWriter, r *http.Request)
 
 func (g *Gateway) handleDLPRulesetOperation(w http.ResponseWriter, r *http.Request, operation string) {
 	if r.Method != http.MethodPost {
-		g.writeRuleOpsMethodNotAllowed(w, "POST")
+		g.writeRuleOpsMethodNotAllowed(w, r, "POST")
 		return
 	}
-	req, ok := decodeDLPRuleOpsRequest(w, r)
+	req, ok := decodeDLPRuleOpsRequest(w, r, operation)
 	if !ok {
 		return
 	}
@@ -189,22 +215,38 @@ func (g *Gateway) handleDLPRulesetOperation(w http.ResponseWriter, r *http.Reque
 	g.writeDLPRuleOpsOK(w, r, req.RulesetID, operation, rec)
 }
 
-func decodeDLPRuleOpsRequest(w http.ResponseWriter, r *http.Request) (dlpRuleOpsRequest, bool) {
+func decodeDLPRuleOpsRequest(w http.ResponseWriter, r *http.Request, operation string) (dlpRuleOpsRequest, bool) {
 	var req dlpRuleOpsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]any{"error": "invalid json payload"})
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusBadRequest,
+			middleware.ErrMCPInvalidRequest,
+			"invalid json payload",
+			v24MiddlewareRuleOpsAdmin,
+			ReasonContractInvalid,
+			map[string]any{
+				"operation": operation,
+			},
+		)
 		return dlpRuleOpsRequest{}, false
 	}
 	return req, true
 }
 
-func (g *Gateway) writeRuleOpsMethodNotAllowed(w http.ResponseWriter, allowed string) {
+func (g *Gateway) writeRuleOpsMethodNotAllowed(w http.ResponseWriter, r *http.Request, allowed string) {
 	w.Header().Set("Allow", allowed)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusMethodNotAllowed)
-	_ = json.NewEncoder(w).Encode(map[string]any{"error": "method not allowed"})
+	writeV24GatewayError(
+		w,
+		r,
+		http.StatusMethodNotAllowed,
+		middleware.ErrMCPInvalidRequest,
+		"method not allowed",
+		v24MiddlewareRuleOpsAdmin,
+		ReasonContractInvalid,
+		map[string]any{"allow": allowed},
+	)
 }
 
 func (g *Gateway) writeDLPRuleOpsOK(w http.ResponseWriter, r *http.Request, rulesetID, operation string, rec dlpRulesetRecord) {
@@ -226,16 +268,19 @@ func (g *Gateway) writeDLPRuleOpsOK(w http.ResponseWriter, r *http.Request, rule
 func (g *Gateway) writeDLPRuleOpsError(w http.ResponseWriter, r *http.Request, rulesetID, operation string, err error) {
 	traceID, decisionID := getDecisionCorrelationIDs(r, RunEnvelope{})
 	g.logDLPRuleOpsDecision(r, rulesetID, operation, "deny", err.Error(), decisionID, traceID, http.StatusBadRequest)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusBadRequest)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"ruleset_id":  strings.TrimSpace(rulesetID),
-		"operation":   operation,
-		"status":      "error",
-		"error":       err.Error(),
-		"decision_id": decisionID,
-		"trace_id":    traceID,
-	})
+	writeV24GatewayError(
+		w,
+		r,
+		http.StatusBadRequest,
+		middleware.ErrContractValidationFailed,
+		err.Error(),
+		v24MiddlewareRuleOpsAdmin,
+		ReasonContractInvalid,
+		map[string]any{
+			"ruleset_id": strings.TrimSpace(rulesetID),
+			"operation":  operation,
+		},
+	)
 }
 
 func (g *Gateway) logDLPRuleOpsDecision(r *http.Request, rulesetID, operation, decision, reason, decisionID, traceID string, httpStatus int) {
@@ -260,10 +305,16 @@ func (g *Gateway) logDLPRuleOpsDecision(r *http.Request, rulesetID, operation, d
 // plane is enforced mostly via immutable external limits (rate limiting, timeouts).
 func (g *Gateway) adminLoopRunsHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"error": "method not allowed",
-		})
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusMethodNotAllowed,
+			middleware.ErrMCPInvalidRequest,
+			"method not allowed",
+			v24MiddlewareLoopAdmin,
+			ReasonContractInvalid,
+			map[string]any{"expected_method": http.MethodGet},
+		)
 		return
 	}
 
