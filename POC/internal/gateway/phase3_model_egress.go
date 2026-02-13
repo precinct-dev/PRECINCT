@@ -257,7 +257,33 @@ func (g *Gateway) evaluateModelPlaneDecision(r *http.Request, req PlaneRequestV2
 		g.modelPlanePolicy = newModelPlanePolicyEngine()
 	}
 
+	// Break-glass override: for bounded emergency incidents, allow scoped
+	// high-risk model mode within strict TTL and explicit incident context.
+	if req.Policy.Attributes == nil {
+		req.Policy.Attributes = map[string]any{}
+	}
+	modelName := getStringAttr(req.Policy.Attributes, "model", "")
+	scope := breakGlassScope{
+		Action:        "model.call",
+		Resource:      modelName,
+		ActorSPIFFEID: req.Envelope.ActorSPIFFEID,
+	}
+	breakGlassRecord, breakGlassActive := breakGlassRecord{}, false
+	if g.breakGlass != nil {
+		breakGlassRecord, breakGlassActive = g.breakGlass.activeOverride(scope)
+		if breakGlassActive {
+			req.Policy.Attributes["step_up_approved"] = true
+			req.Policy.Attributes["break_glass_incident_id"] = breakGlassRecord.IncidentID
+			req.Policy.Attributes["break_glass_active"] = true
+		}
+	}
+
 	decision, reason, status, metadata := g.modelPlanePolicy.evaluate(req)
+	if breakGlassActive {
+		metadata["break_glass_incident_id"] = breakGlassRecord.IncidentID
+		metadata["break_glass_request_id"] = breakGlassRecord.RequestID
+		metadata["break_glass_elevated_audit"] = true
+	}
 	for k, v := range rlmMetadata {
 		metadata[k] = v
 	}
