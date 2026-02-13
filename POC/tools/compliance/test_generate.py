@@ -65,6 +65,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
 TAXONOMY_PATH = SCRIPT_DIR / "control_taxonomy.yaml"
 EVIDENCE_SCHEMA_V2_PATH = SCRIPT_DIR / "evidence_schema_v2.json"
+TECHNICAL_SCOPE_PATH = (
+    PROJECT_ROOT / "docs" / "compliance" / "control-taxonomy-technical-scope.md"
+)
 
 
 @pytest.fixture
@@ -201,6 +204,45 @@ class TestLoadTaxonomy:
                 f"Control {control['id']} has no framework mappings"
             )
 
+    def test_taxonomy_mapping_metadata_fields_present(self):
+        """Each technical control exposes required mapping metadata fields."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        required = {
+            "control_scope",
+            "control_family",
+            "implementation_tier",
+            "evidence_owner",
+        }
+        for control in controls:
+            metadata = control.get("mapping_metadata", {})
+            assert required.issubset(metadata.keys()), (
+                f"Control {control['id']} missing mapping metadata fields: "
+                f"{required - set(metadata.keys())}"
+            )
+            assert metadata["control_scope"] == "technical"
+
+    def test_taxonomy_controls_have_evidence_paths(self):
+        """Every technical control has at least one evidence extraction path."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        for control in controls:
+            paths = control.get("evidence_paths", [])
+            assert isinstance(paths, list)
+            assert len(paths) > 0, (
+                f"Control {control['id']} has no evidence extraction path"
+            )
+
+    def test_taxonomy_includes_expanded_control_set(self):
+        """Expanded technical control IDs are present in taxonomy v2.1."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        control_ids = {control["id"] for control in controls}
+        expected_new_ids = {
+            "GW-GOV-001",
+            "GW-PRIV-001",
+            "GW-PRIV-002",
+            "GW-PRIV-003",
+        }
+        assert expected_new_ids.issubset(control_ids)
+
     def test_taxonomy_invalid_path_raises(self):
         """Loading from a nonexistent path raises an error."""
         with pytest.raises(FileNotFoundError):
@@ -214,6 +256,13 @@ class TestLoadTaxonomy:
             with pytest.raises(ValueError, match="No controls found"):
                 load_taxonomy(Path(f.name))
             os.unlink(f.name)
+
+    def test_scope_boundary_document_exists_and_is_structured(self):
+        """Scope boundary doc distinguishes technical from org/process controls."""
+        assert TECHNICAL_SCOPE_PATH.exists()
+        text = TECHNICAL_SCOPE_PATH.read_text()
+        assert "## In Scope (Technical Controls)" in text
+        assert "## Out of Scope (Org/Process Controls)" in text
 
 
 # ---------------------------------------------------------------------------
@@ -845,6 +894,20 @@ class TestIntegrationFullPipeline:
             assert exit_code == 0
             csv_path = output_dir / "compliance-report.csv"
             assert csv_path.exists()
+
+    def test_expanded_taxonomy_controls_emit_rows_without_format_break(
+        self, sample_audit_entries
+    ):
+        """Expanded taxonomy controls appear in output while CSV format stays stable."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        rows = generate_rows(controls, sample_audit_entries, configs, PROJECT_ROOT)
+        row_ids = {row["control_id"] for row in rows}
+        assert {"GW-GOV-001", "GW-PRIV-001", "GW-PRIV-002", "GW-PRIV-003"}.issubset(
+            row_ids
+        )
+        for row in rows:
+            assert set(row.keys()) == set(CSV_COLUMNS)
 
 
 # ---------------------------------------------------------------------------

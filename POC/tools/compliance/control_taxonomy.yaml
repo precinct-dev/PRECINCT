@@ -5,6 +5,21 @@
 # evidence_type: audit_log | configuration | test_result
 # evidence_query: jq-style filter for extracting evidence from audit logs
 
+taxonomy_metadata:
+  version: "2.1"
+  scope_boundary:
+    in_scope:
+      - "Runtime, technical controls enforceable by gateway middleware, policy, or integration tests"
+      - "Machine-readable control mappings and evidence extraction paths"
+    out_of_scope:
+      - "Non-technical organizational controls (training, HR onboarding/offboarding, policy committee cadence)"
+      - "Manual governance attestations that cannot be generated from runtime or code evidence"
+  mapping_metadata_fields:
+    - control_scope
+    - control_family
+    - implementation_tier
+    - evidence_owner
+
 controls:
   # ---------------------------------------------------------------------------
   # Identity (SPIFFE Authentication -- middleware step 3)
@@ -464,3 +479,86 @@ controls:
       gdpr: ["Art. 32"]
     evidence_type: audit_log
     evidence_query: '.security.tool_hash_verified != null'
+
+  # ---------------------------------------------------------------------------
+  # Governance and Privacy Automation (technical-only controls)
+  # ---------------------------------------------------------------------------
+  - id: GW-GOV-001
+    name: "Policy Bundle Drift Monitoring"
+    description: "Gateway emits audit telemetry for policy/catalog drift and control-plane integrity events"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.action == "model.provider_catalog.load"'
+    mapping_metadata:
+      control_scope: technical
+      control_family: GW-GOV
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - evidence/audit-log-excerpt.jsonl
+
+  - id: GW-PRIV-001
+    name: "Deletion and Erasure Flow Enforcement Hooks"
+    description: "Technical pathways for CCPA/GDPR delete and erasure workflows are validated via test coverage"
+    middleware: session_context
+    step: 8
+    frameworks:
+      soc2: ["CC6.1"]
+      iso27001: ["A.9.4.1"]
+      ccpa: ["1798.105"]
+      gdpr: ["Art. 17"]
+    evidence_type: test_result
+    evidence_query: null
+    mapping_metadata:
+      control_scope: technical
+      control_family: GW-PRIV
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - internal/gateway/middleware/session_context_test.go
+
+  - id: GW-PRIV-002
+    name: "Purpose-Limitation Policy Constraints"
+    description: "OPA policy artifacts enforce purpose-limitation boundaries for high-risk prompt/tool classes"
+    middleware: opa
+    step: 6
+    frameworks:
+      soc2: ["CC6.6"]
+      iso27001: ["A.13.1.1"]
+      ccpa: ["1798.150"]
+      gdpr: ["Art. 25"]
+    evidence_type: configuration
+    evidence_query: null
+    mapping_metadata:
+      control_scope: technical
+      control_family: GW-PRIV
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - evidence/policy-configs/opa-policy.rego
+
+  - id: GW-PRIV-003
+    name: "ROPA Trace Linkage for Runtime Events"
+    description: "Runtime audit records preserve trace/session linkage to support machine-readable ROPA evidence"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.trace_id != null and .session_id != null'
+    mapping_metadata:
+      control_scope: technical
+      control_family: GW-PRIV
+      implementation_tier: runtime
+      evidence_owner: platform-security
+    evidence_paths:
+      - evidence/audit-log-excerpt.jsonl

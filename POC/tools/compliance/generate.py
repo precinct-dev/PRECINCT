@@ -158,14 +158,83 @@ IMPLEMENTED_MIDDLEWARE = {
 # ---------------------------------------------------------------------------
 
 
+def _infer_control_family(control_id: str) -> str:
+    """Infer a control family token from a control identifier."""
+    parts = control_id.split("-")
+    if len(parts) >= 2:
+        return f"{parts[0]}-{parts[1]}"
+    return control_id or "UNSPECIFIED"
+
+
+def _default_mapping_metadata(control: dict[str, Any]) -> dict[str, str]:
+    """Return default mapping metadata for controls missing explicit values."""
+    middleware = control.get("middleware")
+    implementation_tier = "runtime" if middleware else "supply_chain"
+    return {
+        "control_scope": "technical",
+        "control_family": _infer_control_family(str(control.get("id", ""))),
+        "implementation_tier": implementation_tier,
+        "evidence_owner": "security-platform",
+    }
+
+
+def _default_evidence_paths(control: dict[str, Any]) -> list[str]:
+    """Return canonical evidence extraction paths for a control."""
+    evidence_type = str(control.get("evidence_type", ""))
+    middleware = str(control.get("middleware") or "")
+
+    if evidence_type == "audit_log":
+        return ["evidence/audit-log-excerpt.jsonl"]
+
+    if evidence_type == "configuration":
+        if middleware in ("opa", "spiffe_auth", "deep_scan", "session_context"):
+            return ["evidence/policy-configs/opa-policy.rego"]
+        if middleware == "tool_registry":
+            return ["evidence/policy-configs/tool-registry.yaml"]
+        if middleware == "dlp":
+            return ["internal/gateway/middleware/dlp.go"]
+        if middleware in ("size_limit", "rate_limiter", "circuit_breaker"):
+            return [f"internal/gateway/middleware/{middleware}.go"]
+        if middleware:
+            return [f"internal/gateway/middleware/{middleware}.go"]
+        return ["config/"]
+
+    if evidence_type == "test_result":
+        if middleware:
+            return [f"internal/gateway/middleware/{middleware}_test.go"]
+        return ["tests/"]
+
+    return ["evidence/"]
+
+
 def load_taxonomy(path: Path | None = None) -> list[dict[str, Any]]:
     """Load and validate the control taxonomy YAML."""
     path = path or TAXONOMY_PATH
     with open(path, "r") as f:
         data = yaml.safe_load(f)
-    controls = data.get("controls", [])
-    if not controls:
+    raw_controls = data.get("controls", [])
+    if not raw_controls:
         raise ValueError(f"No controls found in {path}")
+
+    controls: list[dict[str, Any]] = []
+    for control in raw_controls:
+        normalized = dict(control)
+
+        mapping_metadata = _default_mapping_metadata(normalized)
+        mapping_metadata.update(normalized.get("mapping_metadata", {}) or {})
+        normalized["mapping_metadata"] = mapping_metadata
+
+        evidence_paths = normalized.get("evidence_paths") or _default_evidence_paths(
+            normalized
+        )
+        normalized["evidence_paths"] = [str(p) for p in evidence_paths if str(p)]
+        if not normalized["evidence_paths"]:
+            raise ValueError(
+                f"Control {normalized.get('id', 'UNKNOWN')} has no evidence paths"
+            )
+
+        controls.append(normalized)
+
     return controls
 
 
