@@ -333,6 +333,44 @@ func TestConfigFromEnv(t *testing.T) {
 	if cfg.GuardAPIKey != "explicit-guard-key" {
 		t.Errorf("Expected GuardAPIKey=explicit-guard-key (GUARD_API_KEY should take precedence), got %s", cfg.GuardAPIKey)
 	}
+
+	// RFA-l6h6.1.6: enforcement profile defaults
+	t.Setenv("ENFORCEMENT_PROFILE", "")
+	t.Setenv("ENFORCE_MODEL_MEDIATION_GATE", "")
+	t.Setenv("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", "")
+	t.Setenv("PROFILE_METADATA_EXPORT_PATH", "")
+	cfg = ConfigFromEnv()
+	if cfg.EnforcementProfile != enforcementProfileDev {
+		t.Errorf("Expected default EnforcementProfile=%s, got %s", enforcementProfileDev, cfg.EnforcementProfile)
+	}
+	if !cfg.EnforceModelMediationGate {
+		t.Error("Expected default EnforceModelMediationGate=true")
+	}
+	if !cfg.EnforceHIPAAPromptSafetyGate {
+		t.Error("Expected default EnforceHIPAAPromptSafetyGate=true")
+	}
+	if cfg.ProfileMetadataExportPath != "" {
+		t.Errorf("Expected empty ProfileMetadataExportPath by default, got %q", cfg.ProfileMetadataExportPath)
+	}
+
+	// RFA-l6h6.1.6: enforcement profile custom values
+	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileProdRegulatedHIPAA)
+	t.Setenv("ENFORCE_MODEL_MEDIATION_GATE", "false")
+	t.Setenv("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", "false")
+	t.Setenv("PROFILE_METADATA_EXPORT_PATH", "/tmp/profile-metadata.json")
+	cfg = ConfigFromEnv()
+	if cfg.EnforcementProfile != enforcementProfileProdRegulatedHIPAA {
+		t.Errorf("Expected EnforcementProfile=%s, got %s", enforcementProfileProdRegulatedHIPAA, cfg.EnforcementProfile)
+	}
+	if cfg.EnforceModelMediationGate {
+		t.Error("Expected EnforceModelMediationGate=false from env override")
+	}
+	if cfg.EnforceHIPAAPromptSafetyGate {
+		t.Error("Expected EnforceHIPAAPromptSafetyGate=false from env override")
+	}
+	if cfg.ProfileMetadataExportPath != "/tmp/profile-metadata.json" {
+		t.Errorf("Expected ProfileMetadataExportPath=/tmp/profile-metadata.json, got %q", cfg.ProfileMetadataExportPath)
+	}
 }
 
 // TestGatewayDevModePreservesPhase1Behavior verifies AC4: In SPIFFE_MODE=dev,

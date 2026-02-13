@@ -43,6 +43,23 @@ function `ConfigFromEnv()`.
 | `MCP_TRANSPORT_MODE` | `mcp` | Transport mode: `mcp` (MCP Streamable HTTP) or `proxy` (reverse proxy, backward compatible) |
 | `ALLOWED_BASE_PATH` | Current working directory | Base directory for OPA path-based access control (read/grep tools). All file access is restricted to paths under this directory |
 
+### Enforcement Profiles
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ENFORCEMENT_PROFILE` | `dev` | Runtime profile bundle: `dev`, `prod_standard`, `prod_regulated_hipaa` |
+| `ENFORCE_MODEL_MEDIATION_GATE` | `true` | Enforces mediated model egress (`direct`/`bypass` denied) |
+| `ENFORCE_HIPAA_PROMPT_SAFETY_GATE` | `true` | Enables HIPAA prompt safety deny checks when HIPAA profile policy is active |
+| `PROFILE_METADATA_EXPORT_PATH` | _(empty)_ | Optional path to write active profile metadata as JSON at startup |
+
+Profile bundles and required controls:
+
+| Profile | Startup Gate Mode | Required Runtime Controls |
+|---------|-------------------|---------------------------|
+| `dev` | permissive | Portable defaults; no strict startup fail on production invariants |
+| `prod_standard` | strict | `SPIFFE_MODE=prod`, `MCP_TRANSPORT_MODE=mcp`, `ENFORCE_MODEL_MEDIATION_GATE=true` |
+| `prod_regulated_hipaa` | strict | `prod_standard` controls + `ENFORCE_HIPAA_PROMPT_SAFETY_GATE=true` |
+
 ### Guard Model (Deep Scan)
 
 | Variable | Default | Description |

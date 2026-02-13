@@ -44,6 +44,10 @@ func (g *Gateway) handleV24AdminEntry(w http.ResponseWriter, r *http.Request) bo
 		g.adminBreakGlassHandler(w, r)
 		return true
 	}
+	if strings.HasPrefix(r.URL.Path, profileAdminPath) {
+		g.adminProfilesHandler(w, r)
+		return true
+	}
 	if strings.HasPrefix(r.URL.Path, "/admin/loop/runs") {
 		g.adminLoopRunsHandler(w, r)
 		return true

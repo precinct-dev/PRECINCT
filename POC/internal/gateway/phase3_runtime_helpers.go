@@ -140,7 +140,7 @@ func (g *Gateway) evaluateRLMGovernance(req PlaneRequestV2) (bool, Decision, Rea
 // - Uses the built-in DLP scanner as a baseline safety classifier.
 //
 // Returns handled=false when no prompt safety policy was requested.
-func evaluatePromptSafety(attrs map[string]any) (Decision, ReasonCode, int, map[string]any, bool) {
+func evaluatePromptSafety(attrs map[string]any, enforceHIPAAPromptSafety bool) (Decision, ReasonCode, int, map[string]any, bool) {
 	if attrs == nil {
 		attrs = map[string]any{}
 	}
@@ -169,7 +169,7 @@ func evaluatePromptSafety(attrs map[string]any) (Decision, ReasonCode, int, map[
 	// HIPAA: treat any PII/PHI in prompts as forbidden by default.
 	// (Operationally, a real deployment would support tokenization/redaction
 	// workflows with explicit approvals.)
-	if strings.Contains(compliance, "hipaa") {
+	if enforceHIPAAPromptSafety && strings.Contains(compliance, "hipaa") {
 		if scan.HasPII || scan.HasCredentials || hasPHIHint || hasPIIHint {
 			return DecisionDeny, ReasonPromptSafetyRawDenied, http.StatusForbidden, meta, true
 		}

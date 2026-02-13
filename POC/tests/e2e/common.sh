@@ -126,6 +126,21 @@ gateway_post() {
     RESP_BODY=$(echo "$full_response" | sed '$d')
 }
 
+# Make a raw GET to a specific path
+# Usage: gateway_get PATH [SPIFFE_ID]
+# Sets: RESP_BODY, RESP_CODE
+gateway_get() {
+    local path="$1"
+    local spiffe_id="${2:-$DEFAULT_SPIFFE_ID}"
+
+    local full_response
+    full_response=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}${path}" \
+        -H "X-SPIFFE-ID: ${spiffe_id}" 2>&1) || true
+
+    RESP_CODE=$(echo "$full_response" | tail -n1)
+    RESP_BODY=$(echo "$full_response" | sed '$d')
+}
+
 # ---- Gateway log helpers ----
 
 # Get the last N lines of gateway logs

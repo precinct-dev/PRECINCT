@@ -11,3 +11,4 @@
 - Documented deterministic ingress runtime guards for source authenticity, replay, and freshness checks across both canonical and compatibility ingress paths.
 - Added horizontal hardening notes for v2.4 endpoints: middleware-chain enforcement on governance routes, unified error envelope for request failures, and endpoint telemetry parity metadata.
 - Added approval capability governance lifecycle endpoints (`/admin/approvals/*`) for request/grant/deny/consume with signed, scoped, short-lived tokens.
+- Added bounded break-glass governance endpoints (`/admin/breakglass/*`) and enforcement-profile metadata endpoints (`/admin/profiles/*`) for machine-readable runtime control posture.
