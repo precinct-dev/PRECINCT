@@ -103,7 +103,7 @@ func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request)
 	egress, err := g.executeModelEgress(r.Context(), planeReq.Policy.Attributes, payload, r.Header.Get("Authorization"))
 	if err != nil {
 		denyReason := ReasonModelProviderUnavailable
-		if strings.Contains(strings.ToLower(err.Error()), "allowlist") {
+		if strings.Contains(strings.ToLower(err.Error()), "allowlist") || strings.Contains(strings.ToLower(err.Error()), "drift") {
 			denyReason = ReasonModelDestinationDenied
 		}
 		denyMetadata := map[string]any{
@@ -397,12 +397,22 @@ func (g *Gateway) applyEnforcementProfileDefaults(attrs map[string]any) {
 }
 
 func (g *Gateway) resolveProviderTarget(provider string, attrs map[string]any) (*url.URL, error) {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	expectedEndpoint, hasExpectedEndpoint := g.ensureModelPlanePolicy().expectedProviderEndpoint(provider)
+	endpointSource := "default"
+
 	// Provider-specific override takes precedence for fallback routing tests
 	// and explicit operator policy controls.
 	overrideKey := "provider_endpoint_" + provider
 	endpoint := strings.TrimSpace(getStringAttr(attrs, overrideKey, ""))
+	if endpoint != "" {
+		endpointSource = "provider_override"
+	}
 	if endpoint == "" {
 		endpoint = strings.TrimSpace(getStringAttr(attrs, "provider_endpoint", ""))
+		if endpoint != "" {
+			endpointSource = "global_override"
+		}
 	}
 	// Compose/K8s demo determinism: allow an operator-set endpoint override via env var.
 	// This keeps demo flows self-contained (no external network or real API keys).
@@ -413,22 +423,45 @@ func (g *Gateway) resolveProviderTarget(provider string, attrs map[string]any) (
 	if endpoint == "" {
 		envKey := "MODEL_PROVIDER_ENDPOINT_" + strings.ToUpper(provider)
 		endpoint = strings.TrimSpace(os.Getenv(envKey))
+		if endpoint != "" {
+			endpointSource = "env_override"
+		}
 	}
 
 	if endpoint == "" {
-		switch provider {
-		case "groq":
-			endpoint = "https://api.groq.com/openai/v1/chat/completions"
-		case "openai":
-			endpoint = "https://api.openai.com/v1/chat/completions"
-		case "azure_openai":
-			endpoint = strings.TrimSpace(getStringAttr(attrs, "azure_openai_endpoint", ""))
-		default:
-			return nil, fmt.Errorf("unsupported provider endpoint mapping: %s", provider)
+		if hasExpectedEndpoint {
+			endpoint = strings.TrimSpace(expectedEndpoint)
+			if endpoint != "" {
+				endpointSource = "catalog"
+			}
+		} else {
+			switch provider {
+			case "groq":
+				endpoint = "https://api.groq.com/openai/v1/chat/completions"
+				endpointSource = "builtin"
+			case "openai":
+				endpoint = "https://api.openai.com/v1/chat/completions"
+				endpointSource = "builtin"
+			case "azure_openai":
+				endpoint = strings.TrimSpace(getStringAttr(attrs, "azure_openai_endpoint", ""))
+				if endpoint != "" {
+					endpointSource = "legacy_azure_override"
+				}
+			default:
+				return nil, fmt.Errorf("unsupported provider endpoint mapping: %s", provider)
+			}
 		}
 	}
 	if endpoint == "" {
 		return nil, fmt.Errorf("provider endpoint is empty for %s", provider)
+	}
+	if hasExpectedEndpoint {
+		expected := strings.TrimSpace(expectedEndpoint)
+		if expected != "" && endpoint != expected {
+			if !g.isLocalDevEndpointOverrideAllowed(endpointSource, endpoint) {
+				return nil, fmt.Errorf("provider endpoint drift detected for %s: configured=%s expected=%s", provider, endpoint, expected)
+			}
+		}
 	}
 
 	target, err := url.Parse(endpoint)
@@ -456,6 +489,26 @@ func (g *Gateway) resolveProviderTarget(provider string, attrs map[string]any) (
 	}
 
 	return target, nil
+}
+
+func (g *Gateway) isLocalDevEndpointOverrideAllowed(source string, endpoint string) bool {
+	switch source {
+	case "provider_override", "global_override", "env_override", "legacy_azure_override":
+	default:
+		return false
+	}
+	if g == nil || g.config == nil {
+		return false
+	}
+	if strings.ToLower(strings.TrimSpace(g.config.SPIFFEMode)) != "dev" {
+		return false
+	}
+	target, err := url.Parse(endpoint)
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(strings.TrimSpace(target.Hostname()))
+	return isLocalHost(host) || isSingleLabelHostname(host)
 }
 
 func (g *Gateway) invokeProvider(ctx context.Context, target *url.URL, payload map[string]any, authHeader string) (*modelProviderResponse, error) {
