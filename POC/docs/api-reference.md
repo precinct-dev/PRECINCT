@@ -272,6 +272,22 @@ Compatibility notes:
   policy decisions continue to use the canonical `reason_code` decision envelope.
 - Control-plane endpoints return `reason_code`; middleware chain denials return `code`.
 
+### Runtime Wiring Matrix (v2.4)
+
+The following endpoint families are wired as first-class gateway runtime entrypoints
+before upstream proxy forwarding:
+
+| Endpoint family | Runtime entry | Scope |
+|-----------------|---------------|-------|
+| `/v1/ingress/submit`, `/v1/ingress/admit`, `/v1/context/admit`, `/v1/model/call`, `/v1/tool/execute`, `/v1/loop/check` | Phase 3 control-plane dispatcher | Ingress, context, model, tool, and loop policy decisions |
+| `/openai/v1/chat/completions` | OpenAI-compatible model egress entry | Mediated model egress with provider trust/fallback controls |
+| `/v1/connectors/*` | Connector conformance authority entry | Register/validate/approve/activate/revoke/status/report lifecycle |
+| `/admin/dlp/rulesets*` | RuleOps admin entry | Governed DLP ruleset lifecycle |
+| `/admin/approvals*` | Approval capability admin entry | Human-in-the-loop step-up lifecycle |
+| `/admin/breakglass*` | Break-glass admin entry | Dual-authorization emergency override lifecycle |
+| `/admin/profiles*` | Enforcement profile admin entry | Runtime profile/status/export introspection |
+| `/admin/loop/runs*` | Loop admin entry | Loop run metadata and operational observability |
+
 ---
 
 ## Required Headers

@@ -52,6 +52,25 @@ function `ConfigFromEnv()`.
 | `ENFORCE_HIPAA_PROMPT_SAFETY_GATE` | `true` | Enables HIPAA prompt safety deny checks when HIPAA profile policy is active |
 | `PROFILE_METADATA_EXPORT_PATH` | _(empty)_ | Optional path to write active profile metadata as JSON at startup |
 
+### Phase 3 Control Plane Wiring
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CAPABILITY_REGISTRY_V2_PATH` | _(empty)_ | Optional path to capability registry v2 used by tool-plane policy enforcement (`/v1/tool/execute`) |
+| `MODEL_PROVIDER_CATALOG_PATH` | _(empty)_ | Optional path to model provider catalog v2 (provider endpoints/models/residency/fallbacks) |
+| `MODEL_PROVIDER_CATALOG_PUBLIC_KEY` | _(empty)_ | Optional PEM public key path for model provider catalog signature verification (`.sig`) |
+| `GUARD_ARTIFACT_PATH` | _(empty)_ | Optional local path to guard model artifact for startup integrity verification |
+| `GUARD_ARTIFACT_SHA256` | _(empty)_ | Expected SHA-256 digest for `GUARD_ARTIFACT_PATH` |
+| `GUARD_ARTIFACT_SIGNATURE_PATH` | `<GUARD_ARTIFACT_PATH>.sig` when unset | Optional signature path for guard artifact verification |
+| `GUARD_ARTIFACT_PUBLIC_KEY` | _(empty)_ | Optional PEM public key path for guard artifact signature verification |
+
+Wiring behavior:
+
+- When `MODEL_PROVIDER_CATALOG_PATH` is set, the gateway loads the catalog at startup and applies endpoint/model/residency policy to model egress.
+- When `MODEL_PROVIDER_CATALOG_PUBLIC_KEY` is set, unsigned or invalid catalog signatures fail startup.
+- When `GUARD_ARTIFACT_PATH` is set with non-`dev` enforcement profiles, digest/signature mismatches fail startup (fail-closed).
+- In `dev`, missing/mismatched guard artifact digest/signature is logged as warn-only for local development.
+
 Profile bundles and required controls:
 
 | Profile | Startup Gate Mode | Required Runtime Controls |
