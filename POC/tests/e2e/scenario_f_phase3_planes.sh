@@ -15,6 +15,58 @@ except Exception:
     print("")'
 }
 
+extract_json_field() {
+    local body="$1"
+    local key="$2"
+    printf "%s" "$body" | python3 -c 'import json,sys
+key = sys.argv[1]
+try:
+    obj = json.load(sys.stdin)
+    val = obj.get(key, "")
+    if isinstance(val, (dict, list)):
+        print(json.dumps(val, sort_keys=True))
+    else:
+        print(val)
+except Exception:
+    print("")
+' "$key"
+}
+
+extract_envelope_field() {
+    local body="$1"
+    local key="$2"
+    printf "%s" "$body" | python3 -c 'import json,sys
+key = sys.argv[1]
+try:
+    obj = json.load(sys.stdin)
+    env = obj.get("envelope", {})
+    val = env.get(key, "")
+    if isinstance(val, (dict, list)):
+        print(json.dumps(val, sort_keys=True))
+    else:
+        print(val)
+except Exception:
+    print("")
+' "$key"
+}
+
+assert_plane_correlation() {
+    local label="$1"
+    local body="$2"
+    local expected_session="$3"
+    local decision_id trace_id session_id
+
+    decision_id="$(extract_json_field "$body" "decision_id")"
+    trace_id="$(extract_json_field "$body" "trace_id")"
+    session_id="$(extract_envelope_field "$body" "session_id")"
+
+    if [ -n "$decision_id" ] && [ -n "$trace_id" ] && [ "$session_id" = "$expected_session" ]; then
+        log_pass "${label}: correlation fields present and session linked"
+    else
+        log_fail "${label}: correlation fields present and session linked" "decision_id=${decision_id:-<empty>} trace_id=${trace_id:-<empty>} envelope.session_id=${session_id:-<empty>} expected=${expected_session}"
+    fi
+}
+
 extract_expected_signature() {
     local body="$1"
     printf "%s" "$body" | python3 -c 'import json,sys
@@ -80,6 +132,9 @@ SESSION_ID="phase3-compose-session-${RUN_ID}"
 SPIFFE_ID="${DEFAULT_SPIFFE_ID}"
 NOW_UTC="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 CONNECTOR_SIG_EXPECTED="$(compute_connector_signature "compose-webhook" "webhook" "${SPIFFE_ID}" "1.0" '["ingress.submit"]')"
+ARTIFACT_DIR="${POC_DIR}/tests/e2e/artifacts"
+ARTIFACT_PATH="${ARTIFACT_DIR}/scenario_f_${RUN_ID}.json"
+mkdir -p "${ARTIFACT_DIR}"
 
 reset_rate_limit_state "${SPIFFE_ID}"
 log_info "Reset prior rate-limit keys for ${SPIFFE_ID}"
@@ -160,7 +215,13 @@ gateway_post "/v1/ingress/admit" "{
   }
 }" "${SPIFFE_ID}"
 
-if [ "$RESP_CODE" = "200" ] && [ "$(extract_reason_code "$RESP_BODY")" = "INGRESS_ALLOW" ]; then
+INGRESS_ALLOW_CODE="$RESP_CODE"
+INGRESS_ALLOW_REASON="$(extract_reason_code "$RESP_BODY")"
+INGRESS_ALLOW_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+INGRESS_ALLOW_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Ingress allow" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "200" ] && [ "$INGRESS_ALLOW_REASON" = "INGRESS_ALLOW" ]; then
     log_pass "Ingress admitted with reason code INGRESS_ALLOW"
 else
     log_fail "Ingress phase3 success path" "Expected 200/INGRESS_ALLOW, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
@@ -204,7 +265,13 @@ gateway_post "/v1/context/admit" "{
   }
 }" "${SPIFFE_ID}"
 
-if [ "$RESP_CODE" = "200" ] && [ "$(extract_reason_code "$RESP_BODY")" = "CONTEXT_ALLOW" ]; then
+CONTEXT_ALLOW_CODE="$RESP_CODE"
+CONTEXT_ALLOW_REASON="$(extract_reason_code "$RESP_BODY")"
+CONTEXT_ALLOW_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+CONTEXT_ALLOW_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Context allow" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "200" ] && [ "$CONTEXT_ALLOW_REASON" = "CONTEXT_ALLOW" ]; then
     log_pass "Context admitted with reason code CONTEXT_ALLOW"
 else
     log_fail "Context phase3 success path" "Expected 200/CONTEXT_ALLOW, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
@@ -237,7 +304,13 @@ gateway_post "/v1/model/call" "{
   }
 }" "${SPIFFE_ID}"
 
-if [ "$RESP_CODE" = "200" ] && [ "$(extract_reason_code "$RESP_BODY")" = "MODEL_ALLOW" ]; then
+MODEL_ALLOW_CODE="$RESP_CODE"
+MODEL_ALLOW_REASON="$(extract_reason_code "$RESP_BODY")"
+MODEL_ALLOW_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+MODEL_ALLOW_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Model allow" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "200" ] && [ "$MODEL_ALLOW_REASON" = "MODEL_ALLOW" ]; then
     log_pass "Model mediated with reason code MODEL_ALLOW"
 else
     log_fail "Model phase3 success path" "Expected 200/MODEL_ALLOW, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
@@ -269,13 +342,117 @@ gateway_post "/v1/tool/execute" "{
   }
 }" "${SPIFFE_ID}"
 
-if [ "$RESP_CODE" = "200" ] && [ "$(extract_reason_code "$RESP_BODY")" = "TOOL_ALLOW" ]; then
+TOOL_ALLOW_CODE="$RESP_CODE"
+TOOL_ALLOW_REASON="$(extract_reason_code "$RESP_BODY")"
+TOOL_ALLOW_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+TOOL_ALLOW_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Tool allow" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "200" ] && [ "$TOOL_ALLOW_REASON" = "TOOL_ALLOW" ]; then
     log_pass "Tool plane allowed with reason code TOOL_ALLOW"
 else
     log_fail "Tool phase3 success path" "Expected 200/TOOL_ALLOW, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
 
+gateway_post "/v1/loop/check" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-allow-loop\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"loop\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-allow-loop\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"loop\"
+    },
+    \"action\": \"loop.check\",
+    \"resource\": \"loop/external-governor\",
+    \"attributes\": {
+      \"event\": \"boundary\",
+      \"limits\": {
+        \"max_steps\": 20,
+        \"max_tool_calls\": 50,
+        \"max_model_calls\": 50,
+        \"max_wall_time_ms\": 600000,
+        \"max_egress_bytes\": 1000000,
+        \"max_model_cost_usd\": 10.0,
+        \"max_provider_failovers\": 2,
+        \"max_risk_score\": 0.9
+      },
+      \"usage\": {
+        \"steps\": 3,
+        \"tool_calls\": 1,
+        \"model_calls\": 1,
+        \"wall_time_ms\": 1500,
+        \"egress_bytes\": 100,
+        \"model_cost_usd\": 0.1,
+        \"provider_failovers\": 0,
+        \"risk_score\": 0.2
+      }
+    }
+  }
+}" "${SPIFFE_ID}"
+
+LOOP_ALLOW_CODE="$RESP_CODE"
+LOOP_ALLOW_REASON="$(extract_reason_code "$RESP_BODY")"
+LOOP_ALLOW_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+LOOP_ALLOW_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Loop allow" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "200" ] && [ "$LOOP_ALLOW_REASON" = "LOOP_ALLOW" ]; then
+    log_pass "Loop boundary admitted with reason code LOOP_ALLOW"
+else
+    log_fail "Loop allow path reason code" "Expected 200/LOOP_ALLOW, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
 log_subheader "F2: Denied unsafe paths with explicit reason codes"
+reset_rate_limit_state "${SPIFFE_ID}"
+log_info "Reset rate-limit keys before denied-path checks"
+
+gateway_post "/v1/context/admit" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-deny-context\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"context\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-deny-context\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"context\"
+    },
+    \"action\": \"context.admit\",
+    \"resource\": \"context/segment\",
+    \"attributes\": {
+      \"segment_id\": \"segment-${RUN_ID}-deny\",
+      \"content\": \"potentially unsafe context\",
+      \"scan_passed\": false,
+      \"prompt_check_passed\": false,
+      \"prompt_injection_detected\": true
+    }
+  }
+}" "${SPIFFE_ID}"
+
+CONTEXT_DENY_CODE="$RESP_CODE"
+CONTEXT_DENY_REASON="$(extract_reason_code "$RESP_BODY")"
+CONTEXT_DENY_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+CONTEXT_DENY_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Context deny" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "403" ] && [ "$CONTEXT_DENY_REASON" = "CONTEXT_NO_SCAN_NO_SEND" ]; then
+    log_pass "Context unsafe path denied with explicit reason code"
+else
+    log_fail "Context denied path reason code" "Expected 403/CONTEXT_NO_SCAN_NO_SEND, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
 
 gateway_post "/v1/model/call" "{
   \"envelope\": {
@@ -307,10 +484,54 @@ gateway_post "/v1/model/call" "{
   }
 }" "${SPIFFE_ID}"
 
-if [ "$RESP_CODE" = "403" ] && [ "$(extract_reason_code "$RESP_BODY")" = "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED" ]; then
+MODEL_DENY_CODE="$RESP_CODE"
+MODEL_DENY_REASON="$(extract_reason_code "$RESP_BODY")"
+MODEL_DENY_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+MODEL_DENY_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Model deny" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "403" ] && [ "$MODEL_DENY_REASON" = "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED" ]; then
     log_pass "Unsafe regulated prompt denied with explicit reason code"
 else
     log_fail "Model denied path reason code" "Expected 403/PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/tool/execute" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-deny-tool\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"tool\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-deny-tool\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"tool\"
+    },
+    \"action\": \"tool.execute\",
+    \"resource\": \"tool/write\",
+    \"attributes\": {
+      \"protocol\": \"mcp\",
+      \"capability_id\": \"tool.unapproved.mcp\",
+      \"tool_name\": \"write\"
+    }
+  }
+}" "${SPIFFE_ID}"
+
+TOOL_DENY_CODE="$RESP_CODE"
+TOOL_DENY_REASON="$(extract_reason_code "$RESP_BODY")"
+TOOL_DENY_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+TOOL_DENY_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Tool deny" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "403" ] && [ "$TOOL_DENY_REASON" = "TOOL_CAPABILITY_DENIED" ]; then
+    log_pass "Tool capability denied with explicit reason code"
+else
+    log_fail "Tool denied path reason code" "Expected 403/TOOL_CAPABILITY_DENIED, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
 
 gateway_post "/v1/loop/check" "{
@@ -357,7 +578,13 @@ gateway_post "/v1/loop/check" "{
   }
 }" "${SPIFFE_ID}"
 
-if [ "$RESP_CODE" = "429" ] && [ "$(extract_reason_code "$RESP_BODY")" = "LOOP_HALT_MAX_STEPS" ]; then
+LOOP_DENY_CODE="$RESP_CODE"
+LOOP_DENY_REASON="$(extract_reason_code "$RESP_BODY")"
+LOOP_DENY_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+LOOP_DENY_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Loop deny" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "429" ] && [ "$LOOP_DENY_REASON" = "LOOP_HALT_MAX_STEPS" ]; then
     log_pass "Loop limit overflow denied with explicit reason code"
 else
     log_fail "Loop denied path reason code" "Expected 429/LOOP_HALT_MAX_STEPS, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
@@ -406,7 +633,13 @@ gateway_post "/v1/ingress/admit" "{
   }
 }" "${SPIFFE_ID}"
 
-if [ "$RESP_CODE" = "403" ] && [ "$(extract_reason_code "$RESP_BODY")" = "INGRESS_SOURCE_UNAUTHENTICATED" ]; then
+INGRESS_DENY_CODE="$RESP_CODE"
+INGRESS_DENY_REASON="$(extract_reason_code "$RESP_BODY")"
+INGRESS_DENY_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
+INGRESS_DENY_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
+assert_plane_correlation "Ingress deny" "$RESP_BODY" "${SESSION_ID}"
+
+if [ "$RESP_CODE" = "403" ] && [ "$INGRESS_DENY_REASON" = "INGRESS_SOURCE_UNAUTHENTICATED" ]; then
     log_pass "Revoked connector blocked at ingress runtime gate"
 else
     log_fail "Revoked connector ingress deny" "Expected 403/INGRESS_SOURCE_UNAUTHENTICATED, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
@@ -452,7 +685,7 @@ else
     log_fail "Audit correlation" "No audit lines found for run id ${RUN_ID}"
 fi
 
-for reason in INGRESS_ALLOW CONTEXT_ALLOW MODEL_ALLOW TOOL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED LOOP_HALT_MAX_STEPS INGRESS_SOURCE_UNAUTHENTICATED; do
+for reason in INGRESS_ALLOW INGRESS_SOURCE_UNAUTHENTICATED CONTEXT_ALLOW CONTEXT_NO_SCAN_NO_SEND MODEL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED TOOL_ALLOW TOOL_CAPABILITY_DENIED LOOP_ALLOW LOOP_HALT_MAX_STEPS; do
     if echo "$AUDIT_LINES" | grep -q "$reason"; then
         log_pass "Audit includes reason code ${reason}"
     else
@@ -464,6 +697,36 @@ if [ -n "$CONNECTOR_DECISION_ID" ] && docker compose logs --no-log-prefix --tail
     log_pass "Audit log contains conformance report decision id"
 else
     log_fail "Audit linkage for conformance report decision id" "decision id ${CONNECTOR_DECISION_ID:-<empty>} not found in gateway audit logs"
+fi
+
+log_subheader "F6: Machine-readable artifact capture"
+
+cat > "${ARTIFACT_PATH}" <<EOF
+{
+  "scenario": "scenario_f_phase3_planes",
+  "run_id": "${RUN_ID}",
+  "session_id": "${SESSION_ID}",
+  "generated_at_utc": "${NOW_UTC}",
+  "decisions": [
+    {"plane":"ingress","path":"allow","status_code":${INGRESS_ALLOW_CODE:-0},"reason_code":"${INGRESS_ALLOW_REASON}","decision_id":"${INGRESS_ALLOW_DECISION_ID}","trace_id":"${INGRESS_ALLOW_TRACE_ID}"},
+    {"plane":"ingress","path":"deny","status_code":${INGRESS_DENY_CODE:-0},"reason_code":"${INGRESS_DENY_REASON}","decision_id":"${INGRESS_DENY_DECISION_ID}","trace_id":"${INGRESS_DENY_TRACE_ID}"},
+    {"plane":"context","path":"allow","status_code":${CONTEXT_ALLOW_CODE:-0},"reason_code":"${CONTEXT_ALLOW_REASON}","decision_id":"${CONTEXT_ALLOW_DECISION_ID}","trace_id":"${CONTEXT_ALLOW_TRACE_ID}"},
+    {"plane":"context","path":"deny","status_code":${CONTEXT_DENY_CODE:-0},"reason_code":"${CONTEXT_DENY_REASON}","decision_id":"${CONTEXT_DENY_DECISION_ID}","trace_id":"${CONTEXT_DENY_TRACE_ID}"},
+    {"plane":"model","path":"allow","status_code":${MODEL_ALLOW_CODE:-0},"reason_code":"${MODEL_ALLOW_REASON}","decision_id":"${MODEL_ALLOW_DECISION_ID}","trace_id":"${MODEL_ALLOW_TRACE_ID}"},
+    {"plane":"model","path":"deny","status_code":${MODEL_DENY_CODE:-0},"reason_code":"${MODEL_DENY_REASON}","decision_id":"${MODEL_DENY_DECISION_ID}","trace_id":"${MODEL_DENY_TRACE_ID}"},
+    {"plane":"tool","path":"allow","status_code":${TOOL_ALLOW_CODE:-0},"reason_code":"${TOOL_ALLOW_REASON}","decision_id":"${TOOL_ALLOW_DECISION_ID}","trace_id":"${TOOL_ALLOW_TRACE_ID}"},
+    {"plane":"tool","path":"deny","status_code":${TOOL_DENY_CODE:-0},"reason_code":"${TOOL_DENY_REASON}","decision_id":"${TOOL_DENY_DECISION_ID}","trace_id":"${TOOL_DENY_TRACE_ID}"},
+    {"plane":"loop","path":"allow","status_code":${LOOP_ALLOW_CODE:-0},"reason_code":"${LOOP_ALLOW_REASON}","decision_id":"${LOOP_ALLOW_DECISION_ID}","trace_id":"${LOOP_ALLOW_TRACE_ID}"},
+    {"plane":"loop","path":"deny","status_code":${LOOP_DENY_CODE:-0},"reason_code":"${LOOP_DENY_REASON}","decision_id":"${LOOP_DENY_DECISION_ID}","trace_id":"${LOOP_DENY_TRACE_ID}"}
+  ],
+  "connector_conformance_report_decision_id": "${CONNECTOR_DECISION_ID}"
+}
+EOF
+
+if [ -s "${ARTIFACT_PATH}" ]; then
+    log_pass "Machine-readable artifact written to ${ARTIFACT_PATH}"
+else
+    log_fail "Machine-readable artifact capture" "artifact not written: ${ARTIFACT_PATH}"
 fi
 
 print_summary
