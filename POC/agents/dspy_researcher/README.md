@@ -79,12 +79,21 @@ python agent.py "zero trust architecture for AI agents"
 | `GATEWAY_URL` | `http://localhost:9090` | MCP Security Gateway URL |
 | `SPIFFE_ID` | `spiffe://poc.local/agents/mcp-client/dspy-researcher/dev` | Agent SPIFFE identity |
 | `OTEL_ENDPOINT` | `http://localhost:4317` | OpenTelemetry collector gRPC endpoint |
-| `LLM_MODEL` | `groq/llama-3.3-70b-versatile` | DSPy LLM model identifier |
-| `MODEL_USE_GATEWAY` | `true` | Route LLM calls through gateway OpenAI-compatible endpoint |
+| `LLM_MODEL` | `groq/openai/gpt-oss-20b` | DSPy LLM model identifier |
+| `MODEL_PROVIDER` | `groq` | Provider label forwarded to gateway model-plane policy |
 | `MODEL_GATEWAY_BASE_URL` | `http://localhost:9090/openai/v1` | Base URL for model egress route |
+| `MODEL_GATEWAY_COMPAT` | `openai` | Model API compatibility mode (currently `openai`) |
 | `GROQ_LM_SPIKE_REF` | empty | SPIKE secret reference ID for Groq key (SDK builds `$SPIKE{...}` token) |
 | `MODEL_API_KEY_REF` | empty | Full SPIKE token reference override (`Bearer $SPIKE{...}`) |
+| `RLM_MODEL` | empty | Optional DSPy reasoning LM model identifier (gateway-routed) |
+| `RLM_GATEWAY_BASE_URL` | `MODEL_GATEWAY_BASE_URL` | Optional separate gateway base URL for RLM |
+| `RLM_PROVIDER` | `MODEL_PROVIDER` | Optional provider header for RLM |
+| `RLM_SPIKE_REF` | `GROQ_LM_SPIKE_REF` | Optional SPIKE ref for RLM key |
+| `RLM_API_KEY_REF` | `MODEL_API_KEY_REF` | Optional full SPIKE Bearer token for RLM |
+| `RLM_GATEWAY_COMPAT` | `MODEL_GATEWAY_COMPAT` | Optional compatibility mode for RLM |
 | `SESSION_ID` | auto-generated UUID | Session ID for trace correlation |
+
+`.env` files are supported via `load_dotenv()` and loaded at startup.
 
 ## Running Tests
 
