@@ -40,6 +40,9 @@ type Config struct {
 	HandleTTL               int       // TTL in seconds for response firewall data handles (default 300)
 	DestinationsConfigPath  string    // Path to destinations allowlist YAML
 	RiskThresholdsPath      string    // Path to risk thresholds YAML
+	ApprovalSigningKey      string    // HMAC signing key for approval capability tokens
+	ApprovalDefaultTTL      int       // default approval capability TTL in seconds
+	ApprovalMaxTTL          int       // maximum approval capability TTL in seconds
 	AllowedBasePath         string    // Base directory for OPA path-based access control (RFA-2jl)
 	UIConfigPath            string    // Path to MCP-UI config YAML (RFA-j2d.9)
 	UI                      *UIConfig // MCP-UI configuration (RFA-j2d.9)
@@ -130,6 +133,19 @@ func ConfigFromEnv() *Config {
 	if ht := os.Getenv("HANDLE_TTL"); ht != "" {
 		if parsed, err := strconv.Atoi(ht); err == nil {
 			handleTTL = parsed
+		}
+	}
+
+	approvalDefaultTTL := 600 // 10 minutes
+	if ttl := os.Getenv("APPROVAL_DEFAULT_TTL_SECONDS"); ttl != "" {
+		if parsed, err := strconv.Atoi(ttl); err == nil && parsed > 0 {
+			approvalDefaultTTL = parsed
+		}
+	}
+	approvalMaxTTL := 3600 // 1 hour
+	if ttl := os.Getenv("APPROVAL_MAX_TTL_SECONDS"); ttl != "" {
+		if parsed, err := strconv.Atoi(ttl); err == nil && parsed > 0 {
+			approvalMaxTTL = parsed
 		}
 	}
 
@@ -239,6 +255,9 @@ func ConfigFromEnv() *Config {
 		HandleTTL:                handleTTL,
 		DestinationsConfigPath:   getEnvOrDefault("DESTINATIONS_CONFIG_PATH", "/config/destinations.yaml"),
 		RiskThresholdsPath:       getEnvOrDefault("RISK_THRESHOLDS_PATH", "/config/risk_thresholds.yaml"),
+		ApprovalSigningKey:       getEnvOrDefault("APPROVAL_SIGNING_KEY", ""),
+		ApprovalDefaultTTL:       approvalDefaultTTL,
+		ApprovalMaxTTL:           approvalMaxTTL,
 		AllowedBasePath:          allowedBasePath,
 		UIConfigPath:             uiConfigPath,
 		UI:                       uiConfig,

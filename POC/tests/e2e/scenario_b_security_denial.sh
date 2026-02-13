@@ -43,6 +43,243 @@ else
 fi
 
 # ============================================================
+# Test B1.1: Approval capability request/grant allows high-risk call
+# ============================================================
+log_subheader "B1.1: Approval capability lifecycle (request -> grant -> use)"
+
+APPROVAL_SESSION_ID="approval-$(date +%s)"
+
+gateway_post "/admin/approvals/request" "{
+  \"scope\": {
+    \"action\": \"tool.call\",
+    \"resource\": \"bash\",
+    \"actor_spiffe_id\": \"${DEFAULT_SPIFFE_ID}\",
+    \"session_id\": \"${APPROVAL_SESSION_ID}\"
+  },
+  \"requested_by\": \"${DEFAULT_SPIFFE_ID}\",
+  \"reason\": \"e2e validation\",
+  \"ttl_seconds\": 120
+}" "$DEFAULT_SPIFFE_ID"
+
+if [ "$RESP_CODE" != "200" ]; then
+    log_fail "Approval request endpoint" "Expected 200, got $RESP_CODE body=${RESP_BODY:0:220}"
+else
+    log_pass "Approval request created"
+fi
+
+APPROVAL_REQUEST_ID="$(python3 - "$RESP_BODY" <<'PY'
+import json,sys
+body=sys.argv[1]
+try:
+    data=json.loads(body)
+    print((data.get("record") or {}).get("request_id",""))
+except Exception:
+    print("")
+PY
+)"
+
+if [ -z "${APPROVAL_REQUEST_ID}" ]; then
+    log_fail "Approval request id parsing" "Could not parse request_id from response"
+else
+    log_pass "Approval request id parsed"
+fi
+
+gateway_post "/admin/approvals/grant" "{
+  \"request_id\": \"${APPROVAL_REQUEST_ID}\",
+  \"approved_by\": \"security@corp\",
+  \"reason\": \"approved for controlled test\"
+}" "$DEFAULT_SPIFFE_ID"
+
+if [ "$RESP_CODE" != "200" ]; then
+    log_fail "Approval grant endpoint" "Expected 200, got $RESP_CODE body=${RESP_BODY:0:220}"
+else
+    log_pass "Approval request granted"
+fi
+
+APPROVAL_TOKEN="$(python3 - "$RESP_BODY" <<'PY'
+import json,sys
+body=sys.argv[1]
+try:
+    data=json.loads(body)
+    print(data.get("capability_token",""))
+except Exception:
+    print("")
+PY
+)"
+
+if [ -z "${APPROVAL_TOKEN}" ]; then
+    log_fail "Approval token parsing" "Could not parse capability_token from grant response"
+else
+    log_pass "Approval token issued"
+fi
+
+gateway_request "$DEFAULT_SPIFFE_ID" "bash" '{"command": "echo approved-path"}' \
+  "X-Session-ID: ${APPROVAL_SESSION_ID}" \
+  "X-Step-Up-Token: ${APPROVAL_TOKEN}"
+
+RESP_ERROR_CODE="$(python3 - "$RESP_BODY" <<'PY'
+import json,sys
+body=sys.argv[1]
+try:
+    data=json.loads(body)
+    print(data.get("code",""))
+except Exception:
+    print("")
+PY
+)"
+
+if [ "$RESP_CODE" = "403" ] && { [ "$RESP_ERROR_CODE" = "stepup_approval_required" ] || [ "$RESP_ERROR_CODE" = "stepup_denied" ]; }; then
+    log_fail "Approved high-risk path" "High-risk call still blocked by step-up after valid approval token"
+else
+    log_pass "Valid approval token passed step-up gate for high-risk call"
+    log_detail "Result code=$RESP_CODE error_code=${RESP_ERROR_CODE:-n/a} (non-step-up outcomes are acceptable here)"
+fi
+
+# ============================================================
+# Test B1.2: Consumed approval token cannot be replayed
+# ============================================================
+log_subheader "B1.2: Approval token replay denied"
+
+# First consume should succeed.
+gateway_post "/admin/approvals/consume" "{
+  \"capability_token\": \"${APPROVAL_TOKEN}\",
+  \"scope\": {
+    \"action\": \"tool.call\",
+    \"resource\": \"bash\",
+    \"actor_spiffe_id\": \"${DEFAULT_SPIFFE_ID}\",
+    \"session_id\": \"${APPROVAL_SESSION_ID}\"
+  }
+}" "$DEFAULT_SPIFFE_ID"
+
+if [ "$RESP_CODE" = "200" ]; then
+    log_pass "Approval token consumed once successfully"
+else
+    log_fail "Approval first consume" "Expected 200, got $RESP_CODE body=${RESP_BODY:0:220}"
+fi
+
+# Replay consume should fail deterministically.
+gateway_post "/admin/approvals/consume" "{
+  \"capability_token\": \"${APPROVAL_TOKEN}\",
+  \"scope\": {
+    \"action\": \"tool.call\",
+    \"resource\": \"bash\",
+    \"actor_spiffe_id\": \"${DEFAULT_SPIFFE_ID}\",
+    \"session_id\": \"${APPROVAL_SESSION_ID}\"
+  }
+}" "$DEFAULT_SPIFFE_ID"
+
+REPLAY_ERROR_CODE="$(python3 - "$RESP_BODY" <<'PY'
+import json,sys
+body=sys.argv[1]
+try:
+    data=json.loads(body)
+    print(data.get("code",""))
+except Exception:
+    print("")
+PY
+)"
+
+if [ "$RESP_CODE" = "409" ] && [ "$REPLAY_ERROR_CODE" = "stepup_denied" ]; then
+    log_pass "Replay consume denied with deterministic step-up code"
+else
+    log_fail "Approval replay denial" "Expected 409 stepup_denied, got code=$RESP_CODE err=${REPLAY_ERROR_CODE:-n/a}"
+fi
+
+# ============================================================
+# Test B1.3: Deny lifecycle endpoint
+# ============================================================
+log_subheader "B1.3: Approval deny lifecycle"
+
+gateway_post "/admin/approvals/request" "{
+  \"scope\": {
+    \"action\": \"model.call\",
+    \"resource\": \"gpt-4o\",
+    \"actor_spiffe_id\": \"${DEFAULT_SPIFFE_ID}\",
+    \"session_id\": \"${APPROVAL_SESSION_ID}-deny\"
+  },
+  \"reason\": \"deny path validation\",
+  \"ttl_seconds\": 60
+}" "$DEFAULT_SPIFFE_ID"
+
+DENY_REQUEST_ID="$(python3 - "$RESP_BODY" <<'PY'
+import json,sys
+body=sys.argv[1]
+try:
+    data=json.loads(body)
+    print((data.get("record") or {}).get("request_id",""))
+except Exception:
+    print("")
+PY
+)"
+
+gateway_post "/admin/approvals/deny" "{
+  \"request_id\": \"${DENY_REQUEST_ID}\",
+  \"denied_by\": \"security@corp\",
+  \"reason\": \"explicit deny path\"
+}" "$DEFAULT_SPIFFE_ID"
+
+if [ "$RESP_CODE" = "200" ]; then
+    log_pass "Approval deny endpoint succeeded"
+else
+    log_fail "Approval deny endpoint" "Expected 200, got $RESP_CODE body=${RESP_BODY:0:220}"
+fi
+
+# ============================================================
+# Test B1.4: Expired approval token denied
+# ============================================================
+log_subheader "B1.4: Expired approval token denied"
+
+EXP_SESSION_ID="${APPROVAL_SESSION_ID}-exp"
+gateway_post "/admin/approvals/request" "{
+  \"scope\": {
+    \"action\": \"tool.call\",
+    \"resource\": \"bash\",
+    \"actor_spiffe_id\": \"${DEFAULT_SPIFFE_ID}\",
+    \"session_id\": \"${EXP_SESSION_ID}\"
+  },
+  \"ttl_seconds\": 1
+}" "$DEFAULT_SPIFFE_ID"
+EXP_REQUEST_ID="$(python3 - "$RESP_BODY" <<'PY'
+import json,sys
+body=sys.argv[1]
+try:
+    data=json.loads(body)
+    print((data.get("record") or {}).get("request_id",""))
+except Exception:
+    print("")
+PY
+)"
+gateway_post "/admin/approvals/grant" "{
+  \"request_id\": \"${EXP_REQUEST_ID}\",
+  \"approved_by\": \"security@corp\"
+}" "$DEFAULT_SPIFFE_ID"
+EXP_TOKEN="$(python3 - "$RESP_BODY" <<'PY'
+import json,sys
+body=sys.argv[1]
+try:
+    data=json.loads(body)
+    print(data.get("capability_token",""))
+except Exception:
+    print("")
+PY
+)"
+sleep 2
+gateway_post "/admin/approvals/consume" "{
+  \"capability_token\": \"${EXP_TOKEN}\",
+  \"scope\": {
+    \"action\": \"tool.call\",
+    \"resource\": \"bash\",
+    \"actor_spiffe_id\": \"${DEFAULT_SPIFFE_ID}\",
+    \"session_id\": \"${EXP_SESSION_ID}\"
+  }
+}" "$DEFAULT_SPIFFE_ID"
+if [ "$RESP_CODE" = "410" ]; then
+    log_pass "Expired approval token rejected with HTTP 410"
+else
+    log_fail "Expired approval token" "Expected HTTP 410, got $RESP_CODE body=${RESP_BODY:0:220}"
+fi
+
+# ============================================================
 # Test B2: Denied tool call - unknown tool
 # ============================================================
 log_subheader "B2: Unknown tool call (should be denied)"
@@ -140,6 +377,21 @@ if [ "$HEALTH_STATUS" = "200" ]; then
 else
     log_fail "Gateway stability" "Gateway health check failed after denials (HTTP $HEALTH_STATUS)"
 fi
+
+# ============================================================
+# Test B7: Approval lifecycle appears in audit log
+# ============================================================
+log_subheader "B7: Approval lifecycle appears in audit log"
+sleep 1
+
+for action in approval.request approval.grant approval.deny approval.consume approval.expire; do
+    MATCH="$(gateway_logs_grep "\"action\":\"${action}\"" 250 | tail -1 || true)"
+    if [ -n "$MATCH" ]; then
+        log_pass "Audit includes ${action}"
+    else
+        log_fail "Audit event ${action}" "Expected audit log entry not found"
+    fi
+done
 
 # ============================================================
 # Summary

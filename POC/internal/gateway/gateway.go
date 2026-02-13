@@ -37,10 +37,11 @@ type Gateway struct {
 	sessionContext       *middleware.SessionContext
 	rateLimiter          *middleware.RateLimiter
 	circuitBreaker       *middleware.CircuitBreaker
-	handleStore          *HandleStore                      // RFA-qq0.16: response firewall data handle cache
-	groqGuardClient      middleware.GroqGuardClient        // RFA-qq0.17: guard model client for step-up gating
-	destinationAllowlist *middleware.DestinationAllowlist  // RFA-qq0.17: destination allowlist
-	riskConfig           *middleware.RiskConfig            // RFA-qq0.17: risk scoring thresholds
+	handleStore          *HandleStore                     // RFA-qq0.16: response firewall data handle cache
+	groqGuardClient      middleware.GroqGuardClient       // RFA-qq0.17: guard model client for step-up gating
+	destinationAllowlist *middleware.DestinationAllowlist // RFA-qq0.17: destination allowlist
+	riskConfig           *middleware.RiskConfig           // RFA-qq0.17: risk scoring thresholds
+	approvalCapabilities *middleware.ApprovalCapabilityService
 	uiCapabilityGating   *UICapabilityGating               // RFA-j2d.1: MCP-UI capability gating
 	uiResourceControls   *UIResourceControls               // RFA-j2d.2: UI resource content controls
 	uiResponseProcessor  *UIResponseProcessor              // RFA-j2d.6: UI response processing pipeline
@@ -169,6 +170,12 @@ func New(cfg *Config) (*Gateway, error) {
 	} else {
 		riskConfig = middleware.DefaultRiskConfig()
 	}
+	approvalCapabilities := middleware.NewApprovalCapabilityService(
+		cfg.ApprovalSigningKey,
+		time.Duration(cfg.ApprovalDefaultTTL)*time.Second,
+		time.Duration(cfg.ApprovalMaxTTL)*time.Second,
+		auditor,
+	)
 
 	// RFA-j2d.1: Ensure UIConfig exists (default to secure defaults if nil)
 	uiConfig := cfg.UI
@@ -300,6 +307,7 @@ func New(cfg *Config) (*Gateway, error) {
 		groqGuardClient:      groqGuardClient,
 		destinationAllowlist: destinationAllowlist,
 		riskConfig:           riskConfig,
+		approvalCapabilities: approvalCapabilities,
 		uiCapabilityGating:   uiCapabilityGating,
 		uiResourceControls:   uiResourceControls,
 		uiResponseProcessor:  uiResponseProcessor,
@@ -351,14 +359,14 @@ func (g *Gateway) Handler() http.Handler {
 	handler := http.Handler(proxyWithResponseFirewall)
 
 	// Apply middleware in reverse order (innermost first)
-	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor, middleware.NewToolRegistryScopeResolver(g.registry)) // 13 - LAST before proxy (RFA-0gr: dynamic scope)
-	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                         // 12
-	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                                 // 11
-	handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig)                                                    // 10
-	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor)       // 9
-	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                         // 8
-	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy())                                                         // 7
-	handler = middleware.OPAPolicy(handler, g.opa)                                                                                   // 6
+	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor, middleware.NewToolRegistryScopeResolver(g.registry))                   // 13 - LAST before proxy (RFA-0gr: dynamic scope)
+	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                                           // 12
+	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                                                   // 11
+	handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig)                                                                      // 10
+	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor, g.approvalCapabilities) // 9
+	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                                           // 8
+	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy())                                                                           // 7
+	handler = middleware.OPAPolicy(handler, g.opa)                                                                                                     // 6
 	var toolHashRefresher middleware.ObservedToolHashRefresher
 	if g.config.MCPTransportMode == "mcp" {
 		toolHashRefresher = g.refreshObservedToolHashes
@@ -480,6 +488,8 @@ func (g *Gateway) proxyHandler() http.Handler {
 			adminMiddleware := v24MiddlewareRuleOpsAdmin
 			if strings.HasPrefix(r.URL.Path, "/admin/loop/runs") {
 				adminMiddleware = v24MiddlewareLoopAdmin
+			} else if strings.HasPrefix(r.URL.Path, approvalAdminPath) {
+				adminMiddleware = v24MiddlewareApprovalAdmin
 			}
 			span.SetAttributes(
 				attribute.Int("status_code", proxyRW.statusCode),

@@ -94,6 +94,7 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 	model := getStringAttr(attrs, "model", "gpt-4o")
 	residency := strings.ToLower(getStringAttr(attrs, "residency_intent", "us"))
 	riskMode := strings.ToLower(getStringAttr(attrs, "risk_mode", "low"))
+	stepUpApproved := getBoolAttr(attrs, "step_up_approved", false)
 	budgetProfile := strings.ToLower(getStringAttr(attrs, "budget_profile", "standard"))
 	budgetUnits := getIntAttr(attrs, "budget_units", 1)
 	if budgetUnits < 1 {
@@ -107,8 +108,12 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 	if !policy.AllowedResidency[residency] {
 		return DecisionDeny, ReasonModelResidencyDenied, 403, map[string]any{"provider": provider, "residency_intent": residency}
 	}
-	if riskMode == "high" && !policy.AllowHighRiskMode {
-		return DecisionDeny, ReasonModelRiskModeDenied, 403, map[string]any{"provider": provider, "risk_mode": riskMode}
+	if riskMode == "high" && !policy.AllowHighRiskMode && !stepUpApproved {
+		return DecisionDeny, ReasonModelRiskModeDenied, 403, map[string]any{
+			"provider":          provider,
+			"risk_mode":         riskMode,
+			"approval_required": true,
+		}
 	}
 
 	promptDecision, promptReason, promptStatus, promptMetadata, promptHandled := evaluatePromptSafety(attrs)
@@ -173,11 +178,12 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 		reason = ReasonModelBudgetNearLimit
 	}
 	metadata := map[string]any{
-		"provider":       provider,
-		"model":          model,
-		"residency":      residency,
-		"risk_mode":      riskMode,
-		"budget_profile": budgetProfile,
+		"provider":         provider,
+		"model":            model,
+		"residency":        residency,
+		"risk_mode":        riskMode,
+		"step_up_approved": stepUpApproved,
+		"budget_profile":   budgetProfile,
 	}
 	if promptHandled {
 		metadata["prompt_safety_reason"] = promptReason

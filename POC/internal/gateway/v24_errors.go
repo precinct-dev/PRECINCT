@@ -11,6 +11,7 @@ const (
 	v24MiddlewarePhase3Plane    = "v24_phase3_plane"
 	v24MiddlewareConnectorAuth  = "v24_connector_authority"
 	v24MiddlewareRuleOpsAdmin   = "v24_ruleops_admin"
+	v24MiddlewareApprovalAdmin  = "v24_approval_admin"
 	v24MiddlewareLoopAdmin      = "v24_loop_admin"
 	v24MiddlewareModelCompat    = "v24_model_compat"
 	v24ReasonPolicyHookRejected = ReasonContractInvalid
