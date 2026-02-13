@@ -7,7 +7,7 @@
 //
 //	0-3:   Fast path (no friction)
 //	4-6:   Step-up gating (destination allowlist + guard model)
-//	7-9:   Approval required (HTTP 403 stub)
+//	7-9:   Approval capability required
 //	10-12: Deny by default (HTTP 403)
 package middleware
 
@@ -15,6 +15,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -124,6 +125,8 @@ type GuardResult struct {
 	Blocked       bool    `json:"blocked"`
 	Error         string  `json:"error,omitempty"`
 }
+
+const openAICompatChatCompletionsPath = "/openai/v1/chat/completions"
 
 // GroqGuardClient is the interface for calling the guard model
 type GroqGuardClient interface {
@@ -493,7 +496,13 @@ func StepUpGating(
 	riskConfig *RiskConfig,
 	registry *ToolRegistry,
 	auditor *Auditor,
+	approvalVerifier ...ApprovalCapabilityVerifier,
 ) http.Handler {
+	var verifier ApprovalCapabilityVerifier
+	if len(approvalVerifier) > 0 {
+		verifier = approvalVerifier[0]
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// RFA-m6j.2: Create OTel span for step 9
 		ctx, span := tracer.Start(r.Context(), "gateway.step_up_gating",
@@ -512,6 +521,102 @@ func StepUpGating(
 				attribute.String("mcp.result", "allowed"),
 				attribute.String("mcp.reason", "no body"),
 			)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
+
+		// OpenAI-compatible model route: require step-up approval capability for
+		// explicit high-risk model operations.
+		if requiresModelApproval(r) {
+			model := extractModelName(body)
+			if model == "" {
+				model = "unknown-model"
+			}
+			scope := ApprovalScope{
+				Action:        "model.call",
+				Resource:      model,
+				ActorSPIFFEID: GetSPIFFEID(ctx),
+				SessionID:     expectedApprovalSessionID(r, ctx),
+			}
+			result := &StepUpGatingResult{
+				Allowed:    false,
+				TotalScore: riskConfig.Thresholds.ApprovalMax,
+				Gate:       "approval",
+				Reason:     "human approval required",
+			}
+			token := strings.TrimSpace(r.Header.Get("X-Step-Up-Token"))
+			if token == "" {
+				result.Reason = "human approval required"
+			} else if verifier == nil {
+				result.Reason = "approval capability verifier unavailable"
+			} else {
+				claims, err := verifier.ValidateAndConsume(token, scope)
+				if err != nil {
+					result.Reason = approvalFailureReason(err)
+				} else {
+					result.Allowed = true
+					result.Reason = "step-up approval capability validated"
+					r.Header.Set("X-Step-Up-Approved", "true")
+					if claims != nil {
+						r.Header.Set("X-Approval-Marker", claims.RequestID)
+					}
+				}
+			}
+
+			span.SetAttributes(
+				attribute.String("gate", result.Gate),
+				attribute.Int("total_score", result.TotalScore),
+				attribute.String("guard_result", ""),
+				attribute.String("mcp.stepup.action", scope.Action),
+				attribute.String("mcp.stepup.resource", scope.Resource),
+			)
+			if result.Allowed {
+				span.SetAttributes(
+					attribute.String("mcp.result", "allowed"),
+					attribute.String("mcp.reason", result.Reason),
+				)
+			} else {
+				span.SetAttributes(
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", result.Reason),
+				)
+			}
+
+			ctx = WithStepUpResult(ctx, result)
+			if auditor != nil {
+				auditor.Log(AuditEvent{
+					SessionID:  GetSessionID(ctx),
+					DecisionID: GetDecisionID(ctx),
+					TraceID:    GetTraceID(ctx),
+					SPIFFEID:   GetSPIFFEID(ctx),
+					Action:     "step_up_gating",
+					Result:     fmt.Sprintf("gate=%s allowed=%v total_score=%d action=model.call resource=%s reason=%s", result.Gate, result.Allowed, result.TotalScore, scope.Resource, result.Reason),
+					Method:     r.Method,
+					Path:       r.URL.Path,
+				})
+			}
+
+			if !result.Allowed {
+				errCode := ErrStepUpApprovalRequired
+				if token != "" && verifier != nil {
+					errCode = ErrStepUpDenied
+				}
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+					Code:           errCode,
+					Message:        result.Reason,
+					Middleware:     "step_up_gating",
+					MiddlewareStep: 9,
+					Details: map[string]any{
+						"gate":       result.Gate,
+						"risk_score": result.TotalScore,
+						"action":     scope.Action,
+						"resource":   scope.Resource,
+					},
+					Remediation: "Obtain a valid approval capability token for this high-risk model operation.",
+				})
+				return
+			}
+
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
@@ -623,9 +728,35 @@ func StepUpGating(
 			result.GuardResult = stepUpResult.GuardResult
 
 		case "approval":
-			// Human approval required (stub for POC)
+			// High-risk operations require a bounded approval capability token.
 			result.Allowed = false
 			result.Reason = "human approval required"
+			token := strings.TrimSpace(r.Header.Get("X-Step-Up-Token"))
+			if token == "" {
+				break
+			}
+			if verifier == nil {
+				result.Reason = "approval capability verifier unavailable"
+				break
+			}
+
+			scope := ApprovalScope{
+				Action:        "tool.call",
+				Resource:      toolName,
+				ActorSPIFFEID: GetSPIFFEID(ctx),
+				SessionID:     expectedApprovalSessionID(r, ctx),
+			}
+			claims, err := verifier.ValidateAndConsume(token, scope)
+			if err != nil {
+				result.Reason = approvalFailureReason(err)
+				break
+			}
+			result.Allowed = true
+			result.Reason = "step-up approval capability validated"
+			r.Header.Set("X-Step-Up-Approved", "true")
+			if claims != nil {
+				r.Header.Set("X-Approval-Marker", claims.RequestID)
+			}
 
 		case "deny":
 			// Deny by default
@@ -717,6 +848,72 @@ func StepUpGating(
 		// Continue to next middleware
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func requiresModelApproval(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.Method != http.MethodPost || r.URL == nil || r.URL.Path != openAICompatChatCompletionsPath {
+		return false
+	}
+	riskMode := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Risk-Mode")))
+	if riskMode == "high" {
+		return true
+	}
+	profile := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Compliance-Profile")))
+	if strings.Contains(profile, "hipaa") {
+		if parseBoolHeader(r.Header.Get("X-Prompt-Has-PHI")) || parseBoolHeader(r.Header.Get("X-Prompt-Has-PII")) {
+			return true
+		}
+		if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Prompt-Action")), "override") {
+			return true
+		}
+	}
+	return false
+}
+
+func parseBoolHeader(raw string) bool {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "1", "true", "yes", "y", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func extractModelName(body []byte) string {
+	if len(body) == 0 {
+		return ""
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return ""
+	}
+	model, _ := payload["model"].(string)
+	return strings.TrimSpace(model)
+}
+
+func approvalFailureReason(err error) string {
+	switch {
+	case errors.Is(err, ErrApprovalTokenExpired):
+		return "approval capability token expired"
+	case errors.Is(err, ErrApprovalTokenConsumed):
+		return "approval capability token already consumed"
+	case errors.Is(err, ErrApprovalScopeMismatch), errors.Is(err, ErrApprovalIdentityMismatch):
+		return "approval capability scope does not match operation"
+	default:
+		return "approval capability token invalid"
+	}
+}
+
+func expectedApprovalSessionID(r *http.Request, ctx context.Context) string {
+	if r != nil {
+		if raw := strings.TrimSpace(r.Header.Get("X-Session-ID")); raw != "" {
+			return raw
+		}
+	}
+	return GetSessionID(ctx)
 }
 
 // applyStepUpControls runs the step-up controls for scores 4-6

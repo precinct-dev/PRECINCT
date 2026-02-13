@@ -161,6 +161,12 @@ func TestConfigFromEnv(t *testing.T) {
 	if cfg.CircuitSuccessThreshold != 2 {
 		t.Errorf("Expected default CircuitSuccessThreshold=2, got %d", cfg.CircuitSuccessThreshold)
 	}
+	if cfg.ApprovalDefaultTTL != 600 {
+		t.Errorf("Expected default ApprovalDefaultTTL=600, got %d", cfg.ApprovalDefaultTTL)
+	}
+	if cfg.ApprovalMaxTTL != 3600 {
+		t.Errorf("Expected default ApprovalMaxTTL=3600, got %d", cfg.ApprovalMaxTTL)
+	}
 
 	// Test custom values
 	t.Setenv("PORT", "8888")
@@ -194,6 +200,17 @@ func TestConfigFromEnv(t *testing.T) {
 	}
 	if cfg.CircuitSuccessThreshold != 3 {
 		t.Errorf("Expected CircuitSuccessThreshold=3, got %d", cfg.CircuitSuccessThreshold)
+	}
+
+	// Test approval capability TTL config
+	t.Setenv("APPROVAL_DEFAULT_TTL_SECONDS", "300")
+	t.Setenv("APPROVAL_MAX_TTL_SECONDS", "900")
+	cfg = ConfigFromEnv()
+	if cfg.ApprovalDefaultTTL != 300 {
+		t.Errorf("Expected ApprovalDefaultTTL=300, got %d", cfg.ApprovalDefaultTTL)
+	}
+	if cfg.ApprovalMaxTTL != 900 {
+		t.Errorf("Expected ApprovalMaxTTL=900, got %d", cfg.ApprovalMaxTTL)
 	}
 
 	// RFA-2jl: Test AllowedBasePath defaults to working directory

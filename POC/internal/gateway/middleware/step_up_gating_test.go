@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 // --- Mock guard client for unit testing ---
@@ -29,6 +30,17 @@ func (m *mockGuardClient) ClassifyContent(ctx context.Context, content string) (
 		JailbreakProb: m.jailbreakProb,
 		Blocked:       false,
 	}, nil
+}
+
+type mockApprovalVerifier struct {
+	validate func(token string, expected ApprovalScope) (*ApprovalCapabilityClaims, error)
+}
+
+func (m *mockApprovalVerifier) ValidateAndConsume(token string, expected ApprovalScope) (*ApprovalCapabilityClaims, error) {
+	if m.validate != nil {
+		return m.validate(token, expected)
+	}
+	return nil, ErrApprovalTokenInvalid
 }
 
 // --- Helper functions ---
@@ -106,6 +118,15 @@ func createTestMCPBody(method string, params map[string]interface{}) []byte {
 
 func newTestRequest(body []byte) *http.Request {
 	r := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	r.Header.Set("Content-Type", "application/json")
+	ctx := WithRequestBody(r.Context(), body)
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/agents/test")
+	ctx = WithSessionID(ctx, "test-session-123")
+	return r.WithContext(ctx)
+}
+
+func newModelCompatRequest(body []byte) *http.Request {
+	r := httptest.NewRequest("POST", openAICompatChatCompletionsPath, bytes.NewBuffer(body))
 	r.Header.Set("Content-Type", "application/json")
 	ctx := WithRequestBody(r.Context(), body)
 	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/agents/test")
@@ -524,6 +545,133 @@ func TestStepUpGating_ApprovalRequired_CriticalTool(t *testing.T) {
 	}
 	if resp.MiddlewareStep != 9 {
 		t.Errorf("Expected middleware_step 9, got %d", resp.MiddlewareStep)
+	}
+}
+
+func TestStepUpGating_ApprovalToken_AllowsCriticalTool(t *testing.T) {
+	registry := testRegistry()
+	allowlist := defaultAllowlist()
+	config := defaultRiskConfig()
+	guardClient := &mockGuardClient{}
+
+	svc := NewApprovalCapabilityService("test-key", 5*time.Minute, 30*time.Minute, nil)
+	created, err := svc.CreateRequest(ApprovalRequestInput{
+		Scope: ApprovalScope{
+			Action:        "tool.call",
+			Resource:      "bash",
+			ActorSPIFFEID: "spiffe://poc.local/agents/test",
+			SessionID:     "test-session-123",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create approval request: %v", err)
+	}
+	grant, err := svc.GrantRequest(ApprovalGrantInput{RequestID: created.RequestID, ApprovedBy: "security@corp"})
+	if err != nil {
+		t.Fatalf("grant approval request: %v", err)
+	}
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		if got := r.Header.Get("X-Step-Up-Approved"); got != "true" {
+			t.Fatalf("expected X-Step-Up-Approved=true, got %q", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := StepUpGating(next, guardClient, allowlist, config, registry, nil, svc)
+	body := createTestMCPBody("bash", map[string]interface{}{"command": "echo safe"})
+	req := newTestRequest(body)
+	req.Header.Set("X-Step-Up-Token", grant.Token)
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if !nextCalled {
+		t.Fatal("expected next handler to be called with valid approval token")
+	}
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestStepUpGating_ModelHighRisk_RequiresApprovalToken(t *testing.T) {
+	registry := testRegistry()
+	allowlist := defaultAllowlist()
+	config := defaultRiskConfig()
+	guardClient := &mockGuardClient{}
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := StepUpGating(next, guardClient, allowlist, config, registry, nil)
+
+	body := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
+	req := newModelCompatRequest(body)
+	req.Header.Set("X-Risk-Mode", "high")
+	rr := httptest.NewRecorder()
+
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for high-risk model operation without approval token, got %d", rr.Code)
+	}
+
+	var resp GatewayError
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode gateway error: %v", err)
+	}
+	if resp.Code != ErrStepUpApprovalRequired {
+		t.Fatalf("expected %s, got %s", ErrStepUpApprovalRequired, resp.Code)
+	}
+}
+
+func TestStepUpGating_ModelHighRisk_AllowsWithApprovalToken(t *testing.T) {
+	registry := testRegistry()
+	allowlist := defaultAllowlist()
+	config := defaultRiskConfig()
+	guardClient := &mockGuardClient{}
+
+	svc := NewApprovalCapabilityService("test-key", 5*time.Minute, 30*time.Minute, nil)
+	created, err := svc.CreateRequest(ApprovalRequestInput{
+		Scope: ApprovalScope{
+			Action:        "model.call",
+			Resource:      "gpt-4o",
+			ActorSPIFFEID: "spiffe://poc.local/agents/test",
+			SessionID:     "test-session-123",
+		},
+	})
+	if err != nil {
+		t.Fatalf("create approval request: %v", err)
+	}
+	grant, err := svc.GrantRequest(ApprovalGrantInput{RequestID: created.RequestID, ApprovedBy: "security@corp"})
+	if err != nil {
+		t.Fatalf("grant approval request: %v", err)
+	}
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		if got := r.Header.Get("X-Step-Up-Approved"); got != "true" {
+			t.Fatalf("expected X-Step-Up-Approved=true, got %q", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := StepUpGating(next, guardClient, allowlist, config, registry, nil, svc)
+
+	body := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
+	req := newModelCompatRequest(body)
+	req.Header.Set("X-Risk-Mode", "high")
+	req.Header.Set("X-Step-Up-Token", grant.Token)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if !nextCalled {
+		t.Fatal("expected next handler call with valid approval token")
+	}
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rr.Code)
 	}
 }
 

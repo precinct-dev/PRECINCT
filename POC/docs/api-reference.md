@@ -200,6 +200,20 @@ Contract details and lifecycle semantics are defined in
 
 ---
 
+### Approval Capability Admin Endpoints
+
+High-risk tool/model operations can use short-lived bounded approval capabilities:
+
+- `POST /admin/approvals/request`
+- `POST /admin/approvals/grant`
+- `POST /admin/approvals/deny`
+- `POST /admin/approvals/consume`
+
+Capability tokens are signed, actor/session/action scoped, TTL-bounded, and
+single-consume.
+
+---
+
 ## Canonical v2.4 Contract Artifacts
 
 The frozen v2.4 control-plane contract set and reason-code catalog live in:
@@ -222,7 +236,7 @@ Compatibility notes:
   source-principal checks (`INGRESS_SOURCE_UNAUTHENTICATED`), replay detection
   (`INGRESS_REPLAY_DETECTED` via `event_id`/`nonce`), and freshness checks
   (`INGRESS_FRESHNESS_STALE` via `event_timestamp`).
-- v2.4 governance endpoints (`/v1/*`, `/admin/dlp/rulesets*`, `/admin/loop/runs*`)
+- v2.4 governance endpoints (`/v1/*`, `/admin/dlp/rulesets*`, `/admin/approvals*`, `/admin/loop/runs*`)
   run through the gateway middleware chain for SPIFFE identity enforcement and
   policy hooks.
 - v2.4 request failures use the unified `GatewayError` envelope (`code`,

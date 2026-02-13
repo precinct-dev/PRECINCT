@@ -55,6 +55,13 @@ and backward-compatibility mappings.
 - `/admin/dlp/rulesets/promote`
 - `/admin/dlp/rulesets/rollback`
 
+### Approval Capability Governance Endpoints
+
+- `/admin/approvals/request`
+- `/admin/approvals/grant`
+- `/admin/approvals/deny`
+- `/admin/approvals/consume`
+
 ## Compatibility Matrix And Migration Mapping
 
 | Legacy behavior/path | Canonical v2.4 path | Mapping | Migration guidance |
@@ -74,7 +81,7 @@ The canonical ingress endpoint (`/v1/ingress/submit`) and compatibility alias
 
 ### Horizontal Hardening Notes
 
-v2.4 governance endpoints (`/v1/*`, `/admin/dlp/rulesets*`, `/admin/loop/runs*`)
+v2.4 governance endpoints (`/v1/*`, `/admin/dlp/rulesets*`, `/admin/approvals*`, `/admin/loop/runs*`)
 run through gateway middleware identity/policy hooks. Request failures use the
 unified gateway error envelope (`code`, `middleware`, `middleware_step`,
 `decision_id`, `trace_id`), while plane policy decisions continue to use the

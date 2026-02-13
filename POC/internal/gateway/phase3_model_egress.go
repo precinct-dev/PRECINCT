@@ -203,6 +203,7 @@ func (g *Gateway) buildModelPlaneRequestFromOpenAI(r *http.Request, payload map[
 		"model_scope":        defaultString(strings.ToLower(strings.TrimSpace(r.Header.Get("X-Model-Scope"))), "external"),
 		"prompt_action":      strings.ToLower(strings.TrimSpace(r.Header.Get("X-Prompt-Action"))),
 		"approval_marker":    strings.TrimSpace(r.Header.Get("X-Approval-Marker")),
+		"step_up_approved":   parseHeaderBool(r.Header.Get("X-Step-Up-Approved"), false),
 	}
 	attrs["prompt"] = extractOpenAIPrompt(payload)
 
