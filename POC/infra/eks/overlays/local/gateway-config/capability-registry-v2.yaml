@@ -1,8 +1,4 @@
-# Capability Registry v2 (Phase 3 placeholder)
-#
-# This file is mounted into the gateway Pod at /config/capability-registry-v2.yaml
-# by the local Kustomize overlay. The gateway accepts a v2 registry path today,
-# but enforcement is intentionally minimal while Phase 3 evolves.
+# Capability Registry v2 (Phase 3)
 #
 # Note: This is a deliberate copy rather than a reference to POC/config/ to
 # avoid kustomize path restrictions. Keep in sync with:
@@ -10,12 +6,41 @@
 version: v2
 
 capabilities:
-  - id: tool.mcp.default
+  - id: tool.default.mcp
     kind: tool
     protocol: mcp
     server: default
+    adapters:
+      - mcp
     allowlist:
+      - read
       - tavily_search
+    action_policies:
+      - action: tool.execute
+        resources:
+          - tool/read
+          - tool/search
+        allowed_tools:
+          - read
+          - tavily_search
+        require_step_up: false
+
+  - id: tool.highrisk.cli
+    kind: tool
+    protocol: cli
+    server: local
+    adapters:
+      - cli
+    allowlist:
+      - bash
+    action_policies:
+      - action: tool.execute
+        resources:
+          - tool/write
+          - tool/exec
+        allowed_tools:
+          - bash
+        require_step_up: true
 
   - id: model.groq.openai_compat
     kind: model
