@@ -16,19 +16,22 @@ import sys
 import uuid
 
 import dspy
-from opentelemetry import trace
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from opentelemetry.sdk.resources import Resource
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
-# OpenInference instrumentation for DSPy
-from openinference.instrumentation.dspy import DSPyInstrumentor
 
 # Shared SDK -- replaces ~120 lines of inline GatewayClient boilerplate
-from mcp_gateway_sdk import GatewayClient, GatewayError, build_spike_token_ref
+from mcp_gateway_sdk import (
+    GatewayClient,
+    GatewayError,
+    configure_dspy_gateway_lms,
+    load_dotenv,
+    normalize_model_name,
+    setup_observability,
+)
+from opentelemetry import trace
 
 logger = logging.getLogger("dspy_researcher")
+
+# Load .env early so module-level configuration values pick it up.
+load_dotenv()
 
 
 # ---------------------------------------------------------------------------
@@ -41,68 +44,32 @@ SPIFFE_ID = os.environ.get(
     "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 )
 OTEL_ENDPOINT = os.environ.get("OTEL_ENDPOINT", "http://localhost:4317")
-LLM_MODEL = os.environ.get("LLM_MODEL", "groq/llama-3.3-70b-versatile")
-MODEL_USE_GATEWAY = os.environ.get("MODEL_USE_GATEWAY", "true").lower() != "false"
-MODEL_GATEWAY_BASE_URL = os.environ.get("MODEL_GATEWAY_BASE_URL", f"{GATEWAY_URL}/openai/v1")
+LLM_MODEL = os.environ.get("LLM_MODEL", "groq/openai/gpt-oss-20b")
+MODEL_GATEWAY_BASE_URL = os.environ.get(
+    "MODEL_GATEWAY_BASE_URL", f"{GATEWAY_URL}/openai/v1"
+)
+MODEL_GATEWAY_COMPAT = os.environ.get("MODEL_GATEWAY_COMPAT", "openai")
 MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "groq")
 GROQ_LM_SPIKE_REF = os.environ.get("GROQ_LM_SPIKE_REF", "")
 MODEL_API_KEY_REF = os.environ.get("MODEL_API_KEY_REF", "")
+RLM_MODEL = os.environ.get("RLM_MODEL", "")
+RLM_GATEWAY_BASE_URL = os.environ.get("RLM_GATEWAY_BASE_URL", MODEL_GATEWAY_BASE_URL)
+RLM_PROVIDER = os.environ.get("RLM_PROVIDER", MODEL_PROVIDER)
+RLM_SPIKE_REF = os.environ.get("RLM_SPIKE_REF", GROQ_LM_SPIKE_REF)
+RLM_API_KEY_REF = os.environ.get("RLM_API_KEY_REF", MODEL_API_KEY_REF)
+RLM_GATEWAY_COMPAT = os.environ.get("RLM_GATEWAY_COMPAT", MODEL_GATEWAY_COMPAT)
 SESSION_ID = os.environ.get("SESSION_ID", str(uuid.uuid4()))
-
-
-def normalize_model_name(raw_model: str) -> str:
-    """Normalize model identifier to a provider-agnostic model name."""
-    model = (raw_model or "").strip()
-    if "/" in model:
-        return model.split("/", 1)[1]
-    if ":" in model:
-        return model.split(":", 1)[1]
-    return model
-
-
-def resolve_model_api_key_ref() -> str:
-    """Resolve model API credential as a SPIKE reference token."""
-    explicit_ref = os.environ.get("MODEL_API_KEY_REF", MODEL_API_KEY_REF)
-    if explicit_ref:
-        return explicit_ref
-    spike_ref = os.environ.get("GROQ_LM_SPIKE_REF", GROQ_LM_SPIKE_REF)
-    if spike_ref:
-        return build_spike_token_ref(spike_ref, exp_seconds=3600)
-    return ""
-
-
-# ---------------------------------------------------------------------------
-# Observability setup
-# ---------------------------------------------------------------------------
-
-def setup_observability() -> trace.Tracer:
-    """Configure OpenTelemetry tracing with OTLP export to collector/Phoenix."""
-    resource = Resource.create(
-        {
-            "service.name": "dspy-researcher",
-            "service.version": "0.1.0",
-            "spiffe.id": SPIFFE_ID,
-            "session.id": SESSION_ID,
-        }
-    )
-    provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=OTEL_ENDPOINT, insecure=True)
-    provider.add_span_processor(BatchSpanProcessor(exporter))
-    trace.set_tracer_provider(provider)
-
-    # Instrument DSPy with OpenInference
-    DSPyInstrumentor().instrument()
-
-    return trace.get_tracer("dspy_researcher")
 
 
 # ---------------------------------------------------------------------------
 # DSPy Signatures
 # ---------------------------------------------------------------------------
 
+
 class ResearchPlan(dspy.Signature):
     """Given a security topic, produce a research plan with search queries
     and relevant local files to read."""
+
     topic: str = dspy.InputField(desc="Security topic to research")
     search_queries: list[str] = dspy.OutputField(
         desc="List of 2-3 focused web search queries for Tavily"
@@ -110,13 +77,12 @@ class ResearchPlan(dspy.Signature):
     local_files: list[str] = dspy.OutputField(
         desc="List of local file paths under the POC docs/ directory to read for additional context"
     )
-    rationale: str = dspy.OutputField(
-        desc="Brief explanation of the research approach"
-    )
+    rationale: str = dspy.OutputField(desc="Brief explanation of the research approach")
 
 
 class SearchSynthesis(dspy.Signature):
     """Synthesize web search results into key findings."""
+
     topic: str = dspy.InputField(desc="Security topic being researched")
     search_results: str = dspy.InputField(
         desc="Raw search results from Tavily web searches"
@@ -128,6 +94,7 @@ class SearchSynthesis(dspy.Signature):
 
 class FileSynthesis(dspy.Signature):
     """Synthesize local file contents into relevant context."""
+
     topic: str = dspy.InputField(desc="Security topic being researched")
     file_contents: str = dspy.InputField(
         desc="Contents read from local reference files"
@@ -139,17 +106,14 @@ class FileSynthesis(dspy.Signature):
 
 class ReportSynthesis(dspy.Signature):
     """Synthesize web findings and local context into a structured research report."""
+
     topic: str = dspy.InputField(desc="Security topic being researched")
-    web_findings: str = dspy.InputField(
-        desc="Key findings from web search"
-    )
+    web_findings: str = dspy.InputField(desc="Key findings from web search")
     local_context: str = dspy.InputField(
         desc="Relevant context from local reference files"
     )
     report_title: str = dspy.OutputField(desc="Report title")
-    executive_summary: str = dspy.OutputField(
-        desc="2-3 sentence executive summary"
-    )
+    executive_summary: str = dspy.OutputField(desc="2-3 sentence executive summary")
     detailed_findings: str = dspy.OutputField(
         desc="Detailed findings organized into sections"
     )
@@ -165,6 +129,7 @@ class ReportSynthesis(dspy.Signature):
 # DSPy Modules (tool-calling modules that route through gateway)
 # ---------------------------------------------------------------------------
 
+
 class GatewayWebSearch(dspy.Module):
     """DSPy Module that performs web search via Tavily through the gateway."""
 
@@ -174,7 +139,9 @@ class GatewayWebSearch(dspy.Module):
 
     def forward(self, query: str, max_results: int = 5) -> dspy.Prediction:
         try:
-            result = self.gateway.call("tavily_search", query=query, max_results=max_results)
+            result = self.gateway.call(
+                "tavily_search", query=query, max_results=max_results
+            )
             return dspy.Prediction(
                 success=True,
                 results=json.dumps(result, indent=2),
@@ -200,7 +167,9 @@ class GatewayFileRead(dspy.Module):
             result = self.gateway.call("read", file_path=file_path)
             content = result
             if isinstance(content, dict):
-                content = content.get("content", content.get("text", json.dumps(content)))
+                content = content.get(
+                    "content", content.get("text", json.dumps(content))
+                )
             elif isinstance(content, list):
                 content = "\n".join(str(item) for item in content)
             return dspy.Prediction(
@@ -226,13 +195,18 @@ class ResearchAgent(dspy.Module):
     4. Synthesize findings into structured report
     """
 
-    def __init__(self, gateway_client: GatewayClient):
+    def __init__(
+        self,
+        gateway_client: GatewayClient,
+        reasoning_lm: object | None = None,
+    ):
         super().__init__()
         self.gateway = gateway_client
-        self.planner = dspy.ChainOfThought(ResearchPlan)
-        self.search_synth = dspy.ChainOfThought(SearchSynthesis)
-        self.file_synth = dspy.ChainOfThought(FileSynthesis)
-        self.report_synth = dspy.ChainOfThought(ReportSynthesis)
+        cot_kwargs = {"lm": reasoning_lm} if reasoning_lm is not None else {}
+        self.planner = dspy.ChainOfThought(ResearchPlan, **cot_kwargs)
+        self.search_synth = dspy.ChainOfThought(SearchSynthesis, **cot_kwargs)
+        self.file_synth = dspy.ChainOfThought(FileSynthesis, **cot_kwargs)
+        self.report_synth = dspy.ChainOfThought(ReportSynthesis, **cot_kwargs)
         self.web_search = GatewayWebSearch(gateway_client)
         self.file_read = GatewayFileRead(gateway_client)
 
@@ -249,7 +223,9 @@ class ResearchAgent(dspy.Module):
         # Step 2: Execute web searches
         logger.info("Step 2: Executing web searches via gateway")
         all_search_results = []
-        search_queries = plan.search_queries if isinstance(plan.search_queries, list) else []
+        search_queries = (
+            plan.search_queries if isinstance(plan.search_queries, list) else []
+        )
         for query in search_queries:
             logger.info("  Searching: %s", query)
             search_result = self.web_search(query=query)
@@ -275,9 +251,7 @@ class ResearchAgent(dspy.Module):
             if file_result.success:
                 # Truncate very long files to avoid context overflow
                 content = file_result.content[:5000]
-                all_file_contents.append(
-                    f"File: {file_path}\n{content}"
-                )
+                all_file_contents.append(f"File: {file_path}\n{content}")
             else:
                 logger.warning(
                     "  File read skipped (denied/failed): %s", file_result.error
@@ -288,17 +262,21 @@ class ResearchAgent(dspy.Module):
 
         # Step 4: Synthesize search results
         logger.info("Step 4: Synthesizing web search findings")
-        search_text = "\n\n---\n\n".join(all_search_results) if all_search_results else "[No search results available]"
-        search_synthesis = self.search_synth(
-            topic=topic, search_results=search_text
+        search_text = (
+            "\n\n---\n\n".join(all_search_results)
+            if all_search_results
+            else "[No search results available]"
         )
+        search_synthesis = self.search_synth(topic=topic, search_results=search_text)
 
         # Step 5: Synthesize file contents
         logger.info("Step 5: Synthesizing local file context")
-        file_text = "\n\n---\n\n".join(all_file_contents) if all_file_contents else "[No local files available]"
-        file_synthesis = self.file_synth(
-            topic=topic, file_contents=file_text
+        file_text = (
+            "\n\n---\n\n".join(all_file_contents)
+            if all_file_contents
+            else "[No local files available]"
         )
+        file_synthesis = self.file_synth(topic=topic, file_contents=file_text)
 
         # Step 6: Generate final report
         logger.info("Step 6: Generating final research report")
@@ -316,17 +294,15 @@ class ResearchAgent(dspy.Module):
             sources=report.sources,
             search_queries_used=search_queries,
             local_files_read=local_files,
-            denial_count=sum(
-                1 for r in all_search_results if "[DENIED/FAILED:" in r
-            ) + sum(
-                1 for c in all_file_contents if "[DENIED/FAILED:" in c
-            ),
+            denial_count=sum(1 for r in all_search_results if "[DENIED/FAILED:" in r)
+            + sum(1 for c in all_file_contents if "[DENIED/FAILED:" in c),
         )
 
 
 # ---------------------------------------------------------------------------
 # Report formatting
 # ---------------------------------------------------------------------------
+
 
 def format_report(prediction: dspy.Prediction) -> str:
     """Format a DSPy Prediction into a readable research report."""
@@ -364,6 +340,7 @@ def format_report(prediction: dspy.Prediction) -> str:
 # Main entrypoint
 # ---------------------------------------------------------------------------
 
+
 def run_research(
     topic: str,
     gateway_url: str = GATEWAY_URL,
@@ -374,34 +351,72 @@ def run_research(
     tracer = None
     if enable_tracing:
         try:
-            tracer = setup_observability()
+            tracer = setup_observability(
+                service_name="dspy-researcher",
+                service_version="0.1.0",
+                spiffe_id=spiffe_id,
+                session_id=SESSION_ID,
+                otel_endpoint=OTEL_ENDPOINT,
+                instrument_dspy=True,
+            )
             logger.info("OpenTelemetry tracing enabled (endpoint: %s)", OTEL_ENDPOINT)
         except Exception as exc:
             logger.warning("Failed to setup tracing (continuing without): %s", exc)
 
-    # Configure DSPy LLM through the gateway model egress path by default.
-    use_gateway = os.environ.get("MODEL_USE_GATEWAY", str(MODEL_USE_GATEWAY)).lower() != "false"
-    model_gateway_base_url = os.environ.get("MODEL_GATEWAY_BASE_URL", MODEL_GATEWAY_BASE_URL)
+    # Gateway-first by design: this demo does not support direct model bypass.
+    llm_model = os.environ.get("LLM_MODEL", LLM_MODEL)
+    model_gateway_base_url = os.environ.get(
+        "MODEL_GATEWAY_BASE_URL", MODEL_GATEWAY_BASE_URL
+    )
     model_provider = os.environ.get("MODEL_PROVIDER", MODEL_PROVIDER)
-    if use_gateway:
-        lm = dspy.LM(
-            f"openai/{normalize_model_name(LLM_MODEL)}",
-            api_base=model_gateway_base_url,
-            api_key=resolve_model_api_key_ref(),
-            extra_headers={"X-Model-Provider": model_provider},
+    model_api_key_ref = os.environ.get("MODEL_API_KEY_REF", MODEL_API_KEY_REF)
+    spike_ref = os.environ.get("GROQ_LM_SPIKE_REF", GROQ_LM_SPIKE_REF)
+    model_gateway_compat = os.environ.get("MODEL_GATEWAY_COMPAT", MODEL_GATEWAY_COMPAT)
+    rlm_model = os.environ.get("RLM_MODEL", RLM_MODEL)
+    rlm_gateway_base_url = os.environ.get(
+        "RLM_GATEWAY_BASE_URL", RLM_GATEWAY_BASE_URL
+    )
+    rlm_provider = os.environ.get("RLM_PROVIDER", RLM_PROVIDER)
+    rlm_api_key_ref = os.environ.get("RLM_API_KEY_REF", RLM_API_KEY_REF)
+    rlm_spike_ref = os.environ.get("RLM_SPIKE_REF", RLM_SPIKE_REF)
+    rlm_gateway_compat = os.environ.get("RLM_GATEWAY_COMPAT", RLM_GATEWAY_COMPAT)
+
+    try:
+        _, reasoning_lm = configure_dspy_gateway_lms(
+            llm_model=llm_model,
+            gateway_url=gateway_url,
+            model_gateway_base_url=model_gateway_base_url,
+            model_provider=model_provider,
+            model_api_key_ref=model_api_key_ref,
+            spike_ref=spike_ref,
+            compatibility=model_gateway_compat,
+            rlm_model=rlm_model,
+            rlm_gateway_base_url=rlm_gateway_base_url,
+            rlm_provider=rlm_provider,
+            rlm_api_key_ref=rlm_api_key_ref,
+            rlm_spike_ref=rlm_spike_ref,
+            rlm_compatibility=rlm_gateway_compat,
         )
-    else:
-        lm = dspy.LM(LLM_MODEL)
-    dspy.configure(lm=lm)
-    if use_gateway:
+    except Exception as exc:
+        raise RuntimeError(
+            "DSPy gateway model configuration failed. "
+            "This demo is gateway-first; verify MODEL_GATEWAY_BASE_URL, "
+            "MODEL_GATEWAY_COMPAT, provider headers, and SPIKE token refs."
+        ) from exc
+
+    logger.info(
+        "DSPy configured via gateway model route (provider=%s, model=%s, base=%s)",
+        model_provider,
+        normalize_model_name(llm_model),
+        model_gateway_base_url,
+    )
+    if rlm_model:
         logger.info(
-            "DSPy configured via model gateway (provider=%s, model=%s, base=%s)",
-            model_provider,
-            normalize_model_name(LLM_MODEL),
-            model_gateway_base_url,
+            "DSPy RLM enabled (provider=%s, model=%s, base=%s)",
+            rlm_provider,
+            normalize_model_name(rlm_model),
+            rlm_gateway_base_url,
         )
-    else:
-        logger.info("DSPy configured with direct provider model: %s", LLM_MODEL)
 
     gateway_client = GatewayClient(
         url=gateway_url,
@@ -411,7 +426,7 @@ def run_research(
     )
 
     try:
-        agent = ResearchAgent(gateway_client)
+        agent = ResearchAgent(gateway_client, reasoning_lm=reasoning_lm)
 
         if tracer:
             with tracer.start_as_current_span(
@@ -445,9 +460,7 @@ def main():
     )
 
     topic = (
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else "prompt injection defenses in agentic AI"
+        sys.argv[1] if len(sys.argv) > 1 else "prompt injection defenses in agentic AI"
     )
 
     logger.info("Starting DSPy Research Agent")

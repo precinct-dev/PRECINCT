@@ -95,6 +95,30 @@ This is equivalent to calling `client.close()` in a `finally` block. The context
 
 ---
 
+## Runtime Helpers
+
+The SDK also exposes shared runtime helpers used by the demo agents:
+
+- `load_dotenv()` -- loads `.env` values when `python-dotenv` is installed
+- `normalize_model_name()` -- strips provider prefixes from model IDs
+- `resolve_model_api_key_ref()` -- resolves explicit SPIKE Bearer refs or builds from `GROQ_LM_SPIKE_REF`
+- `setup_observability()` -- OpenTelemetry setup helper
+- `configure_dspy_gateway_lms()` -- configures DSPy gateway LM and optional reasoning LM (RLM)
+
+```python
+from mcp_gateway_sdk import configure_dspy_gateway_lms, load_dotenv
+
+load_dotenv()
+lm, rlm = configure_dspy_gateway_lms(
+    llm_model="groq/openai/gpt-oss-20b",
+    gateway_url="http://localhost:9090",
+    model_provider="groq",
+    rlm_model="openai/o1-mini",  # optional
+)
+```
+
+---
+
 ## API Reference
 
 ### GatewayClient

@@ -15,6 +15,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+env = [
+    "python-dotenv>=1.0.1",
+]
 otel = [
     "opentelemetry-api>=1.39.0",
 ]
@@ -25,3 +28,8 @@ dev = [
 
 [tool.setuptools.packages.find]
 include = ["mcp_gateway_sdk*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]
