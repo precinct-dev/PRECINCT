@@ -28,6 +28,7 @@ to the upstream MCP server.
 11. [Available Tools](#available-tools)
 12. [curl Examples](#curl-examples)
 13. [Canonical v2.4 Contract Artifacts](#canonical-v24-contract-artifacts)
+14. [Immutable Audit Evidence Path (K8s)](#immutable-audit-evidence-path-k8s)
 
 ---
 
@@ -271,6 +272,26 @@ Compatibility notes:
   `middleware`, `middleware_step`, `decision_id`, `trace_id`) while control-plane
   policy decisions continue to use the canonical `reason_code` decision envelope.
 - Control-plane endpoints return `reason_code`; middleware chain denials return `code`.
+
+## Immutable Audit Evidence Path (K8s)
+
+The immutable audit sink path for Kubernetes deployments is defined in:
+
+- `../infra/eks/observability/audit/audit-s3-config.yaml`
+- `../docs/compliance/immutable-audit-evidence-path.md`
+
+Validation + proof generation:
+
+- `kustomize build ../infra/eks/observability`
+- `bash ../tests/e2e/validate_immutable_audit_sink.sh`
+
+Machine-readable proof artifact:
+
+- `../tests/e2e/artifacts/immutable-audit-sink-proof.json`
+
+Compose boundary reference:
+
+- `../docs/compliance/immutable-audit-evidence-path.md` (Compose fallback limits + compensating checks)
 
 ### Runtime Wiring Matrix (v2.4)
 

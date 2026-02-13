@@ -1438,6 +1438,29 @@ class TestCopyEvidence:
             copied = copy_evidence(PROJECT_ROOT, "/nonexistent", output_dir)
             assert "evidence/e2e-test-results.txt" in copied
 
+    def test_immutable_sink_proof_copied_when_present(self):
+        """Immutable sink proof artifact is copied into evidence package when present."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            project_root = Path(tmpdir) / "project"
+            proof_src = (
+                project_root
+                / "tests"
+                / "e2e"
+                / "artifacts"
+                / "immutable-audit-sink-proof.json"
+            )
+            proof_src.parent.mkdir(parents=True, exist_ok=True)
+            proof_src.write_text(
+                '{"schema_version":"audit.immutable_sink.v1","status":"pass"}\n'
+            )
+
+            output_dir = Path(tmpdir) / "output"
+            copied = copy_evidence(project_root, "/nonexistent", output_dir)
+
+            assert "evidence/immutable-audit-sink-proof.json" in copied
+            proof_dst = output_dir / "evidence" / "immutable-audit-sink-proof.json"
+            assert proof_dst.exists()
+
 
 # ---------------------------------------------------------------------------
 # Integration Tests: Full Pipeline with All Outputs
