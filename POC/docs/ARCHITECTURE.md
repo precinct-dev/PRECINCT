@@ -525,15 +525,15 @@ controls:
 
 ### ADR-009: Docker Compose vs K8s Pattern Audit
 
-**Decision:** All controls are classified into three categories. This classification is documented in `docs/architecture/deployment-patterns.md`, `docs/architecture/k8s-hardening-portability-matrix.md`, and in the compliance report.
+**Decision:** All controls are classified into three categories. This classification is documented in `docs/architecture/deployment-patterns.md`, `docs/architecture/k8s-hardening-portability-matrix.md`, `docs/architecture/compose-backport-decision-ledger.md`, and in the compliance report. K8s runtime validation evidence is captured in `build/validation/k8s-runtime-validation-report.v2.4.json` (see `docs/architecture/k8s-runtime-validation-campaign.md`).
 
 | Category | Docker Compose | K8s | Examples |
 |----------|---------------|-----|---------|
 | **Universal** | Yes | Yes | 13-middleware chain, DLP, OPA, audit, session, token substitution, deep scan, rate limiting, circuit breaker, tool registry, response firewall |
-| **K8s-native** | N/A (documented) | Yes | NetworkPolicies, PodSecurityAdmission, cosign admission, OPA Gatekeeper admission, SPIRE node attestation, encrypted PVCs |
+| **K8s-only** | N/A (documented) | Yes | NetworkPolicies, PodSecurityAdmission, cosign admission, OPA Gatekeeper admission, SPIRE node attestation, encrypted PVCs |
 | **K8s-equivalent** | Docker equivalent | K8s native | mTLS (SPIRE SVIDs both), session persistence (KeyDB both), rate limiting (KeyDB both) |
 
-**Docker Compose equivalents for K8s-native controls:**
+**Docker Compose equivalents for K8s-only controls:**
 
 | K8s Control | Docker Compose Equivalent | Coverage |
 |-------------|--------------------------|----------|

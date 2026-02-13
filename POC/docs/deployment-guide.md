@@ -4,6 +4,8 @@ This is the consolidated deployment guide for the Agentic AI Security Reference 
 
 For detailed architecture context, see [Deployment Patterns](architecture/deployment-patterns.md).
 For Kubernetes-first hardening decisions, see [Kubernetes-First Hardening Guide](architecture/k8s-hardening-portability-matrix.md).
+For K8s runtime validation checklist and campaign execution, see [K8s Runtime Validation Campaign](architecture/k8s-runtime-validation-campaign.md).
+For portability class decisions per feature, see [Compose Backport Decision Ledger](architecture/compose-backport-decision-ledger.md).
 For non-K8s adaptation constraints, see [Non-K8s Cloud Adaptation Guide](architecture/non-k8s-cloud-adaptation-guide.md).
 For detailed prerequisites, see [Prerequisites](getting-started/prerequisites.md).
 For EKS IaC details, see [EKS IaC Approach](eks-iac.md).
@@ -192,7 +194,10 @@ kubectl get pods -A | grep -E '(gateway|spire|spike|data|tools)'
 # 5. Run E2E demo against K8s
 make demo-k8s
 
-# 6. Teardown
+# 6. Run explicit K8s runtime control-plane allow/deny campaign
+make k8s-runtime-campaign
+
+# 7. Teardown
 make k8s-down
 # Alias: make k8s-local-down
 ```

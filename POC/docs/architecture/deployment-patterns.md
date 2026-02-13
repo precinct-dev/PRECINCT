@@ -290,7 +290,7 @@ purpose is to:
 - Demonstrate that the 13-middleware chain works identically regardless of orchestration
 - Provide a realistic development environment for iterating on controls
 
-The K8s-native controls are defense-in-depth measures that strengthen the security
+The K8s-only controls are defense-in-depth measures that strengthen the security
 posture in production. Their absence in Docker Compose does not diminish the application-
 layer controls, which are the primary security boundary.
 

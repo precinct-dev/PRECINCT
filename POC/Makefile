@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate ci conformance benchmark security-scan \
+.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -447,6 +447,10 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 		grep -q 'capability-registry-v2.yaml' "$$file" || { echo "Missing capability-registry-v2.yaml mount/data in $$o overlay"; exit 1; }; \
 	done; \
 	echo "k8s-validate: PASS"
+
+k8s-runtime-campaign: ## Run K8s runtime allow/deny campaign and emit machine-readable report
+	python3 tests/e2e/k8s_runtime_validation_campaign.py \
+		--output build/validation/k8s-runtime-validation-report.v2.4.json
 
 # ---------------------------------------------------------------------------
 # CI / Quality
