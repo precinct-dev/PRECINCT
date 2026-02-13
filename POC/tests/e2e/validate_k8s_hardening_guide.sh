@@ -49,7 +49,7 @@ else
   fail "Control matrix header missing"
 fi
 
-for klass in portable compose-limited k8s-native; do
+for klass in portable compose-limited k8s-only; do
   if grep -qi "|[[:space:]]*${klass}[[:space:]]*|" "${GUIDE}"; then
     pass "Runtime class present: ${klass}"
   else
@@ -104,6 +104,18 @@ if grep -q "## Verification Checklist" "${GUIDE}"; then
   pass "Verification checklist section exists"
 else
   fail "Verification checklist section missing"
+fi
+
+if grep -q "k8s-runtime-validation-report.v2.4.json" "${GUIDE}"; then
+  pass "Guide links runtime validation evidence artifact"
+else
+  fail "Guide missing runtime validation evidence artifact link"
+fi
+
+if grep -q "compose-backport-decision-ledger.v2.4.json" "${GUIDE}"; then
+  pass "Guide links compose backport decision ledger artifact"
+else
+  fail "Guide missing compose backport decision ledger artifact link"
 fi
 
 if [ "${FAIL_COUNT}" -ne 0 ]; then

@@ -4,6 +4,10 @@ This guide describes how to adapt the reference architecture to non-Kubernetes c
 container runtimes without weakening core security invariants. It does not provide a
 turnkey environment pack for any proprietary platform.
 
+Related references:
+- `docs/architecture/k8s-runtime-validation-campaign.md`
+- `docs/architecture/compose-backport-decision-ledger.md`
+
 ## Scope and Boundary
 
 - Goal: preserve v2.4 control boundaries when Kubernetes-native primitives are absent.

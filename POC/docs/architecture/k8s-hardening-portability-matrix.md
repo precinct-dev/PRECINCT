@@ -9,12 +9,23 @@ Use this document with:
 - `docs/architecture/non-k8s-cloud-adaptation-guide.md` for non-K8s compensating-control design
 - `docs/deployment-guide.md` for runtime operations
 - `docs/ARCHITECTURE.md` ADR-009 for architecture-level invariants
+- `docs/architecture/k8s-runtime-validation-campaign.md` for the executed K8s validation checklist
+- `docs/architecture/compose-backport-decision-ledger.md` for explicit portability/backport decisions
+
+## Machine-Readable Evidence Artifacts
+
+- K8s runtime validation evidence:
+  - Runtime output: `build/validation/k8s-runtime-validation-report.v2.4.json`
+  - Checked-in artifact snapshot:
+    `docs/architecture/artifacts/k8s-runtime-validation-report.v2.4.json`
+- Compose backport decision ledger (machine-readable):
+  `docs/architecture/artifacts/compose-backport-decision-ledger.v2.4.json`
 
 ## Runtime Class Definitions
 
 - `portable`: same control objective and enforcement path in Kubernetes and Compose.
 - `compose-limited`: control objective preserved, but Compose enforcement is weaker and requires compensating checks.
-- `k8s-native`: Kubernetes primitive with no Compose-equivalent enforcement; do not claim parity in Compose.
+- `k8s-only`: Kubernetes primitive with no Compose-equivalent enforcement; do not claim parity in Compose.
 
 ## Control Matrix
 
@@ -33,9 +44,9 @@ Use this document with:
 | Node attestation strength | compose-limited | `k8s_psat` node attestation with OIDC-backed trust | `join_token` attestation for local/dev environments | Treat Compose as non-production; verify SPIRE entry registration and attestation mode |
 | Persistent data encryption at rest | compose-limited | Encrypted PVC/KMS-backed storage for stateful services | Host-level disk encryption only; no runtime-managed PVC encryption | Require host encryption baseline and classify Compose as evaluation-only for regulated workloads |
 | Immutable audit sink delivery | compose-limited | Object-lock capable sink (retention mode + retention days + hash chain) | Local audit files/log streams without storage lock guarantees | Use immutable sink validation artifact and mark Compose as non-authoritative retention path |
-| Sigstore/cosign admission policies | k8s-native | Admission webhook verifies image signatures before pod admission | No Compose admission interception | Must be satisfied in Kubernetes before production promotion |
-| OPA Gatekeeper admission constraints | k8s-native | Cluster admission constraints for image policy and runtime guardrails | No Compose admission layer | Run Gatekeeper constraints in Kubernetes CI and treat Compose as build-time only |
-| IRSA workload IAM scoping | k8s-native | ServiceAccount-to-IAM role binding with least privilege | No Compose equivalent identity federation | Enforce secret scoping in gateway policy and use non-production credentials only |
+| Sigstore/cosign admission policies | k8s-only | Admission webhook verifies image signatures before pod admission | No Compose admission interception | Must be satisfied in Kubernetes before production promotion |
+| OPA Gatekeeper admission constraints | k8s-only | Cluster admission constraints for image policy and runtime guardrails | No Compose admission layer | Run Gatekeeper constraints in Kubernetes CI and treat Compose as build-time only |
+| IRSA workload IAM scoping | k8s-only | ServiceAccount-to-IAM role binding with least privilege | No Compose equivalent identity federation | Enforce secret scoping in gateway policy and use non-production credentials only |
 
 ## Compose-Limited Control Boundaries
 
@@ -55,11 +66,13 @@ audit evidence must come from Kubernetes evidence paths.
 
 Use this checklist before approving an adaptation:
 
-- [ ] Matrix class remains `portable`, `compose-limited`, or `k8s-native` for every listed control.
+- [ ] Matrix class remains `portable`, `compose-limited`, or `k8s-only` for every listed control.
 - [ ] Every `compose-limited` row keeps an explicit fallback behavior and compensating check.
-- [ ] No `k8s-native` control is represented as "fully supported" in Compose.
+- [ ] No `k8s-only` control is represented as "fully supported" in Compose.
 - [ ] `docs/ARCHITECTURE.md` and `docs/deployment-guide.md` link to this guide.
 - [ ] Evidence pipeline includes immutable audit sink proof for Kubernetes-backed retention claims.
+- [ ] K8s runtime campaign report exists with pass/fail results per major control plane.
+- [ ] Backport decision ledger exists for all implemented features.
 
 ### Command Validation (K8s-first with Compose fallback)
 
@@ -69,6 +82,7 @@ Run from repository root:
 make -C POC -n k8s-up
 make -C POC -n up
 make -C POC k8s-validate
+make -C POC k8s-runtime-campaign
 bash POC/tests/validate_deployment_patterns.sh
 bash POC/tests/e2e/validate_setup_time.sh k8s --dry-run
 bash POC/tests/e2e/validate_setup_time.sh compose --dry-run

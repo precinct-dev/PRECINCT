@@ -1,0 +1,108 @@
+{
+  "schema_version": "compose.backport.decision.ledger.v1",
+  "reference_version": "v2.4",
+  "generated_for_story": "RFA-l6h6.4.3",
+  "classification_values": [
+    "portable",
+    "compose-limited",
+    "k8s-only"
+  ],
+  "features": [
+    {
+      "feature_id": "spiffe-mtls-identity",
+      "feature_name": "SPIFFE authentication and mTLS identity",
+      "class": "portable",
+      "decision_basis": "Same SPIFFE/SPIRE identity verification and gateway auth path in Kubernetes and Compose."
+    },
+    {
+      "feature_id": "gateway-opa-authorization",
+      "feature_name": "Gateway OPA authorization",
+      "class": "portable",
+      "decision_basis": "Embedded gateway middleware policy evaluation is runtime-agnostic."
+    },
+    {
+      "feature_id": "dlp-bidirectional-scanning",
+      "feature_name": "DLP request and response scanning",
+      "class": "portable",
+      "decision_basis": "Inbound and outbound scanner paths are shared across runtimes."
+    },
+    {
+      "feature_id": "session-rate-limiting",
+      "feature_name": "Session context and rate limiting",
+      "class": "portable",
+      "decision_basis": "Same KeyDB-backed session and rate-limit logic."
+    },
+    {
+      "feature_id": "stepup-deepscan",
+      "feature_name": "Step-up gating and deep scan",
+      "class": "portable",
+      "decision_basis": "Same policy and middleware gating behavior."
+    },
+    {
+      "feature_id": "tool-registry-integrity",
+      "feature_name": "Tool registry integrity enforcement",
+      "class": "portable",
+      "decision_basis": "Same hash and signature validation controls."
+    },
+    {
+      "feature_id": "audit-chain",
+      "feature_name": "Audit chain emission",
+      "class": "portable",
+      "decision_basis": "Gateway emits the same hash-chained structured audit records."
+    },
+    {
+      "feature_id": "response-firewall",
+      "feature_name": "Response firewall dereference controls",
+      "class": "portable",
+      "decision_basis": "Same response mediation and policy checks."
+    },
+    {
+      "feature_id": "network-segmentation",
+      "feature_name": "Network segmentation",
+      "class": "compose-limited",
+      "decision_basis": "Kubernetes NetworkPolicy has no direct Compose enforcement equivalent."
+    },
+    {
+      "feature_id": "runtime-hardening-admission",
+      "feature_name": "Pod runtime hardening enforcement",
+      "class": "compose-limited",
+      "decision_basis": "Admission-level restrictions are stronger in Kubernetes."
+    },
+    {
+      "feature_id": "node-attestation-strength",
+      "feature_name": "Node attestation strength",
+      "class": "compose-limited",
+      "decision_basis": "Compose/local attestation mode is weaker than Kubernetes PSAT."
+    },
+    {
+      "feature_id": "persistent-encryption-at-rest",
+      "feature_name": "Persistent data encryption at rest",
+      "class": "compose-limited",
+      "decision_basis": "Kubernetes encrypted storage class controls are stronger than host defaults."
+    },
+    {
+      "feature_id": "immutable-audit-sink",
+      "feature_name": "Immutable audit sink delivery",
+      "class": "compose-limited",
+      "decision_basis": "Compose cannot guarantee object-lock retention semantics."
+    },
+    {
+      "feature_id": "cosign-admission-policy",
+      "feature_name": "Sigstore/cosign admission policies",
+      "class": "k8s-only",
+      "decision_basis": "Admission webhook enforcement is Kubernetes-specific."
+    },
+    {
+      "feature_id": "gatekeeper-admission-constraints",
+      "feature_name": "OPA Gatekeeper admission constraints",
+      "class": "k8s-only",
+      "decision_basis": "Admission-time constraint enforcement is Kubernetes-specific."
+    },
+    {
+      "feature_id": "irsa-workload-iam-scoping",
+      "feature_name": "IRSA workload IAM scoping",
+      "class": "k8s-only",
+      "decision_basis": "ServiceAccount-to-IAM federation is Kubernetes-specific."
+    }
+  ]
+}
