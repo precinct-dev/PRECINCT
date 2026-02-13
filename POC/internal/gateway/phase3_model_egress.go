@@ -253,15 +253,14 @@ func (g *Gateway) evaluateModelPlaneDecision(r *http.Request, req PlaneRequestV2
 		rlmMetadata = metadata
 	}
 
-	if g.modelPlanePolicy == nil {
-		g.modelPlanePolicy = newModelPlanePolicyEngine()
-	}
-
 	// Break-glass override: for bounded emergency incidents, allow scoped
 	// high-risk model mode within strict TTL and explicit incident context.
 	if req.Policy.Attributes == nil {
 		req.Policy.Attributes = map[string]any{}
 	}
+	g.applyEnforcementProfileDefaults(req.Policy.Attributes)
+
+	modelPolicy := g.ensureModelPlanePolicy()
 	modelName := getStringAttr(req.Policy.Attributes, "model", "")
 	scope := breakGlassScope{
 		Action:        "model.call",
@@ -278,7 +277,7 @@ func (g *Gateway) evaluateModelPlaneDecision(r *http.Request, req PlaneRequestV2
 		}
 	}
 
-	decision, reason, status, metadata := g.modelPlanePolicy.evaluate(req)
+	decision, reason, status, metadata := modelPolicy.evaluate(req)
 	if breakGlassActive {
 		metadata["break_glass_incident_id"] = breakGlassRecord.IncidentID
 		metadata["break_glass_request_id"] = breakGlassRecord.RequestID
@@ -313,10 +312,7 @@ func (g *Gateway) executeModelEgress(ctx context.Context, attrs map[string]any, 
 		}, nil
 	}
 
-	if g.modelPlanePolicy == nil {
-		g.modelPlanePolicy = newModelPlanePolicyEngine()
-	}
-	fallbackProvider, ok := g.modelPlanePolicy.selectFallback(provider, getStringAttr(attrs, "model", ""), residency, riskMode)
+	fallbackProvider, ok := g.ensureModelPlanePolicy().selectFallback(provider, getStringAttr(attrs, "model", ""), residency, riskMode)
 	if !ok {
 		if primaryErr != nil {
 			return nil, fmt.Errorf("provider=%s unavailable: %w", provider, primaryErr)
@@ -350,6 +346,54 @@ func (g *Gateway) executeModelEgress(ctx context.Context, attrs map[string]any, 
 		upstreamStatus:    fallbackResp.statusCode,
 		fallbackAttempted: true,
 	}, nil
+}
+
+func (g *Gateway) ensureModelPlanePolicy() *modelPlanePolicyEngine {
+	if g == nil {
+		return newModelPlanePolicyEngine()
+	}
+	if g.modelPlanePolicy != nil {
+		return g.modelPlanePolicy
+	}
+	enforceMediation := true
+	enforceHIPAA := true
+	if g.enforcementProfile != nil {
+		enforceMediation = g.enforcementProfile.Controls.EnforceModelMediationGate
+		enforceHIPAA = g.enforcementProfile.Controls.EnforceHIPAAPromptSafety
+	} else if g.config != nil {
+		enforceMediation = g.config.EnforceModelMediationGate
+		enforceHIPAA = g.config.EnforceHIPAAPromptSafetyGate
+	}
+	g.modelPlanePolicy = newModelPlanePolicyEngineWithControls(enforceMediation, enforceHIPAA)
+	return g.modelPlanePolicy
+}
+
+func (g *Gateway) applyEnforcementProfileDefaults(attrs map[string]any) {
+	if attrs == nil {
+		return
+	}
+	profile := g.profileSnapshot()
+	if strings.TrimSpace(profile.Name) == "" {
+		return
+	}
+	attrs["enforcement_profile"] = profile.Name
+
+	if profile.Controls.EnforceModelMediationGate {
+		if strings.TrimSpace(getStringAttr(attrs, "mediation_mode", "")) == "" {
+			attrs["mediation_mode"] = "mediated"
+		}
+		if _, ok := attrs["direct_egress"]; !ok {
+			attrs["direct_egress"] = false
+		}
+	}
+	if profile.Name == enforcementProfileProdRegulatedHIPAA {
+		if strings.TrimSpace(getStringAttr(attrs, "compliance_profile", "")) == "" {
+			attrs["compliance_profile"] = "hipaa"
+		}
+		if strings.TrimSpace(getStringAttr(attrs, "prompt_action", "")) == "" {
+			attrs["prompt_action"] = "deny"
+		}
+	}
 }
 
 func (g *Gateway) resolveProviderTarget(provider string, attrs map[string]any) (*url.URL, error) {

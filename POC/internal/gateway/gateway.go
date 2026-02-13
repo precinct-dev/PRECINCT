@@ -59,6 +59,7 @@ type Gateway struct {
 	toolPolicy           *toolPlanePolicyEngine            // RFA-owgw.6: tool plane protocol adapters and capability registry v2
 	rlmPolicy            *rlmGovernanceEngine              // RFA-owgw.11: recursive language model governance
 	breakGlass           *breakGlassManager                // RFA-l6h6.1.5: bounded break-glass emergency overrides
+	enforcementProfile   *enforcementProfileRuntime        // RFA-l6h6.1.6: startup-constrained runtime enforcement profile
 	dlpRuleOps           *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
 	cca                  *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
 	ingressReplayGuard   *ingressReplayGuard               // RFA-l6h6.2.2: ingress replay/freshness guard
@@ -66,6 +67,14 @@ type Gateway struct {
 
 // New creates a new gateway instance
 func New(cfg *Config) (*Gateway, error) {
+	enforcementProfile, err := resolveEnforcementProfile(cfg)
+	if err != nil {
+		return nil, err
+	}
+	if err := enforcementProfile.export(cfg.ProfileMetadataExportPath); err != nil {
+		return nil, fmt.Errorf("failed to export enforcement profile metadata: %w", err)
+	}
+
 	// Parse upstream URL
 	upstream, err := url.Parse(cfg.UpstreamURL)
 	if err != nil {
@@ -283,6 +292,11 @@ func New(cfg *Config) (*Gateway, error) {
 
 	// RFA-8z8.1: Log which SPIFFE mode is active at startup (AC5)
 	log.Printf("SPIFFE mode: %s", cfg.SPIFFEMode)
+	log.Printf("enforcement profile: %s (mediation_gate=%t hipaa_prompt_safety_gate=%t)",
+		enforcementProfile.Name,
+		enforcementProfile.Controls.EnforceModelMediationGate,
+		enforcementProfile.Controls.EnforceHIPAAPromptSafety,
+	)
 
 	// Start deep scan result processor in background
 	go deepScanner.ResultProcessor(context.Background())
@@ -316,13 +330,14 @@ func New(cfg *Config) (*Gateway, error) {
 		spikeRedeemer:        spikeRedeemer,
 		sessionStore:         sessionStore,
 		registryStop:         registryStop,
-		modelPlanePolicy:     newModelPlanePolicyEngine(),
+		modelPlanePolicy:     newModelPlanePolicyEngineWithControls(enforcementProfile.Controls.EnforceModelMediationGate, enforcementProfile.Controls.EnforceHIPAAPromptSafety),
 		ingressPolicy:        newIngressPlanePolicyEngine(),
 		contextPolicy:        newContextPlanePolicyEngine(),
 		loopPolicy:           newLoopPlanePolicyEngine(),
 		toolPolicy:           newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
 		rlmPolicy:            newRLMGovernanceEngine(),
 		breakGlass:           newBreakGlassManager(auditor),
+		enforcementProfile:   enforcementProfile,
 		dlpRuleOps:           dlpRuleOps,
 		cca:                  newConnectorConformanceAuthority(),
 		ingressReplayGuard:   newIngressReplayGuard(5*time.Minute, 15*time.Second),
@@ -494,6 +509,8 @@ func (g *Gateway) proxyHandler() http.Handler {
 				adminMiddleware = v24MiddlewareApprovalAdmin
 			} else if strings.HasPrefix(r.URL.Path, breakGlassAdminPath) {
 				adminMiddleware = v24MiddlewareBreakGlassAdmin
+			} else if strings.HasPrefix(r.URL.Path, profileAdminPath) {
+				adminMiddleware = v24MiddlewareProfileAdmin
 			}
 			span.SetAttributes(
 				attribute.Int("status_code", proxyRW.statusCode),

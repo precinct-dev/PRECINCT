@@ -13,6 +13,7 @@ const (
 	v24MiddlewareRuleOpsAdmin    = "v24_ruleops_admin"
 	v24MiddlewareApprovalAdmin   = "v24_approval_admin"
 	v24MiddlewareBreakGlassAdmin = "v24_breakglass_admin"
+	v24MiddlewareProfileAdmin    = "v24_profile_admin"
 	v24MiddlewareLoopAdmin       = "v24_loop_admin"
 	v24MiddlewareModelCompat     = "v24_model_compat"
 	v24ReasonPolicyHookRejected  = ReasonContractInvalid

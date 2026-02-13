@@ -173,6 +173,7 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 			strings.HasPrefix(r.URL.Path, "/admin/dlp/rulesets") ||
 			strings.HasPrefix(r.URL.Path, "/admin/approvals") ||
 			strings.HasPrefix(r.URL.Path, "/admin/breakglass") ||
+			strings.HasPrefix(r.URL.Path, "/admin/profiles") ||
 			strings.HasPrefix(r.URL.Path, "/admin/loop/runs") {
 			span.SetAttributes(
 				attribute.String("mcp.result", "allowed"),

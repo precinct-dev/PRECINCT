@@ -50,6 +50,24 @@ except Exception:
 ' "$key"
 }
 
+extract_profile_field() {
+    local body="$1"
+    local key="$2"
+    printf "%s" "$body" | python3 -c 'import json,sys
+key = sys.argv[1]
+try:
+    obj = json.load(sys.stdin)
+    profile = obj.get("profile", {})
+    val = profile.get(key, "")
+    if isinstance(val, (dict, list)):
+        print(json.dumps(val, sort_keys=True))
+    else:
+        print(val)
+except Exception:
+    print("")
+' "$key"
+}
+
 assert_plane_correlation() {
     local label="$1"
     local body="$2"
@@ -144,7 +162,134 @@ mkdir -p "${ARTIFACT_DIR}"
 reset_rate_limit_state "${SPIFFE_ID}"
 log_info "Reset prior rate-limit keys for ${SPIFFE_ID}"
 
-log_subheader "F0: Connector conformance lifecycle (register -> validate -> approve -> activate)"
+log_subheader "F0: Enforcement profile status and mediation/HIPAA gates"
+
+gateway_get "/admin/profiles/status" "${SPIFFE_ID}"
+PROFILE_STATUS_CODE="$RESP_CODE"
+ACTIVE_PROFILE="$(extract_profile_field "$RESP_BODY" "name")"
+PROFILE_MEDIATION_GATE="$(extract_profile_field "$RESP_BODY" "controls" | python3 -c 'import json,sys
+try:
+    controls = json.loads(sys.stdin.read() or "{}")
+    print(str(bool(controls.get("enforce_model_mediation_gate", False))).lower())
+except Exception:
+    print("false")
+')"
+PROFILE_HIPAA_GATE="$(extract_profile_field "$RESP_BODY" "controls" | python3 -c 'import json,sys
+try:
+    controls = json.loads(sys.stdin.read() or "{}")
+    print(str(bool(controls.get("enforce_hipaa_prompt_safety_gate", False))).lower())
+except Exception:
+    print("false")
+')"
+
+if [ "$PROFILE_STATUS_CODE" = "200" ] && [ -n "$ACTIVE_PROFILE" ]; then
+    log_pass "Profile status endpoint returned machine-readable profile metadata (${ACTIVE_PROFILE})"
+else
+    log_fail "Profile status endpoint" "Expected 200 with profile metadata, got code=${PROFILE_STATUS_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/model/call" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-mediation-deny\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"model\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-mediation-deny\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"model\"
+    },
+    \"action\": \"model.call\",
+    \"resource\": \"model/inference\",
+    \"attributes\": {
+      \"provider\": \"openai\",
+      \"model\": \"gpt-4o\",
+      \"direct_egress\": true,
+      \"mediation_mode\": \"direct\"
+    }
+  }
+}" "${SPIFFE_ID}"
+PROFILE_MEDIATION_DENY_CODE="$RESP_CODE"
+PROFILE_MEDIATION_DENY_REASON="$(extract_reason_code "$RESP_BODY")"
+if [ "$PROFILE_MEDIATION_DENY_CODE" = "403" ] && [ "$PROFILE_MEDIATION_DENY_REASON" = "MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED" ]; then
+    log_pass "Profile mediation gate denied direct model egress"
+else
+    log_fail "Profile mediation gate" "Expected 403/MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED, got code=${PROFILE_MEDIATION_DENY_CODE} reason=${PROFILE_MEDIATION_DENY_REASON} body=${RESP_BODY:0:240}"
+fi
+
+if [ "$ACTIVE_PROFILE" = "prod_regulated_hipaa" ]; then
+    gateway_post "/v1/model/call" "{
+      \"envelope\": {
+        \"run_id\": \"${RUN_ID}-hipaa-allow\",
+        \"session_id\": \"${SESSION_ID}\",
+        \"tenant\": \"tenant-a\",
+        \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+        \"plane\": \"model\"
+      },
+      \"policy\": {
+        \"envelope\": {
+          \"run_id\": \"${RUN_ID}-hipaa-allow\",
+          \"session_id\": \"${SESSION_ID}\",
+          \"tenant\": \"tenant-a\",
+          \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+          \"plane\": \"model\"
+        },
+        \"action\": \"model.call\",
+        \"resource\": \"model/inference\",
+        \"attributes\": {
+          \"provider\": \"openai\",
+          \"model\": \"gpt-4o\",
+          \"prompt\": \"Summarize this non-sensitive wellness note.\"
+        }
+      }
+    }" "${SPIFFE_ID}"
+    if [ "$RESP_CODE" = "200" ] && [ "$(extract_reason_code "$RESP_BODY")" = "MODEL_ALLOW" ]; then
+        log_pass "HIPAA profile allows safe mediated prompt"
+    else
+        log_fail "HIPAA safe prompt allow" "Expected 200/MODEL_ALLOW, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+    fi
+
+    gateway_post "/v1/model/call" "{
+      \"envelope\": {
+        \"run_id\": \"${RUN_ID}-hipaa-deny\",
+        \"session_id\": \"${SESSION_ID}\",
+        \"tenant\": \"tenant-a\",
+        \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+        \"plane\": \"model\"
+      },
+      \"policy\": {
+        \"envelope\": {
+          \"run_id\": \"${RUN_ID}-hipaa-deny\",
+          \"session_id\": \"${SESSION_ID}\",
+          \"tenant\": \"tenant-a\",
+          \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+          \"plane\": \"model\"
+        },
+        \"action\": \"model.call\",
+        \"resource\": \"model/inference\",
+        \"attributes\": {
+          \"provider\": \"openai\",
+          \"model\": \"gpt-4o\",
+          \"prompt_has_phi\": true,
+          \"prompt\": \"Patient chart includes SSN 123-45-6789.\"
+        }
+      }
+    }" "${SPIFFE_ID}"
+    if [ "$RESP_CODE" = "403" ] && [ "$(extract_reason_code "$RESP_BODY")" = "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED" ]; then
+        log_pass "HIPAA profile prompt safety gate denied regulated content"
+    else
+        log_fail "HIPAA prompt safety gate" "Expected 403/PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+    fi
+else
+    log_skip "HIPAA profile-specific prompt safety checks" "Active profile is ${ACTIVE_PROFILE}; run with ENFORCEMENT_PROFILE=prod_regulated_hipaa for strict HIPAA profile checks"
+fi
+
+log_subheader "F0.5: Connector conformance lifecycle (register -> validate -> approve -> activate)"
 
 gateway_post "/v1/connectors/register" "{
   \"connector_id\": \"compose-webhook\",
@@ -854,7 +999,13 @@ cat > "${ARTIFACT_PATH}" <<EOF
   "run_id": "${RUN_ID}",
   "session_id": "${SESSION_ID}",
   "generated_at_utc": "${NOW_UTC}",
+  "enforcement_profile": {
+    "name": "${ACTIVE_PROFILE}",
+    "mediation_gate": "${PROFILE_MEDIATION_GATE}",
+    "hipaa_prompt_safety_gate": "${PROFILE_HIPAA_GATE}"
+  },
   "decisions": [
+    {"plane":"model","path":"profile_mediation_deny","status_code":${PROFILE_MEDIATION_DENY_CODE:-0},"reason_code":"${PROFILE_MEDIATION_DENY_REASON}","decision_id":"","trace_id":""},
     {"plane":"ingress","path":"allow","status_code":${INGRESS_ALLOW_CODE:-0},"reason_code":"${INGRESS_ALLOW_REASON}","decision_id":"${INGRESS_ALLOW_DECISION_ID}","trace_id":"${INGRESS_ALLOW_TRACE_ID}"},
     {"plane":"ingress","path":"replay_deny","status_code":${INGRESS_REPLAY_CODE:-0},"reason_code":"${INGRESS_REPLAY_REASON}","decision_id":"${INGRESS_REPLAY_DECISION_ID}","trace_id":"${INGRESS_REPLAY_TRACE_ID}"},
     {"plane":"ingress","path":"stale_deny","status_code":${INGRESS_STALE_CODE:-0},"reason_code":"${INGRESS_STALE_REASON}","decision_id":"${INGRESS_STALE_DECISION_ID}","trace_id":"${INGRESS_STALE_TRACE_ID}"},

@@ -19,13 +19,19 @@ type modelBudgetProfile struct {
 }
 
 type modelPlanePolicyEngine struct {
-	mu            sync.Mutex
-	providers     map[string]modelProviderPolicy
-	budgetProfile map[string]modelBudgetProfile
-	usage         map[string]int
+	mu                       sync.Mutex
+	providers                map[string]modelProviderPolicy
+	budgetProfile            map[string]modelBudgetProfile
+	usage                    map[string]int
+	enforceMediationGate     bool
+	enforceHIPAAPromptSafety bool
 }
 
 func newModelPlanePolicyEngine() *modelPlanePolicyEngine {
+	return newModelPlanePolicyEngineWithControls(true, true)
+}
+
+func newModelPlanePolicyEngineWithControls(enforceMediationGate, enforceHIPAAPromptSafety bool) *modelPlanePolicyEngine {
 	return &modelPlanePolicyEngine{
 		providers: map[string]modelProviderPolicy{
 			"groq": {
@@ -76,7 +82,9 @@ func newModelPlanePolicyEngine() *modelPlanePolicyEngine {
 			"standard": {LimitUnits: 100, NearLimitFrom: 90},
 			"tiny":     {LimitUnits: 2, NearLimitFrom: 2},
 		},
-		usage: make(map[string]int),
+		usage:                    make(map[string]int),
+		enforceMediationGate:     enforceMediationGate,
+		enforceHIPAAPromptSafety: enforceHIPAAPromptSafety,
 	}
 }
 
@@ -86,7 +94,7 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 	if attrs == nil {
 		attrs = map[string]any{}
 	}
-	if isBypassRequested(attrs) {
+	if m.enforceMediationGate && isBypassRequested(attrs) {
 		return DecisionDeny, ReasonModelDirectEgressDeny, 403, map[string]any{"policy_gate": "direct_egress_blocked"}
 	}
 
@@ -97,6 +105,7 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 	stepUpApproved := getBoolAttr(attrs, "step_up_approved", false)
 	budgetProfile := strings.ToLower(getStringAttr(attrs, "budget_profile", "standard"))
 	budgetUnits := getIntAttr(attrs, "budget_units", 1)
+	enforcementProfile := strings.ToLower(getStringAttr(attrs, "enforcement_profile", ""))
 	if budgetUnits < 1 {
 		budgetUnits = 1
 	}
@@ -116,8 +125,11 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 		}
 	}
 
-	promptDecision, promptReason, promptStatus, promptMetadata, promptHandled := evaluatePromptSafety(attrs)
+	promptDecision, promptReason, promptStatus, promptMetadata, promptHandled := evaluatePromptSafety(attrs, m.enforceHIPAAPromptSafety)
 	if promptHandled && promptDecision != DecisionAllow {
+		if enforcementProfile != "" && promptMetadata != nil {
+			promptMetadata["enforcement_profile"] = enforcementProfile
+		}
 		return promptDecision, promptReason, promptStatus, promptMetadata
 	}
 
@@ -127,6 +139,9 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 			"provider":       provider,
 			"budget_profile": budgetProfile,
 			"budget_units":   budgetUnits,
+		}
+		if enforcementProfile != "" {
+			metadata["enforcement_profile"] = enforcementProfile
 		}
 		if promptHandled {
 			metadata["prompt_safety_reason"] = promptReason
@@ -147,6 +162,9 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 				"residency":      residency,
 				"budget_profile": budgetProfile,
 			}
+			if enforcementProfile != "" {
+				metadata["enforcement_profile"] = enforcementProfile
+			}
 			if promptHandled {
 				metadata["prompt_safety_reason"] = promptReason
 				for k, v := range promptMetadata {
@@ -161,6 +179,9 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 			"model":             model,
 			"residency":         residency,
 			"budget_profile":    budgetProfile,
+		}
+		if enforcementProfile != "" {
+			metadata["enforcement_profile"] = enforcementProfile
 		}
 		if promptHandled {
 			metadata["prompt_safety_reason"] = promptReason
@@ -184,6 +205,9 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 		"risk_mode":        riskMode,
 		"step_up_approved": stepUpApproved,
 		"budget_profile":   budgetProfile,
+	}
+	if enforcementProfile != "" {
+		metadata["enforcement_profile"] = enforcementProfile
 	}
 	if promptHandled {
 		metadata["prompt_safety_reason"] = promptReason
