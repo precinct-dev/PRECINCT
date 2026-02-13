@@ -531,7 +531,10 @@ gateway_post "/v1/context/admit" "{
         \"source\": \"ingress\",
         \"connector\": \"webhook\",
         \"checksum\": \"sha256:phase3\",
-        \"received_at\": \"${NOW_UTC}\"
+        \"received_at\": \"${NOW_UTC}\",
+        \"verified\": true,
+        \"verifier\": \"sigstore\",
+        \"verification_method\": \"sha256+sigstore\"
       }
     }
   }
@@ -724,6 +727,155 @@ if [ "$RESP_CODE" = "403" ] && [ "$CONTEXT_DENY_REASON" = "CONTEXT_NO_SCAN_NO_SE
     log_pass "Context unsafe path denied with explicit reason code"
 else
     log_fail "Context denied path reason code" "Expected 403/CONTEXT_NO_SCAN_NO_SEND, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/context/admit" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-deny-context-no-provenance\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"context\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-deny-context-no-provenance\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"context\"
+    },
+    \"action\": \"context.admit\",
+    \"resource\": \"context/segment\",
+    \"attributes\": {
+      \"scan_passed\": true,
+      \"prompt_check_passed\": true,
+      \"memory_operation\": \"write\"
+    }
+  }
+}" "${SPIFFE_ID}"
+if [ "$RESP_CODE" = "403" ] && [ "$(extract_reason_code "$RESP_BODY")" = "CONTEXT_MEMORY_WRITE_DENIED" ]; then
+    log_pass "Context no-provenance-no-persist denied with explicit reason code"
+else
+    log_fail "Context no-provenance-no-persist" "Expected 403/CONTEXT_MEMORY_WRITE_DENIED, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/context/admit" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-deny-context-no-verification\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"context\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-deny-context-no-verification\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"context\"
+    },
+    \"action\": \"context.admit\",
+    \"resource\": \"context/segment\",
+    \"attributes\": {
+      \"scan_passed\": true,
+      \"prompt_check_passed\": true,
+      \"model_egress\": true,
+      \"dlp_classification\": \"clean\",
+      \"provenance\": {
+        \"source\": \"ingress\",
+        \"checksum\": \"sha256:context\",
+        \"verified\": false
+      }
+    }
+  }
+}" "${SPIFFE_ID}"
+if [ "$RESP_CODE" = "403" ] && [ "$(extract_reason_code "$RESP_BODY")" = "CONTEXT_SCHEMA_INVALID" ]; then
+    log_pass "Context no-verification-no-load denied with explicit reason code"
+else
+    log_fail "Context no-verification-no-load" "Expected 403/CONTEXT_SCHEMA_INVALID, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/context/admit" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-deny-context-min-necessary\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"context\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-deny-context-min-necessary\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"context\"
+    },
+    \"action\": \"context.admit\",
+    \"resource\": \"context/segment\",
+    \"attributes\": {
+      \"scan_passed\": true,
+      \"prompt_check_passed\": true,
+      \"model_egress\": true,
+      \"dlp_classification\": \"phi\",
+      \"content\": \"Patient chart with SSN 123-45-6789\",
+      \"provenance\": {
+        \"source\": \"ingress\",
+        \"checksum\": \"sha256:context\",
+        \"verified\": true,
+        \"verifier\": \"sigstore\",
+        \"verification_method\": \"sha256+sigstore\"
+      }
+    }
+  }
+}" "${SPIFFE_ID}"
+if [ "$RESP_CODE" = "403" ] && [ "$(extract_reason_code "$RESP_BODY")" = "CONTEXT_DLP_CLASSIFICATION_DENIED" ]; then
+    log_pass "Context minimum-necessary deny path enforced for sensitive model-bound context"
+else
+    log_fail "Context minimum-necessary deny path" "Expected 403/CONTEXT_DLP_CLASSIFICATION_DENIED, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+fi
+
+gateway_post "/v1/context/admit" "{
+  \"envelope\": {
+    \"run_id\": \"${RUN_ID}-allow-context-tokenize\",
+    \"session_id\": \"${SESSION_ID}\",
+    \"tenant\": \"tenant-a\",
+    \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+    \"plane\": \"context\"
+  },
+  \"policy\": {
+    \"envelope\": {
+      \"run_id\": \"${RUN_ID}-allow-context-tokenize\",
+      \"session_id\": \"${SESSION_ID}\",
+      \"tenant\": \"tenant-a\",
+      \"actor_spiffe_id\": \"${SPIFFE_ID}\",
+      \"plane\": \"context\"
+    },
+    \"action\": \"context.admit\",
+    \"resource\": \"context/segment\",
+    \"attributes\": {
+      \"scan_passed\": true,
+      \"prompt_check_passed\": true,
+      \"model_egress\": true,
+      \"dlp_classification\": \"phi\",
+      \"minimum_necessary_outcome\": \"tokenize\",
+      \"content\": \"Tokenized patient summary\",
+      \"provenance\": {
+        \"source\": \"ingress\",
+        \"checksum\": \"sha256:context\",
+        \"verified\": true,
+        \"verifier\": \"sigstore\",
+        \"verification_method\": \"sha256+sigstore\"
+      }
+    }
+  }
+}" "${SPIFFE_ID}"
+if [ "$RESP_CODE" = "200" ] && [ "$(extract_reason_code "$RESP_BODY")" = "CONTEXT_ALLOW" ]; then
+    log_pass "Context minimum-necessary tokenize path allowed with canonical reason code"
+else
+    log_fail "Context minimum-necessary tokenize path" "Expected 200/CONTEXT_ALLOW, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
 
 gateway_post "/v1/model/call" "{
@@ -971,7 +1123,7 @@ else
     log_fail "Audit correlation" "No audit lines found for run id ${RUN_ID}"
 fi
 
-for reason in INGRESS_ALLOW INGRESS_REPLAY_DETECTED INGRESS_FRESHNESS_STALE INGRESS_SOURCE_UNAUTHENTICATED CONTEXT_ALLOW CONTEXT_NO_SCAN_NO_SEND MODEL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED TOOL_ALLOW TOOL_CAPABILITY_DENIED LOOP_ALLOW LOOP_HALT_MAX_STEPS; do
+for reason in INGRESS_ALLOW INGRESS_REPLAY_DETECTED INGRESS_FRESHNESS_STALE INGRESS_SOURCE_UNAUTHENTICATED CONTEXT_ALLOW CONTEXT_NO_SCAN_NO_SEND CONTEXT_MEMORY_WRITE_DENIED CONTEXT_SCHEMA_INVALID CONTEXT_DLP_CLASSIFICATION_DENIED MODEL_ALLOW PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED TOOL_ALLOW TOOL_CAPABILITY_DENIED LOOP_ALLOW LOOP_HALT_MAX_STEPS; do
     if echo "$AUDIT_LINES" | grep -q "$reason"; then
         log_pass "Audit includes reason code ${reason}"
     else

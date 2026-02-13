@@ -510,24 +510,19 @@ func (g *Gateway) handleContextAdmit(w http.ResponseWriter, r *http.Request) {
 	if attrs == nil {
 		attrs = map[string]any{}
 	}
-
-	// Minimal "no scan, no send" posture: context must have passed basic checks.
-	if !getBoolAttr(attrs, "scan_passed", false) || !getBoolAttr(attrs, "prompt_check_passed", false) || getBoolAttr(attrs, "prompt_injection_detected", false) {
+	decision, reason, status, metadata := evaluateContextInvariants(attrs)
+	if decision != DecisionAllow {
 		resp := PlaneDecisionV2{
-			Decision:   DecisionDeny,
-			ReasonCode: ReasonContextNoScanNoSend,
+			Decision:   decision,
+			ReasonCode: reason,
 			Envelope:   req.Envelope,
 			TraceID:    traceID,
 			DecisionID: decisionID,
-			Metadata: map[string]any{
-				"scan_passed":               getBoolAttr(attrs, "scan_passed", false),
-				"prompt_check_passed":       getBoolAttr(attrs, "prompt_check_passed", false),
-				"prompt_injection_detected": getBoolAttr(attrs, "prompt_injection_detected", false),
-			},
+			Metadata:   metadata,
 		}
-		g.logPlaneDecision(r, resp, http.StatusForbidden)
+		g.logPlaneDecision(r, resp, status)
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
+		w.WriteHeader(status)
 		_ = json.NewEncoder(w).Encode(resp)
 		return
 	}
@@ -538,16 +533,161 @@ func (g *Gateway) handleContextAdmit(w http.ResponseWriter, r *http.Request) {
 		Envelope:   req.Envelope,
 		TraceID:    traceID,
 		DecisionID: decisionID,
-		Metadata: map[string]any{
+		Metadata: mergeMetadata(map[string]any{
 			"action":   req.Policy.Action,
 			"resource": req.Policy.Resource,
-		},
+		}, metadata),
 	}
 
 	g.logPlaneDecision(r, resp, http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int, map[string]any) {
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+
+	scanPassed := getBoolAttr(attrs, "scan_passed", false)
+	promptCheckPassed := getBoolAttr(attrs, "prompt_check_passed", false)
+	promptInjectionDetected := getBoolAttr(attrs, "prompt_injection_detected", false)
+	if !scanPassed || !promptCheckPassed || promptInjectionDetected {
+		return DecisionDeny, ReasonContextNoScanNoSend, http.StatusForbidden, map[string]any{
+			"invariant":                 "no_scan_no_send",
+			"scan_passed":               scanPassed,
+			"prompt_check_passed":       promptCheckPassed,
+			"prompt_injection_detected": promptInjectionDetected,
+		}
+	}
+
+	memoryOperation := strings.ToLower(getStringAttr(attrs, "memory_operation", "none"))
+	modelEgress := getBoolAttr(attrs, "model_egress", false)
+	provenance, _ := attrs["provenance"].(map[string]any)
+	hasSource := strings.TrimSpace(getStringAttr(provenance, "source", "")) != ""
+	hasChecksum := strings.TrimSpace(getStringAttr(provenance, "checksum", "")) != ""
+	provenancePresent := hasSource && hasChecksum
+	persistRequested := memoryOperation == "write" || memoryOperation == "persist" || memoryOperation == "upsert"
+	if persistRequested && !provenancePresent {
+		return DecisionDeny, ReasonContextMemoryWriteDenied, http.StatusForbidden, map[string]any{
+			"invariant":        "no_provenance_no_persist",
+			"memory_operation": memoryOperation,
+			"provenance": map[string]any{
+				"source_present":   hasSource,
+				"checksum_present": hasChecksum,
+			},
+		}
+	}
+
+	verificationRequired := modelEgress || persistRequested || memoryOperation == "read"
+	if verificationRequired {
+		verified := getBoolAttr(provenance, "verified", false)
+		verifier := strings.TrimSpace(getStringAttr(provenance, "verifier", ""))
+		verificationMethod := strings.TrimSpace(getStringAttr(provenance, "verification_method", ""))
+		if !provenancePresent || !verified || verifier == "" || verificationMethod == "" {
+			return DecisionDeny, ReasonContextSchemaInvalid, http.StatusForbidden, map[string]any{
+				"invariant":              "no_verification_no_load",
+				"verification_required":  true,
+				"model_egress":           modelEgress,
+				"memory_operation":       memoryOperation,
+				"provenance_present":     provenancePresent,
+				"verification_verified":  verified,
+				"verifier_present":       verifier != "",
+				"verification_method_ok": verificationMethod != "",
+			}
+		}
+	}
+
+	if modelEgress {
+		classification := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "dlp_classification", "")))
+		if classification == "" {
+			return DecisionDeny, ReasonContextDLPRequired, http.StatusForbidden, map[string]any{
+				"invariant":    "minimum_necessary",
+				"model_egress": true,
+				"error":        "dlp_classification is required for model-bound context",
+			}
+		}
+
+		outcome := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "minimum_necessary_outcome", "")))
+		tokenized := getBoolAttr(attrs, "tokenized", false) || outcome == "tokenize" || outcome == "tokenized"
+		redacted := getBoolAttr(attrs, "redacted", false) || outcome == "redact" || outcome == "redacted"
+		minimumNecessaryApplied := getBoolAttr(attrs, "minimum_necessary_applied", false) || tokenized || redacted
+
+		if isSensitiveClassification(classification) {
+			if !tokenized && !redacted {
+				return DecisionDeny, ReasonContextDLPDenied, http.StatusForbidden, map[string]any{
+					"invariant":                  "minimum_necessary",
+					"dlp_classification":         classification,
+					"minimum_necessary_applied":  minimumNecessaryApplied,
+					"minimum_necessary_outcome":  "deny",
+					"required_minimum_necessary": "tokenize_or_redact",
+				}
+			}
+			return DecisionAllow, ReasonContextAllow, http.StatusOK, map[string]any{
+				"invariant":                 "minimum_necessary",
+				"dlp_classification":        classification,
+				"minimum_necessary_applied": true,
+				"minimum_necessary_outcome": minimumNecessaryOutcome(tokenized, redacted),
+			}
+		}
+
+		content := getStringAttr(attrs, "content", "")
+		if !minimumNecessaryApplied && len(content) > 2048 {
+			return DecisionDeny, ReasonContextDLPDenied, http.StatusForbidden, map[string]any{
+				"invariant":                  "minimum_necessary",
+				"dlp_classification":         classification,
+				"minimum_necessary_applied":  minimumNecessaryApplied,
+				"minimum_necessary_outcome":  "deny",
+				"required_minimum_necessary": "apply_minimization_for_large_context",
+				"content_length":             len(content),
+			}
+		}
+
+		if minimumNecessaryApplied {
+			return DecisionAllow, ReasonContextAllow, http.StatusOK, map[string]any{
+				"invariant":                 "minimum_necessary",
+				"dlp_classification":        classification,
+				"minimum_necessary_applied": true,
+				"minimum_necessary_outcome": defaultString(outcome, "minimized"),
+			}
+		}
+	}
+
+	return DecisionAllow, ReasonContextAllow, http.StatusOK, nil
+}
+
+func minimumNecessaryOutcome(tokenized, redacted bool) string {
+	if tokenized {
+		return "tokenize"
+	}
+	if redacted {
+		return "redact"
+	}
+	return "minimized"
+}
+
+func isSensitiveClassification(classification string) bool {
+	switch strings.ToLower(strings.TrimSpace(classification)) {
+	case "sensitive", "pii", "phi", "regulated":
+		return true
+	default:
+		return false
+	}
+}
+
+func mergeMetadata(base, extra map[string]any) map[string]any {
+	if base == nil && extra == nil {
+		return nil
+	}
+	out := make(map[string]any, len(base)+len(extra))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
 }
 
 func (g *Gateway) handleModelCall(w http.ResponseWriter, r *http.Request) {
