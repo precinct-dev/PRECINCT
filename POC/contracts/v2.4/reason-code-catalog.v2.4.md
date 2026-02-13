@@ -37,6 +37,11 @@ Prompt-safety operational alignment for v2.4:
 - `PROMPT_SAFETY_TOKENIZATION_APPLIED` is emitted when `prompt_action=tokenize` requests minimum-necessary tokenization.
 - `PROMPT_SAFETY_REDACTION_APPLIED` is emitted when `prompt_action=redact` requests minimum-necessary redaction.
 
+Context-ingestion operational alignment for neuro-symbolic CSV in v2.4:
+
+- `CONTEXT_FACTS_CSV_VALIDATION_FAILED` is emitted when schema/size/malicious-content checks fail for CSV facts ingestion.
+- `CONTEXT_FACTS_PROVENANCE_INVALID` is emitted when fact-hash/provenance invariants fail before model-bound admission.
+
 ## Deprecation Policy
 
 - Deprecation requires a replacement code and a one-minor-version overlap period.
