@@ -1,0 +1,23 @@
+{
+  "schema_version": "neurosymbolic.csv_ingestion.v1",
+  "run_id": "neurosymbolic-csv-1770988050",
+  "session_id": "neurosymbolic-csv-session-neurosymbolic-csv-1770988050",
+  "results": {
+    "allow": {
+      "status_code": "200",
+      "reason_code": "CONTEXT_ALLOW",
+      "decision_id": "5abdfe2b-f251-4922-9ec4-f228589eb8d8"
+    },
+    "deny_validation": {
+      "status_code": "403",
+      "reason_code": "CONTEXT_FACTS_CSV_VALIDATION_FAILED",
+      "decision_id": "a2f539ce-fe61-4062-b06c-5579c8c6a075"
+    },
+    "deny_provenance": {
+      "status_code": "403",
+      "reason_code": "CONTEXT_FACTS_PROVENANCE_INVALID",
+      "decision_id": "f0403498-a8ec-421c-9cae-23034176301f"
+    }
+  },
+  "audit_log_hits": 3
+}

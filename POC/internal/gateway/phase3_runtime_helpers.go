@@ -563,17 +563,21 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 	if attrs == nil {
 		attrs = map[string]any{}
 	}
+	csvMetadata, decision, reason, status := evaluateNeuroSymbolicCSVInvariants(attrs)
+	if decision != "" {
+		return decision, reason, status, csvMetadata
+	}
 
 	scanPassed := getBoolAttr(attrs, "scan_passed", false)
 	promptCheckPassed := getBoolAttr(attrs, "prompt_check_passed", false)
 	promptInjectionDetected := getBoolAttr(attrs, "prompt_injection_detected", false)
 	if !scanPassed || !promptCheckPassed || promptInjectionDetected {
-		return DecisionDeny, ReasonContextNoScanNoSend, http.StatusForbidden, map[string]any{
+		return DecisionDeny, ReasonContextNoScanNoSend, http.StatusForbidden, mergeMetadata(csvMetadata, map[string]any{
 			"invariant":                 "no_scan_no_send",
 			"scan_passed":               scanPassed,
 			"prompt_check_passed":       promptCheckPassed,
 			"prompt_injection_detected": promptInjectionDetected,
-		}
+		})
 	}
 
 	memoryOperation := strings.ToLower(getStringAttr(attrs, "memory_operation", "none"))
@@ -584,14 +588,14 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 	provenancePresent := hasSource && hasChecksum
 	persistRequested := memoryOperation == "write" || memoryOperation == "persist" || memoryOperation == "upsert"
 	if persistRequested && !provenancePresent {
-		return DecisionDeny, ReasonContextMemoryWriteDenied, http.StatusForbidden, map[string]any{
+		return DecisionDeny, ReasonContextMemoryWriteDenied, http.StatusForbidden, mergeMetadata(csvMetadata, map[string]any{
 			"invariant":        "no_provenance_no_persist",
 			"memory_operation": memoryOperation,
 			"provenance": map[string]any{
 				"source_present":   hasSource,
 				"checksum_present": hasChecksum,
 			},
-		}
+		})
 	}
 
 	verificationRequired := modelEgress || persistRequested || memoryOperation == "read"
@@ -600,7 +604,7 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 		verifier := strings.TrimSpace(getStringAttr(provenance, "verifier", ""))
 		verificationMethod := strings.TrimSpace(getStringAttr(provenance, "verification_method", ""))
 		if !provenancePresent || !verified || verifier == "" || verificationMethod == "" {
-			return DecisionDeny, ReasonContextSchemaInvalid, http.StatusForbidden, map[string]any{
+			return DecisionDeny, ReasonContextSchemaInvalid, http.StatusForbidden, mergeMetadata(csvMetadata, map[string]any{
 				"invariant":              "no_verification_no_load",
 				"verification_required":  true,
 				"model_egress":           modelEgress,
@@ -609,18 +613,18 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 				"verification_verified":  verified,
 				"verifier_present":       verifier != "",
 				"verification_method_ok": verificationMethod != "",
-			}
+			})
 		}
 	}
 
 	if modelEgress {
 		classification := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "dlp_classification", "")))
 		if classification == "" {
-			return DecisionDeny, ReasonContextDLPRequired, http.StatusForbidden, map[string]any{
+			return DecisionDeny, ReasonContextDLPRequired, http.StatusForbidden, mergeMetadata(csvMetadata, map[string]any{
 				"invariant":    "minimum_necessary",
 				"model_egress": true,
 				"error":        "dlp_classification is required for model-bound context",
-			}
+			})
 		}
 
 		outcome := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "minimum_necessary_outcome", "")))
@@ -630,45 +634,45 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 
 		if isSensitiveClassification(classification) {
 			if !tokenized && !redacted {
-				return DecisionDeny, ReasonContextDLPDenied, http.StatusForbidden, map[string]any{
+				return DecisionDeny, ReasonContextDLPDenied, http.StatusForbidden, mergeMetadata(csvMetadata, map[string]any{
 					"invariant":                  "minimum_necessary",
 					"dlp_classification":         classification,
 					"minimum_necessary_applied":  minimumNecessaryApplied,
 					"minimum_necessary_outcome":  "deny",
 					"required_minimum_necessary": "tokenize_or_redact",
-				}
+				})
 			}
-			return DecisionAllow, ReasonContextAllow, http.StatusOK, map[string]any{
+			return DecisionAllow, ReasonContextAllow, http.StatusOK, mergeMetadata(csvMetadata, map[string]any{
 				"invariant":                 "minimum_necessary",
 				"dlp_classification":        classification,
 				"minimum_necessary_applied": true,
 				"minimum_necessary_outcome": minimumNecessaryOutcome(tokenized, redacted),
-			}
+			})
 		}
 
 		content := getStringAttr(attrs, "content", "")
 		if !minimumNecessaryApplied && len(content) > 2048 {
-			return DecisionDeny, ReasonContextDLPDenied, http.StatusForbidden, map[string]any{
+			return DecisionDeny, ReasonContextDLPDenied, http.StatusForbidden, mergeMetadata(csvMetadata, map[string]any{
 				"invariant":                  "minimum_necessary",
 				"dlp_classification":         classification,
 				"minimum_necessary_applied":  minimumNecessaryApplied,
 				"minimum_necessary_outcome":  "deny",
 				"required_minimum_necessary": "apply_minimization_for_large_context",
 				"content_length":             len(content),
-			}
+			})
 		}
 
 		if minimumNecessaryApplied {
-			return DecisionAllow, ReasonContextAllow, http.StatusOK, map[string]any{
+			return DecisionAllow, ReasonContextAllow, http.StatusOK, mergeMetadata(csvMetadata, map[string]any{
 				"invariant":                 "minimum_necessary",
 				"dlp_classification":        classification,
 				"minimum_necessary_applied": true,
 				"minimum_necessary_outcome": defaultString(outcome, "minimized"),
-			}
+			})
 		}
 	}
 
-	return DecisionAllow, ReasonContextAllow, http.StatusOK, nil
+	return DecisionAllow, ReasonContextAllow, http.StatusOK, csvMetadata
 }
 
 func minimumNecessaryOutcome(tokenized, redacted bool) string {
@@ -688,6 +692,82 @@ func isSensitiveClassification(classification string) bool {
 	default:
 		return false
 	}
+}
+
+func evaluateNeuroSymbolicCSVInvariants(attrs map[string]any) (map[string]any, Decision, ReasonCode, int) {
+	ingestionType := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "ingestion_type", "")))
+	contextKind := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "context_kind", "")))
+	if ingestionType != "neuro_symbolic_csv" && contextKind != "neuro_symbolic_csv" {
+		return nil, "", "", 0
+	}
+
+	sizeBytes := getIntAttr(attrs, "csv_size_bytes", 0)
+	sizeLimit := getIntAttr(attrs, "csv_size_limit_bytes", 0)
+	if sizeLimit <= 0 {
+		sizeLimit = 256 * 1024
+	}
+	rowCount := getIntAttr(attrs, "csv_row_count", 0)
+	schemaValid := getBoolAttr(attrs, "csv_schema_valid", false)
+	maliciousContentDetected := getBoolAttr(attrs, "csv_malicious_content_detected", false)
+	malformedRowCount := getIntAttr(attrs, "csv_malformed_row_count", 0)
+
+	metadata := map[string]any{
+		"ingestion_profile":                "neuro_symbolic_csv",
+		"context_reference_mode":           getStringAttr(attrs, "context_reference_mode", "handle"),
+		"context_handle":                   getStringAttr(attrs, "context_handle", ""),
+		"csv_size_bytes":                   sizeBytes,
+		"csv_size_limit_bytes":             sizeLimit,
+		"csv_row_count":                    rowCount,
+		"csv_schema_valid":                 schemaValid,
+		"csv_malformed_row_count":          malformedRowCount,
+		"csv_malicious_content_detected":   maliciousContentDetected,
+		"csv_formula_payload_detected":     getBoolAttr(attrs, "csv_formula_payload_detected", false),
+		"neuro_symbolic_policy_checkpoint": getStringAttr(attrs, "neuro_symbolic_policy_checkpoint", "unknown"),
+	}
+
+	sizeValid := sizeBytes > 0 && sizeBytes <= sizeLimit
+	if !schemaValid || !sizeValid || rowCount <= 0 || malformedRowCount > 0 || maliciousContentDetected {
+		return mergeMetadata(metadata, map[string]any{
+			"invariant":    "neuro_symbolic_csv_validation",
+			"size_valid":   sizeValid,
+			"schema_valid": schemaValid,
+			"row_count_ok": rowCount > 0,
+		}), DecisionDeny, ReasonContextFactsCSVValidation, http.StatusForbidden
+	}
+
+	factsHash := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "facts_hash", "")))
+	hashAlgorithm := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "facts_hash_algorithm", "")))
+	hashVerified := getBoolAttr(attrs, "facts_hash_verified", false)
+	if strings.HasPrefix(factsHash, "sha256:") && hashAlgorithm == "" {
+		hashAlgorithm = "sha256"
+	}
+
+	provenance, _ := attrs["provenance"].(map[string]any)
+	provenanceChecksum := strings.ToLower(strings.TrimSpace(getStringAttr(provenance, "checksum", "")))
+	provenanceSource := strings.TrimSpace(getStringAttr(provenance, "source", ""))
+	provenanceVerified := getBoolAttr(provenance, "verified", false)
+
+	hashPrefixValid := strings.HasPrefix(factsHash, "sha256:") && len(strings.TrimPrefix(factsHash, "sha256:")) == 64
+	provenanceValid := provenanceSource != "" && provenanceChecksum != "" && provenanceChecksum == factsHash
+	if !hashPrefixValid || hashAlgorithm != "sha256" || !hashVerified || !provenanceVerified || !provenanceValid {
+		return mergeMetadata(metadata, map[string]any{
+			"invariant":                 "neuro_symbolic_csv_provenance",
+			"facts_hash_present":        factsHash != "",
+			"facts_hash_prefix_valid":   hashPrefixValid,
+			"facts_hash_algorithm":      hashAlgorithm,
+			"facts_hash_verified":       hashVerified,
+			"provenance_verified":       provenanceVerified,
+			"provenance_checksum_match": provenanceChecksum == factsHash && provenanceChecksum != "",
+			"provenance_source_present": provenanceSource != "",
+		}), DecisionDeny, ReasonContextFactsProvenanceInvalid, http.StatusForbidden
+	}
+
+	return mergeMetadata(metadata, map[string]any{
+		"invariant":                "neuro_symbolic_csv_validation",
+		"neuro_symbolic_admission": "validated",
+		"facts_hash_algorithm":     hashAlgorithm,
+		"facts_hash":               factsHash,
+	}), "", "", 0
 }
 
 func mergeMetadata(base, extra map[string]any) map[string]any {
