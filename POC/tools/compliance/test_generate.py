@@ -68,6 +68,9 @@ EVIDENCE_SCHEMA_V2_PATH = SCRIPT_DIR / "evidence_schema_v2.json"
 TECHNICAL_SCOPE_PATH = (
     PROJECT_ROOT / "docs" / "compliance" / "control-taxonomy-technical-scope.md"
 )
+PCI_PROFILE_DOC_PATH = (
+    PROJECT_ROOT / "docs" / "compliance" / "pci-dss-technical-profile.md"
+)
 
 
 @pytest.fixture
@@ -263,6 +266,27 @@ class TestLoadTaxonomy:
         text = TECHNICAL_SCOPE_PATH.read_text()
         assert "## In Scope (Technical Controls)" in text
         assert "## Out of Scope (Org/Process Controls)" in text
+
+    def test_pci_profile_document_exists_and_maps_controls(self):
+        """PCI profile doc exists and maps PCI technical profile control IDs."""
+        assert PCI_PROFILE_DOC_PATH.exists()
+        text = PCI_PROFILE_DOC_PATH.read_text()
+        for control_id in [
+            "PCI-AUTH-001",
+            "PCI-AUTHZ-001",
+            "PCI-DATA-001",
+            "PCI-CRYPT-001",
+            "PCI-AUDIT-001",
+            "PCI-NET-001",
+            "PCI-SC-001",
+        ]:
+            assert control_id in text
+
+    def test_pci_profile_doc_includes_k8s_and_non_k8s_guidance(self):
+        """PCI profile guidance includes K8s-first and non-K8s adaptation notes."""
+        text = PCI_PROFILE_DOC_PATH.read_text()
+        assert "## K8s-First Implementation Notes" in text
+        assert "## Non-K8s Adaptation Guidance" in text
 
 
 # ---------------------------------------------------------------------------
@@ -749,6 +773,22 @@ class TestFrameworkRequirements:
         for req in expected:
             assert req in FRAMEWORK_REQUIREMENTS["gdpr"]
 
+    def test_pci_dss_requirements_present(self):
+        expected = [
+            "1.2.1",
+            "3.3.1",
+            "3.5.1",
+            "3.6.1",
+            "6.3.2",
+            "7.2.1",
+            "7.2.5",
+            "8.3.1",
+            "10.2.1",
+            "10.4.1",
+        ]
+        for req in expected:
+            assert req in FRAMEWORK_REQUIREMENTS["pci_dss"]
+
 
 # ---------------------------------------------------------------------------
 # Integration Tests: Full Pipeline
@@ -777,9 +817,9 @@ class TestIntegrationFullPipeline:
         }
         assert expected.issubset(control_prefixes)
 
-        # Verify all 4 frameworks appear
+        # Verify all 5 frameworks appear
         frameworks = {r["framework"] for r in rows}
-        assert frameworks == {"SOC2", "ISO27001", "CCPA", "GDPR"}
+        assert frameworks == {"SOC2", "ISO27001", "CCPA", "GDPR", "PCIDSS"}
 
         # Verify all CSV columns present
         for row in rows:
@@ -827,6 +867,8 @@ class TestIntegrationFullPipeline:
             assert len(ccpa_rows) > 0
             gdpr_rows = [r for r in read_rows if r["framework"] == "GDPR"]
             assert len(gdpr_rows) > 0
+            pci_rows = [r for r in read_rows if r["framework"] == "PCIDSS"]
+            assert len(pci_rows) > 0
 
     def test_full_pipeline_with_real_audit_log(self):
         """Integration test with the real E2E audit log if available."""
@@ -908,6 +950,52 @@ class TestIntegrationFullPipeline:
         )
         for row in rows:
             assert set(row.keys()) == set(CSV_COLUMNS)
+
+    def test_pci_profile_controls_emit_rows_and_framework(self, sample_audit_entries):
+        """PCI technical profile controls emit rows in the PCIDSS framework."""
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        rows = generate_rows(controls, sample_audit_entries, configs, PROJECT_ROOT)
+
+        pci_rows = [row for row in rows if row["framework"] == "PCIDSS"]
+        assert len(pci_rows) > 0
+        pci_ids = {row["control_id"] for row in pci_rows}
+        assert {
+            "PCI-AUTH-001",
+            "PCI-AUTHZ-001",
+            "PCI-DATA-001",
+            "PCI-CRYPT-001",
+            "PCI-AUDIT-001",
+            "PCI-NET-001",
+            "PCI-SC-001",
+        }.issubset(pci_ids)
+
+    def test_cli_main_emits_pci_profile_bundle(self, sample_audit_entries):
+        """CLI main emits machine-readable PCI profile bundle outputs."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            audit_path = Path(tmpdir) / "audit.jsonl"
+            with open(audit_path, "w") as f:
+                for entry in sample_audit_entries:
+                    f.write(json.dumps(entry) + "\n")
+
+            output_dir = Path(tmpdir) / "output"
+            exit_code = main([
+                "--audit-log", str(audit_path),
+                "--output-dir", str(output_dir),
+                "--project-root", str(PROJECT_ROOT),
+            ])
+
+            assert exit_code == 0
+            pci_json = output_dir / "compliance-evidence.pci-dss.json"
+            pci_csv = output_dir / "compliance-evidence.pci-dss.csv"
+            assert pci_json.exists()
+            assert pci_csv.exists()
+
+            payload = json.loads(pci_json.read_text())
+            assert payload["schema_version"] == "evidence.profile.v1"
+            assert payload["profile"] == "pci-dss-technical"
+            assert payload["record_count"] > 0
+            assert all(r["framework"] == "PCIDSS" for r in payload["records"])
 
 
 # ---------------------------------------------------------------------------
@@ -1520,7 +1608,7 @@ class TestIntegrationAllOutputs:
             # Read XLSX (all framework sheets)
             wb = openpyxl.load_workbook(str(xlsx_path))
             xlsx_rows: list[dict[str, str]] = []
-            for fw_display in ["SOC 2", "ISO 27001", "CCPA", "GDPR"]:
+            for fw_display in ["SOC 2", "ISO 27001", "CCPA", "GDPR", "PCI DSS"]:
                 if fw_display in wb.sheetnames:
                     ws = wb[fw_display]
                     headers = [cell.value for cell in ws[1]]
@@ -1543,8 +1631,8 @@ class TestIntegrationAllOutputs:
             xlsx_statuses = sorted(r["status"] for r in xlsx_rows)
             assert csv_statuses == xlsx_statuses
 
-    def test_xlsx_has_all_4_framework_sheets_plus_summary(self):
-        """Full taxonomy XLSX has Summary + 4 framework sheets."""
+    def test_xlsx_has_all_5_framework_sheets_plus_summary(self):
+        """Full taxonomy XLSX has Summary + 5 framework sheets."""
         controls = load_taxonomy(TAXONOMY_PATH)
         configs = check_config_exists(PROJECT_ROOT)
         rows = generate_rows(controls, [], configs, PROJECT_ROOT)
@@ -1558,7 +1646,8 @@ class TestIntegrationAllOutputs:
             assert "ISO 27001" in wb.sheetnames
             assert "CCPA" in wb.sheetnames
             assert "GDPR" in wb.sheetnames
-            assert len(wb.sheetnames) == 5
+            assert "PCI DSS" in wb.sheetnames
+            assert len(wb.sheetnames) == 6
             wb.close()
 
     def test_pdf_with_real_audit_log(self):
@@ -1601,6 +1690,8 @@ class TestIntegrationAllOutputs:
             assert (output_dir / "compliance-summary.pdf").exists()
             assert (output_dir / "compliance-evidence.v2.json").exists()
             assert (output_dir / "compliance-evidence.v2.csv").exists()
+            assert (output_dir / "compliance-evidence.pci-dss.json").exists()
+            assert (output_dir / "compliance-evidence.pci-dss.csv").exists()
 
     def test_cli_main_produces_evidence_directory(self, sample_audit_entries):
         """CLI main() copies evidence files."""
@@ -1656,7 +1747,7 @@ class TestIntegrationAllOutputs:
 
             wb = openpyxl.load_workbook(str(output_dir / "compliance-report.xlsx"))
             xlsx_row_count = 0
-            for fw_display in ["SOC 2", "ISO 27001", "CCPA", "GDPR"]:
+            for fw_display in ["SOC 2", "ISO 27001", "CCPA", "GDPR", "PCI DSS"]:
                 if fw_display in wb.sheetnames:
                     xlsx_row_count += wb[fw_display].max_row - 1
             wb.close()

@@ -16,6 +16,12 @@ The generator writes both evidence bundle formats to the selected output directo
 - `compliance-evidence.v2.json`
 - `compliance-evidence.v2.csv`
 
+When PCI-DSS framework rows are present, the generator also emits profile-scoped
+technical evidence bundles:
+
+- `compliance-evidence.pci-dss.json`
+- `compliance-evidence.pci-dss.csv`
+
 The existing analyst-focused exports are also preserved:
 
 - `compliance-report.csv`
