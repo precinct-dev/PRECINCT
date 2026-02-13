@@ -525,7 +525,7 @@ controls:
 
 ### ADR-009: Docker Compose vs K8s Pattern Audit
 
-**Decision:** All controls are classified into three categories. This classification is documented in `docs/deployment-patterns.md` and in the compliance report.
+**Decision:** All controls are classified into three categories. This classification is documented in `docs/architecture/deployment-patterns.md`, `docs/architecture/k8s-hardening-portability-matrix.md`, and in the compliance report.
 
 | Category | Docker Compose | K8s | Examples |
 |----------|---------------|-----|---------|
