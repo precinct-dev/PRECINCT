@@ -2,7 +2,8 @@
 """Compliance Report Generator -- Agentic Reference Architecture POC.
 
 Reads the control taxonomy YAML, audit logs, and policy configurations to
-produce CSV, XLSX, and PDF compliance reports mapping gateway controls to
+produce machine-readable evidence bundles (JSON + CSV) plus analyst-friendly
+CSV, XLSX, and PDF compliance reports mapping gateway controls to
 SOC 2, ISO 27001, CCPA, and GDPR frameworks.
 
 Usage:
@@ -111,6 +112,19 @@ CSV_COLUMNS = [
     "implementation_notes",
     "limitations",
     "recommendation",
+]
+
+# Evidence bundle v2 schema/version and CSV column order.
+EVIDENCE_BUNDLE_SCHEMA_VERSION = "evidence.bundle.v2"
+EVIDENCE_BUNDLE_COLUMNS = [
+    "control_id",
+    "framework",
+    "framework_requirement",
+    "status",
+    "source",
+    "timestamp",
+    "artifact_reference",
+    "control_name",
 ]
 
 # Cross-reference: GDPR Article 30 ROPA document location.
@@ -540,6 +554,93 @@ def write_csv(rows: list[dict[str, str]], output_path: Path) -> None:
         writer = csv.DictWriter(f, fieldnames=CSV_COLUMNS)
         writer.writeheader()
         writer.writerows(rows)
+
+
+def _latest_audit_timestamp_for_query(
+    entries: list[dict[str, Any]],
+    query: str | None,
+) -> str | None:
+    """Return the latest timestamp among entries matching query.
+
+    If no entries match or no timestamps exist, return None.
+    """
+    if not query:
+        return None
+    latest: str | None = None
+    for entry in entries:
+        if not _matches_query(entry, query):
+            continue
+        ts = entry.get("timestamp")
+        if not isinstance(ts, str) or not ts:
+            continue
+        if latest is None or ts > latest:
+            latest = ts
+    return latest
+
+
+def build_evidence_bundle(
+    rows: list[dict[str, str]],
+    controls: list[dict[str, Any]],
+    audit_entries: list[dict[str, Any]],
+    generated_at: str,
+) -> dict[str, Any]:
+    """Build evidence bundle v2 records from compliance rows and controls.
+
+    Each record includes the fields auditors expect for machine-readable
+    ingestion: control_id, source, timestamp, status, artifact_reference.
+    """
+    control_by_id = {c.get("id", ""): c for c in controls}
+    records: list[dict[str, str]] = []
+
+    for row in rows:
+        control_id = row.get("control_id", "")
+        control = control_by_id.get(control_id, {})
+        source = str(control.get("evidence_type", "") or "unknown")
+        timestamp = generated_at
+        if source == "audit_log":
+            latest = _latest_audit_timestamp_for_query(
+                audit_entries,
+                control.get("evidence_query"),
+            )
+            if latest:
+                timestamp = latest
+
+        records.append(
+            {
+                "control_id": control_id,
+                "framework": row.get("framework", ""),
+                "framework_requirement": row.get("framework_requirement", ""),
+                "status": row.get("status", ""),
+                "source": source,
+                "timestamp": timestamp,
+                "artifact_reference": row.get("evidence_reference", ""),
+                "control_name": row.get("control_name", ""),
+            }
+        )
+
+    return {
+        "schema_version": EVIDENCE_BUNDLE_SCHEMA_VERSION,
+        "generated_at": generated_at,
+        "record_count": len(records),
+        "records": records,
+    }
+
+
+def write_evidence_bundle_json(bundle: dict[str, Any], output_path: Path) -> None:
+    """Write evidence bundle v2 as pretty JSON."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w") as f:
+        json.dump(bundle, f, indent=2, sort_keys=False)
+        f.write("\n")
+
+
+def write_evidence_bundle_csv(records: list[dict[str, str]], output_path: Path) -> None:
+    """Write evidence bundle records as CSV."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=EVIDENCE_BUNDLE_COLUMNS)
+        writer.writeheader()
+        writer.writerows(records)
 
 
 # ---------------------------------------------------------------------------
@@ -1188,6 +1289,15 @@ def main(argv: list[str] | None = None) -> int:
     # Generate report
     rows = generate_rows(controls, audit_entries, configs, project_root)
     print(f"Generated {len(rows)} compliance report rows")
+    generated_at = datetime.now(timezone.utc).isoformat()
+
+    # Generate machine-readable evidence bundle (v2)
+    evidence_bundle = build_evidence_bundle(
+        rows,
+        controls,
+        audit_entries,
+        generated_at,
+    )
 
     # Determine output path
     if args.output_dir:
@@ -1195,6 +1305,15 @@ def main(argv: list[str] | None = None) -> int:
     else:
         today = date.today().isoformat()
         output_dir = project_root / "reports" / f"compliance-{today}"
+
+    # --- Evidence bundle outputs (JSON + CSV) ---
+    evidence_json_path = output_dir / "compliance-evidence.v2.json"
+    write_evidence_bundle_json(evidence_bundle, evidence_json_path)
+    print(f"Evidence JSON bundle written to {evidence_json_path}")
+
+    evidence_csv_path = output_dir / "compliance-evidence.v2.csv"
+    write_evidence_bundle_csv(evidence_bundle["records"], evidence_csv_path)
+    print(f"Evidence CSV bundle written to {evidence_csv_path}")
 
     # --- CSV output ---
     csv_path = output_dir / "compliance-report.csv"
