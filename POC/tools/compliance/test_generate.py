@@ -15,18 +15,22 @@ import tempfile
 from pathlib import Path
 
 import openpyxl
+import jsonschema
 
 import pytest
 
 # Module under test
 from generate import (
     CSV_COLUMNS,
+    EVIDENCE_BUNDLE_COLUMNS,
+    EVIDENCE_BUNDLE_SCHEMA_VERSION,
     FRAMEWORK_DISPLAY_NAMES,
     FRAMEWORK_REQUIREMENTS,
     GDPR_ART30_ROPA_PATH,
     IMPLEMENTED_MIDDLEWARE,
     STATUS_COLORS,
     CompliancePDF,
+    build_evidence_bundle,
     build_evidence_description,
     build_evidence_reference,
     build_implementation_notes,
@@ -41,6 +45,8 @@ from generate import (
     load_taxonomy,
     main,
     write_csv,
+    write_evidence_bundle_csv,
+    write_evidence_bundle_json,
     write_pdf,
     write_xlsx,
     _apply_xlsx_formatting,
@@ -58,6 +64,7 @@ from generate import (
 SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent.parent
 TAXONOMY_PATH = SCRIPT_DIR / "control_taxonomy.yaml"
+EVIDENCE_SCHEMA_V2_PATH = SCRIPT_DIR / "evidence_schema_v2.json"
 
 
 @pytest.fixture
@@ -476,6 +483,118 @@ class TestWriteCSV:
 
 
 # ---------------------------------------------------------------------------
+# Unit Tests: Evidence Bundle v2
+# ---------------------------------------------------------------------------
+
+
+class TestEvidenceBundleV2:
+    """Tests for evidence bundle v2 generation and file outputs."""
+
+    def test_build_evidence_bundle_contains_required_fields(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        generated_at = "2026-02-13T00:00:00+00:00"
+        bundle = build_evidence_bundle(
+            rows,
+            [sample_control],
+            sample_audit_entries,
+            generated_at,
+        )
+
+        assert bundle["schema_version"] == EVIDENCE_BUNDLE_SCHEMA_VERSION
+        assert bundle["record_count"] == len(bundle["records"])
+        assert len(bundle["records"]) == len(rows)
+
+        first = bundle["records"][0]
+        required = {
+            "control_id",
+            "framework",
+            "framework_requirement",
+            "status",
+            "source",
+            "timestamp",
+            "artifact_reference",
+            "control_name",
+        }
+        assert required.issubset(first.keys())
+        assert first["control_id"] == sample_control["id"]
+        assert first["source"] == "audit_log"
+        assert first["timestamp"] == "2026-02-06T07:33:42Z"
+
+    def test_build_evidence_bundle_validates_against_schema_v2(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        bundle = build_evidence_bundle(
+            rows,
+            [sample_control],
+            sample_audit_entries,
+            "2026-02-13T00:00:00+00:00",
+        )
+
+        with open(EVIDENCE_SCHEMA_V2_PATH, "r") as f:
+            schema = json.load(f)
+        jsonschema.validate(instance=bundle, schema=schema)
+
+    def test_write_evidence_bundle_json_and_csv(
+        self, sample_control, sample_audit_entries, sample_configs
+    ):
+        rows = generate_rows(
+            [sample_control], sample_audit_entries, sample_configs, PROJECT_ROOT
+        )
+        bundle = build_evidence_bundle(
+            rows,
+            [sample_control],
+            sample_audit_entries,
+            "2026-02-13T00:00:00+00:00",
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir)
+            json_path = out_dir / "compliance-evidence.v2.json"
+            csv_path = out_dir / "compliance-evidence.v2.csv"
+
+            write_evidence_bundle_json(bundle, json_path)
+            write_evidence_bundle_csv(bundle["records"], csv_path)
+
+            assert json_path.exists()
+            assert csv_path.exists()
+
+            with open(json_path, "r") as f:
+                loaded = json.load(f)
+            assert loaded["schema_version"] == EVIDENCE_BUNDLE_SCHEMA_VERSION
+            assert loaded["record_count"] == len(loaded["records"])
+
+            with open(csv_path, "r") as f:
+                reader = csv.DictReader(f)
+                csv_rows = list(reader)
+                assert len(csv_rows) == len(bundle["records"])
+                assert reader.fieldnames == EVIDENCE_BUNDLE_COLUMNS
+
+    def test_build_evidence_bundle_includes_audit_and_test_sources(
+        self, sample_audit_entries
+    ):
+        controls = load_taxonomy(TAXONOMY_PATH)
+        configs = check_config_exists(PROJECT_ROOT)
+        rows = generate_rows(controls, sample_audit_entries, configs, PROJECT_ROOT)
+
+        bundle = build_evidence_bundle(
+            rows,
+            controls,
+            sample_audit_entries,
+            "2026-02-13T00:00:00+00:00",
+        )
+        sources = {record["source"] for record in bundle["records"]}
+        assert "audit_log" in sources
+        assert "test_result" in sources
+
+
+# ---------------------------------------------------------------------------
 # Unit Tests: Helper Functions
 # ---------------------------------------------------------------------------
 
@@ -703,7 +822,11 @@ class TestIntegrationFullPipeline:
 
             assert exit_code == 0
             csv_path = output_dir / "compliance-report.csv"
+            evidence_json_path = output_dir / "compliance-evidence.v2.json"
+            evidence_csv_path = output_dir / "compliance-evidence.v2.csv"
             assert csv_path.exists()
+            assert evidence_json_path.exists()
+            assert evidence_csv_path.exists()
 
             with open(csv_path, "r") as f:
                 reader = csv.DictReader(f)
@@ -1390,6 +1513,8 @@ class TestIntegrationAllOutputs:
             assert (output_dir / "compliance-report.csv").exists()
             assert (output_dir / "compliance-report.xlsx").exists()
             assert (output_dir / "compliance-summary.pdf").exists()
+            assert (output_dir / "compliance-evidence.v2.json").exists()
+            assert (output_dir / "compliance-evidence.v2.csv").exists()
 
     def test_cli_main_produces_evidence_directory(self, sample_audit_entries):
         """CLI main() copies evidence files."""
