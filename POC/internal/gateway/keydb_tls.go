@@ -25,21 +25,23 @@ type KeyDBTLSConfig struct {
 
 // NewKeyDBTLSConfigFromSPIRE creates a TLS configuration for the KeyDB client
 // using the gateway's X509Source from SPIRE. This provides mTLS: the gateway
-// presents its SVID as a client cert, and validates KeyDB's cert against the
-// SPIRE trust bundle.
+// presents its SVID as a client cert, validates KeyDB's cert against the
+// SPIRE trust bundle, and optionally enforces explicit SPIFFE identity pinning.
 //
 // The x509Source MUST be the same source used for the gateway's server TLS
 // (created in SPIFFETLSConfig). This ensures a single SVID rotation lifecycle.
-func NewKeyDBTLSConfigFromSPIRE(x509Source *workloadapi.X509Source) (*KeyDBTLSConfig, error) {
+func NewKeyDBTLSConfigFromSPIRE(x509Source *workloadapi.X509Source, keyDBAuthzAllowedSPIFFEIDs []string) (*KeyDBTLSConfig, error) {
 	if x509Source == nil {
 		return nil, fmt.Errorf("x509Source is nil: SPIRE agent connection required for KeyDB TLS")
 	}
 
-	// Use go-spiffe's canonical MTLSClientConfig for the KeyDB connection.
-	// AuthorizeAny() accepts any SPIFFE ID from the trust domain -- KeyDB's
-	// specific identity is validated by the trust bundle, not by SPIFFE ID
-	// matching (same pattern as upstream proxy transport in spiffe_tls.go).
-	mtlsConfig := tlsconfig.MTLSClientConfig(x509Source, x509Source, tlsconfig.AuthorizeAny())
+	peerAuthz, err := buildSPIFFEPeerAuthorizer(keyDBAuthzAllowedSPIFFEIDs, "keydb")
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure keydb SPIFFE identity pinning: %w", err)
+	}
+
+	mtlsConfig := tlsconfig.MTLSClientConfig(x509Source, x509Source, peerAuthz.authorizer)
+	installPinnedPeerIdentityVerifier(mtlsConfig, peerAuthz.allowedIDs, "keydb")
 
 	return &KeyDBTLSConfig{
 		TLSConfig: mtlsConfig,
@@ -49,7 +51,7 @@ func NewKeyDBTLSConfigFromSPIRE(x509Source *workloadapi.X509Source) (*KeyDBTLSCo
 // NewKeyDBTLSConfigFromPEM creates a TLS configuration for the KeyDB client
 // from PEM-encoded certificate files. This is useful when SPIRE Workload API
 // is not available (e.g., during testing or for external KeyDB instances).
-func NewKeyDBTLSConfigFromPEM(certFile, keyFile, caFile string) (*KeyDBTLSConfig, error) {
+func NewKeyDBTLSConfigFromPEM(certFile, keyFile, caFile string, keyDBAuthzAllowedSPIFFEIDs []string) (*KeyDBTLSConfig, error) {
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load KeyDB client cert/key: %w", err)
@@ -65,12 +67,20 @@ func NewKeyDBTLSConfigFromPEM(certFile, keyFile, caFile string) (*KeyDBTLSConfig
 		return nil, fmt.Errorf("failed to parse KeyDB CA cert")
 	}
 
+	peerAuthz, err := buildSPIFFEPeerAuthorizer(keyDBAuthzAllowedSPIFFEIDs, "keydb")
+	if err != nil {
+		return nil, fmt.Errorf("failed to configure keydb SPIFFE identity pinning: %w", err)
+	}
+
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      caPool,
+		MinVersion:   tls.VersionTLS12,
+	}
+	installPinnedPeerIdentityVerifier(tlsConfig, peerAuthz.allowedIDs, "keydb")
+
 	return &KeyDBTLSConfig{
-		TLSConfig: &tls.Config{
-			Certificates: []tls.Certificate{cert},
-			RootCAs:      caPool,
-			MinVersion:   tls.VersionTLS12,
-		},
+		TLSConfig: tlsConfig,
 	}, nil
 }
 

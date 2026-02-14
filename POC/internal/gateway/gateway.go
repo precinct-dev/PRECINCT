@@ -1681,7 +1681,18 @@ func (g *Gateway) Close() error {
 // It is separated from New() because SPIRE connectivity is an infrastructure
 // dependency that should fail loudly at startup, not silently during config.
 func (g *Gateway) EnableSPIFFETLS(ctx context.Context) error {
-	spiffeTLS, err := NewSPIFFETLSConfig(ctx)
+	upstreamAuthzAllowedSPIFFEIDs := g.config.UpstreamAuthzAllowedSPIFFEIDs
+	keyDBAuthzAllowedSPIFFEIDs := g.config.KeyDBAuthzAllowedSPIFFEIDs
+	if g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict" {
+		if len(upstreamAuthzAllowedSPIFFEIDs) == 0 {
+			upstreamAuthzAllowedSPIFFEIDs = defaultUpstreamAuthzAllowedSPIFFEIDs(g.config.SPIFFETrustDomain)
+		}
+		if len(keyDBAuthzAllowedSPIFFEIDs) == 0 {
+			keyDBAuthzAllowedSPIFFEIDs = defaultKeyDBAuthzAllowedSPIFFEIDs(g.config.SPIFFETrustDomain)
+		}
+	}
+
+	spiffeTLS, err := NewSPIFFETLSConfig(ctx, upstreamAuthzAllowedSPIFFEIDs)
 	if err != nil {
 		return fmt.Errorf("failed to initialize SPIFFE TLS: %w", err)
 	}
@@ -1698,13 +1709,13 @@ func (g *Gateway) EnableSPIFFETLS(ctx context.Context) error {
 	// RFA-8z8.2 AC2: Configure the KeyDB client for TLS if KeyDB is in use.
 	// The KeyDB client needs the same X509Source for mTLS to KeyDB.
 	if g.config.KeyDBURL != "" {
-		if err := g.enableKeyDBTLS(spiffeTLS); err != nil {
-			log.Printf("WARNING: Failed to enable KeyDB TLS: %v (KeyDB may not support TLS yet)", err)
-			// Non-fatal: KeyDB TLS is best-effort during transition. The URL was
-			// already converted to rediss:// in New(), but the TLS config was not
-			// applied because the X509Source was not yet available. If this fails,
-			// the connection will fail at first use, which is the correct behavior
-			// (fail loudly, not silently).
+		if err := g.enableKeyDBTLS(spiffeTLS, keyDBAuthzAllowedSPIFFEIDs); err != nil {
+			if g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict" {
+				return fmt.Errorf("failed to enable keydb TLS in strict profile: %w", err)
+			}
+			log.Printf("WARNING: Failed to enable KeyDB TLS: %v (non-strict profile fallback)", err)
+			// Non-strict profiles keep transition compatibility. Strict profiles
+			// fail-fast above so production posture remains fail-closed.
 		}
 	}
 
@@ -1720,8 +1731,8 @@ func (g *Gateway) EnableSPIFFETLS(ctx context.Context) error {
 // RFA-8z8.2: KeyDB does not speak SPIRE Workload API natively. It receives
 // filesystem-based certs via an init script (scripts/keydb-svid-refresh.sh).
 // The gateway connects to it using the same X509Source as other mTLS connections.
-func (g *Gateway) enableKeyDBTLS(spiffeTLS *SPIFFETLSConfig) error {
-	keyDBTLSCfg, err := NewKeyDBTLSConfigFromSPIRE(spiffeTLS.x509Source)
+func (g *Gateway) enableKeyDBTLS(spiffeTLS *SPIFFETLSConfig, keyDBAuthzAllowedSPIFFEIDs []string) error {
+	keyDBTLSCfg, err := NewKeyDBTLSConfigFromSPIRE(spiffeTLS.x509Source, keyDBAuthzAllowedSPIFFEIDs)
 	if err != nil {
 		return fmt.Errorf("failed to create KeyDB TLS config: %w", err)
 	}

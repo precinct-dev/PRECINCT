@@ -81,6 +81,12 @@ type Config struct {
 	// Explicit SPIFFE identity allowlist for /admin/* endpoints. Requests from
 	// principals outside this list are denied with 403.
 	AdminAuthzAllowedSPIFFEIDs []string
+	// Explicit SPIFFE identity allowlist for upstream mTLS peer pinning.
+	// When empty in strict profiles, secure defaults are applied.
+	UpstreamAuthzAllowedSPIFFEIDs []string
+	// Explicit SPIFFE identity allowlist for KeyDB mTLS peer pinning.
+	// When empty in strict profiles, secure defaults are applied.
+	KeyDBAuthzAllowedSPIFFEIDs []string
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -195,6 +201,7 @@ func ConfigFromEnv() *Config {
 			spiffeListenPort = parsed
 		}
 	}
+	spiffeTrustDomain := getEnvOrDefault("SPIFFE_TRUST_DOMAIN", "poc.local")
 
 	// RFA-2jl: Discover allowed base path from environment or working directory.
 	// ALLOWED_BASE_PATH is the single source of truth for OPA path-based access control.
@@ -250,6 +257,18 @@ func ConfigFromEnv() *Config {
 	if len(adminAuthzAllowedSPIFFEIDs) == 0 {
 		adminAuthzAllowedSPIFFEIDs = defaultAdminAuthzAllowedSPIFFEIDs()
 	}
+	enforcementProfile := getEnvOrDefault("ENFORCEMENT_PROFILE", enforcementProfileDev)
+
+	upstreamAuthzAllowedSPIFFEIDs := parseListEnv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS")
+	keyDBAuthzAllowedSPIFFEIDs := parseListEnv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS")
+	if isStrictEnforcementProfileName(enforcementProfile) {
+		if len(upstreamAuthzAllowedSPIFFEIDs) == 0 {
+			upstreamAuthzAllowedSPIFFEIDs = defaultUpstreamAuthzAllowedSPIFFEIDs(spiffeTrustDomain)
+		}
+		if len(keyDBAuthzAllowedSPIFFEIDs) == 0 {
+			keyDBAuthzAllowedSPIFFEIDs = defaultKeyDBAuthzAllowedSPIFFEIDs(spiffeTrustDomain)
+		}
+	}
 
 	enforceModelMediationGate := parseEnvBool("ENFORCE_MODEL_MEDIATION_GATE", true)
 	enforceHIPAAPromptSafetyGate := parseEnvBool("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", true)
@@ -288,7 +307,7 @@ func ConfigFromEnv() *Config {
 		UI:                            uiConfig,
 		UICapabilityGrantsPath:        getEnvOrDefault("UI_CAPABILITY_GRANTS_PATH", "/config/opa/ui_capability_grants.yaml"),
 		SPIKENexusURL:                 getEnvOrDefault("SPIKE_NEXUS_URL", ""),
-		SPIFFETrustDomain:             getEnvOrDefault("SPIFFE_TRUST_DOMAIN", "poc.local"),
+		SPIFFETrustDomain:             spiffeTrustDomain,
 		SPIFFEListenPort:              spiffeListenPort,
 		OTelEndpoint:                  os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), // empty = no-op (AC6)
 		OTelServiceName:               getEnvOrDefault("OTEL_SERVICE_NAME", "mcp-security-gateway"),
@@ -307,13 +326,15 @@ func ConfigFromEnv() *Config {
 		MCPProbeTimeout:               mcpProbeTimeout,
 		MCPDetectTimeout:              mcpDetectTimeout,
 		MCPRequestTimeout:             mcpRequestTimeout,
-		EnforcementProfile:            getEnvOrDefault("ENFORCEMENT_PROFILE", enforcementProfileDev),
+		EnforcementProfile:            enforcementProfile,
 		EnforceModelMediationGate:     enforceModelMediationGate,
 		EnforceHIPAAPromptSafetyGate:  enforceHIPAAPromptSafetyGate,
 		ProfileMetadataExportPath:     strings.TrimSpace(os.Getenv("PROFILE_METADATA_EXPORT_PATH")),
 		EnforcementControlOverrides:   true,
 		DemoRugpullAdminEnabled:       demoRugpullAdminEnabled,
 		AdminAuthzAllowedSPIFFEIDs:    adminAuthzAllowedSPIFFEIDs,
+		UpstreamAuthzAllowedSPIFFEIDs: upstreamAuthzAllowedSPIFFEIDs,
+		KeyDBAuthzAllowedSPIFFEIDs:    keyDBAuthzAllowedSPIFFEIDs,
 	}
 }
 
