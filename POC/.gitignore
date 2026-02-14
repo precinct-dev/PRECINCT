@@ -45,3 +45,9 @@ uv.lock
 *.tfvars
 !*.tfvars.example
 .terraform.lock.hcl
+
+# E2E test artifacts (runtime only)
+tests/e2e/artifacts/
+
+# Relocated use-case-specific files (local reference only)
+use_case_specific/
