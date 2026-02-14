@@ -11,7 +11,6 @@ Use this document with:
 - `docs/ARCHITECTURE.md` ADR-009 for architecture-level invariants
 - `docs/architecture/k8s-runtime-validation-campaign.md` for the executed K8s validation checklist
 - `docs/architecture/compose-backport-decision-ledger.md` for explicit portability/backport decisions
-- `docs/architecture/biotech-adaptation-reference-path.md` for a concrete sensitive-domain adaptation profile
 
 ## Machine-Readable Evidence Artifacts
 

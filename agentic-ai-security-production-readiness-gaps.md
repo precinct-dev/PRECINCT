@@ -16,10 +16,10 @@ Define all material gaps between:
 
 so we can converge on a production-ready architecture for:
 
-- sensitive biotech assistant (Fargate or EKS),
-- OpenClaw secure port,
-- neuro-symbolic reasoner over MCP + CSV fact ingestion,
-- regulated banking-facing ISO27001 + ITSM agents.
+- sensitive domain assistants (e.g., regulated healthcare or biotech on Fargate or EKS),
+- third-party framework integrations requiring mediated model egress,
+- external context ingestion pipelines with provenance and quarantine,
+- compliance-bound enterprise agents (ISO 27001, ITSM, SOC 2).
 
 This document includes Phase 3 incompleteness explicitly and proposes the required architectural additions/changes.
 
@@ -218,21 +218,6 @@ Assessment style:
 - **Status:** `Partial`
 - **Required change:** formal HIPAA profile pack: PHI classification, tokenization/re-identification controls, BAAs/vendor boundary controls, retention and disclosure workflows.
 
-## G-19: OpenClaw Port Is Architecture Draft Only
-
-- **Current state:** adaptation document is draft, not implemented.
-- **Evidence:** `agentic-ai-security-openclaw-adaptation.md`.
-- **Risk:** cannot claim production readiness for OpenClaw use case yet.
-- **Status:** `Missing`
-- **Required change:** create implementation epic with walking skeleton + conformance gates.
-
-## G-20: External Context Fetcher Pattern Not Productized
-
-- **Architecture requirement:** strict external context validation pipeline and `Context Fetcher` pattern (`10.15`).
-- **Current state:** concept exists; no full productized ingestion service with quarantine/provenance handles + policy hooks.
-- **Status:** `Partial`
-- **Required change:** implement dedicated context fetcher service and enforce handle-only context ingestion.
-
 ---
 
 ## 5. Compliance Scope and Technical Gap View
@@ -301,10 +286,10 @@ Out of scope for implementation deliverables (but acknowledged): org governance 
 
 | Use Case | Current Readiness | Critical Missing Pieces |
 |---|---|---|
-| Small sensitive biotech app (Fargate/EKS) | Partial | non-K8s adaptation hardening guide, connector conformance, RuleOps lifecycle, immutable audit proven in target runtime |
-| OpenClaw secure port | Low | Implementation not started beyond draft architecture |
-| Neuro-symbolic MCP reasoner (CSV facts) | Partial | Context fetcher/ingestion hardening, provenance and verification invariants, loop governance completeness |
-| ISO27001 + ITSM support for banks | Partial | technical control library expansion, PCI pack, stronger technical evidence and break-glass capabilities |
+| Sensitive domain assistant (Fargate/EKS) | Partial | non-K8s adaptation hardening guide, connector conformance, RuleOps lifecycle, immutable audit proven in target runtime |
+| Third-party framework integration | Low | Implementation not started beyond architecture sketch |
+| External context ingestion pipeline | Partial | Context fetcher/ingestion hardening, provenance and verification invariants, loop governance completeness |
+| ISO 27001 + ITSM compliance agents | Partial | technical control library expansion, PCI pack, stronger technical evidence and break-glass capabilities |
 
 ---
 
@@ -331,9 +316,9 @@ Out of scope for implementation deliverables (but acknowledged): org governance 
 
 ## Wave 4 (Use-Case Closure)
 
-1. OpenClaw port implementation and soak validation.
-2. Neuro-symbolic ingestion hardening and policy certification.
-3. Banking-use-case pilot with regulator-style evidence review.
+1. Third-party framework integration implementation and soak validation.
+2. External context ingestion hardening and policy certification.
+3. Compliance-bound enterprise agent pilot with regulator-style evidence review.
 
 ---
 
@@ -346,7 +331,7 @@ All must be true:
 3. Immutable audit, legal hold, and forensic query workflows are operationally proven.
 4. Table-stakes framework **technical** control library is complete with evidence automation and machine-readable outputs.
 5. PCI-DSS and HIPAA packs exist with documented implementation and test paths.
-6. OpenClaw and neuro-symbolic use cases have executed hardening acceptance scenarios.
+6. All target use cases have executed hardening acceptance scenarios.
 
 ---
 
