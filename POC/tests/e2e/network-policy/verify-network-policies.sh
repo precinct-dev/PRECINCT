@@ -29,7 +29,6 @@ set -euo pipefail
 # -- Configuration -------------------------------------------------------------
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-readonly VERIFY_POD_MANIFEST="${SCRIPT_DIR}/verify-pod.yaml"
 readonly TEST_POD_NAME="netpol-verify"
 readonly CONNECT_TIMEOUT=5   # seconds for connection attempts
 readonly DNS_TIMEOUT=3        # seconds for DNS resolution attempts
@@ -79,13 +78,25 @@ log_test()  { echo -e "${CYAN}[TEST]${NC}  $*"; }
 deploy_test_pod() {
     local ns="$1"
     local pod_name="${TEST_POD_NAME}"
+    local app_label="netpol-verify"
+
+    # Match real policy podSelectors so allow-rules are exercised by tests.
+    if [ "${ns}" = "gateway" ]; then
+        app_label="mcp-security-gateway"
+    elif [ "${ns}" = "tools" ]; then
+        app_label="mcp-server"
+    fi
 
     # Delete any existing test pod in this namespace
     kubectl delete pod "${pod_name}" -n "${ns}" --ignore-not-found --wait=false 2>/dev/null || true
     sleep 2
 
     log_info "Deploying test pod '${pod_name}' in namespace '${ns}'"
-    kubectl apply -f "${VERIFY_POD_MANIFEST}" -n "${ns}" 2>/dev/null
+    kubectl run "${pod_name}" -n "${ns}" \
+        --image=curlimages/curl:8.5.0 \
+        --restart=Never \
+        --labels="app.kubernetes.io/name=${app_label},app.kubernetes.io/component=test,purpose=network-policy-verification" \
+        --command -- /bin/sh -c "sleep 300" 2>/dev/null
 
     # Wait for pod to be Running (up to 60s)
     local attempts=0
@@ -136,10 +147,12 @@ test_tcp_connectivity() {
     local host="$2"
     local port="$3"
 
-    # Use curl with telnet:// to test raw TCP connectivity
+    # Use plain HTTP over the target port as a generic connectivity probe.
+    # We intentionally do NOT use --fail; any HTTP status still proves reachability.
+    # telnet:// with curl can produce false negatives by waiting for payload bytes.
     kubectl exec "${TEST_POD_NAME}" -n "${ns}" -- \
         curl -s --connect-timeout "${CONNECT_TIMEOUT}" --max-time "${CONNECT_TIMEOUT}" \
-        "telnet://${host}:${port}" 2>/dev/null
+        "http://${host}:${port}/" -o /dev/null 2>/dev/null
     return $?
 }
 
@@ -264,12 +277,11 @@ test_gateway_to_mcp_server() {
 }
 
 # Test 2: MCP server CANNOT reach gateway (reverse direction blocked)
-# Verifies: mcp-server-allow-egress does NOT include gateway as destination
-# Verifies: gateway-allow-ingress only allows port 9090 from any, but
-#           mcp-server egress is restricted to DNS + internal CIDRs only
+# Verifies: gateway-allow-ingress requires explicit namespace allowlist label
+#           and tools namespace is not approved for gateway ingress.
 test_mcp_server_to_gateway() {
     log_test "Test 2: MCP Server -> Gateway (should DENY)"
-    log_info "  Rule: mcp-server-allow-egress does not permit gateway:9090"
+    log_info "  Rule: gateway-allow-ingress requires approved source namespace label"
     log_info "  Path: tools:${TEST_POD_NAME} -> ${GATEWAY_SVC}:${GATEWAY_PORT}"
 
     deploy_test_pod "tools" || { record_result "MCP Server -> Gateway" "deny" 1 "(pod deploy failed - counted as deny)"; return; }
