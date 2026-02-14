@@ -56,6 +56,10 @@ spec:
             # Gateway listen port
             - name: PORT
               value: "9090"
+            # In prod mode the gateway serves HTTPS on SPIFFE_LISTEN_PORT.
+            # Keep this aligned with PORT so probes and Service wiring remain consistent.
+            - name: SPIFFE_LISTEN_PORT
+              value: "9090"
             # Upstream MCP tool server (in tools namespace)
             - name: UPSTREAM_URL
               value: "http://mcp-server.tools.svc.cluster.local:8081/mcp"
@@ -77,6 +81,9 @@ spec:
             # SPIFFE mode: "dev" for POC, "prod" for production with mTLS
             - name: SPIFFE_MODE
               value: "prod"
+            # SPIRE Workload API socket (required by go-spiffe)
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: "unix:///run/spire/sockets/agent.sock"
             # SPIRE Agent Workload API socket path
             - name: SPIRE_AGENT_SOCKET
               value: "/run/spire/sockets/agent.sock"
