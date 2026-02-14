@@ -292,24 +292,6 @@
       "replacement_code": null
     },
     {
-      "code": "CONTEXT_FACTS_CSV_VALIDATION_FAILED",
-      "plane": "context",
-      "decision": "deny",
-      "semantic_meaning": "context facts csv validation failed",
-      "status": "active",
-      "deprecated_in": null,
-      "replacement_code": null
-    },
-    {
-      "code": "CONTEXT_FACTS_PROVENANCE_INVALID",
-      "plane": "context",
-      "decision": "deny",
-      "semantic_meaning": "context facts provenance invalid",
-      "status": "active",
-      "deprecated_in": null,
-      "replacement_code": null
-    },
-    {
       "code": "LOOP_ALLOW",
       "plane": "loop",
       "decision": "allow",

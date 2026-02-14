@@ -338,25 +338,6 @@ Provide safe adaptation path to runtimes like ECS/Fargate/GCP cloud containers w
 
 ---
 
-## 3.13 Use-Case-Specific Technical Extensions
-
-## OpenClaw Port
-
-1. enforce model mediation by default
-2. ingress connector wrapping and conformance registration
-3. direct-network tool disablement/replacement via governed tool plane
-4. context/memory admission wrappers
-5. bounded loop integration and evidence generation
-
-## Neuro-Symbolic CSV Fact Ingestion
-
-1. dedicated context fetcher/ingestion tool with quarantine
-2. schema + content validation pipeline for CSV
-3. provenance hashing and handle-based context references
-4. admission-gated fact persistence
-
----
-
 ## 4. Kubernetes-First + Compose Portability Rules
 
 1. Implement in Kubernetes first for production-grade controls.
@@ -443,9 +424,9 @@ Every technical control must map to:
 
 ## Stage D: Use-Case Delivery
 
-1. OpenClaw secure port
-2. Neuro-symbolic ingestion hardening
-3. biotech adaptation guidance (K8s baseline + non-K8s mapping)
+1. Third-party framework secure integration
+2. External context ingestion hardening
+3. Sensitive-domain adaptation guidance (K8s baseline + non-K8s mapping)
 
 ---
 
