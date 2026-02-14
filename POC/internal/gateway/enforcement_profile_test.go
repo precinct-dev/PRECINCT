@@ -67,6 +67,66 @@ func TestResolveEnforcementProfile_ProdHIPAAFailsWhenPromptSafetyDisabled(t *tes
 	}
 }
 
+func TestResolveEnforcementProfile_StrictFailsWithoutApprovalSigningKey(t *testing.T) {
+	cfg := &Config{
+		EnforcementProfile:           enforcementProfileProdStandard,
+		SPIFFEMode:                   "prod",
+		MCPTransportMode:             "mcp",
+		EnforceModelMediationGate:    true,
+		EnforceHIPAAPromptSafetyGate: true,
+		ApprovalSigningKey:           "",
+		EnforcementControlOverrides:  true,
+	}
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure when approval signing key is missing")
+	}
+	if !strings.Contains(err.Error(), "approval_signing_key must be set") {
+		t.Fatalf("expected approval signing key missing error, got: %v", err)
+	}
+}
+
+func TestResolveEnforcementProfile_StrictFailsWithWeakApprovalSigningKey(t *testing.T) {
+	cfg := &Config{
+		EnforcementProfile:           enforcementProfileProdStandard,
+		SPIFFEMode:                   "prod",
+		MCPTransportMode:             "mcp",
+		EnforceModelMediationGate:    true,
+		EnforceHIPAAPromptSafetyGate: true,
+		ApprovalSigningKey:           "weak-key",
+		EnforcementControlOverrides:  true,
+	}
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure when approval signing key is weak")
+	}
+	if !strings.Contains(err.Error(), "approval_signing_key must be at least") {
+		t.Fatalf("expected approval signing key strength error, got: %v", err)
+	}
+}
+
+func TestResolveEnforcementProfile_StrictPassesWithStrongApprovalSigningKey(t *testing.T) {
+	cfg := &Config{
+		EnforcementProfile:           enforcementProfileProdStandard,
+		SPIFFEMode:                   "prod",
+		MCPTransportMode:             "mcp",
+		EnforceModelMediationGate:    true,
+		EnforceHIPAAPromptSafetyGate: true,
+		ApprovalSigningKey:           "prod-approval-signing-key-material-at-least-32",
+		EnforcementControlOverrides:  true,
+	}
+
+	profile, err := resolveEnforcementProfile(cfg)
+	if err != nil {
+		t.Fatalf("expected strict profile to pass with strong signing key: %v", err)
+	}
+	if profile.Conformance.Status != "pass" {
+		t.Fatalf("expected strict profile conformance pass, got %q", profile.Conformance.Status)
+	}
+}
+
 func TestEnforcementProfileExportWritesJSON(t *testing.T) {
 	cfg := &Config{
 		EnforcementProfile:           enforcementProfileDev,

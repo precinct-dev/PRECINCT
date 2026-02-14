@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -15,7 +16,9 @@ import (
 )
 
 const (
-	defaultApprovalSigningKey = "poc-approval-signing-key-change-me"
+	// MinApprovalSigningKeyLength defines the minimum key length required for
+	// strict profile startup conformance checks.
+	MinApprovalSigningKeyLength = 32
 )
 
 var (
@@ -136,10 +139,44 @@ type ApprovalCapabilityService struct {
 	consumedNonce map[string]time.Time
 }
 
+var weakApprovalSigningKeyValues = map[string]struct{}{
+	"changeme":                           {},
+	"change-me":                          {},
+	"default":                            {},
+	"dev":                                {},
+	"test":                               {},
+	"poc-approval-signing-key-change-me": {},
+	"poc_approval_signing_key_change_me": {},
+}
+
+// IsApprovalSigningKeyStrong applies baseline checks used by strict startup
+// profile validation. Dev profiles may still run with generated ephemeral keys.
+func IsApprovalSigningKeyStrong(signingKey string) bool {
+	key := strings.TrimSpace(signingKey)
+	if len(key) < MinApprovalSigningKeyLength {
+		return false
+	}
+	if _, weak := weakApprovalSigningKeyValues[strings.ToLower(key)]; weak {
+		return false
+	}
+	return true
+}
+
+func buildEphemeralApprovalSigningKey() []byte {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err == nil {
+		return []byte(base64.RawURLEncoding.EncodeToString(key))
+	}
+	// Best-effort non-static fallback if entropy source is unavailable.
+	return []byte(uuid.NewString() + uuid.NewString())
+}
+
 func NewApprovalCapabilityService(signingKey string, defaultTTL, maxTTL time.Duration, auditor *Auditor) *ApprovalCapabilityService {
 	key := strings.TrimSpace(signingKey)
 	if key == "" {
-		key = defaultApprovalSigningKey
+		// Dev-bounded fallback: generate an ephemeral process-local key rather
+		// than using a static default.
+		key = string(buildEphemeralApprovalSigningKey())
 	}
 	if defaultTTL <= 0 {
 		defaultTTL = 10 * time.Minute
