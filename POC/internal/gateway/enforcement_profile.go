@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/example/agentic-security-poc/internal/gateway/middleware"
 )
 
 const (
@@ -68,6 +70,7 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"spiffe_mode=prod",
 			"mcp_transport_mode=mcp",
 			"enforce_model_mediation_gate",
+			"approval_signing_key",
 		},
 	},
 	enforcementProfileProdRegulatedHIPAA: {
@@ -83,6 +86,7 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"mcp_transport_mode=mcp",
 			"enforce_model_mediation_gate",
 			"enforce_hipaa_prompt_safety_gate",
+			"approval_signing_key",
 		},
 	},
 }
@@ -135,6 +139,15 @@ func resolveEnforcementProfile(cfg *Config) (*enforcementProfileRuntime, error) 
 	}
 	if def.RequireHIPAAGuard && !controls.EnforceHIPAAPromptSafety {
 		violations = append(violations, "enforce_hipaa_prompt_safety_gate must be true")
+	}
+	if def.StartupGateMode == "strict" {
+		signingKey := strings.TrimSpace(cfg.ApprovalSigningKey)
+		switch {
+		case signingKey == "":
+			violations = append(violations, "approval_signing_key must be set in strict profiles")
+		case !middleware.IsApprovalSigningKeyStrong(signingKey):
+			violations = append(violations, fmt.Sprintf("approval_signing_key must be at least %d characters and non-default", middleware.MinApprovalSigningKeyLength))
+		}
 	}
 
 	conformance := enforcementProfileConformance{Status: "pass"}

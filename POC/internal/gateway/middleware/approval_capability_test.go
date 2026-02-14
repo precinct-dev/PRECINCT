@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 )
@@ -158,5 +159,41 @@ func TestApprovalCapabilityDenyPath(t *testing.T) {
 	_, err = svc.GrantRequest(ApprovalGrantInput{RequestID: created.RequestID, ApprovedBy: "security@corp"})
 	if !errors.Is(err, ErrApprovalInvalidState) {
 		t.Fatalf("expected ErrApprovalInvalidState after deny, got %v", err)
+	}
+}
+
+func TestApprovalCapabilityService_GeneratesEphemeralKeyWhenMissing(t *testing.T) {
+	svcA := NewApprovalCapabilityService("", 5*time.Minute, 30*time.Minute, nil)
+	svcB := NewApprovalCapabilityService("", 5*time.Minute, 30*time.Minute, nil)
+
+	if len(strings.TrimSpace(string(svcA.signingKey))) < MinApprovalSigningKeyLength {
+		t.Fatalf("expected generated key length >= %d", MinApprovalSigningKeyLength)
+	}
+	if len(strings.TrimSpace(string(svcB.signingKey))) < MinApprovalSigningKeyLength {
+		t.Fatalf("expected generated key length >= %d", MinApprovalSigningKeyLength)
+	}
+	if string(svcA.signingKey) == string(svcB.signingKey) {
+		t.Fatal("expected generated ephemeral signing keys to differ between service instances")
+	}
+}
+
+func TestIsApprovalSigningKeyStrong(t *testing.T) {
+	tests := []struct {
+		name string
+		key  string
+		want bool
+	}{
+		{name: "missing", key: "", want: false},
+		{name: "too-short", key: "short-key", want: false},
+		{name: "known-weak-default", key: "poc-approval-signing-key-change-me", want: false},
+		{name: "strong", key: "prod-approval-signing-key-material-at-least-32", want: true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := IsApprovalSigningKeyStrong(tc.key); got != tc.want {
+				t.Fatalf("IsApprovalSigningKeyStrong(%q)=%t want %t", tc.key, got, tc.want)
+			}
+		})
 	}
 }

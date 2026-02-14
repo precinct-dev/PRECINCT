@@ -51,6 +51,7 @@ function `ConfigFromEnv()`.
 | `ENFORCE_MODEL_MEDIATION_GATE` | `true` | Enforces mediated model egress (`direct`/`bypass` denied) |
 | `ENFORCE_HIPAA_PROMPT_SAFETY_GATE` | `true` | Enables HIPAA prompt safety deny checks when HIPAA profile policy is active |
 | `PROFILE_METADATA_EXPORT_PATH` | _(empty)_ | Optional path to write active profile metadata as JSON at startup |
+| `APPROVAL_SIGNING_KEY` | _(empty)_ | HMAC signing key for step-up approval capability tokens. In strict profiles (`prod_standard`, `prod_regulated_hipaa`), startup fails if missing, too short, or a known weak/default value |
 
 ### Phase 3 Control Plane Wiring
 
@@ -76,8 +77,14 @@ Profile bundles and required controls:
 | Profile | Startup Gate Mode | Required Runtime Controls |
 |---------|-------------------|---------------------------|
 | `dev` | permissive | Portable defaults; no strict startup fail on production invariants |
-| `prod_standard` | strict | `SPIFFE_MODE=prod`, `MCP_TRANSPORT_MODE=mcp`, `ENFORCE_MODEL_MEDIATION_GATE=true` |
+| `prod_standard` | strict | `SPIFFE_MODE=prod`, `MCP_TRANSPORT_MODE=mcp`, `ENFORCE_MODEL_MEDIATION_GATE=true`, strong `APPROVAL_SIGNING_KEY` |
 | `prod_regulated_hipaa` | strict | `prod_standard` controls + `ENFORCE_HIPAA_PROMPT_SAFETY_GATE=true` |
+
+Migration notes for approval signing key hardening:
+
+- Strict profiles now fail fast at startup when `APPROVAL_SIGNING_KEY` is missing/weak. Existing deployments that relied on implicit fallback behavior must set this variable before enabling strict profiles.
+- Use a high-entropy key with at least 32 characters and store it in your secret manager/Kubernetes Secret.
+- Dev profile behavior is intentionally bounded: when unset, the gateway generates an ephemeral process-local key at startup (not a static default). This is for local workflows only and tokens are not stable across restarts.
 
 ### Guard Model (Deep Scan)
 
@@ -116,6 +123,14 @@ Profile bundles and required controls:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `HANDLE_TTL` | `300` (5 minutes) | TTL in seconds for response firewall data handles. Handles expire after this duration |
+
+### Approval Capability
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `APPROVAL_SIGNING_KEY` | _(empty)_ | Signing key for approval capability tokens. Required and validated in strict profiles; optional in `dev` (ephemeral process key generated when unset) |
+| `APPROVAL_DEFAULT_TTL_SECONDS` | `600` (10 minutes) | Default TTL for newly issued approval capability tokens |
+| `APPROVAL_MAX_TTL_SECONDS` | `3600` (1 hour) | Maximum allowed TTL for approval capability tokens |
 
 ### Session Persistence (KeyDB)
 
