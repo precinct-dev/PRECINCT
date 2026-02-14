@@ -1,8 +1,35 @@
-# RFA-70p: Final E2E Validation Report
+# RFA-70p: Historical E2E Validation Report (Archived Snapshot)
 
-**Date:** 2026-02-06
-**Branch:** epic/RFA-qq0-poc-docker-compose
-**Epic:** RFA-qq0 (POC Docker Compose)
+**Snapshot Date:** 2026-02-06
+**Snapshot Branch:** epic/RFA-qq0-poc-docker-compose
+**Snapshot Epic:** RFA-qq0 (POC Docker Compose)
+**As Of (Current Program Context):** 2026-02-14
+**Status:** Archived historical validation output, retained for traceability.
+
+## Scope Notice
+
+This report captures a point-in-time validation run from 2026-02-06 and is not the
+authoritative statement of current production-readiness status. Use this as historical
+evidence only.
+
+For current status:
+
+- `current-state-and-roadmap.md` (as-built summary + residual risks)
+- active closure stories in epic `RFA-l6h6.6`
+
+Claim reconciliation (historical -> current):
+
+| Historical statement in this report | Current status (2026-02-14) | Evidence source |
+|-------------------------------------|------------------------------|-----------------|
+| “SPIKE Nexus commented out in compose” (known gap table) | SPIKE Nexus is active in compose and validated in later stories. | `docker-compose.yml`, accepted SPIKE parity stories |
+| “mTLS enforcement dev-mode only” (known gap table) | Strict-profile startup and peer identity pinning are implemented. | accepted `RFA-l6h6.6.6` evidence |
+| “Security scanning as future/partial” | CI + security scanning workflow and dependabot config are now present. | accepted `RFA-l6h6.6.7`, `.github/workflows/security-scan.yml`, `.github/dependabot.yml` |
+
+Known residual risks (current, not from 2026-02-06 snapshot):
+
+1. Hosted CI run links are not embedded in this repository snapshot.
+2. EKS remains offline-validated unless separately deployed in cloud.
+3. OpenClaw full-port implementation remains gated by open closure stories.
 
 ## Executive Summary
 

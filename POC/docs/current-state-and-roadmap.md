@@ -1,8 +1,36 @@
 # Current State and Roadmap
 
-**Last Updated:** 2026-02-09
+**As Of:** 2026-02-14
+**Last Updated:** 2026-02-14
 **Branch:** main (all epic branches merged and deleted)
 **Reference Architecture Version:** 2.2
+
+---
+
+## 0. As-Built Snapshot (2026-02-14)
+
+This document is a live status summary. Historical implementation detail is preserved
+below, but current planning truth is tracked by the active beads backlog and accepted
+story evidence.
+
+Current closure status (`RFA-l6h6.6`):
+
+- Accepted and closed: `RFA-l6h6.6.1` through `RFA-l6h6.6.7`
+- Open: `RFA-l6h6.6.8` (docs reconciliation), `RFA-l6h6.6.9` (OpenClaw blueprint), `RFA-l6h6.6.10` (OpenClaw full port; blocked by `.6.9`)
+
+Known residual risks:
+
+1. EKS remains offline-validated; no live cloud deployment evidence is captured in this repository.
+2. Security-scan automation wiring is restored, but this repo snapshot does not include a hosted GitHub Actions run artifact link.
+3. OpenClaw full-port implementation is not complete until `.6.9` and `.6.10` are accepted.
+
+Claim reconciliation summary:
+
+| Prior claim | Corrected as-built statement | Evidence source |
+|------------|------------------------------|-----------------|
+| “The project is development-complete.” | Production-delta closure still has open stories (`.6.8/.6.9/.6.10`). | beads epic `RFA-l6h6.6` |
+| “No open functional work remains.” | OpenClaw blueprint + execution and docs reconciliation remain open. | beads issues `RFA-l6h6.6.8/9/10` |
+| CI/security automation gaps listed as unresolved in hardening context | CI push/PR triggers, `security-scan.yml`, and `.github/dependabot.yml` now exist. | `.github/workflows/ci.yaml`, `.github/workflows/security-scan.yml`, `.github/dependabot.yml`, `RFA-l6h6.6.7` evidence |
 
 ---
 
@@ -12,7 +40,7 @@ The Agentic AI Security Reference Architecture implements a **Model Context Prot
 
 Two deployment targets exist: a Docker Compose stack for local development and validation, and Kubernetes manifests (EKS-targeted) for production-grade deployment.
 
-All identified Phase 1 gaps (SPIKE Nexus, deep scan, session persistence, mTLS, observability, compliance automation, cosign verification, CLI setup wizard, registry hot-reload) have been addressed. The project is development-complete.
+Core Phase 1 capability gaps (SPIKE Nexus, deep scan, session persistence, mTLS, observability, compliance automation, cosign verification, CLI setup wizard, registry hot-reload) have been addressed, and the production-delta closure program is in finalization.
 
 ---
 
@@ -189,7 +217,7 @@ Implements SEP-1865 (Apps Extension) security:
 
 ## 4. Current Status
 
-All Phase 1 functional gaps have been addressed. The project has 230 closed issues across 29 completed epics. One documentation epic (RFA-2irf) is in progress. No open functional work remains.
+All Phase 1 functional gaps have been addressed. Production-delta closure is in finalization with remaining open work for documentation reconciliation and OpenClaw secure-port planning/execution (`RFA-l6h6.6.8`, `RFA-l6h6.6.9`, `RFA-l6h6.6.10`).
 
 ### 4.1 Rego Cannot Do Cryptographic Signature Verification
 
