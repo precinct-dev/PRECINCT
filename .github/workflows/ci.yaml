@@ -2,7 +2,7 @@
 # CI Pipeline - Build, Test, Sign, Push
 # Story: RFA-9fv.6
 #
-# Triggered on push to main and epic/* branches, and on pull requests.
+# Triggered on push/PR for maintained repository paths.
 # Steps:
 #   1. Lint Go code (go vet + staticcheck)
 #   2. Run Go unit tests (gateway, middleware, tools, s3-mcp-server)
@@ -15,19 +15,23 @@
 name: CI
 
 on:
-  workflow_dispatch:  # Manual-only until GH Actions credits are replenished
-  # push:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - "POC/**"
-  #     - ".github/workflows/ci.yaml"
-  # pull_request:
-  #   branches:
-  #     - main
-  #   paths:
-  #     - "POC/**"
-  #     - ".github/workflows/ci.yaml"
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "POC/**"
+      - ".github/workflows/ci.yaml"
+      - ".github/workflows/security-scan.yml"
+      - ".github/dependabot.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "POC/**"
+      - ".github/workflows/ci.yaml"
+      - ".github/workflows/security-scan.yml"
+      - ".github/dependabot.yml"
 
 env:
   REGISTRY: ghcr.io
@@ -146,14 +150,19 @@ jobs:
       matrix:
         include:
           - image: mcp-security-gateway
-            dockerfile: POC/build/docker/Dockerfile.gateway
+            dockerfile: POC/docker/Dockerfile.gateway
             context: POC
           - image: s3-mcp-server
-            dockerfile: POC/build/docker/Dockerfile.s3-mcp-server
+            dockerfile: POC/docker/Dockerfile.s3-mcp-server
             context: POC
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Validate referenced paths exist
+        run: |
+          test -f "${{ matrix.dockerfile }}"
+          test -d "${{ matrix.context }}"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
