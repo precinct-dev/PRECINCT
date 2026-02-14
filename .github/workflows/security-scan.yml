@@ -1,0 +1,84 @@
+name: Security Scan
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "POC/**"
+      - ".github/workflows/security-scan.yml"
+      - ".github/dependabot.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "POC/**"
+      - ".github/workflows/security-scan.yml"
+      - ".github/dependabot.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  gosec:
+    name: Gosec (Go Source)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: POC
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache-dependency-path: POC/go.sum
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run gosec
+        run: gosec ./...
+
+  trivy-fs:
+    name: Trivy (Filesystem)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        run: |
+          docker run --rm \
+            -v "$PWD/POC":/workspace \
+            -w /workspace \
+            aquasec/trivy:latest \
+            fs \
+            --exit-code 1 \
+            --severity HIGH,CRITICAL \
+            --no-progress \
+            --skip-dirs .beads \
+            .
+
+  trivy-image:
+    name: Trivy (Gateway Image)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build gateway image
+        run: docker build -f POC/docker/Dockerfile.gateway -t mcp-security-gateway:ci POC
+
+      - name: Run Trivy image scan
+        run: |
+          docker run --rm \
+            aquasec/trivy:latest \
+            image \
+            --exit-code 1 \
+            --severity HIGH,CRITICAL \
+            --no-progress \
+            mcp-security-gateway:ci
