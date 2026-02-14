@@ -17,7 +17,12 @@ func TestGatewayAdminCircuitBreakersIntegration_NonEmpty(t *testing.T) {
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(gatewayURL + "/admin/circuit-breakers")
+	req, err := http.NewRequest(http.MethodGet, gatewayURL+"/admin/circuit-breakers", nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	req.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
+	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("GET /admin/circuit-breakers: %v", err)
 	}

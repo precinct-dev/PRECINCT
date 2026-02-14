@@ -17,8 +17,9 @@ import (
 
 // Common service URLs used by integration tests
 var (
-	gatewayURL = getEnvOrDefault("GATEWAY_URL", "http://localhost:9090")
-	opaURL     = getEnvOrDefault("OPA_URL", "http://localhost:8181")
+	gatewayURL    = getEnvOrDefault("GATEWAY_URL", "http://localhost:9090")
+	opaURL        = getEnvOrDefault("OPA_URL", "http://localhost:8181")
+	adminSPIFFEID = getEnvOrDefault("ADMIN_SPIFFE_ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
 )
 
 // pocDir returns the absolute path to the POC project root.

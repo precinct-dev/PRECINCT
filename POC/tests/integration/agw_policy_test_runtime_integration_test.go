@@ -41,6 +41,7 @@ func TestAgwPolicyTestRuntimeIntegration_Full13LayersAllowed(t *testing.T) {
 		t.Fatalf("build reset request: %v", err)
 	}
 	resetReq.Header.Set("Content-Type", "application/json")
+	resetReq.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
 	resetResp, err := client.Do(resetReq)
 	if err != nil {
 		t.Fatalf("reset circuit breaker: %v", err)
