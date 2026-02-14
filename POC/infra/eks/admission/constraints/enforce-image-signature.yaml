@@ -6,12 +6,9 @@
 # namespaces. All container images deployed to these namespaces must have
 # valid cosign signatures from the CI pipeline.
 #
-# Enforcement namespaces (from Reference Architecture):
-#   - mcp-gateway:    MCP Security Gateway
-#   - mcp-servers:    MCP Tool Servers (S3, etc.)
-#   - spike-system:   SPIKE/SPIFFE identity system
-#   - spire-system:   SPIRE server and agents
-#   - policy-system:  OPA bundle server and policy engine
+# Enforcement namespaces (non-local runtime overlays):
+#   - gateway: MCP Security Gateway
+#   - tools:   MCP Tool Servers
 #
 # Rejection behavior:
 #   - Pod/Deployment admission is DENIED with a clear error message
@@ -43,11 +40,8 @@ spec:
       - apiGroups: ["batch"]
         kinds: ["Job", "CronJob"]
     namespaces:
-      - mcp-gateway
-      - mcp-servers
-      - spike-system
-      - spire-system
-      - policy-system
+      - gateway
+      - tools
   parameters:
     allowedRegistries:
       # GHCR registry used by CI pipeline (see .github/workflows/ci.yaml)

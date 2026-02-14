@@ -16,6 +16,8 @@ metadata:
   name: gateway
   labels:
     app.kubernetes.io/part-of: mcp-security-gateway
+    # Opt-in namespace for sigstore/policy-controller admission interception.
+    policy.sigstore.dev/include: "true"
     # Label used by NetworkPolicy namespaceSelector to allow traffic FROM gateway
     name: gateway
     pod-security.kubernetes.io/enforce: restricted
