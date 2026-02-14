@@ -1,9 +1,26 @@
 # Security Scan Baseline
 
-**Last Updated:** 2026-02-06
+**As Of:** 2026-02-14
+**Last Updated:** 2026-02-14
 **Epic:** RFA-lo1.1 (Security Scanning Infrastructure)
 
 This document establishes the security scanning baseline for the Agentic Reference Architecture. All findings documented here represent the state at the time of implementing automated security scanning (RFA-lo1.1).
+
+## Current Automation Wiring (2026-02-14)
+
+Security automation files now present and aligned:
+
+- CI workflow: `.github/workflows/ci.yaml` (push + pull_request + workflow_dispatch)
+- Security scan workflow: `.github/workflows/security-scan.yml`
+- Dependabot policy: `.github/dependabot.yml`
+- Local equivalent command: `make security-scan`
+
+Known residual risks:
+
+1. This repository snapshot does not include a hosted GitHub Actions run URL artifact.
+2. Baseline findings tables remain intentionally minimal until first post-wiring CI security scan artifacts are collected and triaged.
+
+Historical context from RFA-lo1.1 is preserved below for traceability.
 
 ## Purpose
 
@@ -121,7 +138,7 @@ This baseline is updated when:
 
 ## Next Steps
 
-1. **First CI run** - Workflow .github/workflows/security-scan.yml will run on next PR
+1. **Capture first post-wiring CI run artifacts** - `.github/workflows/security-scan.yml` on PR/main
 2. **Review findings** - Triage gosec, trivy-image, trivy-fs results
 3. **Update baseline** - Document all findings with accept/remediate decision
 4. **Integrate with backlog** - Create stories for remediation work
