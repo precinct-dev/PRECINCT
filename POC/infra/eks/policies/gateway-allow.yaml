@@ -7,8 +7,8 @@
 # traffic flows required for the gateway to function:
 #
 #   INGRESS:
-#     - Any source on port 9090 (MCP JSON-RPC API)
-#       In production, restrict this to specific agent namespaces or CIDRs.
+#     - Only namespaces explicitly labeled for gateway ingress on port 9090
+#       (networking.agentic.io/gateway-ingress-allowed=true).
 #
 #   EGRESS:
 #     - To mcp-server in tools namespace on port 8081 (upstream tool calls)
@@ -22,7 +22,7 @@
 # Reference Architecture Section 9.4: NetworkPolicy enforcement
 # ------------------------------------------------------------------------------
 
-# Allow inbound MCP requests to the gateway
+# Allow inbound MCP requests to the gateway from approved namespaces only
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -38,13 +38,15 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-    # Allow inbound on port 9090 from any source.
-    # In production, restrict to specific namespaces or CIDR blocks:
-    #   - from:
-    #       - namespaceSelector:
-    #           matchLabels:
-    #             name: agents
-    - ports:
+    # Explicit ingress boundary: only namespaces opted-in via
+    # networking.agentic.io/gateway-ingress-allowed=true can reach the gateway.
+    # This prevents default world-open ingress while allowing platform operators
+    # to approve ingress-controller/agent namespaces explicitly.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              networking.agentic.io/gateway-ingress-allowed: "true"
+      ports:
         - protocol: TCP
           port: 9090
 ---

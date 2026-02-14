@@ -11,12 +11,14 @@ blocked unless explicitly permitted.
 ### Traffic Flow Diagram
 
 ```
-                 +-------------------+
-                 |   External / Any  |
-                 +--------+----------+
-                          |
-                          | ALLOW: port 9090
-                          v
+                 +-------------------------------+
+                 | Namespaces with ingress label |
+                 | networking.agentic.io/        |
+                 | gateway-ingress-allowed=true  |
+                 +---------------+---------------+
+                                 |
+                                 | ALLOW: port 9090
+                                 v
                +----------+----------+        +-------------------+
  gateway ns -> |  Security Gateway   | -----> | kube-dns (port 53)|
                |                     | -----> | SPIKE (port 8443) |
@@ -38,7 +40,7 @@ blocked unless explicitly permitted.
 |--------|-----------|-----------|------|
 | `default-deny-all` | gateway | Ingress+Egress | Deny all |
 | `default-deny-all` | tools | Ingress+Egress | Deny all |
-| `gateway-allow-ingress` | gateway | Ingress | Allow any -> port 9090 |
+| `gateway-allow-ingress` | gateway | Ingress | Allow labeled namespaces -> port 9090 |
 | `gateway-allow-egress` | gateway | Egress | Allow -> tools:8081, spike:8443, dns:53 |
 | `mcp-server-allow-ingress` | tools | Ingress | Allow gateway -> port 8081 only |
 | `mcp-server-allow-egress` | tools | Egress | Allow -> dns:53, internal CIDRs only |
@@ -86,3 +88,11 @@ kubectl exec -n gateway <gateway-pod> -- \
   wget -q -O- http://mcp-server.tools.svc.cluster.local:8081/health
 # Expected: {"status": "ok"}
 ```
+
+## Allowlist Strategy
+
+- Gateway ingress boundary: only namespaces explicitly marked with
+  `networking.agentic.io/gateway-ingress-allowed: "true"` can reach gateway pods.
+- Tool egress boundary: DNS + RFC1918 private ranges only (no default public internet).
+- If a tool needs external public egress, add a dedicated reviewed allow rule
+  (prefer egress proxy/FQDN policy) rather than widening the baseline policy.

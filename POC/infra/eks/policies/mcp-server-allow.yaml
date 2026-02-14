@@ -13,13 +13,8 @@
 #
 #   EGRESS:
 #     - To kube-dns on port 53 (DNS resolution)
-#     - All outbound traffic permitted (0.0.0.0/0)
-#
-#   NOTE: Egress is currently open to all destinations. MCP tool servers may
-#   need to reach arbitrary external APIs, databases, and cloud services, and
-#   we do not know each tool's requirements in advance. In production, this
-#   should be replaced with a per-tool whitelist. See the TODO comment on the
-#   egress rule below for specific recommendations.
+#     - To private RFC1918 CIDRs only (in-cluster/VPC dependencies)
+#     - Public internet denied by default
 #
 # Reference Architecture Section 9.4:
 #   "Tool pods can ONLY receive traffic from the gateway namespace"
@@ -56,7 +51,7 @@ spec:
         - protocol: TCP
           port: 8082
 ---
-# Allow tool server egress to DNS and all outbound destinations
+# Allow tool server egress to DNS + private network destinations
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -84,18 +79,17 @@ spec:
         - protocol: TCP
           port: 53
 
-    # Allow ALL outbound traffic for tool servers.
+    # Allow private-network egress only (cluster/VPC dependencies).
     #
-    # TODO(production): Replace with a per-tool whitelist of external destinations.
-    # MCP tool servers may need to reach arbitrary external APIs, databases,
-    # and cloud services. We don't know in advance what each tool requires.
-    # For now, we allow all egress and rely on application-layer controls.
-    #
-    # Production recommendation:
-    #   1. Audit each tool's outbound dependencies
-    #   2. Create per-tool NetworkPolicies with specific CIDRs/ports
-    #   3. Use an egress proxy (e.g., Istio egress gateway) for logging
-    #   4. Remove this permissive rule once whitelist is in place
+    # Allowlist strategy:
+    #   - Default deny for public internet.
+    #   - Permit RFC1918 ranges for current known in-cluster/private dependencies.
+    #   - Any required public endpoint must be added as a separate explicit rule
+    #     (ideally via egress proxy + DNS/FQDN policy), reviewed as a security change.
     - to:
         - ipBlock:
-            cidr: 0.0.0.0/0
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
