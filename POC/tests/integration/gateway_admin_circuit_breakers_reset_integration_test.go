@@ -18,7 +18,12 @@ func TestGatewayAdminCircuitBreakersResetIntegration_ResetsToolToClosed(t *testi
 
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	listResp, err := client.Get(gatewayURL + "/admin/circuit-breakers")
+	listReq, err := http.NewRequest(http.MethodGet, gatewayURL+"/admin/circuit-breakers", nil)
+	if err != nil {
+		t.Fatalf("build list request: %v", err)
+	}
+	listReq.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
+	listResp, err := client.Do(listReq)
 	if err != nil {
 		t.Fatalf("GET /admin/circuit-breakers: %v", err)
 	}
@@ -55,6 +60,7 @@ func TestGatewayAdminCircuitBreakersResetIntegration_ResetsToolToClosed(t *testi
 		t.Fatalf("build reset request: %v", err)
 	}
 	resetReq.Header.Set("Content-Type", "application/json")
+	resetReq.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
 
 	resetResp, err := client.Do(resetReq)
 	if err != nil {
@@ -88,7 +94,12 @@ func TestGatewayAdminCircuitBreakersResetIntegration_ResetsToolToClosed(t *testi
 		t.Fatalf("expected new_state=closed, got %q", resetParsed.Reset[0].NewState)
 	}
 
-	getOneResp, err := client.Get(gatewayURL + "/admin/circuit-breakers/" + targetTool)
+	getOneReq, err := http.NewRequest(http.MethodGet, gatewayURL+"/admin/circuit-breakers/"+targetTool, nil)
+	if err != nil {
+		t.Fatalf("build single-tool request: %v", err)
+	}
+	getOneReq.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
+	getOneResp, err := client.Do(getOneReq)
 	if err != nil {
 		t.Fatalf("GET /admin/circuit-breakers/%s: %v", targetTool, err)
 	}

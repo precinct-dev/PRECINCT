@@ -86,7 +86,12 @@ func TestGatewayAdminPolicyReloadIntegration_ModifyRegistryAndReload(t *testing.
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	listResp, err := client.Get(gatewayURL + "/admin/circuit-breakers")
+	listReq, err := http.NewRequest(http.MethodGet, gatewayURL+"/admin/circuit-breakers", nil)
+	if err != nil {
+		t.Fatalf("build /admin/circuit-breakers request: %v", err)
+	}
+	listReq.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
+	listResp, err := client.Do(listReq)
 	if err != nil {
 		t.Fatalf("GET /admin/circuit-breakers: %v", err)
 	}
@@ -122,5 +127,6 @@ func triggerPolicyReload() (*http.Response, error) {
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
 	return client.Do(req)
 }

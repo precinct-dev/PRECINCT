@@ -32,6 +32,13 @@ type dlpRuleOpsRequest struct {
 const dlpRulesetAdminPath = "/admin/dlp/rulesets"
 
 func (g *Gateway) handleV24AdminEntry(w http.ResponseWriter, r *http.Request) bool {
+	if !isAdminPath(r.URL.Path) {
+		return false
+	}
+	if !g.authorizeAdminRequest(w, r) {
+		return true
+	}
+
 	if strings.HasPrefix(r.URL.Path, dlpRulesetAdminPath) {
 		g.adminDLPRulesetsHandler(w, r)
 		return true
@@ -52,7 +59,21 @@ func (g *Gateway) handleV24AdminEntry(w http.ResponseWriter, r *http.Request) bo
 		g.adminLoopRunsHandler(w, r)
 		return true
 	}
-	return false
+	if strings.HasPrefix(r.URL.Path, "/admin/circuit-breakers/reset") {
+		g.adminCircuitBreakersResetHandler(w, r)
+		return true
+	}
+	if strings.HasPrefix(r.URL.Path, "/admin/circuit-breakers") {
+		g.adminCircuitBreakersHandler(w, r)
+		return true
+	}
+	if strings.HasPrefix(r.URL.Path, "/admin/policy/reload") {
+		g.adminPolicyReloadHandler(w, r)
+		return true
+	}
+
+	http.NotFound(w, r)
+	return true
 }
 
 // adminDLPRulesetsHandler exposes governed DLP RuleOps lifecycle operations.

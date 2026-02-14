@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -13,8 +14,9 @@ import (
 // Client is a minimal HTTP client for calling the gateway API.
 // Walking skeleton scope (RFA-qq5f): only GET /health.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL       string
+	httpClient    *http.Client
+	adminSPIFFEID string
 }
 
 // Health is the subset of /health response we care about for status output.
@@ -25,11 +27,25 @@ type Health struct {
 }
 
 func NewClient(baseURL string) *Client {
+	adminSPIFFEID := strings.TrimSpace(os.Getenv("AGW_GATEWAY_SPIFFE_ID"))
+	if adminSPIFFEID == "" {
+		adminSPIFFEID = "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{
 			Timeout: 3 * time.Second,
 		},
+		adminSPIFFEID: adminSPIFFEID,
+	}
+}
+
+func (c *Client) applyAdminHeaders(req *http.Request) {
+	if req == nil {
+		return
+	}
+	if c != nil && strings.TrimSpace(c.adminSPIFFEID) != "" {
+		req.Header.Set("X-SPIFFE-ID", c.adminSPIFFEID)
 	}
 }
 
@@ -117,6 +133,7 @@ func (c *Client) GetCircuitBreakers(ctx context.Context) ([]CircuitBreakerEntry,
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	c.applyAdminHeaders(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -147,6 +164,7 @@ func (c *Client) GetCircuitBreaker(ctx context.Context, tool string) (*CircuitBr
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
+	c.applyAdminHeaders(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -189,6 +207,7 @@ func (c *Client) ResetCircuitBreakers(ctx context.Context, tool string) (Circuit
 		return CircuitBreakersResetOutput{}, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	c.applyAdminHeaders(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -221,6 +240,7 @@ func (c *Client) ReloadPolicy(ctx context.Context) (PolicyReloadOutput, error) {
 	if err != nil {
 		return PolicyReloadOutput{}, fmt.Errorf("create request: %w", err)
 	}
+	c.applyAdminHeaders(req)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

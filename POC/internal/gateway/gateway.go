@@ -27,42 +27,43 @@ import (
 
 // Gateway represents the MCP security gateway
 type Gateway struct {
-	config               *Config
-	proxy                *httputil.ReverseProxy
-	auditor              *middleware.Auditor
-	opa                  *middleware.OPAEngine
-	registry             *middleware.ToolRegistry
-	dlpScanner           middleware.DLPScanner
-	deepScanner          *middleware.DeepScanner
-	sessionContext       *middleware.SessionContext
-	rateLimiter          *middleware.RateLimiter
-	circuitBreaker       *middleware.CircuitBreaker
-	handleStore          *HandleStore                     // RFA-qq0.16: response firewall data handle cache
-	groqGuardClient      middleware.GroqGuardClient       // RFA-qq0.17: guard model client for step-up gating
-	destinationAllowlist *middleware.DestinationAllowlist // RFA-qq0.17: destination allowlist
-	riskConfig           *middleware.RiskConfig           // RFA-qq0.17: risk scoring thresholds
-	approvalCapabilities *middleware.ApprovalCapabilityService
-	uiCapabilityGating   *UICapabilityGating               // RFA-j2d.1: MCP-UI capability gating
-	uiResourceControls   *UIResourceControls               // RFA-j2d.2: UI resource content controls
-	uiResponseProcessor  *UIResponseProcessor              // RFA-j2d.6: UI response processing pipeline
-	observedToolHashes   *middleware.ObservedToolHashCache // RFA-6fse.4: gateway-owned observed tool metadata hashes
-	spikeRedeemer        middleware.SecretRedeemer         // RFA-a2y.1: SPIKE Nexus or POC secret redeemer
-	sessionStore         middleware.SessionStore           // RFA-hh5.1: session persistence store (InMemory or KeyDB)
-	spiffeTLS            *SPIFFETLSConfig                  // RFA-8z8.1: SPIFFE mTLS config (nil in dev mode)
-	registryStop         func()                            // RFA-dh9: stop function for registry fsnotify watcher
-	mcpTransport         mcpclient.Transport               // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
-	mcpTransportMu       sync.Mutex                        // RFA-9ol: protects lazy initialization of mcpTransport
-	modelPlanePolicy     *modelPlanePolicyEngine           // RFA-owgw.2: model plane policy enforcement
-	ingressPolicy        *ingressPlanePolicyEngine         // RFA-owgw.3: ingress plane admission controls
-	contextPolicy        *contextPlanePolicyEngine         // RFA-owgw.5: context and memory admission governance
-	loopPolicy           *loopPlanePolicyEngine            // RFA-owgw.4: loop plane immutable external limits
-	toolPolicy           *toolPlanePolicyEngine            // RFA-owgw.6: tool plane protocol adapters and capability registry v2
-	rlmPolicy            *rlmGovernanceEngine              // RFA-owgw.11: recursive language model governance
-	breakGlass           *breakGlassManager                // RFA-l6h6.1.5: bounded break-glass emergency overrides
-	enforcementProfile   *enforcementProfileRuntime        // RFA-l6h6.1.6: startup-constrained runtime enforcement profile
-	dlpRuleOps           *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
-	cca                  *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
-	ingressReplayGuard   *ingressReplayGuard               // RFA-l6h6.2.2: ingress replay/freshness guard
+	config                     *Config
+	proxy                      *httputil.ReverseProxy
+	auditor                    *middleware.Auditor
+	opa                        *middleware.OPAEngine
+	registry                   *middleware.ToolRegistry
+	dlpScanner                 middleware.DLPScanner
+	deepScanner                *middleware.DeepScanner
+	sessionContext             *middleware.SessionContext
+	rateLimiter                *middleware.RateLimiter
+	circuitBreaker             *middleware.CircuitBreaker
+	handleStore                *HandleStore                     // RFA-qq0.16: response firewall data handle cache
+	groqGuardClient            middleware.GroqGuardClient       // RFA-qq0.17: guard model client for step-up gating
+	destinationAllowlist       *middleware.DestinationAllowlist // RFA-qq0.17: destination allowlist
+	riskConfig                 *middleware.RiskConfig           // RFA-qq0.17: risk scoring thresholds
+	approvalCapabilities       *middleware.ApprovalCapabilityService
+	uiCapabilityGating         *UICapabilityGating               // RFA-j2d.1: MCP-UI capability gating
+	uiResourceControls         *UIResourceControls               // RFA-j2d.2: UI resource content controls
+	uiResponseProcessor        *UIResponseProcessor              // RFA-j2d.6: UI response processing pipeline
+	observedToolHashes         *middleware.ObservedToolHashCache // RFA-6fse.4: gateway-owned observed tool metadata hashes
+	spikeRedeemer              middleware.SecretRedeemer         // RFA-a2y.1: SPIKE Nexus or POC secret redeemer
+	sessionStore               middleware.SessionStore           // RFA-hh5.1: session persistence store (InMemory or KeyDB)
+	spiffeTLS                  *SPIFFETLSConfig                  // RFA-8z8.1: SPIFFE mTLS config (nil in dev mode)
+	registryStop               func()                            // RFA-dh9: stop function for registry fsnotify watcher
+	mcpTransport               mcpclient.Transport               // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
+	mcpTransportMu             sync.Mutex                        // RFA-9ol: protects lazy initialization of mcpTransport
+	modelPlanePolicy           *modelPlanePolicyEngine           // RFA-owgw.2: model plane policy enforcement
+	ingressPolicy              *ingressPlanePolicyEngine         // RFA-owgw.3: ingress plane admission controls
+	contextPolicy              *contextPlanePolicyEngine         // RFA-owgw.5: context and memory admission governance
+	loopPolicy                 *loopPlanePolicyEngine            // RFA-owgw.4: loop plane immutable external limits
+	toolPolicy                 *toolPlanePolicyEngine            // RFA-owgw.6: tool plane protocol adapters and capability registry v2
+	rlmPolicy                  *rlmGovernanceEngine              // RFA-owgw.11: recursive language model governance
+	breakGlass                 *breakGlassManager                // RFA-l6h6.1.5: bounded break-glass emergency overrides
+	enforcementProfile         *enforcementProfileRuntime        // RFA-l6h6.1.6: startup-constrained runtime enforcement profile
+	dlpRuleOps                 *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
+	cca                        *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
+	ingressReplayGuard         *ingressReplayGuard               // RFA-l6h6.2.2: ingress replay/freshness guard
+	adminAuthzAllowedSPIFFEIDs map[string]struct{}               // explicit SPIFFE allowlist for /admin/* authorization
 }
 
 // New creates a new gateway instance
@@ -336,40 +337,46 @@ func New(cfg *Config) (*Gateway, error) {
 		})
 	}
 
+	adminAllowlist := cfg.AdminAuthzAllowedSPIFFEIDs
+	if len(adminAllowlist) == 0 {
+		adminAllowlist = defaultAdminAuthzAllowedSPIFFEIDs()
+	}
+
 	return &Gateway{
-		config:               cfg,
-		proxy:                proxy,
-		auditor:              auditor,
-		opa:                  opa,
-		registry:             registry,
-		dlpScanner:           dlpScanner,
-		deepScanner:          deepScanner,
-		sessionContext:       sessionContext,
-		rateLimiter:          rateLimiter,
-		circuitBreaker:       circuitBreaker,
-		handleStore:          handleStore,
-		groqGuardClient:      groqGuardClient,
-		destinationAllowlist: destinationAllowlist,
-		riskConfig:           riskConfig,
-		approvalCapabilities: approvalCapabilities,
-		uiCapabilityGating:   uiCapabilityGating,
-		uiResourceControls:   uiResourceControls,
-		uiResponseProcessor:  uiResponseProcessor,
-		observedToolHashes:   observedToolHashes,
-		spikeRedeemer:        spikeRedeemer,
-		sessionStore:         sessionStore,
-		registryStop:         registryStop,
-		modelPlanePolicy:     modelPlanePolicy,
-		ingressPolicy:        newIngressPlanePolicyEngine(),
-		contextPolicy:        newContextPlanePolicyEngine(),
-		loopPolicy:           newLoopPlanePolicyEngine(),
-		toolPolicy:           newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
-		rlmPolicy:            newRLMGovernanceEngine(),
-		breakGlass:           newBreakGlassManager(auditor),
-		enforcementProfile:   enforcementProfile,
-		dlpRuleOps:           dlpRuleOps,
-		cca:                  newConnectorConformanceAuthority(),
-		ingressReplayGuard:   newIngressReplayGuard(5*time.Minute, 15*time.Second),
+		config:                     cfg,
+		proxy:                      proxy,
+		auditor:                    auditor,
+		opa:                        opa,
+		registry:                   registry,
+		dlpScanner:                 dlpScanner,
+		deepScanner:                deepScanner,
+		sessionContext:             sessionContext,
+		rateLimiter:                rateLimiter,
+		circuitBreaker:             circuitBreaker,
+		handleStore:                handleStore,
+		groqGuardClient:            groqGuardClient,
+		destinationAllowlist:       destinationAllowlist,
+		riskConfig:                 riskConfig,
+		approvalCapabilities:       approvalCapabilities,
+		uiCapabilityGating:         uiCapabilityGating,
+		uiResourceControls:         uiResourceControls,
+		uiResponseProcessor:        uiResponseProcessor,
+		observedToolHashes:         observedToolHashes,
+		spikeRedeemer:              spikeRedeemer,
+		sessionStore:               sessionStore,
+		registryStop:               registryStop,
+		modelPlanePolicy:           modelPlanePolicy,
+		ingressPolicy:              newIngressPlanePolicyEngine(),
+		contextPolicy:              newContextPlanePolicyEngine(),
+		loopPolicy:                 newLoopPlanePolicyEngine(),
+		toolPolicy:                 newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
+		rlmPolicy:                  newRLMGovernanceEngine(),
+		breakGlass:                 newBreakGlassManager(auditor),
+		enforcementProfile:         enforcementProfile,
+		dlpRuleOps:                 dlpRuleOps,
+		cca:                        newConnectorConformanceAuthority(),
+		ingressReplayGuard:         newIngressReplayGuard(5*time.Minute, 15*time.Second),
+		adminAuthzAllowedSPIFFEIDs: normalizeAdminAuthzAllowlist(adminAllowlist),
 	}, nil
 }
 
@@ -431,11 +438,6 @@ func (g *Gateway) Handler() http.Handler {
 	// to the gateway namespace in k8s). Disabled by default.
 	mux.Handle("/__demo__/rugpull/on", http.HandlerFunc(g.demoRugpullToggleHandler(true)))
 	mux.Handle("/__demo__/rugpull/off", http.HandlerFunc(g.demoRugpullToggleHandler(false)))
-	// Admin endpoints (not exposed externally in the POC; no auth required).
-	mux.Handle("/admin/circuit-breakers", http.HandlerFunc(g.adminCircuitBreakersHandler))
-	mux.Handle("/admin/circuit-breakers/", http.HandlerFunc(g.adminCircuitBreakersHandler))
-	mux.Handle("/admin/circuit-breakers/reset", http.HandlerFunc(g.adminCircuitBreakersResetHandler))
-	mux.Handle("/admin/policy/reload", http.HandlerFunc(g.adminPolicyReloadHandler))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
@@ -531,16 +533,7 @@ func (g *Gateway) proxyHandler() http.Handler {
 			if proxyRW.statusCode >= 400 {
 				result = "denied"
 			}
-			adminMiddleware := v24MiddlewareRuleOpsAdmin
-			if strings.HasPrefix(r.URL.Path, "/admin/loop/runs") {
-				adminMiddleware = v24MiddlewareLoopAdmin
-			} else if strings.HasPrefix(r.URL.Path, approvalAdminPath) {
-				adminMiddleware = v24MiddlewareApprovalAdmin
-			} else if strings.HasPrefix(r.URL.Path, breakGlassAdminPath) {
-				adminMiddleware = v24MiddlewareBreakGlassAdmin
-			} else if strings.HasPrefix(r.URL.Path, profileAdminPath) {
-				adminMiddleware = v24MiddlewareProfileAdmin
-			}
+			adminMiddleware := adminMiddlewareForPath(r.URL.Path)
 			span.SetAttributes(
 				attribute.Int("status_code", proxyRW.statusCode),
 				attribute.String("mcp.result", result),

@@ -78,6 +78,9 @@ type Config struct {
 	// Demo-only: allow the gateway to mediate upstream rugpull toggles via
 	// /__demo__/rugpull/{on|off}. Disabled by default.
 	DemoRugpullAdminEnabled bool
+	// Explicit SPIFFE identity allowlist for /admin/* endpoints. Requests from
+	// principals outside this list are denied with 403.
+	AdminAuthzAllowedSPIFFEIDs []string
 }
 
 // ConfigFromEnv loads configuration from environment variables
@@ -243,6 +246,11 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
+	adminAuthzAllowedSPIFFEIDs := parseListEnv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS")
+	if len(adminAuthzAllowedSPIFFEIDs) == 0 {
+		adminAuthzAllowedSPIFFEIDs = defaultAdminAuthzAllowedSPIFFEIDs()
+	}
+
 	enforceModelMediationGate := parseEnvBool("ENFORCE_MODEL_MEDIATION_GATE", true)
 	enforceHIPAAPromptSafetyGate := parseEnvBool("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", true)
 
@@ -305,6 +313,7 @@ func ConfigFromEnv() *Config {
 		ProfileMetadataExportPath:     strings.TrimSpace(os.Getenv("PROFILE_METADATA_EXPORT_PATH")),
 		EnforcementControlOverrides:   true,
 		DemoRugpullAdminEnabled:       demoRugpullAdminEnabled,
+		AdminAuthzAllowedSPIFFEIDs:    adminAuthzAllowedSPIFFEIDs,
 	}
 }
 
@@ -330,5 +339,33 @@ func parseEnvBool(key string, defaultValue bool) bool {
 		return false
 	default:
 		return defaultValue
+	}
+}
+
+func parseListEnv(key string) []string {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return nil
+	}
+
+	parts := strings.Split(raw, ",")
+	normalized := make([]string, 0, len(parts))
+	for _, part := range parts {
+		value := strings.TrimSpace(part)
+		if value == "" {
+			continue
+		}
+		normalized = append(normalized, value)
+	}
+	return normalized
+}
+
+func defaultAdminAuthzAllowedSPIFFEIDs() []string {
+	// Keep defaults explicit and minimal for local/dev workflows.
+	return []string{
+		"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+		"spiffe://poc.local/gateways/mcp-security-gateway/dev",
+		"spiffe://poc.local/agents/test",
+		"spiffe://poc.local/agents/test/dev",
 	}
 }
