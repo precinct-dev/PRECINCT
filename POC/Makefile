@@ -446,6 +446,26 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 		grep -q 'CAPABILITY_REGISTRY_V2_PATH' "$$file" || { echo "Missing CAPABILITY_REGISTRY_V2_PATH in $$o overlay"; exit 1; }; \
 		grep -q 'capability-registry-v2.yaml' "$$file" || { echo "Missing capability-registry-v2.yaml mount/data in $$o overlay"; exit 1; }; \
 	done; \
+	echo "Validating non-local gateway prod transport wiring..."; \
+	for o in dev staging prod; do \
+		file="/tmp/uasgs-k8s-$$o.yaml"; \
+		awk ' \
+			BEGIN { RS="---"; dep=""; svc="" } \
+			$$0 ~ /kind:[[:space:]]*Deployment([[:space:]]|$$)/ && $$0 ~ /name:[[:space:]]*mcp-security-gateway([[:space:]]|$$)/ { dep=$$0 } \
+			$$0 ~ /kind:[[:space:]]*Service([[:space:]]|$$)/ && $$0 ~ /name:[[:space:]]*mcp-security-gateway([[:space:]]|$$)/ { svc=$$0 } \
+			END { \
+				ok=1; \
+				if (dep == "" || svc == "") ok=0; \
+				if (dep !~ /name:[[:space:]]*SPIFFE_MODE/ || dep !~ /value:[[:space:]]*"?prod"?/) ok=0; \
+				if (dep !~ /name:[[:space:]]*SPIFFE_ENDPOINT_SOCKET/ || dep !~ /run\/spire\/sockets\/agent\.sock/) ok=0; \
+				if (dep !~ /name:[[:space:]]*SPIFFE_LISTEN_PORT/ || dep !~ /value:[[:space:]]*"?9090"?/) ok=0; \
+				if (dep !~ /containerPort:[[:space:]]*9090/) ok=0; \
+				if (dep !~ /livenessProbe:/ || dep !~ /readinessProbe:/ || dep !~ /- \/app\/gateway/ || dep !~ /- health/) ok=0; \
+				if (svc !~ /port:[[:space:]]*9090/ || svc !~ /targetPort:[[:space:]]*http/) ok=0; \
+				exit(ok ? 0 : 1); \
+			} \
+		' "$$file" || { echo "Gateway prod transport wiring check failed for $$o overlay"; exit 1; }; \
+	done; \
 	echo "k8s-validate: PASS"
 
 k8s-runtime-campaign: ## Run K8s runtime allow/deny campaign and emit machine-readable report
