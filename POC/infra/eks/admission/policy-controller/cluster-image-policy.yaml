@@ -49,10 +49,10 @@ spec:
         identities:
           # GitHub Actions OIDC issuer
           - issuer: https://token.actions.githubusercontent.com
-            # Subject pattern: matches any GitHub Actions workflow in the org
-            # In production, restrict to specific repository and workflow:
-            #   subjectRegExp: "https://github.com/YOUR_ORG/YOUR_REPO/.*"
-            subjectRegExp: "https://github.com/.*"
+            # Subject pattern tightened to this repository's workflow identities.
+            # Example subject format:
+            #   https://github.com/RamXX/agentic_reference_architecture/.github/workflows/<workflow>@refs/heads/<branch>
+            subjectRegExp: "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/[^@]+@refs/heads/.+$"
       # Verify signatures against Rekor transparency log
       ctlog:
         url: https://rekor.sigstore.dev

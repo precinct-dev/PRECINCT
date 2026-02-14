@@ -14,7 +14,7 @@
 #   - OPA Gatekeeper installed (gatekeeper-system namespace exists)
 #   - ConstraintTemplates and Constraints applied
 #     (kubectl apply -k POC/infra/eks/admission/)
-#   - At least one enforcement namespace exists (mcp-gateway)
+#   - At least one enforcement namespace exists (gateway)
 #
 # Usage:
 #   ./verify-admission-policies.sh              # Run all tests
@@ -34,8 +34,8 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Enforcement namespaces (must match constraints)
-readonly ENFORCEMENT_NS="mcp-gateway"
+# Enforcement namespace (must match constraints)
+readonly ENFORCEMENT_NS="gateway"
 # Non-enforcement namespace (for control tests)
 readonly CONTROL_NS="default"
 

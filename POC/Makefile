@@ -466,6 +466,8 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 			} \
 		' "$$file" || { echo "Gateway prod transport wiring check failed for $$o overlay"; exit 1; }; \
 	done; \
+	echo "Validating admission wiring (namespace scope, include labels, keyless identity bounds)..."; \
+	tests/e2e/admission/verify-admission-manifest-wiring.sh; \
 	echo "k8s-validate: PASS"
 
 k8s-runtime-campaign: ## Run K8s runtime allow/deny campaign and emit machine-readable report

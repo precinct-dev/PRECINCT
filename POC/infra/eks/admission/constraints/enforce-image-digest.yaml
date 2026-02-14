@@ -6,12 +6,9 @@
 # namespaces. All container images deployed to these namespaces must use
 # digest-pinned references -- floating tags like :latest are rejected.
 #
-# Enforcement namespaces (from Reference Architecture):
-#   - mcp-gateway:    MCP Security Gateway
-#   - mcp-servers:    MCP Tool Servers (S3, etc.)
-#   - spike-system:   SPIKE/SPIFFE identity system
-#   - spire-system:   SPIRE server and agents
-#   - policy-system:  OPA bundle server and policy engine
+# Enforcement namespaces (non-local runtime overlays):
+#   - gateway: MCP Security Gateway
+#   - tools:   MCP Tool Servers
 #
 # Examples of valid vs invalid image references:
 #   VALID:   ghcr.io/org/gateway@sha256:abc123def456...
@@ -49,11 +46,8 @@ spec:
       - apiGroups: ["batch"]
         kinds: ["Job", "CronJob"]
     namespaces:
-      - mcp-gateway
-      - mcp-servers
-      - spike-system
-      - spire-system
-      - policy-system
+      - gateway
+      - tools
   parameters:
     exemptImages:
       # Kubernetes pause container (injected by kubelet, not user-controlled)

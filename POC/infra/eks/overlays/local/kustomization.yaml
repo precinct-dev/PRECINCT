@@ -725,7 +725,7 @@ patches:
 
   # --------------------------------------------------------------------------
   # Gatekeeper constraints: remap namespaces + dryrun for local dev
-  # Production uses mcp-gateway/mcp-servers; local uses gateway/tools.
+  # Non-local overlays enforce gateway/tools; local keeps dryrun behavior.
   # enforcementAction: dryrun -- audit violations without blocking pods.
   # This lets locally-built unsigned images deploy while still demonstrating
   # the Gatekeeper constraint architecture.
