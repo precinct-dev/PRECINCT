@@ -2,12 +2,14 @@ package gateway
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -152,7 +154,7 @@ func TestNewKeyDBTLSConfigFromPEM_ValidCerts(t *testing.T) {
 		t.Fatalf("Failed to write CA: %v", err)
 	}
 
-	cfg, err := NewKeyDBTLSConfigFromPEM(certFile, keyFile, caFile)
+	cfg, err := NewKeyDBTLSConfigFromPEM(certFile, keyFile, caFile, nil)
 	if err != nil {
 		t.Fatalf("NewKeyDBTLSConfigFromPEM failed: %v", err)
 	}
@@ -174,7 +176,7 @@ func TestNewKeyDBTLSConfigFromPEM_ValidCerts(t *testing.T) {
 }
 
 func TestNewKeyDBTLSConfigFromPEM_InvalidCertFile(t *testing.T) {
-	_, err := NewKeyDBTLSConfigFromPEM("/nonexistent/cert.pem", "/nonexistent/key.pem", "/nonexistent/ca.pem")
+	_, err := NewKeyDBTLSConfigFromPEM("/nonexistent/cert.pem", "/nonexistent/key.pem", "/nonexistent/ca.pem", nil)
 	if err == nil {
 		t.Error("Expected error for nonexistent cert files")
 	}
@@ -201,7 +203,7 @@ func TestNewKeyDBTLSConfigFromPEM_InvalidCAFile(t *testing.T) {
 		t.Fatalf("Failed to write CA: %v", err)
 	}
 
-	_, err := NewKeyDBTLSConfigFromPEM(certFile, keyFile, caFile)
+	_, err := NewKeyDBTLSConfigFromPEM(certFile, keyFile, caFile, nil)
 	if err == nil {
 		t.Error("Expected error for invalid CA file")
 	}
@@ -212,9 +214,33 @@ func TestNewKeyDBTLSConfigFromPEM_InvalidCAFile(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestNewKeyDBTLSConfigFromSPIRE_NilSource(t *testing.T) {
-	_, err := NewKeyDBTLSConfigFromSPIRE(nil)
+	_, err := NewKeyDBTLSConfigFromSPIRE(nil, nil)
 	if err == nil {
 		t.Error("Expected error for nil X509Source")
+	}
+}
+
+func TestKeyDBTLSPeerIdentityPinningVerifier_AllowsAndDenies(t *testing.T) {
+	ca := newTestCA(t)
+	allowedID := "spiffe://poc.local/keydb"
+	deniedID := "spiffe://poc.local/keydb-unexpected"
+	allowedCert, _ := ca.issueCert(t, allowedID)
+	deniedCert, _ := ca.issueCert(t, deniedID)
+
+	allowedSet := map[string]struct{}{
+		allowedID: {},
+	}
+
+	if err := verifyPinnedPeerSPIFFEIdentity([]*x509.Certificate{allowedCert}, allowedSet, "keydb"); err != nil {
+		t.Fatalf("expected allowed keydb SPIFFE ID to pass verification: %v", err)
+	}
+
+	err := verifyPinnedPeerSPIFFEIdentity([]*x509.Certificate{deniedCert}, allowedSet, "keydb")
+	if err == nil {
+		t.Fatal("expected denied keydb SPIFFE ID to fail verification")
+	}
+	if !strings.Contains(err.Error(), "unexpected SPIFFE ID") {
+		t.Fatalf("expected explicit unexpected identity error, got: %v", err)
 	}
 }
 
@@ -353,6 +379,99 @@ func TestKeyDBTLSConnection_Integration(t *testing.T) {
 		}
 		t.Logf("PASS: Connection without client cert rejected: %v", err)
 	})
+}
+
+func TestKeyDBTLSConnection_SPIFFEIdentityPinning(t *testing.T) {
+	ca := newTestCA(t)
+	allowedServerID := "spiffe://poc.local/keydb"
+	deniedServerID := "spiffe://poc.local/keydb-evil"
+
+	allowedServerCert, allowedServerKey := ca.issueCert(t, allowedServerID)
+	deniedServerCert, deniedServerKey := ca.issueCert(t, deniedServerID)
+	clientCert, clientKey := ca.issueCert(t, "spiffe://poc.local/gateway")
+
+	caPool := x509.NewCertPool()
+	caPool.AddCert(ca.cert)
+
+	mr, err := miniredis.Run()
+	if err != nil {
+		t.Fatalf("Failed to start miniredis: %v", err)
+	}
+	defer mr.Close()
+
+	newTLSProxyListener := func(cert *x509.Certificate, key *ecdsa.PrivateKey) net.Listener {
+		t.Helper()
+		serverTLSCert, err := tls.X509KeyPair(
+			pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}),
+			pemEncodeKey(t, key),
+		)
+		if err != nil {
+			t.Fatalf("Failed to create server TLS cert: %v", err)
+		}
+
+		listener, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{
+			Certificates: []tls.Certificate{serverTLSCert},
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+			ClientCAs:    caPool,
+			MinVersion:   tls.VersionTLS12,
+		})
+		if err != nil {
+			t.Fatalf("Failed to create TLS listener: %v", err)
+		}
+
+		go func() {
+			for {
+				conn, err := listener.Accept()
+				if err != nil {
+					return
+				}
+				go proxyConnection(t, conn, mr.Addr())
+			}
+		}()
+		return listener
+	}
+
+	allowedListener := newTLSProxyListener(allowedServerCert, allowedServerKey)
+	defer func() { _ = allowedListener.Close() }()
+	deniedListener := newTLSProxyListener(deniedServerCert, deniedServerKey)
+	defer func() { _ = deniedListener.Close() }()
+
+	tmpDir := t.TempDir()
+	certFile := filepath.Join(tmpDir, "client-cert.pem")
+	keyFile := filepath.Join(tmpDir, "client-key.pem")
+	caFile := filepath.Join(tmpDir, "ca.pem")
+	if err := os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: clientCert.Raw}), 0600); err != nil {
+		t.Fatalf("write client cert: %v", err)
+	}
+	if err := os.WriteFile(keyFile, pemEncodeKey(t, clientKey), 0600); err != nil {
+		t.Fatalf("write client key: %v", err)
+	}
+	if err := os.WriteFile(caFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: ca.cert.Raw}), 0600); err != nil {
+		t.Fatalf("write CA cert: %v", err)
+	}
+
+	keydbTLSCfg, err := NewKeyDBTLSConfigFromPEM(certFile, keyFile, caFile, []string{allowedServerID})
+	if err != nil {
+		t.Fatalf("failed to create pinned KeyDB TLS config: %v", err)
+	}
+
+	ctx := context.Background()
+
+	allowedClient := NewKeyDBClientTLS(allowedListener.Addr().String(), 5, 20, keydbTLSCfg.TLSConfig)
+	defer func() { _ = allowedClient.Close() }()
+	if _, err := allowedClient.Ping(ctx).Result(); err != nil {
+		t.Fatalf("expected pinned allowlist to permit allowed KeyDB identity: %v", err)
+	}
+
+	deniedClient := NewKeyDBClientTLS(deniedListener.Addr().String(), 5, 20, keydbTLSCfg.TLSConfig)
+	defer func() { _ = deniedClient.Close() }()
+	_, err = deniedClient.Ping(ctx).Result()
+	if err == nil {
+		t.Fatal("expected pinned allowlist to reject unexpected KeyDB identity")
+	}
+	if !strings.Contains(err.Error(), "unexpected SPIFFE ID") {
+		t.Fatalf("expected explicit identity mismatch error, got: %v", err)
+	}
 }
 
 // TestKeyDBDevMode_NoTLS proves AC6: In dev mode, KeyDB uses port 6379

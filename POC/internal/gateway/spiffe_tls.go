@@ -34,8 +34,12 @@ type SPIFFETLSConfig struct {
 // obtains an X.509 SVID, and returns TLS configurations for both the
 // server listener and the upstream reverse proxy transport.
 //
+// upstreamAuthzAllowedSPIFFEIDs optionally pins upstream peer identities.
+// When empty, upstream identity authorization falls back to trust-domain-wide
+// acceptance (compatibility mode).
+//
 // The caller MUST call Close() when done to release the X509Source.
-func NewSPIFFETLSConfig(ctx context.Context) (*SPIFFETLSConfig, error) {
+func NewSPIFFETLSConfig(ctx context.Context, upstreamAuthzAllowedSPIFFEIDs []string) (*SPIFFETLSConfig, error) {
 	// Connect to SPIRE Agent via Workload API.
 	// The socket path is discovered from SPIFFE_ENDPOINT_SOCKET env var
 	// (set in docker-compose.yml).
@@ -61,13 +65,24 @@ func NewSPIFFETLSConfig(ctx context.Context) (*SPIFFETLSConfig, error) {
 	serverTLS.ClientCAs = nil // go-spiffe handles this via the VerifyPeerCertificate callback
 	serverTLS.MinVersion = tls.VersionTLS12
 
-	// Upstream transport: present our SVID as client cert, verify upstream's SVID.
-	// AuthorizeAny() accepts any SPIFFE ID from the trust domain -- the upstream
-	// MCP server's specific identity is validated by the trust bundle, not by
-	// SPIFFE ID matching here (that would be too restrictive for a gateway).
-	upstreamTLS := tlsconfig.MTLSClientConfig(x509Source, x509Source, tlsconfig.AuthorizeAny())
+	peerAuthz, err := buildSPIFFEPeerAuthorizer(upstreamAuthzAllowedSPIFFEIDs, "upstream")
+	if err != nil {
+		_ = x509Source.Close()
+		return nil, fmt.Errorf("failed to configure upstream SPIFFE identity pinning: %w", err)
+	}
+
+	// Upstream transport: present our SVID as client cert, validate the upstream
+	// certificate chain, and enforce explicit SPIFFE identity allowlists when
+	// configured (or strict-profile defaults).
+	upstreamTLS := tlsconfig.MTLSClientConfig(x509Source, x509Source, peerAuthz.authorizer)
+	installPinnedPeerIdentityVerifier(upstreamTLS, peerAuthz.allowedIDs, "upstream")
 	upstreamTransport := &http.Transport{
 		TLSClientConfig: upstreamTLS,
+	}
+	if peerAuthz.mode == spiffePeerAuthorizationModeAllowlist {
+		log.Printf("SPIFFE mTLS: upstream identity pinning enabled (allowed IDs: %v)", peerAuthz.allowedIDs)
+	} else {
+		log.Printf("SPIFFE mTLS: upstream identity pinning is permissive (no explicit IDs configured)")
 	}
 
 	return &SPIFFETLSConfig{

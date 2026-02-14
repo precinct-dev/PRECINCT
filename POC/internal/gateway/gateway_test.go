@@ -371,6 +371,51 @@ func TestConfigFromEnv(t *testing.T) {
 	if cfg.ProfileMetadataExportPath != "/tmp/profile-metadata.json" {
 		t.Errorf("Expected ProfileMetadataExportPath=/tmp/profile-metadata.json, got %q", cfg.ProfileMetadataExportPath)
 	}
+
+	// RFA-l6h6.6.6: strict profiles auto-apply secure SPIFFE peer pinning defaults
+	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileProdStandard)
+	t.Setenv("SPIFFE_TRUST_DOMAIN", "example.org")
+	t.Setenv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS", "")
+	t.Setenv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS", "")
+	cfg = ConfigFromEnv()
+
+	expectedUpstreamIDs := []string{
+		"spiffe://example.org/ns/tools/sa/mcp-tool",
+		"spiffe://example.org/tools/docker-mcp-server/dev",
+	}
+	expectedKeyDBIDs := []string{
+		"spiffe://example.org/keydb",
+		"spiffe://example.org/ns/data/sa/keydb",
+	}
+	if !reflect.DeepEqual(cfg.UpstreamAuthzAllowedSPIFFEIDs, expectedUpstreamIDs) {
+		t.Errorf("Expected strict upstream SPIFFE allowlist defaults %v, got %v", expectedUpstreamIDs, cfg.UpstreamAuthzAllowedSPIFFEIDs)
+	}
+	if !reflect.DeepEqual(cfg.KeyDBAuthzAllowedSPIFFEIDs, expectedKeyDBIDs) {
+		t.Errorf("Expected strict keydb SPIFFE allowlist defaults %v, got %v", expectedKeyDBIDs, cfg.KeyDBAuthzAllowedSPIFFEIDs)
+	}
+
+	// RFA-l6h6.6.6: explicit env allowlists override strict defaults
+	t.Setenv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS", "spiffe://example.org/ns/tools/sa/custom-mcp")
+	t.Setenv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS", "spiffe://example.org/ns/data/sa/custom-keydb")
+	cfg = ConfigFromEnv()
+	if !reflect.DeepEqual(cfg.UpstreamAuthzAllowedSPIFFEIDs, []string{"spiffe://example.org/ns/tools/sa/custom-mcp"}) {
+		t.Errorf("Expected explicit upstream SPIFFE allowlist override, got %v", cfg.UpstreamAuthzAllowedSPIFFEIDs)
+	}
+	if !reflect.DeepEqual(cfg.KeyDBAuthzAllowedSPIFFEIDs, []string{"spiffe://example.org/ns/data/sa/custom-keydb"}) {
+		t.Errorf("Expected explicit keydb SPIFFE allowlist override, got %v", cfg.KeyDBAuthzAllowedSPIFFEIDs)
+	}
+
+	// RFA-l6h6.6.6: dev profile preserves backward compatibility (no defaults)
+	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileDev)
+	t.Setenv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS", "")
+	t.Setenv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS", "")
+	cfg = ConfigFromEnv()
+	if len(cfg.UpstreamAuthzAllowedSPIFFEIDs) != 0 {
+		t.Errorf("Expected no upstream SPIFFE allowlist in dev profile default, got %v", cfg.UpstreamAuthzAllowedSPIFFEIDs)
+	}
+	if len(cfg.KeyDBAuthzAllowedSPIFFEIDs) != 0 {
+		t.Errorf("Expected no keydb SPIFFE allowlist in dev profile default, got %v", cfg.KeyDBAuthzAllowedSPIFFEIDs)
+	}
 }
 
 // TestGatewayDevModePreservesPhase1Behavior verifies AC4: In SPIFFE_MODE=dev,

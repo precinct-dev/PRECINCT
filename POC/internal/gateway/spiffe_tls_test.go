@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"testing"
 	"time"
 
@@ -33,6 +34,37 @@ func TestSPIFFETLSConfig_ServerTLSFields(t *testing.T) {
 	// Close on zero-value should not panic
 	if err := cfg.Close(); err != nil {
 		t.Errorf("Close on nil x509Source should return nil, got %v", err)
+	}
+}
+
+func TestSPIFFEPeerIdentityPinningVerifier_UpstreamAllowsAndDenies(t *testing.T) {
+	ca := newTestCA(t)
+	allowedID := "spiffe://poc.local/ns/tools/sa/mcp-tool"
+	deniedID := "spiffe://poc.local/ns/tools/sa/evil-tool"
+	allowedCert, _ := ca.issueCert(t, allowedID)
+	deniedCert, _ := ca.issueCert(t, deniedID)
+
+	allowedSet := map[string]struct{}{
+		allowedID: {},
+	}
+
+	if err := verifyPinnedPeerSPIFFEIdentity([]*x509.Certificate{allowedCert}, allowedSet, "upstream"); err != nil {
+		t.Fatalf("expected allowed upstream SPIFFE ID to pass verification: %v", err)
+	}
+
+	err := verifyPinnedPeerSPIFFEIdentity([]*x509.Certificate{deniedCert}, allowedSet, "upstream")
+	if err == nil {
+		t.Fatal("expected denied upstream SPIFFE ID to fail verification")
+	}
+	if !strings.Contains(err.Error(), "unexpected SPIFFE ID") {
+		t.Fatalf("expected explicit unexpected identity error, got: %v", err)
+	}
+}
+
+func TestSPIFFEPeerAuthorizer_InvalidConfiguredIDFails(t *testing.T) {
+	_, err := buildSPIFFEPeerAuthorizer([]string{"not-a-spiffe-id"}, "upstream")
+	if err == nil {
+		t.Fatal("expected invalid configured SPIFFE ID to fail authorizer construction")
 	}
 }
 
@@ -265,6 +297,87 @@ func TestGatewayMTLSReverseProxy(t *testing.T) {
 	}
 
 	t.Logf("PASS: Reverse proxy mTLS to upstream verified, upstream saw SPIFFE ID: %s", upstreamReceivedSPIFFEID)
+}
+
+func TestGatewayMTLSReverseProxy_SPIFFEIdentityPinning(t *testing.T) {
+	ca := newTestCA(t)
+
+	gatewayID := "spiffe://poc.local/gateway"
+	allowedUpstreamID := "spiffe://poc.local/ns/tools/sa/mcp-tool"
+	deniedUpstreamID := "spiffe://poc.local/ns/tools/sa/evil-tool"
+
+	gatewayCert, gatewayKey := ca.issueCert(t, gatewayID)
+	allowedUpstreamCert, allowedUpstreamKey := ca.issueCert(t, allowedUpstreamID)
+	deniedUpstreamCert, deniedUpstreamKey := ca.issueCert(t, deniedUpstreamID)
+
+	caPool := x509.NewCertPool()
+	caPool.AddCert(ca.cert)
+
+	newUpstreamServer := func(cert *x509.Certificate, key *ecdsa.PrivateKey) *httptest.Server {
+		t.Helper()
+		tlsCert, err := tls.X509KeyPair(
+			pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}),
+			pemEncodeKey(t, key),
+		)
+		if err != nil {
+			t.Fatalf("create upstream TLS cert: %v", err)
+		}
+		srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"result":"ok"}`))
+		}))
+		srv.TLS = &tls.Config{
+			Certificates: []tls.Certificate{tlsCert},
+			ClientAuth:   tls.RequireAndVerifyClientCert,
+			ClientCAs:    caPool,
+			MinVersion:   tls.VersionTLS12,
+		}
+		srv.StartTLS()
+		return srv
+	}
+
+	allowedServer := newUpstreamServer(allowedUpstreamCert, allowedUpstreamKey)
+	defer allowedServer.Close()
+	deniedServer := newUpstreamServer(deniedUpstreamCert, deniedUpstreamKey)
+	defer deniedServer.Close()
+
+	gatewayTLSCert, err := tls.X509KeyPair(
+		pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: gatewayCert.Raw}),
+		pemEncodeKey(t, gatewayKey),
+	)
+	if err != nil {
+		t.Fatalf("create gateway TLS cert: %v", err)
+	}
+
+	pinnedTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{gatewayTLSCert},
+		RootCAs:      caPool,
+		MinVersion:   tls.VersionTLS12,
+	}
+	installPinnedPeerIdentityVerifier(pinnedTLSConfig, []string{allowedUpstreamID}, "upstream")
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: pinnedTLSConfig,
+		},
+	}
+
+	resp, err := client.Get(allowedServer.URL + "/mcp")
+	if err != nil {
+		t.Fatalf("expected allowed upstream identity to succeed: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected allowed upstream status 200, got %d", resp.StatusCode)
+	}
+
+	_, err = client.Get(deniedServer.URL + "/mcp")
+	if err == nil {
+		t.Fatal("expected denied upstream identity to fail")
+	}
+	if !strings.Contains(err.Error(), "unexpected SPIFFE ID") {
+		t.Fatalf("expected explicit identity mismatch error, got: %v", err)
+	}
 }
 
 // --- Test PKI helpers ---

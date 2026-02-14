@@ -52,6 +52,8 @@ function `ConfigFromEnv()`.
 | `ENFORCE_HIPAA_PROMPT_SAFETY_GATE` | `true` | Enables HIPAA prompt safety deny checks when HIPAA profile policy is active |
 | `PROFILE_METADATA_EXPORT_PATH` | _(empty)_ | Optional path to write active profile metadata as JSON at startup |
 | `APPROVAL_SIGNING_KEY` | _(empty)_ | HMAC signing key for step-up approval capability tokens. In strict profiles (`prod_standard`, `prod_regulated_hipaa`), startup fails if missing, too short, or a known weak/default value |
+| `UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS` | _(empty)_ | Comma-separated upstream SPIFFE IDs allowed for mTLS peer pinning. When empty in strict profiles, secure defaults are auto-applied |
+| `KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS` | _(empty)_ | Comma-separated KeyDB SPIFFE IDs allowed for mTLS peer pinning. When empty in strict profiles, secure defaults are auto-applied |
 
 ### Phase 3 Control Plane Wiring
 
@@ -85,6 +87,28 @@ Migration notes for approval signing key hardening:
 - Strict profiles now fail fast at startup when `APPROVAL_SIGNING_KEY` is missing/weak. Existing deployments that relied on implicit fallback behavior must set this variable before enabling strict profiles.
 - Use a high-entropy key with at least 32 characters and store it in your secret manager/Kubernetes Secret.
 - Dev profile behavior is intentionally bounded: when unset, the gateway generates an ephemeral process-local key at startup (not a static default). This is for local workflows only and tokens are not stable across restarts.
+
+Strict profile defaults for SPIFFE peer identity pinning:
+
+- Upstream (`UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS` when unset):
+  - `spiffe://<trust-domain>/ns/tools/sa/mcp-tool`
+  - `spiffe://<trust-domain>/tools/docker-mcp-server/dev`
+- KeyDB (`KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS` when unset):
+  - `spiffe://<trust-domain>/keydb`
+  - `spiffe://<trust-domain>/ns/data/sa/keydb`
+
+Backward-compatibility behavior:
+
+- In `dev`, empty peer-identity allowlists preserve permissive trust-domain behavior for local workflows.
+- In strict profiles, pinning is fail-closed by default (auto defaults or explicit env allowlists).
+- Multi-instance/blue-green deployments should provide multiple IDs in the allowlist (comma-separated) so overlap windows do not break mTLS.
+
+Example explicit allowlists:
+
+```bash
+export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool,spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool-canary"
+export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb,spiffe://agentic-ref-arch.poc/ns/data/sa/keydb-blue"
+```
 
 ### Guard Model (Deep Scan)
 
