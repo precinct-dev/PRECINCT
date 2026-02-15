@@ -44,6 +44,16 @@ for overlay in staging prod; do
   assert_contains "${out}" 'secretKeyRef:' "${overlay}: APPROVAL_SIGNING_KEY must come from secretKeyRef"
   assert_contains "${out}" 'name:[[:space:]]*gateway-runtime-secrets' "${overlay}: missing gateway-runtime-secrets reference"
   assert_contains "${out}" 'key:[[:space:]]*approval_signing_key' "${overlay}: secret key approval_signing_key is required"
+  assert_contains "${out}" 'name:[[:space:]]*TOOL_REGISTRY_PUBLIC_KEY' "${overlay}: missing TOOL_REGISTRY_PUBLIC_KEY env"
+  assert_contains "${out}" 'value:[[:space:]]*"?/config/attestation-ed25519\.pub"?' "${overlay}: TOOL_REGISTRY_PUBLIC_KEY must point to /config/attestation-ed25519.pub"
+  assert_contains "${out}" 'name:[[:space:]]*MODEL_PROVIDER_CATALOG_PUBLIC_KEY' "${overlay}: missing MODEL_PROVIDER_CATALOG_PUBLIC_KEY env"
+  assert_contains "${out}" 'value:[[:space:]]*"?/config/attestation-ed25519\.pub"?' "${overlay}: MODEL_PROVIDER_CATALOG_PUBLIC_KEY must point to /config/attestation-ed25519.pub"
+  assert_contains "${out}" 'name:[[:space:]]*GUARD_ARTIFACT_PATH' "${overlay}: missing GUARD_ARTIFACT_PATH env"
+  assert_contains "${out}" 'value:[[:space:]]*"?/config/guard-artifact\.bin"?' "${overlay}: GUARD_ARTIFACT_PATH must point to /config/guard-artifact.bin"
+  assert_contains "${out}" 'name:[[:space:]]*GUARD_ARTIFACT_SHA256' "${overlay}: missing GUARD_ARTIFACT_SHA256 env"
+  assert_contains "${out}" 'value:[[:space:]]*"?[a-f0-9]{64}"?' "${overlay}: GUARD_ARTIFACT_SHA256 must be a 64-char hex digest"
+  assert_contains "${out}" 'name:[[:space:]]*GUARD_ARTIFACT_PUBLIC_KEY' "${overlay}: missing GUARD_ARTIFACT_PUBLIC_KEY env"
+  assert_contains "${out}" 'value:[[:space:]]*"?/config/attestation-ed25519\.pub"?' "${overlay}: GUARD_ARTIFACT_PUBLIC_KEY must point to /config/attestation-ed25519.pub"
 done
 
 echo "[INFO] Validating strict Compose runtime wiring..."
@@ -62,5 +72,10 @@ assert_contains "${compose_out}" 'UPSTREAM_URL:[[:space:]]*https://' "compose st
 assert_contains "${compose_out}" 'APPROVAL_SIGNING_KEY:[[:space:]]+' "compose strict: APPROVAL_SIGNING_KEY must be set"
 assert_contains "${compose_out}" 'UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS:[[:space:]]+' "compose strict: UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS must be set"
 assert_contains "${compose_out}" 'KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS:[[:space:]]+' "compose strict: KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS must be set"
+assert_contains "${compose_out}" 'TOOL_REGISTRY_PUBLIC_KEY:[[:space:]]+/config/attestation-ed25519\.pub' "compose strict: TOOL_REGISTRY_PUBLIC_KEY must point to /config/attestation-ed25519.pub"
+assert_contains "${compose_out}" 'MODEL_PROVIDER_CATALOG_PUBLIC_KEY:[[:space:]]+/config/attestation-ed25519\.pub' "compose strict: MODEL_PROVIDER_CATALOG_PUBLIC_KEY must point to /config/attestation-ed25519.pub"
+assert_contains "${compose_out}" 'GUARD_ARTIFACT_PATH:[[:space:]]+/config/guard-artifact\.bin' "compose strict: GUARD_ARTIFACT_PATH must point to /config/guard-artifact.bin"
+assert_contains "${compose_out}" 'GUARD_ARTIFACT_SHA256:[[:space:]]+[a-f0-9]{64}' "compose strict: GUARD_ARTIFACT_SHA256 must be set to a 64-char hex digest"
+assert_contains "${compose_out}" 'GUARD_ARTIFACT_PUBLIC_KEY:[[:space:]]+/config/attestation-ed25519\.pub' "compose strict: GUARD_ARTIFACT_PUBLIC_KEY must point to /config/attestation-ed25519.pub"
 
 echo "[PASS] Strict runtime wiring validation passed"

@@ -60,18 +60,18 @@ function `ConfigFromEnv()`.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `CAPABILITY_REGISTRY_V2_PATH` | _(empty)_ | Optional path to capability registry v2 used by tool-plane policy enforcement (`/v1/tool/execute`) |
-| `MODEL_PROVIDER_CATALOG_PATH` | _(empty)_ | Optional path to model provider catalog v2 (provider endpoints/models/residency/fallbacks) |
-| `MODEL_PROVIDER_CATALOG_PUBLIC_KEY` | _(empty)_ | Optional PEM public key path for model provider catalog signature verification (`.sig`) |
-| `GUARD_ARTIFACT_PATH` | _(empty)_ | Optional local path to guard model artifact for startup integrity verification |
-| `GUARD_ARTIFACT_SHA256` | _(empty)_ | Expected SHA-256 digest for `GUARD_ARTIFACT_PATH` |
-| `GUARD_ARTIFACT_SIGNATURE_PATH` | `<GUARD_ARTIFACT_PATH>.sig` when unset | Optional signature path for guard artifact verification |
-| `GUARD_ARTIFACT_PUBLIC_KEY` | _(empty)_ | Optional PEM public key path for guard artifact signature verification |
+| `MODEL_PROVIDER_CATALOG_PATH` | _(empty)_ | Path to model provider catalog v2 (provider endpoints/models/residency/fallbacks). **Required in strict profiles** |
+| `MODEL_PROVIDER_CATALOG_PUBLIC_KEY` | _(empty)_ | PEM public key path for model provider catalog signature verification (`.sig`). **Required in strict profiles** |
+| `GUARD_ARTIFACT_PATH` | _(empty)_ | Local path to guard model artifact for startup integrity verification. **Required in strict profiles** |
+| `GUARD_ARTIFACT_SHA256` | _(empty)_ | Expected SHA-256 digest for `GUARD_ARTIFACT_PATH`. **Required in strict profiles** |
+| `GUARD_ARTIFACT_SIGNATURE_PATH` | `<GUARD_ARTIFACT_PATH>.sig` when unset | Signature path for guard artifact verification |
+| `GUARD_ARTIFACT_PUBLIC_KEY` | _(empty)_ | PEM public key path for guard artifact signature verification. **Required in strict profiles** |
 
 Wiring behavior:
 
 - When `MODEL_PROVIDER_CATALOG_PATH` is set, the gateway loads the catalog at startup and applies endpoint/model/residency policy to model egress.
-- When `MODEL_PROVIDER_CATALOG_PUBLIC_KEY` is set, unsigned or invalid catalog signatures fail startup.
-- When `GUARD_ARTIFACT_PATH` is set with non-`dev` enforcement profiles, digest/signature mismatches fail startup (fail-closed).
+- In strict profiles, provider catalog signature verification is mandatory. Unsigned or invalid catalog signatures fail startup.
+- In strict profiles, guard artifact digest/signature verification is mandatory and fail-closed.
 - In `dev`, missing/mismatched guard artifact digest/signature is logged as warn-only for local development.
 
 Profile bundles and required controls:
@@ -79,7 +79,7 @@ Profile bundles and required controls:
 | Profile | Startup Gate Mode | Required Runtime Controls |
 |---------|-------------------|---------------------------|
 | `dev` | permissive | Portable defaults; no strict startup fail on production invariants |
-| `prod_standard` | strict | `SPIFFE_MODE=prod`, `MCP_TRANSPORT_MODE=mcp`, `UPSTREAM_URL=https://...`, `ENFORCE_MODEL_MEDIATION_GATE=true`, strong `APPROVAL_SIGNING_KEY` |
+| `prod_standard` | strict | `SPIFFE_MODE=prod`, `MCP_TRANSPORT_MODE=mcp`, `UPSTREAM_URL=https://...`, `ENFORCE_MODEL_MEDIATION_GATE=true`, strong `APPROVAL_SIGNING_KEY`, non-empty `TOOL_REGISTRY_CONFIG_PATH`, `TOOL_REGISTRY_PUBLIC_KEY`, `MODEL_PROVIDER_CATALOG_PATH`, `MODEL_PROVIDER_CATALOG_PUBLIC_KEY`, `GUARD_ARTIFACT_PATH`, `GUARD_ARTIFACT_SHA256`, `GUARD_ARTIFACT_PUBLIC_KEY` |
 | `prod_regulated_hipaa` | strict | `prod_standard` controls + `ENFORCE_HIPAA_PROMPT_SAFETY_GATE=true` |
 
 Migration notes for approval signing key hardening:
@@ -177,7 +177,7 @@ export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/
 | `OPA_POLICY_DIR` | `/config/opa` | Directory containing OPA Rego policies and data files |
 | `OPA_POLICY_PATH` | `/config/opa/mcp_policy.rego` | Path to the main OPA authorization policy file |
 | `TOOL_REGISTRY_CONFIG_PATH` | `/config/tool-registry.yaml` | Path to the tool registry YAML with SHA-256 hashes |
-| `TOOL_REGISTRY_PUBLIC_KEY` | _(empty)_ | Path to PEM public key for tool registry attestation. Empty = dev mode (no signature verification) |
+| `TOOL_REGISTRY_PUBLIC_KEY` | _(empty)_ | Path to PEM public key for tool registry attestation. Empty is allowed only in `dev`; strict profiles require this value and reject unsigned reload/startup artifacts |
 | `DESTINATIONS_CONFIG_PATH` | `/config/destinations.yaml` | Path to the destination allowlist for step-up gating |
 | `RISK_THRESHOLDS_PATH` | `/config/risk_thresholds.yaml` | Path to risk thresholds and DLP policy YAML |
 | `UI_CAPABILITY_GRANTS_PATH` | `/config/opa/ui_capability_grants.yaml` | Path to UI capability grants YAML |

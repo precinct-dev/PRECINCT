@@ -8,6 +8,26 @@ import (
 	"testing"
 )
 
+func newStrictProfileTestConfig(profile string) *Config {
+	return &Config{
+		EnforcementProfile:            profile,
+		SPIFFEMode:                    "prod",
+		MCPTransportMode:              "mcp",
+		UpstreamURL:                   "https://mcp-server.example.com/mcp",
+		EnforceModelMediationGate:     true,
+		EnforceHIPAAPromptSafetyGate:  true,
+		ApprovalSigningKey:            "prod-approval-signing-key-material-at-least-32",
+		ToolRegistryConfigPath:        "/config/tool-registry.yaml",
+		ToolRegistryPublicKey:         "/config/attestation-ed25519.pub",
+		ModelProviderCatalogPath:      "/config/model-provider-catalog.v2.yaml",
+		ModelProviderCatalogPublicKey: "/config/attestation-ed25519.pub",
+		GuardArtifactPath:             "/config/guard-artifact.bin",
+		GuardArtifactSHA256:           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+		GuardArtifactPublicKey:        "/config/attestation-ed25519.pub",
+		EnforcementControlOverrides:   true,
+	}
+}
+
 func TestResolveEnforcementProfile_DefaultDev(t *testing.T) {
 	cfg := &Config{
 		EnforcementProfile:           "",
@@ -30,15 +50,8 @@ func TestResolveEnforcementProfile_DefaultDev(t *testing.T) {
 }
 
 func TestResolveEnforcementProfile_ProdStandardFailsWhenMediationDisabled(t *testing.T) {
-	cfg := &Config{
-		EnforcementProfile:           enforcementProfileProdStandard,
-		SPIFFEMode:                   "prod",
-		MCPTransportMode:             "mcp",
-		UpstreamURL:                  "https://mcp-server.example.com/mcp",
-		EnforceModelMediationGate:    false,
-		EnforceHIPAAPromptSafetyGate: true,
-		EnforcementControlOverrides:  true,
-	}
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.EnforceModelMediationGate = false
 
 	_, err := resolveEnforcementProfile(cfg)
 	if err == nil {
@@ -50,15 +63,8 @@ func TestResolveEnforcementProfile_ProdStandardFailsWhenMediationDisabled(t *tes
 }
 
 func TestResolveEnforcementProfile_ProdHIPAAFailsWhenPromptSafetyDisabled(t *testing.T) {
-	cfg := &Config{
-		EnforcementProfile:           enforcementProfileProdRegulatedHIPAA,
-		SPIFFEMode:                   "prod",
-		MCPTransportMode:             "mcp",
-		UpstreamURL:                  "https://mcp-server.example.com/mcp",
-		EnforceModelMediationGate:    true,
-		EnforceHIPAAPromptSafetyGate: false,
-		EnforcementControlOverrides:  true,
-	}
+	cfg := newStrictProfileTestConfig(enforcementProfileProdRegulatedHIPAA)
+	cfg.EnforceHIPAAPromptSafetyGate = false
 
 	_, err := resolveEnforcementProfile(cfg)
 	if err == nil {
@@ -70,16 +76,8 @@ func TestResolveEnforcementProfile_ProdHIPAAFailsWhenPromptSafetyDisabled(t *tes
 }
 
 func TestResolveEnforcementProfile_StrictFailsWithoutApprovalSigningKey(t *testing.T) {
-	cfg := &Config{
-		EnforcementProfile:           enforcementProfileProdStandard,
-		SPIFFEMode:                   "prod",
-		MCPTransportMode:             "mcp",
-		UpstreamURL:                  "https://mcp-server.example.com/mcp",
-		EnforceModelMediationGate:    true,
-		EnforceHIPAAPromptSafetyGate: true,
-		ApprovalSigningKey:           "",
-		EnforcementControlOverrides:  true,
-	}
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.ApprovalSigningKey = ""
 
 	_, err := resolveEnforcementProfile(cfg)
 	if err == nil {
@@ -91,16 +89,8 @@ func TestResolveEnforcementProfile_StrictFailsWithoutApprovalSigningKey(t *testi
 }
 
 func TestResolveEnforcementProfile_StrictFailsWithWeakApprovalSigningKey(t *testing.T) {
-	cfg := &Config{
-		EnforcementProfile:           enforcementProfileProdStandard,
-		SPIFFEMode:                   "prod",
-		MCPTransportMode:             "mcp",
-		UpstreamURL:                  "https://mcp-server.example.com/mcp",
-		EnforceModelMediationGate:    true,
-		EnforceHIPAAPromptSafetyGate: true,
-		ApprovalSigningKey:           "weak-key",
-		EnforcementControlOverrides:  true,
-	}
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.ApprovalSigningKey = "weak-key"
 
 	_, err := resolveEnforcementProfile(cfg)
 	if err == nil {
@@ -111,17 +101,21 @@ func TestResolveEnforcementProfile_StrictFailsWithWeakApprovalSigningKey(t *test
 	}
 }
 
-func TestResolveEnforcementProfile_StrictPassesWithStrongApprovalSigningKey(t *testing.T) {
-	cfg := &Config{
-		EnforcementProfile:           enforcementProfileProdStandard,
-		SPIFFEMode:                   "prod",
-		MCPTransportMode:             "mcp",
-		UpstreamURL:                  "https://mcp-server.example.com/mcp",
-		EnforceModelMediationGate:    true,
-		EnforceHIPAAPromptSafetyGate: true,
-		ApprovalSigningKey:           "prod-approval-signing-key-material-at-least-32",
-		EnforcementControlOverrides:  true,
+func TestResolveEnforcementProfile_StrictFailsWithoutRegistryPublicKey(t *testing.T) {
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.ToolRegistryPublicKey = ""
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure when tool registry key is missing")
 	}
+	if !strings.Contains(err.Error(), "tool_registry_public_key must be set") {
+		t.Fatalf("expected tool registry key requirement error, got: %v", err)
+	}
+}
+
+func TestResolveEnforcementProfile_StrictPassesWithStrongApprovalSigningKey(t *testing.T) {
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
 
 	profile, err := resolveEnforcementProfile(cfg)
 	if err != nil {
@@ -133,16 +127,8 @@ func TestResolveEnforcementProfile_StrictPassesWithStrongApprovalSigningKey(t *t
 }
 
 func TestResolveEnforcementProfile_StrictFailsWithPlaintextUpstreamURL(t *testing.T) {
-	cfg := &Config{
-		EnforcementProfile:           enforcementProfileProdStandard,
-		SPIFFEMode:                   "prod",
-		MCPTransportMode:             "mcp",
-		UpstreamURL:                  "http://mcp-server.example.com/mcp",
-		EnforceModelMediationGate:    true,
-		EnforceHIPAAPromptSafetyGate: true,
-		ApprovalSigningKey:           "prod-approval-signing-key-material-at-least-32",
-		EnforcementControlOverrides:  true,
-	}
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.UpstreamURL = "http://mcp-server.example.com/mcp"
 
 	_, err := resolveEnforcementProfile(cfg)
 	if err == nil {

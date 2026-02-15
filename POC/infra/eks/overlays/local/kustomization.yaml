@@ -53,8 +53,13 @@ configMapGenerator:
     behavior: replace
     files:
       - tool-registry.yaml=gateway-config/tool-registry.yaml
+      - tool-registry.yaml.sig=gateway-config/tool-registry.yaml.sig
       - capability-registry-v2.yaml=gateway-config/capability-registry-v2.yaml
       - model-provider-catalog.v2.yaml=gateway-config/model-provider-catalog.v2.yaml
+      - model-provider-catalog.v2.yaml.sig=gateway-config/model-provider-catalog.v2.yaml.sig
+      - attestation-ed25519.pub=gateway-config/attestation-ed25519.pub
+      - guard-artifact.bin=gateway-config/guard-artifact.bin
+      - guard-artifact.bin.sig=gateway-config/guard-artifact.bin.sig
       - mcp_policy.rego=gateway-config/mcp_policy.rego
       - ui_policy.rego=gateway-config/ui_policy.rego
       - ui_csp_policy.rego=gateway-config/ui_csp_policy.rego
