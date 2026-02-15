@@ -62,6 +62,34 @@ CI uploads:
 
 The summary job validates required files before publishing the consolidated bundle.
 
+## CI Readiness Gate Policy (RFA-l6h6.8.4)
+
+Workflow: `.github/workflows/ci.yaml`
+
+Required on PR/push:
+
+- `readiness-gates`
+  - `make strict-runtime-validate`
+  - `make production-readiness-validate`
+  - uploads artifact: `readiness-gates` (strict runtime + security evidence logs and manifest bundle)
+- `demo-compose-gate`
+  - `make phoenix-up`
+  - `make demo-compose`
+  - uploads artifact: `demo-compose-gate` (demo logs + compose diagnostics)
+
+Scheduled/manual policy gate:
+
+- `k8s-validation-policy-gate`
+  - runs on `schedule` and `workflow_dispatch`
+  - `make k8s-validate`
+  - uploads artifact: `k8s-validation-policy-gate`
+
+Rationale:
+
+- PR/push gates are designed to fail fast on regressions that can be validated in standard GitHub-hosted runners.
+- K8s policy validation is explicitly scheduled/manual so it remains visible and auditable as a production-intent control without forcing full cluster-runtime execution on every PR.
+- `readiness-state-validate` remains an operator/post-merge control because it requires live `bd` state access.
+
 ## Failure Semantics
 
 The validator fails when:

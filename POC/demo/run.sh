@@ -3,6 +3,7 @@
 # Both demos run as containers -- no local Go/Python/httpx needed.
 #
 # Usage: ./demo/run.sh {compose|k8s|both} [--skip-setup]
+# Strict observability mode: DEMO_STRICT_OBSERVABILITY=1 ./demo/run.sh compose
 
 set -euo pipefail
 
@@ -10,6 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 POC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MODE="${1:-compose}"
 SKIP_SETUP=false
+STRICT_OBSERVABILITY_MODE="${DEMO_STRICT_OBSERVABILITY:-0}"
 
 for arg in "$@"; do
     if [ "$arg" = "--skip-setup" ]; then
@@ -63,6 +65,9 @@ ok()   { echo -e "${GREEN}OK:  $1${RESET}"; }
 
 # Track Phoenix availability for proof collection (set by check_phoenix).
 PHOENIX_AVAILABLE=false
+OBS_EVIDENCE_DIR="$POC_DIR/build/observability/latest"
+AUDIT_EVIDENCE_FILE="$OBS_EVIDENCE_DIR/audit.log"
+TRACE_EVIDENCE_FILE="$OBS_EVIDENCE_DIR/trace.log"
 
 # --------------------------------------------------------------------------
 # Pre-flight checks
@@ -93,6 +98,11 @@ check_phoenix() {
 
     # Check 1: Does the phoenix-observability-network Docker network exist?
     if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
+        if [ "$STRICT_OBSERVABILITY_MODE" = "1" ]; then
+            err "Phoenix stack is required in strict observability mode. Run 'make phoenix-up'."
+            PHOENIX_AVAILABLE=false
+            return 1
+        fi
         warn "Phoenix stack not running. Traces will not be collected. Run 'make phoenix-up' to enable observability."
         PHOENIX_AVAILABLE=false
         return 0
@@ -100,6 +110,11 @@ check_phoenix() {
 
     # Check 2: Is the phoenix container running?
     if ! docker ps --filter name=phoenix --filter status=running --format '{{.Names}}' 2>/dev/null | grep -q phoenix; then
+        if [ "$STRICT_OBSERVABILITY_MODE" = "1" ]; then
+            err "Phoenix stack is required in strict observability mode. Run 'make phoenix-up'."
+            PHOENIX_AVAILABLE=false
+            return 1
+        fi
         warn "Phoenix stack not running. Traces will not be collected. Run 'make phoenix-up' to enable observability."
         PHOENIX_AVAILABLE=false
         return 0
@@ -523,6 +538,37 @@ print_otel_proof() {
     echo ""
 }
 
+capture_observability_evidence_compose() {
+    mkdir -p "$OBS_EVIDENCE_DIR"
+    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
+    if [ "$PHOENIX_AVAILABLE" = true ]; then
+        docker compose -f "$POC_DIR/docker-compose.phoenix.yml" logs --no-color otel-collector >"$TRACE_EVIDENCE_FILE" 2>/dev/null || true
+    else
+        : >"$TRACE_EVIDENCE_FILE"
+    fi
+}
+
+capture_observability_evidence_k8s() {
+    mkdir -p "$OBS_EVIDENCE_DIR"
+    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
+    if [ "$PHOENIX_AVAILABLE" = true ]; then
+        docker compose -f "$POC_DIR/docker-compose.phoenix.yml" logs --no-color otel-collector >"$TRACE_EVIDENCE_FILE" 2>/dev/null || true
+    else
+        : >"$TRACE_EVIDENCE_FILE"
+    fi
+}
+
+enforce_observability_gate() {
+    local strict_flag=""
+    if [ "$STRICT_OBSERVABILITY_MODE" = "1" ]; then
+        strict_flag="--strict"
+    fi
+    bash "$POC_DIR/scripts/observability/validate_observability_gate.sh" \
+        $strict_flag \
+        --audit-file "$AUDIT_EVIDENCE_FILE" \
+        --trace-file "$TRACE_EVIDENCE_FILE"
+}
+
 # --------------------------------------------------------------------------
 # Run a full demo cycle for a given mode
 # --------------------------------------------------------------------------
@@ -543,7 +589,7 @@ run_demo_cycle() {
     # Check Phoenix availability before any mode-specific setup.
     # This runs for both compose and k8s modes. Non-fatal -- demo
     # proceeds without traces if Phoenix is not running.
-    check_phoenix
+    check_phoenix || return 1
 
     if [ "$mode" = "compose" ]; then
         # Inside the Docker network, gateway is at service name:port
@@ -658,6 +704,7 @@ run_demo_cycle() {
     local py_ok=0
     local phase3_ok=0
     local model_ref_ok=0
+    local observability_ok=0
 
     run_go_demo "$url" "$network" || go_ok=1
     echo ""
@@ -707,29 +754,33 @@ run_demo_cycle() {
         collect_dlp_injection_proof_compose
         collect_dlp_credential_proof_compose
         collect_spike_token_proof_compose
+        capture_observability_evidence_compose
     else
         collect_audit_proof_k8s
         collect_mcp_transport_proof_k8s
         collect_dlp_injection_proof_k8s
         collect_dlp_credential_proof_k8s
         collect_spike_token_proof_k8s
+        capture_observability_evidence_k8s
     fi
     print_otel_proof
+    enforce_observability_gate || observability_ok=1
 
     # Summary
     echo -e "${BOLD}============================================${RESET}"
-    if [ "$go_ok" -eq 0 ] && [ "$py_ok" -eq 0 ] && [ "$phase3_ok" -eq 0 ] && [ "$model_ref_ok" -eq 0 ]; then
+    if [ "$go_ok" -eq 0 ] && [ "$py_ok" -eq 0 ] && [ "$phase3_ok" -eq 0 ] && [ "$model_ref_ok" -eq 0 ] && [ "$observability_ok" -eq 0 ]; then
         echo -e "  ${GREEN}ALL DEMOS PASSED ($mode)${RESET}"
     else
         [ "$go_ok" -ne 0 ] && echo -e "  ${RED}Go demo had failures${RESET}"
         [ "$py_ok" -ne 0 ] && echo -e "  ${RED}Python demo had failures${RESET}"
         [ "$phase3_ok" -ne 0 ] && echo -e "  ${RED}Phase 3 compose scenario had failures${RESET}"
         [ "$model_ref_ok" -ne 0 ] && echo -e "  ${RED}Model egress SPIKE-reference scenario had failures${RESET}"
+        [ "$observability_ok" -ne 0 ] && echo -e "  ${RED}Observability evidence gate failed${RESET}"
     fi
     echo -e "${BOLD}============================================${RESET}"
     echo ""
 
-    return $((go_ok + py_ok + phase3_ok + model_ref_ok))
+    return $((go_ok + py_ok + phase3_ok + model_ref_ok + observability_ok))
 }
 
 # --------------------------------------------------------------------------

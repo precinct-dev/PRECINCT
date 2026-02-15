@@ -470,6 +470,12 @@ Notes:
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel-collector:4317` | OpenTelemetry collector gRPC endpoint |
 | `OTEL_SERVICE_NAME` | `mcp-security-gateway` | Service name in traces |
 
+Strict observability evidence gate:
+
+- Non-strict (default): demos continue with warnings when Phoenix/collector is unavailable.
+- Strict mode (`DEMO_STRICT_OBSERVABILITY=1`): demos fail if telemetry sinks are unavailable or trace/audit evidence files are missing.
+- Validation target: `make observability-evidence-gate-validate`.
+
 ### Dev vs Strict Operating Procedures
 
 Docker Compose dev mode:
@@ -494,6 +500,29 @@ Strict compose mode expects these files in `./config`:
 - `tool-registry.yaml` and `tool-registry.yaml.sig`
 - `model-provider-catalog.v2.yaml` and `model-provider-catalog.v2.yaml.sig`
 - `guard-artifact.bin` and `guard-artifact.bin.sig`
+
+Compose production-intent supply-chain mode (release gate path):
+
+```bash
+make compose-production-intent-preflight
+docker compose --profile strict \
+  --env-file config/compose-production-intent.env \
+  -f docker-compose.yml \
+  -f docker-compose.strict.yml \
+  -f docker-compose.prod-intent.yml up -d
+```
+
+Production-intent compose requirements:
+
+- Required services must set `pull_policy: always` and use digest-pinned immutable image refs from `config/compose-production-intent.env`.
+- Provenance/signature policy requirements are codified in `config/compose-production-intent-policy.json`.
+- Deterministic validation command: `make compose-production-intent-validate` (includes negative-path failure test).
+
+Migration notes:
+
+- Dev/demo path remains unchanged (`docker-compose.yml`, `make demo-compose`).
+- Production-intent path is explicit and separate (`docker-compose.prod-intent.yml` + lock/policy files).
+- Do not reuse dev/demo local tags for production-intent releases.
 
 K8s dev/local mode:
 
@@ -544,6 +573,11 @@ If `RFA-l6h6.6.10` is not `blocked`, or `RFA-l6h6.7.7` is not accepted/closed, o
 | Target | Description |
 |--------|-------------|
 | `make help` | Show all documented targets |
+| `make compose-verify` | Verify compose third-party images and Dockerfile base images are digest-pinned |
+| `make compose-production-intent-preflight` | Validate production-intent compose image lock + provenance policy wiring |
+| `make compose-production-intent-validate` | Run production-intent compose gate with deterministic negative-path failure test |
+| `make operations-backup-restore-drill` | Execute operational backup/restore drill and publish latest drill artifacts |
+| `make operations-readiness-validate` | Validate operations readiness pack (runbooks, drill artifacts, SLO ownership) |
 | `make up` | Start Docker Compose stack (waits for all services healthy) |
 | `make down` | Stop Docker Compose stack |
 | `make clean` | Full cleanup (containers, volumes, build artifacts) |
@@ -551,6 +585,7 @@ If `RFA-l6h6.6.10` is not `blocked`, or `RFA-l6h6.7.7` is not accepted/closed, o
 | `make lint` | Run linters |
 | `make build` | Build gateway container image |
 | `make demo-compose` | Run E2E demo against Docker Compose |
+| `make demo-compose-strict-observability` | Run E2E compose demo with strict observability evidence enforcement |
 | `make demo-k8s` | Run E2E demo against Kubernetes |
 | `make phoenix-up` | Start Phoenix + OTel collector |
 | `make phoenix-down` | Stop Phoenix (preserves traces) |
@@ -568,6 +603,8 @@ If `RFA-l6h6.6.10` is not `blocked`, or `RFA-l6h6.7.7` is not accepted/closed, o
 | `make security-scan-validate` | Validate required security evidence artifacts + manifest hashes |
 | `make readiness-state-validate` | Validate readiness docs/state snapshot against live `bd` status and OpenClaw gate dependency |
 | `make production-readiness-validate` | Enforce strict security scan evidence gate for production readiness |
+| `make ci-gate-parity-validate` | Validate CI workflow parity policy (strict readiness + demo coverage + scheduled K8s policy gate) |
+| `make observability-evidence-gate-validate` | Validate strict/non-strict observability evidence gate behavior |
 | `make compliance-report` | Generate compliance report |
 | `make test-integration` | Run integration tests |
 | `make test-opa` | Run OPA policy tests |

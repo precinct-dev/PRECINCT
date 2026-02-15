@@ -1,21 +1,26 @@
 # ------------------------------------------------------------------------------
-# CI Pipeline - Build, Test, Sign, Push
-# Story: RFA-9fv.6
+# CI Pipeline - Build, Test, Strict Readiness Gates, Demo Coverage, Sign, Push
+# Stories: RFA-9fv.6, RFA-l6h6.8.4
 #
 # Triggered on push/PR for maintained repository paths.
 # Steps:
 #   1. Lint Go code (go vet + staticcheck)
 #   2. Run Go unit tests (gateway, middleware, tools, s3-mcp-server)
 #   3. Run OPA policy tests
-#   4. Build container images (gateway, s3-mcp-server)
-#   5. Generate SBOMs (syft)
-#   6. Sign images with cosign (keyless OIDC)
-#   7. Push to GHCR (only on main/epic branches, not PRs from forks)
+#   4. Enforce strict readiness/security evidence parity gates (PR required)
+#   5. Run demo-compose parity coverage (PR required)
+#   6. Run k8s manifest validation gate on schedule/manual policy runs
+#   7. Build container images (gateway, s3-mcp-server)
+#   8. Generate SBOMs (syft)
+#   9. Sign images with cosign (keyless OIDC)
+#  10. Push to GHCR (only on main/epic branches, not PRs from forks)
 # ------------------------------------------------------------------------------
 name: CI
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 9 * * *"
   push:
     branches:
       - main
@@ -140,12 +145,132 @@ jobs:
             -d config/opa/ui_capability_grants.yaml
 
   # --------------------------------------------------------------------------
-  # Job 4: Build, SBOM, Sign, Push
+  # Job 4: Strict readiness parity gate (required on PR/push)
+  # --------------------------------------------------------------------------
+  readiness-gates:
+    name: Readiness Gates
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    defaults:
+      run:
+        working-directory: POC
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install readiness tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+          curl -sSfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/kustomize
+          curl -sfL "https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh" | sudo sh -s -- -b /usr/local/bin v0.58.1
+          kustomize version
+          trivy --version
+
+      - name: Strict runtime + production readiness validation
+        run: |
+          mkdir -p build/ci
+          make strict-runtime-validate | tee build/ci/strict-runtime-validate.log
+          make production-readiness-validate | tee build/ci/production-readiness-validate.log
+
+      - name: Upload readiness artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: readiness-gates
+          path: |
+            POC/build/ci/strict-runtime-validate.log
+            POC/build/ci/production-readiness-validate.log
+            POC/build/security-scan/latest/**
+          if-no-files-found: warn
+
+  # --------------------------------------------------------------------------
+  # Job 5: Compose demo parity gate (required on PR/push)
+  # --------------------------------------------------------------------------
+  demo-compose-gate:
+    name: Demo Compose Gate
+    runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
+    defaults:
+      run:
+        working-directory: POC
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Execute compose demo parity path
+        run: |
+          mkdir -p build/ci
+          make phoenix-up | tee build/ci/phoenix-up.log
+          make demo-compose | tee build/ci/demo-compose.log
+
+      - name: Capture compose diagnostics
+        if: always()
+        run: |
+          docker compose ps > build/ci/docker-compose-ps.log || true
+          docker compose logs --timestamps > build/ci/docker-compose-logs.log || true
+
+      - name: Upload demo artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-compose-gate
+          path: |
+            POC/build/ci/phoenix-up.log
+            POC/build/ci/demo-compose.log
+            POC/build/ci/docker-compose-ps.log
+            POC/build/ci/docker-compose-logs.log
+            POC/tests/e2e/artifacts/**
+          if-no-files-found: warn
+
+      - name: Teardown compose/phoenix stacks
+        if: always()
+        run: |
+          make down || true
+          make phoenix-down || true
+
+  # --------------------------------------------------------------------------
+  # Job 6: K8s validation policy gate (scheduled/manual only)
+  # --------------------------------------------------------------------------
+  k8s-validation-policy-gate:
+    name: K8s Validation Policy Gate
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    defaults:
+      run:
+        working-directory: POC
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install kustomize
+        run: |
+          curl -sSfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/kustomize
+          kustomize version
+
+      - name: Run K8s manifest policy validation
+        run: |
+          mkdir -p build/ci
+          make k8s-validate | tee build/ci/k8s-validate.log
+
+      - name: Upload K8s policy gate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-validation-policy-gate
+          path: POC/build/ci/k8s-validate.log
+          if-no-files-found: warn
+
+  # --------------------------------------------------------------------------
+  # Job 7: Build, SBOM, Sign, Push
   # --------------------------------------------------------------------------
   build-and-push:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    needs: [lint, test, opa-test]
+    if: github.event_name != 'schedule'
+    needs: [lint, test, opa-test, readiness-gates, demo-compose-gate]
     strategy:
       matrix:
         include:

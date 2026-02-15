@@ -1,0 +1,47 @@
+services:
+  # Production-intent compose override.
+  # Use with:
+  #   docker compose --profile strict \
+  #     --env-file config/compose-production-intent.env \
+  #     -f docker-compose.yml \
+  #     -f docker-compose.strict.yml \
+  #     -f docker-compose.prod-intent.yml up -d
+
+  mcp-security-gateway:
+    build: null
+    image: ${PROD_GATEWAY_IMAGE:?PROD_GATEWAY_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+
+  spire-token-generator:
+    build: null
+    image: ${PROD_SPIRE_TOKEN_GENERATOR_IMAGE:?PROD_SPIRE_TOKEN_GENERATOR_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+
+  spire-entry-registrar:
+    image: ${PROD_SPIRE_TOKEN_GENERATOR_IMAGE:?PROD_SPIRE_TOKEN_GENERATOR_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+
+  spire-agent:
+    build: null
+    image: ${PROD_SPIRE_AGENT_IMAGE:?PROD_SPIRE_AGENT_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+
+  spike-nexus:
+    build: null
+    image: ${PROD_SPIKE_NEXUS_IMAGE:?PROD_SPIKE_NEXUS_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+
+  spike-keeper-1:
+    build: null
+    image: ${PROD_SPIKE_KEEPER_IMAGE:?PROD_SPIKE_KEEPER_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+
+  mock-mcp-server:
+    build: null
+    image: ${PROD_MOCK_MCP_SERVER_IMAGE:?PROD_MOCK_MCP_SERVER_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+
+  mock-guard-model:
+    build: null
+    image: ${PROD_MOCK_GUARD_MODEL_IMAGE:?PROD_MOCK_GUARD_MODEL_IMAGE must be set (digest-pinned)}
+    pull_policy: always
