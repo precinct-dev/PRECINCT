@@ -158,6 +158,8 @@ scripts/                  Setup and operational scripts
 | [docs/compliance/gdpr-article-30-ropa.md](docs/compliance/gdpr-article-30-ropa.md) | GDPR Article 30 compliance |
 | [docs/security/baseline.md](docs/security/baseline.md) | Security baseline |
 | [docs/architecture/deployment-patterns.md](docs/architecture/deployment-patterns.md) | Deployment architecture |
+| [docs/architecture/cloud-adaptation-playbooks.md](docs/architecture/cloud-adaptation-playbooks.md) | Step-by-step adaptation playbooks for AWS/GCP/Azure |
+| [docs/architecture/cloudflare-workers-compensating-controls.md](docs/architecture/cloudflare-workers-compensating-controls.md) | Cloudflare Workers compensating controls and sign-off checklist |
 | [docs/patterns/multi-agent-orchestration.md](docs/patterns/multi-agent-orchestration.md) | Multi-agent orchestration patterns |
 | [docs/api-reference.md](docs/api-reference.md) | Gateway HTTP API reference (endpoints, wire format, error codes) |
 | [docs/deployment-guide.md](docs/deployment-guide.md) | Deployment guide (Docker Compose, K8s, Phoenix) |
