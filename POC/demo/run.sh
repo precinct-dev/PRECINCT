@@ -189,6 +189,7 @@ wait_for_health_k8s() {
     local elapsed=0
     local consecutive_ok=0
     local consecutive_needed=3
+    local last_error=""
 
     log "Waiting for gateway health from demo network at ${url}/health (timeout: ${timeout}s)"
     while [ "$elapsed" -lt "$timeout" ]; do
@@ -196,7 +197,7 @@ wait_for_health_k8s() {
         # k8s NodePort access can briefly flap during rollouts; require a few
         # consecutive successes so we don't start the demo during a "no endpoints"
         # window that would show up as intermittent ConnectError/ECONNREFUSED.
-        if docker run --rm --network "$network" curlimages/curl:8.6.0 -sf "${url}/health" >/dev/null 2>&1; then
+        if last_error="$(docker run --rm --network "$network" curlimages/curl:8.6.0 -sf "${url}/health" 2>&1)"; then
             consecutive_ok=$((consecutive_ok + 1))
             if [ "$consecutive_ok" -ge "$consecutive_needed" ]; then
                 echo ""
@@ -212,7 +213,47 @@ wait_for_health_k8s() {
     done
     echo ""
     err "Gateway did not become healthy within ${timeout}s (network: $network)"
+    if [ -n "$last_error" ]; then
+        err "Last connectivity error: $last_error"
+    fi
     return 1
+}
+
+# --------------------------------------------------------------------------
+# K8s local demo ingress helper
+# --------------------------------------------------------------------------
+ensure_k8s_demo_ingress() {
+    local network="${1:-kind}"
+
+    # Local demo containers run outside the cluster and hit the gateway via
+    # NodePort. With strict ingress NetworkPolicy, we must allow the local
+    # Docker network CIDR explicitly so demo traffic can reach the gateway.
+    local demo_cidrs
+    local demo_cidr
+    demo_cidrs="$(docker network inspect "$network" --format '{{range .IPAM.Config}}{{println .Subnet}}{{end}}' 2>/dev/null || true)"
+    # Prefer IPv4 CIDR for NodePort ingress matching from docker bridge traffic.
+    demo_cidr="$(printf '%s\n' "$demo_cidrs" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+/[0-9]+$' | head -1 || true)"
+    if [ -z "$demo_cidr" ]; then
+        demo_cidr="$(printf '%s\n' "$demo_cidrs" | sed '/^$/d' | head -1 || true)"
+    fi
+    if [ -z "$demo_cidr" ]; then
+        warn "Cannot determine CIDR for docker network '$network'; skipping gateway ingress patch"
+        return 0
+    fi
+
+    local current_ipblocks
+    current_ipblocks="$(kubectl -n gateway get networkpolicy gateway-allow-ingress -o jsonpath='{range .spec.ingress[*].from[*]}{.ipBlock.cidr}{"\n"}{end}' 2>/dev/null || true)"
+    if printf '%s\n' "$current_ipblocks" | grep -qx "$demo_cidr"; then
+        return 0
+    fi
+
+    log "Allowing local demo network CIDR ${demo_cidr} to reach gateway NodePort"
+    local patch
+    patch="$(printf '[{\"op\":\"add\",\"path\":\"/spec/ingress/0/from/-\",\"value\":{\"ipBlock\":{\"cidr\":\"%s\"}}}]' "$demo_cidr")"
+    if ! kubectl -n gateway patch networkpolicy gateway-allow-ingress --type='json' -p "$patch" >/dev/null 2>&1; then
+        warn "Failed to patch gateway-allow-ingress with CIDR ${demo_cidr}; demo connectivity may fail"
+        return 0
+    fi
 }
 
 # --------------------------------------------------------------------------
@@ -594,6 +635,7 @@ run_demo_cycle() {
         # In k8s mode, prefer not restarting the gateway here. Rollout restarts can
         # create brief "no ready endpoints" windows that manifest as flaky
         # ConnectError/ECONNREFUSED in the containerized demos.
+        ensure_k8s_demo_ingress "$network"
         wait_for_health_k8s "$url" "$network" || exit 1
 
         # Determinism: ensure upstream rugpull state is OFF before running tests.
