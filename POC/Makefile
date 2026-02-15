@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate strict-overlay-operationalization-validate \
+.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate strict-overlay-operationalization-validate promotion-identity-validate \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -481,6 +481,9 @@ strict-runtime-validate: ## Validate strict runtime wiring for K8s overlays and 
 
 strict-overlay-operationalization-validate: ## Validate staging/prod overlays have no placeholder image refs or in-repo runtime secret defaults
 	tests/e2e/validate_strict_overlay_operationalization.sh
+
+promotion-identity-validate: ## Validate promote workflow enforces constrained cosign signer identity checks
+	tests/e2e/validate_promotion_identity_policy.sh
 
 k8s-runtime-campaign: ## Run K8s runtime allow/deny campaign and emit machine-readable report
 	python3 tests/e2e/k8s_runtime_validation_campaign.py \

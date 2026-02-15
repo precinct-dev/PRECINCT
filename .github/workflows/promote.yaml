@@ -52,6 +52,10 @@ on:
 env:
   REGISTRY: ghcr.io
   IMAGE_PREFIX: ${{ github.repository_owner }}/agentic-ref-arch
+  # Source image signer constraints: only allow images signed by this repository's
+  # CI workflow on main or epic/* branches.
+  SOURCE_CERT_IDENTITY_REGEX: ^https://github.com/${{ github.repository }}/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$
+  SOURCE_CERT_OIDC_ISSUER: https://token.actions.githubusercontent.com
 
 permissions:
   contents: write   # For committing overlay updates
@@ -113,11 +117,13 @@ jobs:
         env:
           SOURCE_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}:${{ inputs.source_tag }}
           COSIGN_EXPERIMENTAL: "1"
+          SOURCE_CERT_IDENTITY_REGEX: ${{ env.SOURCE_CERT_IDENTITY_REGEX }}
+          SOURCE_CERT_OIDC_ISSUER: ${{ env.SOURCE_CERT_OIDC_ISSUER }}
         run: |
           echo "Verifying signature on source image: ${SOURCE_IMAGE}"
           cosign verify \
-            --certificate-identity-regexp=".*" \
-            --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
+            --certificate-identity-regexp="${SOURCE_CERT_IDENTITY_REGEX}" \
+            --certificate-oidc-issuer="${SOURCE_CERT_OIDC_ISSUER}" \
             "${SOURCE_IMAGE}"
           echo "Signature verification PASSED"
 
