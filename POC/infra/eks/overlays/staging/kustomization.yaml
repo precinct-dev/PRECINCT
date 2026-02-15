@@ -14,6 +14,7 @@ kind: Kustomization
 
 resources:
   - ../base
+  - gateway-runtime-secrets.yaml
   # Admission control (OPA Gatekeeper + sigstore/policy-controller)
   - ../../admission
   # cert-manager TLS auto-generation for policy-controller webhook (RFA-tv9)
@@ -64,6 +65,23 @@ patches:
                 env:
                   - name: LOG_LEVEL
                     value: "info"
+                  - name: ENFORCEMENT_PROFILE
+                    value: "prod_standard"
+                  - name: MCP_TRANSPORT_MODE
+                    value: "mcp"
+                  - name: SPIFFE_MODE
+                    value: "prod"
+                  - name: UPSTREAM_URL
+                    value: "https://mcp-server.tools.svc.cluster.local:8081/mcp"
+                  - name: APPROVAL_SIGNING_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: gateway-runtime-secrets
+                        key: approval_signing_key
+                  - name: UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool"
+                  - name: KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://agentic-ref-arch.poc/ns/data/sa/keydb"
                 resources:
                   requests:
                     cpu: 100m

@@ -120,7 +120,7 @@ The gateway reads its configuration from environment variables and mounted files
 | Variable | Value | Source |
 |----------|-------|--------|
 | `PORT` | 9090 | Deployment env |
-| `UPSTREAM_URL` | `http://mcp-server.tools.svc.cluster.local:8081/mcp` | Deployment env |
+| `UPSTREAM_URL` | `http://mcp-server.tools.svc.cluster.local:8081/mcp` | Base deployment env (staging/prod overlays override to strict `https://...`) |
 | `OPA_POLICY_DIR` | `/config/opa` | ConfigMap mount |
 | `TOOL_REGISTRY_CONFIG_PATH` | `/config/tool-registry.yaml` | ConfigMap mount |
 | `MAX_REQUEST_SIZE_BYTES` | 10485760 (10 MB) | Deployment env |
@@ -128,6 +128,12 @@ The gateway reads its configuration from environment variables and mounted files
 | `SPIRE_AGENT_SOCKET` | `/run/spire/sockets/agent.sock` | hostPath mount |
 | `AUDIT_LOG_PATH` | `/tmp/audit.jsonl` | emptyDir mount |
 | `LOG_LEVEL` | `info` | Deployment env |
+
+Strict overlay notes:
+
+- `infra/eks/overlays/staging` and `infra/eks/overlays/prod` set `ENFORCEMENT_PROFILE=prod_standard`.
+- Strict overlays pin `MCP_TRANSPORT_MODE=mcp`, `SPIFFE_MODE=prod`, and `UPSTREAM_URL=https://...`.
+- `APPROVAL_SIGNING_KEY` is wired via `gateway-runtime-secrets` (`approval_signing_key` key).
 
 ## Updating OPA Policies
 

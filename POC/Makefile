@@ -470,7 +470,12 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 	tests/e2e/admission/verify-admission-manifest-wiring.sh; \
 	echo "Validating network policy hardening wiring..."; \
 	tests/e2e/network-policy/verify-network-policy-manifest-wiring.sh; \
+	echo "Validating strict runtime wiring (K8s + Compose)..."; \
+	tests/e2e/validate_strict_runtime_wiring.sh; \
 	echo "k8s-validate: PASS"
+
+strict-runtime-validate: ## Validate strict runtime wiring for K8s overlays and Compose override
+	tests/e2e/validate_strict_runtime_wiring.sh
 
 k8s-runtime-campaign: ## Run K8s runtime allow/deny campaign and emit machine-readable report
 	python3 tests/e2e/k8s_runtime_validation_campaign.py \

@@ -21,6 +21,18 @@ SVID_KEY="${CERT_DIR}/svid-key.pem"
 TRUST_BUNDLE="${CERT_DIR}/bundle.pem"
 REFRESH_INTERVAL="${REFRESH_INTERVAL:-1800}"  # 30 minutes (SVIDs are 1 hour)
 MODE="${1:-init}"
+SPIRE_AGENT_BIN="${SPIRE_AGENT_BIN:-}"
+
+if [ -z "${SPIRE_AGENT_BIN}" ]; then
+    if command -v spire-agent >/dev/null 2>&1; then
+        SPIRE_AGENT_BIN="$(command -v spire-agent)"
+    elif [ -x "/opt/spire/bin/spire-agent" ]; then
+        SPIRE_AGENT_BIN="/opt/spire/bin/spire-agent"
+    else
+        echo "[ERROR] $(date -u '+%Y-%m-%dT%H:%M:%SZ') spire-agent binary not found in PATH or /opt/spire/bin/spire-agent" >&2
+        exit 1
+    fi
+fi
 
 log_info() {
     echo "[INFO] $(date -u '+%Y-%m-%dT%H:%M:%SZ') $*"
@@ -39,7 +51,7 @@ fetch_and_write_svid() {
     local tmpdir
     tmpdir=$(mktemp -d)
 
-    if ! spire-agent api fetch x509 \
+    if ! "${SPIRE_AGENT_BIN}" api fetch x509 \
         -socketPath "${SPIFFE_ENDPOINT_SOCKET}" \
         -write "${tmpdir}" 2>/dev/null; then
         log_error "Failed to fetch X.509 SVID from SPIRE Agent"
@@ -80,7 +92,16 @@ fetch_and_write_svid() {
 case "${MODE}" in
     init)
         log_info "KeyDB SVID helper: init mode (one-shot)"
-        fetch_and_write_svid
+        attempt=1
+        max_attempts=30
+        until fetch_and_write_svid; do
+            if [ "${attempt}" -ge "${max_attempts}" ]; then
+                log_error "Init failed after ${max_attempts} attempts"
+                exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep 2
+        done
         log_info "Init complete. KeyDB can now start with TLS."
         exit 0
         ;;
@@ -89,7 +110,16 @@ case "${MODE}" in
         log_info "KeyDB SVID helper: watch mode (sidecar, refresh every ${REFRESH_INTERVAL}s)"
 
         # Initial fetch
-        fetch_and_write_svid
+        attempt=1
+        max_attempts=30
+        until fetch_and_write_svid; do
+            if [ "${attempt}" -ge "${max_attempts}" ]; then
+                log_error "Initial watch fetch failed after ${max_attempts} attempts"
+                exit 1
+            fi
+            attempt=$((attempt + 1))
+            sleep 2
+        done
 
         # Refresh loop
         while true; do
