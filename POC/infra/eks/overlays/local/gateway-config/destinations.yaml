@@ -1,0 +1,25 @@
+# Destination Allowlist - RFA-qq0.17 (Step-Up Gating)
+# Trusted destinations that pass the step-up destination check.
+# For scores 4-6, tool calls to destinations NOT on this list are blocked with 403.
+#
+# Format: list of domain patterns (exact match or wildcard prefix).
+# Wildcard example: "*.tavily.com" matches "api.tavily.com", "search.tavily.com", etc.
+
+allowed_destinations:
+  # Internal services
+  - "localhost"
+  - "127.0.0.1"
+  - "host.docker.internal"
+  - "mock-guard-model"
+
+  # Tavily search API
+  - "api.tavily.com"
+  - "*.tavily.com"
+
+  # Groq inference API (used by guard model itself)
+  - "api.groq.com"
+  - "*.groq.com"
+
+  # Example: GitHub API for code operations
+  - "api.github.com"
+  - "*.github.com"
