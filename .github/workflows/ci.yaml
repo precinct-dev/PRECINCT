@@ -2,14 +2,14 @@
 # CI Pipeline - Build, Test, Strict Readiness Gates, Demo Coverage, Sign, Push
 # Stories: RFA-9fv.6, RFA-l6h6.8.4
 #
-# Triggered on push/PR for maintained repository paths.
+# Manual-only workflow_dispatch to avoid automatic CI spend.
 # Steps:
 #   1. Lint Go code (go vet + staticcheck)
 #   2. Run Go unit tests (gateway, middleware, tools, s3-mcp-server)
 #   3. Run OPA policy tests
 #   4. Enforce strict readiness/security evidence parity gates (PR required)
 #   5. Run demo-compose parity coverage (PR required)
-#   6. Run k8s manifest validation gate on schedule/manual policy runs
+#   6. Run k8s manifest validation gate on manual policy runs
 #   7. Build container images (gateway, s3-mcp-server)
 #   8. Generate SBOMs (syft)
 #   9. Sign images with cosign (keyless OIDC)
@@ -19,24 +19,6 @@ name: CI
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 9 * * *"
-  push:
-    branches:
-      - main
-    paths:
-      - "POC/**"
-      - ".github/workflows/ci.yaml"
-      - ".github/workflows/security-scan.yml"
-      - ".github/dependabot.yml"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "POC/**"
-      - ".github/workflows/ci.yaml"
-      - ".github/workflows/security-scan.yml"
-      - ".github/dependabot.yml"
 
 env:
   REGISTRY: ghcr.io
@@ -145,12 +127,11 @@ jobs:
             -d config/opa/ui_capability_grants.yaml
 
   # --------------------------------------------------------------------------
-  # Job 4: Strict readiness parity gate (required on PR/push)
+  # Job 4: Strict readiness parity gate (manual)
   # --------------------------------------------------------------------------
   readiness-gates:
     name: Readiness Gates
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule'
     defaults:
       run:
         working-directory: POC
@@ -186,12 +167,11 @@ jobs:
           if-no-files-found: warn
 
   # --------------------------------------------------------------------------
-  # Job 5: Compose demo parity gate (required on PR/push)
+  # Job 5: Compose demo parity gate (manual)
   # --------------------------------------------------------------------------
   demo-compose-gate:
     name: Demo Compose Gate
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule'
     defaults:
       run:
         working-directory: POC
@@ -231,12 +211,11 @@ jobs:
           make phoenix-down || true
 
   # --------------------------------------------------------------------------
-  # Job 6: K8s validation policy gate (scheduled/manual only)
+  # Job 6: K8s validation policy gate (manual)
   # --------------------------------------------------------------------------
   k8s-validation-policy-gate:
     name: K8s Validation Policy Gate
     runs-on: ubuntu-latest
-    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     defaults:
       run:
         working-directory: POC
@@ -269,7 +248,6 @@ jobs:
   build-and-push:
     name: Build & Push Images
     runs-on: ubuntu-latest
-    if: github.event_name != 'schedule'
     needs: [lint, test, opa-test, readiness-gates, demo-compose-gate]
     strategy:
       matrix:

@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-production-intent-preflight compose-production-intent-validate compose-bootstrap-verify operations-backup-restore-drill operations-readiness-validate observability-evidence-gate-validate up down test lint clean logs demo demo-compose demo-compose-strict-observability demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate strict-overlay-operationalization-validate promotion-identity-validate ci-gate-parity-validate \
+.PHONY: help compose-verify compose-production-intent-preflight compose-production-intent-validate compose-bootstrap-verify operations-backup-restore-drill operations-readiness-validate observability-evidence-gate-validate up down test lint clean logs demo demo-compose demo-compose-strict-observability demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign local-k8s-runtime-campaign-artifacts-validate production-reality-closure-local-artifacts-validate ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate strict-overlay-operationalization-validate promotion-identity-validate ci-gate-parity-validate \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -509,6 +509,12 @@ ci-gate-parity-validate: ## Validate CI workflow enforces strict readiness + dem
 k8s-runtime-campaign: ## Run K8s runtime allow/deny campaign and emit machine-readable report
 	python3 tests/e2e/k8s_runtime_validation_campaign.py \
 		--output build/validation/k8s-runtime-validation-report.v2.4.json
+
+local-k8s-runtime-campaign-artifacts-validate: ## Validate local K8s runtime campaign summary artifacts
+	tests/e2e/validate_local_k8s_runtime_campaign_artifacts.sh
+
+production-reality-closure-local-artifacts-validate: ## Validate local production-reality closure summary artifacts
+	tests/e2e/validate_production_reality_closure_local_artifacts.sh
 
 # ---------------------------------------------------------------------------
 # CI / Quality

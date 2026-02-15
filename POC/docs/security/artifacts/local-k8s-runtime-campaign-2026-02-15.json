@@ -1,0 +1,40 @@
+{
+  "campaign_id": "RFA-l6h6.8.5-2026-02-15",
+  "story_id": "RFA-l6h6.8.5",
+  "scope": "local-k8s-in-docker",
+  "executed_at": "2026-02-15T09:48:43Z",
+  "environment": {
+    "cluster_context": "docker-desktop",
+    "runtime": "kubernetes-in-docker",
+    "notes": "managed cloud explicitly out of scope for this milestone"
+  },
+  "checks": [
+    {
+      "name": "local_k8s_runtime_campaign",
+      "command": "make -C POC k8s-runtime-campaign",
+      "result": "pass",
+      "evidence": "controls=5/5 checks=10/10"
+    },
+    {
+      "name": "k8s_demo_cycles",
+      "command": "make -C POC demo-k8s",
+      "result": "pass",
+      "evidence": "ALL CYCLES PASSED"
+    },
+    {
+      "name": "k8s_policy_wiring",
+      "command": "make -C POC k8s-validate",
+      "result": "pass",
+      "evidence": "k8s-validate: PASS"
+    }
+  ],
+  "summary": {
+    "status": "pass",
+    "checks_total": 3,
+    "checks_passed": 3,
+    "checks_failed": 0
+  },
+  "residual_risks": [
+    "Evidence is intentionally local-scope (docker-desktop Kubernetes + Compose), matching milestone scope."
+  ]
+}

@@ -603,7 +603,7 @@ If `RFA-l6h6.6.10` is not `blocked`, or `RFA-l6h6.7.7` is not accepted/closed, o
 | `make security-scan-validate` | Validate required security evidence artifacts + manifest hashes |
 | `make readiness-state-validate` | Validate readiness docs/state snapshot against live `bd` status and OpenClaw gate dependency |
 | `make production-readiness-validate` | Enforce strict security scan evidence gate for production readiness |
-| `make ci-gate-parity-validate` | Validate CI workflow parity policy (strict readiness + demo coverage + scheduled K8s policy gate) |
+| `make ci-gate-parity-validate` | Validate manual-only CI workflow policy (strict readiness + demo coverage + manual K8s policy gate) |
 | `make observability-evidence-gate-validate` | Validate strict/non-strict observability evidence gate behavior |
 | `make compliance-report` | Generate compliance report |
 | `make test-integration` | Run integration tests |

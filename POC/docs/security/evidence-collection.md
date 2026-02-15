@@ -55,18 +55,23 @@ Production-intent validation requires all scan statuses to be `pass`.
 
 Workflow: `.github/workflows/security-scan.yml`
 
-CI uploads:
+Manual workflow uploads (when explicitly run):
 
 - per-scan artifacts (`gosec-results`, `trivy-fs-results`, `trivy-image-results`)
 - consolidated evidence bundle (`security-scan-evidence-bundle`)
 
 The summary job validates required files before publishing the consolidated bundle.
 
+Policy note:
+
+- GitHub workflows are configured as `workflow_dispatch` only to avoid automatic CI spend.
+- Production-readiness evidence for this repository is collected primarily via local make/demo gates.
+
 ## CI Readiness Gate Policy (RFA-l6h6.8.4)
 
 Workflow: `.github/workflows/ci.yaml`
 
-Required on PR/push:
+Manual workflow gates:
 
 - `readiness-gates`
   - `make strict-runtime-validate`
@@ -77,18 +82,18 @@ Required on PR/push:
   - `make demo-compose`
   - uploads artifact: `demo-compose-gate` (demo logs + compose diagnostics)
 
-Scheduled/manual policy gate:
+Manual policy gate:
 
 - `k8s-validation-policy-gate`
-  - runs on `schedule` and `workflow_dispatch`
+  - runs on `workflow_dispatch`
   - `make k8s-validate`
   - uploads artifact: `k8s-validation-policy-gate`
 
 Rationale:
 
-- PR/push gates are designed to fail fast on regressions that can be validated in standard GitHub-hosted runners.
-- K8s policy validation is explicitly scheduled/manual so it remains visible and auditable as a production-intent control without forcing full cluster-runtime execution on every PR.
-- `readiness-state-validate` remains an operator/post-merge control because it requires live `bd` state access.
+- Workflows are manual-only to prevent automatic runner usage.
+- Equivalent quality/safety gates are executed locally via make targets and demo scripts.
+- `readiness-state-validate` remains an operator control because it requires live `bd` state access.
 
 ## Failure Semantics
 
