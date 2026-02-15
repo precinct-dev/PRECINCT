@@ -29,12 +29,12 @@
     },
     {
       "id": "RFA-l6h6.7.6",
-      "expected_status": "in_progress",
-      "status_verified_on": "2026-02-15"
+      "expected_status": "closed",
+      "expected_closed_on": "2026-02-14"
     },
     {
       "id": "RFA-l6h6.7.7",
-      "expected_status": "open",
+      "expected_status": "in_progress",
       "status_verified_on": "2026-02-15"
     }
   ],
@@ -43,7 +43,10 @@
     "expected_status": "blocked",
     "status_verified_on": "2026-02-15",
     "required_blocker_story_id": "RFA-l6h6.7.7",
-    "required_blocker_statuses": ["open", "in_progress"],
+    "required_blocker_statuses": [
+      "open",
+      "in_progress"
+    ],
     "policy": "No OpenClaw full port until Compose and K8s strict readiness story RFA-l6h6.7.7 is accepted and epic RFA-l6h6.7 is closed."
   }
 }

@@ -27,8 +27,8 @@ Current story-state snapshot (as-of 2026-02-15):
 | `RFA-l6h6.7.3` | closed | closed 2026-02-14 | JSON-RPC correlation safety accepted |
 | `RFA-l6h6.7.4` | closed | closed 2026-02-14 | strict attestation fail-closed wiring accepted |
 | `RFA-l6h6.7.5` | closed | closed 2026-02-14 | security evidence hardening accepted |
-| `RFA-l6h6.7.6` | in_progress | verified 2026-02-15 | docs/state integrity and release-gate validation |
-| `RFA-l6h6.7.7` | open | verified 2026-02-15 | final strict Compose + K8s campaign pending |
+| `RFA-l6h6.7.6` | closed | closed 2026-02-14 | docs/state integrity and release-gate validation accepted |
+| `RFA-l6h6.7.7` | in_progress | verified 2026-02-15 | final strict Compose + K8s campaign executing |
 | `RFA-l6h6.6.10` | blocked | verified 2026-02-15 | OpenClaw full port blocked by `RFA-l6h6.7.7` |
 
 Known residual risks:
@@ -41,8 +41,8 @@ Claim reconciliation summary:
 
 | Prior claim | Corrected as-built statement | Evidence source |
 |------------|------------------------------|-----------------|
-| “The project is development-complete.” | Production-readiness closure still has open stories (`RFA-l6h6.7.6`, `RFA-l6h6.7.7`). | beads epic `RFA-l6h6.7` |
-| “No open functional work remains.” | Final strict conformance campaign and OpenClaw gate closure remain open. | beads issues `RFA-l6h6.7.6/7`; OpenClaw gate `RFA-l6h6.6.10` |
+| “The project is development-complete.” | Production-readiness closure still has open story `RFA-l6h6.7.7` pending campaign completion. | beads epic `RFA-l6h6.7` |
+| “No open functional work remains.” | Final strict conformance campaign and OpenClaw gate closure remain open. | beads issue `RFA-l6h6.7.7`; OpenClaw gate `RFA-l6h6.6.10` |
 | CI/security automation gaps listed as unresolved in hardening context | CI push/PR triggers, `security-scan.yml`, and `.github/dependabot.yml` now exist. | `.github/workflows/ci.yaml`, `.github/workflows/security-scan.yml`, `.github/dependabot.yml`, `RFA-l6h6.6.7` evidence |
 
 ---
@@ -230,7 +230,7 @@ Implements SEP-1865 (Apps Extension) security:
 
 ## 4. Current Status
 
-All Phase 1 functional gaps have been addressed. Production-readiness closure is in finalization with remaining open work in `RFA-l6h6.7.6` (state integrity) and `RFA-l6h6.7.7` (final strict Compose + K8s campaign), while `RFA-l6h6.6.10` (OpenClaw full port) remains intentionally blocked.
+All Phase 1 functional gaps have been addressed. Production-readiness closure is in finalization with final campaign execution in `RFA-l6h6.7.7`, while `RFA-l6h6.6.10` (OpenClaw full port) remains intentionally blocked.
 
 ### 4.1 Rego Cannot Do Cryptographic Signature Verification
 
