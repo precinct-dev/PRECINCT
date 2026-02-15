@@ -22,6 +22,8 @@ TOOLS_NAMESPACE := tools
 	TOOL_REGISTRY ?= ../../../config/tool-registry.yaml
 	CAPABILITY_REGISTRY_V2 ?= ../../../config/capability-registry-v2.yaml
 	MODEL_PROVIDER_CATALOG ?= ../../../config/model-provider-catalog.v2.yaml
+	ATTESTATION_PUBLIC_KEY ?= ../../../config/attestation-ed25519.pub
+	GUARD_ARTIFACT ?= ../../../config/guard-artifact.bin
 
 help: ## Show this help message
 	@echo "Gateway Deployment -- EKS Targets"
@@ -52,8 +54,13 @@ deploy: deploy-configmap deploy-gateway ## Deploy all gateway components (Config
 			--from-file=tool_grants.yaml=$(OPA_DIR)/tool_grants.yaml \
 			--from-file=ui_capability_grants.yaml=$(OPA_DIR)/ui_capability_grants.yaml \
 			--from-file=tool-registry.yaml=$(TOOL_REGISTRY) \
+			--from-file=tool-registry.yaml.sig=$(TOOL_REGISTRY).sig \
 			--from-file=capability-registry-v2.yaml=$(CAPABILITY_REGISTRY_V2) \
 			--from-file=model-provider-catalog.v2.yaml=$(MODEL_PROVIDER_CATALOG) \
+			--from-file=model-provider-catalog.v2.yaml.sig=$(MODEL_PROVIDER_CATALOG).sig \
+			--from-file=attestation-ed25519.pub=$(ATTESTATION_PUBLIC_KEY) \
+			--from-file=guard-artifact.bin=$(GUARD_ARTIFACT) \
+			--from-file=guard-artifact.bin.sig=$(GUARD_ARTIFACT).sig \
 			--dry-run=client -o yaml | $(KUBECTL) apply -f -
 		@echo "ConfigMap created with OPA policies and tool registry."
 

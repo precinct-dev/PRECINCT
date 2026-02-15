@@ -277,6 +277,17 @@ func New(cfg *Config) (*Gateway, error) {
 		}
 		log.Printf("[tool-registry] attestation configured with public key from %s", cfg.ToolRegistryPublicKey)
 	}
+	if enforcementProfile.StartupGateMode == "strict" {
+		reloadResult, err := registry.Reload()
+		if err != nil {
+			return nil, fmt.Errorf("strict tool registry attestation verification failed: %w", err)
+		}
+		if !reloadResult.CosignVerified {
+			return nil, fmt.Errorf("strict tool registry attestation verification failed: signature verification is mandatory")
+		}
+		log.Printf("[tool-registry] strict startup attestation passed: %d tools, %d ui_resources",
+			reloadResult.ToolCount, reloadResult.UIResourceCount)
+	}
 
 	// RFA-dh9: Start fsnotify watcher on tool registry YAML for hot-reload.
 	// The watcher runs in a background goroutine and reloads the registry

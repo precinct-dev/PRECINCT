@@ -422,11 +422,18 @@ Use this set as a baseline when validating production-readiness transport postur
 | `MCP_TRANSPORT_MODE` | `mcp` |
 | `UPSTREAM_URL` | `https://<mcp-upstream>/mcp` |
 | `APPROVAL_SIGNING_KEY` | strong non-default key (>=32 chars) |
+| `TOOL_REGISTRY_PUBLIC_KEY` | `/config/attestation-ed25519.pub` |
+| `MODEL_PROVIDER_CATALOG_PUBLIC_KEY` | `/config/attestation-ed25519.pub` |
+| `GUARD_ARTIFACT_PATH` | `/config/guard-artifact.bin` |
+| `GUARD_ARTIFACT_SHA256` | `8232540100ebde3b5682c2b47d1eee50764f6dadca3842400157061656fc95a3` |
+| `GUARD_ARTIFACT_PUBLIC_KEY` | `/config/attestation-ed25519.pub` |
 
 Notes:
 
 - Strict startup fails if `UPSTREAM_URL` is not `https://...` in MCP mode.
 - Strict MCP transport fails closed if SPIFFE mTLS upstream transport is not initialized.
+- Strict startup fails when signed tool registry/catalog/guard artifact material is missing or invalid.
+- Strict tool registry hot-reload rejects unsigned/invalid updates without permissive fallback.
 - Keep `UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS` explicit for blue/green/canary identity overlap windows.
 
 ### Security Controls
@@ -480,6 +487,13 @@ export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools
 export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb"
 docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.yml up -d
 ```
+
+Strict compose mode expects these files in `./config`:
+
+- `attestation-ed25519.pub`
+- `tool-registry.yaml` and `tool-registry.yaml.sig`
+- `model-provider-catalog.v2.yaml` and `model-provider-catalog.v2.yaml.sig`
+- `guard-artifact.bin` and `guard-artifact.bin.sig`
 
 K8s dev/local mode:
 

@@ -137,6 +137,11 @@ spec:
               mountPath: /config/tool-registry.yaml
               subPath: tool-registry.yaml
               readOnly: true
+            # Tool registry signature (strict attestation)
+            - name: config-registry
+              mountPath: /config/tool-registry.yaml.sig
+              subPath: tool-registry.yaml.sig
+              readOnly: true
             # Capability registry v2 (from ConfigMap)
             - name: config-registry
               mountPath: /config/capability-registry-v2.yaml
@@ -146,6 +151,25 @@ spec:
             - name: config-registry
               mountPath: /config/model-provider-catalog.v2.yaml
               subPath: model-provider-catalog.v2.yaml
+              readOnly: true
+            # Provider catalog signature (strict attestation)
+            - name: config-registry
+              mountPath: /config/model-provider-catalog.v2.yaml.sig
+              subPath: model-provider-catalog.v2.yaml.sig
+              readOnly: true
+            # Shared attestation public key for strict artifact verification
+            - name: config-registry
+              mountPath: /config/attestation-ed25519.pub
+              subPath: attestation-ed25519.pub
+              readOnly: true
+            # Guard artifact and signature for strict startup integrity checks
+            - name: config-registry
+              mountPath: /config/guard-artifact.bin
+              subPath: guard-artifact.bin
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/guard-artifact.bin.sig
+              subPath: guard-artifact.bin.sig
               readOnly: true
             # Writable tmp directory for audit logs and runtime data
             - name: gateway-tmp
@@ -194,10 +218,20 @@ spec:
             items:
               - key: tool-registry.yaml
                 path: tool-registry.yaml
+              - key: tool-registry.yaml.sig
+                path: tool-registry.yaml.sig
               - key: capability-registry-v2.yaml
                 path: capability-registry-v2.yaml
               - key: model-provider-catalog.v2.yaml
                 path: model-provider-catalog.v2.yaml
+              - key: model-provider-catalog.v2.yaml.sig
+                path: model-provider-catalog.v2.yaml.sig
+              - key: attestation-ed25519.pub
+                path: attestation-ed25519.pub
+              - key: guard-artifact.bin
+                path: guard-artifact.bin
+              - key: guard-artifact.bin.sig
+                path: guard-artifact.bin.sig
             optional: false
         # Writable tmp for audit logs and runtime data
         - name: gateway-tmp

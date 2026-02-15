@@ -17,3 +17,9 @@ services:
       - APPROVAL_SIGNING_KEY=${APPROVAL_SIGNING_KEY:?APPROVAL_SIGNING_KEY must be set for strict profile}
       - UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS=${UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS:?UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS must be set for strict profile}
       - KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS=${KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS:?KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS must be set for strict profile}
+      - TOOL_REGISTRY_PUBLIC_KEY=/config/attestation-ed25519.pub
+      - MODEL_PROVIDER_CATALOG_PUBLIC_KEY=/config/attestation-ed25519.pub
+      - GUARD_ARTIFACT_PATH=/config/guard-artifact.bin
+      - GUARD_ARTIFACT_SHA256=8232540100ebde3b5682c2b47d1eee50764f6dadca3842400157061656fc95a3
+      - GUARD_ARTIFACT_SIGNATURE_PATH=/config/guard-artifact.bin.sig
+      - GUARD_ARTIFACT_PUBLIC_KEY=/config/attestation-ed25519.pub

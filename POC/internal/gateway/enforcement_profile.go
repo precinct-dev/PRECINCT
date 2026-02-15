@@ -73,6 +73,13 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"upstream_url=https",
 			"enforce_model_mediation_gate",
 			"approval_signing_key",
+			"tool_registry_config_path",
+			"tool_registry_public_key",
+			"model_provider_catalog_path",
+			"model_provider_catalog_public_key",
+			"guard_artifact_path",
+			"guard_artifact_sha256",
+			"guard_artifact_public_key",
 		},
 	},
 	enforcementProfileProdRegulatedHIPAA: {
@@ -90,6 +97,13 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"enforce_model_mediation_gate",
 			"enforce_hipaa_prompt_safety_gate",
 			"approval_signing_key",
+			"tool_registry_config_path",
+			"tool_registry_public_key",
+			"model_provider_catalog_path",
+			"model_provider_catalog_public_key",
+			"guard_artifact_path",
+			"guard_artifact_sha256",
+			"guard_artifact_public_key",
 		},
 	},
 }
@@ -167,6 +181,29 @@ func resolveEnforcementProfile(cfg *Config) (*enforcementProfileRuntime, error) 
 					violations = append(violations, "upstream_url must use https in strict profiles when mcp_transport_mode=mcp")
 				}
 			}
+		}
+
+		if strings.TrimSpace(cfg.ToolRegistryConfigPath) == "" {
+			violations = append(violations, "tool_registry_config_path must be set in strict profiles")
+		}
+		if strings.TrimSpace(cfg.ToolRegistryPublicKey) == "" {
+			violations = append(violations, "tool_registry_public_key must be set in strict profiles")
+		}
+		if strings.TrimSpace(cfg.ModelProviderCatalogPath) == "" {
+			violations = append(violations, "model_provider_catalog_path must be set in strict profiles")
+		}
+		if strings.TrimSpace(cfg.ModelProviderCatalogPublicKey) == "" {
+			violations = append(violations, "model_provider_catalog_public_key must be set in strict profiles")
+		}
+		if strings.TrimSpace(cfg.GuardArtifactPath) == "" {
+			violations = append(violations, "guard_artifact_path must be set in strict profiles")
+		}
+		guardDigest := strings.ToLower(strings.TrimSpace(cfg.GuardArtifactSHA256))
+		if guardDigest == "" {
+			violations = append(violations, "guard_artifact_sha256 must be set in strict profiles")
+		}
+		if strings.TrimSpace(cfg.GuardArtifactPublicKey) == "" {
+			violations = append(violations, "guard_artifact_public_key must be set in strict profiles")
 		}
 	}
 

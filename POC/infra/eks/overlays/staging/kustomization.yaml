@@ -78,6 +78,18 @@ patches:
                       secretKeyRef:
                         name: gateway-runtime-secrets
                         key: approval_signing_key
+                  - name: TOOL_REGISTRY_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                  - name: MODEL_PROVIDER_CATALOG_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                  - name: GUARD_ARTIFACT_PATH
+                    value: "/config/guard-artifact.bin"
+                  - name: GUARD_ARTIFACT_SHA256
+                    value: "8232540100ebde3b5682c2b47d1eee50764f6dadca3842400157061656fc95a3"
+                  - name: GUARD_ARTIFACT_SIGNATURE_PATH
+                    value: "/config/guard-artifact.bin.sig"
+                  - name: GUARD_ARTIFACT_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
                   - name: UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS
                     value: "spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool"
                   - name: KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS

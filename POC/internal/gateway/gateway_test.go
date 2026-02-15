@@ -3083,20 +3083,27 @@ func TestMCPTransport_GatewayUsesTransportInterface(t *testing.T) {
 }
 
 func TestMCPTransportHTTPClient_StrictRequiresSPIFFETLS(t *testing.T) {
+	projectRoot := testutil.ProjectRoot()
 	cfg := &Config{
-		UpstreamURL:                  "https://mcp-server.example.com/mcp",
-		OPAPolicyDir:                 testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath:       testutil.ToolRegistryConfigPath(),
-		AuditLogPath:                 "",
-		OPAPolicyPath:                testutil.OPAPolicyPath(),
-		MaxRequestSizeBytes:          1024,
-		SPIFFEMode:                   "prod",
-		MCPTransportMode:             "mcp",
-		EnforcementProfile:           enforcementProfileProdStandard,
-		EnforceModelMediationGate:    true,
-		EnforceHIPAAPromptSafetyGate: true,
-		ApprovalSigningKey:           "prod-approval-signing-key-material-at-least-32",
-		EnforcementControlOverrides:  true,
+		UpstreamURL:                   "https://mcp-server.example.com/mcp",
+		OPAPolicyDir:                  testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath:        testutil.ToolRegistryConfigPath(),
+		ToolRegistryPublicKey:         filepath.Join(projectRoot, "config", "attestation-ed25519.pub"),
+		ModelProviderCatalogPath:      filepath.Join(projectRoot, "config", "model-provider-catalog.v2.yaml"),
+		ModelProviderCatalogPublicKey: filepath.Join(projectRoot, "config", "attestation-ed25519.pub"),
+		GuardArtifactPath:             filepath.Join(projectRoot, "config", "guard-artifact.bin"),
+		GuardArtifactSHA256:           "8232540100ebde3b5682c2b47d1eee50764f6dadca3842400157061656fc95a3",
+		GuardArtifactPublicKey:        filepath.Join(projectRoot, "config", "attestation-ed25519.pub"),
+		AuditLogPath:                  "",
+		OPAPolicyPath:                 testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:           1024,
+		SPIFFEMode:                    "prod",
+		MCPTransportMode:              "mcp",
+		EnforcementProfile:            enforcementProfileProdStandard,
+		EnforceModelMediationGate:     true,
+		EnforceHIPAAPromptSafetyGate:  true,
+		ApprovalSigningKey:            "prod-approval-signing-key-material-at-least-32",
+		EnforcementControlOverrides:   true,
 	}
 
 	gw, err := New(cfg)
