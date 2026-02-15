@@ -7,6 +7,8 @@ turnkey environment pack for any proprietary platform.
 Related references:
 - `docs/architecture/k8s-runtime-validation-campaign.md`
 - `docs/architecture/compose-backport-decision-ledger.md`
+- `docs/architecture/cloud-adaptation-playbooks.md`
+- `docs/architecture/cloudflare-workers-compensating-controls.md`
 
 ## Scope and Boundary
 

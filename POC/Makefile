@@ -388,12 +388,12 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo "Cleaning up completed SPIKE jobs for re-apply..."
 	-kubectl -n spike-system delete job spike-bootstrap --ignore-not-found 2>/dev/null
 	-kubectl -n spike-system delete job spike-secret-seeder --ignore-not-found 2>/dev/null
-	@echo "Applying overlay (pass 1: namespaces, CRDs, services)..."
-	-kubectl apply -k infra/eks/overlays/local/ 2>&1 | grep -v 'ensure CRDs are installed first'
+	@echo "Applying overlay (pass 1: base resources + ConstraintTemplates)..."
+	@-bash scripts/k8s-apply-local-overlay-pass1.sh
 	@echo "Waiting for Gatekeeper to process ConstraintTemplates..."
 	@sleep 10
 	@echo "Applying overlay (pass 2: constraints, policies)..."
-	-kubectl apply -k infra/eks/overlays/local/ 2>&1
+	@-kubectl apply -k infra/eks/overlays/local/ 2>&1
 	@echo "Generating TLS certs for policy-controller webhook..."
 	@bash scripts/k8s-generate-webhook-tls.sh
 	@echo "Waiting for SPIRE infrastructure..."
@@ -409,6 +409,20 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo "Waiting for SPIKE Nexus (SQLite mode)..."
 	-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIKE Nexus not yet ready"
+	@echo "Checking SPIKE Nexus service endpoint readiness..."
+	@{ \
+		ready_ip=""; \
+		for i in $$(seq 1 60); do \
+			ready_ip="$$(kubectl -n spike-system get endpoints spike-nexus -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null || true)"; \
+			if [ -n "$$ready_ip" ]; then \
+				break; \
+			fi; \
+			sleep 2; \
+		done; \
+		if [ -z "$$ready_ip" ]; then \
+			echo "WARNING: SPIKE Nexus endpoint not ready yet; bootstrap job may retry until Nexus is available"; \
+		fi; \
+	}
 	@echo "Applying SPIKE Bootstrap job (after SPIRE registration)..."
 	-kubectl -n spike-system apply -f infra/eks/spike/bootstrap-job.yaml >/dev/null 2>&1 || true
 	@echo "Waiting for SPIKE Bootstrap job..."
@@ -437,7 +451,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo "  kubectl -n gateway rollout restart deploy/mcp-security-gateway"
 
 k8s-down: ## Tear down local K8s deployment
-	-kubectl delete -k infra/eks/overlays/local/ --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
+	@-kubectl delete -k infra/eks/overlays/local/ --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
 	@echo "Cleaning up Gatekeeper cluster-scoped resources..."
 	-kubectl delete validatingwebhookconfigurations gatekeeper-validating-webhook-configuration --ignore-not-found 2>/dev/null
 	-kubectl delete mutatingwebhookconfigurations gatekeeper-mutating-webhook-configuration --ignore-not-found 2>/dev/null

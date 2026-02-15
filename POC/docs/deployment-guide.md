@@ -566,6 +566,30 @@ bd dep tree RFA-l6h6.7
 
 If `RFA-l6h6.6.10` is not `blocked`, or `RFA-l6h6.7.7` is not accepted/closed, outcome is NO-GO for OpenClaw full port.
 
+### Cloud Adaptation Playbooks
+
+For managed-cloud adaptation beyond local Docker Desktop K8s:
+
+- `docs/architecture/cloud-adaptation-playbooks.md` (AWS EKS + EKS/Fargate, GKE, AKS)
+- `docs/architecture/cloudflare-workers-compensating-controls.md` (Workers-specific compensating controls)
+- `docs/architecture/non-k8s-cloud-adaptation-guide.md` (runtime-agnostic control mapping)
+
+### GHCR Fail-Closed Live Signature Path (What It Means)
+
+`compose-production-intent-preflight` supports a strict mode where live signature
+verification is enforced at release time:
+
+```bash
+COMPOSE_PROD_VERIFY_SIGNATURE=1 make compose-production-intent-preflight
+```
+
+In fail-closed mode, image verification must succeed against the registry/signing
+metadata for required production-intent images. If auth/token retrieval or signature
+verification fails, release validation fails (no silent skip).
+
+For local/dev without registry credentials, non-strict mode remains available for
+workflow continuity, but that is not equivalent evidence for cloud release sign-off.
+
 ---
 
 ## 9. Make Targets Quick Reference

@@ -488,6 +488,7 @@ collect_spike_token_proof_k8s() {
 
     log "SPIKE Bootstrap proof (K8s spike-bootstrap logs)"
     echo ""
+    echo "  Note: on clean runs, an initial 'spike-bootstrap-state ... not found' warning is expected before bootstrap creates state."
     # The bootstrap Job may retry; prefer the pod recorded as "completed-by-pod"
     # in the spike-bootstrap-state ConfigMap so we show the successful run.
     bootstrap_pod="$(kubectl -n spike-system get configmap spike-bootstrap-state -o jsonpath='{.data.completed-by-pod}' 2>/dev/null || true)"
