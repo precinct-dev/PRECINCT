@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan \
+.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate production-readiness-validate \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -520,31 +520,17 @@ benchmark: ## Run performance benchmarks
 		echo "Docker Compose stack not running, skipping load test"; \
 	fi
 
-security-scan: ## Run security scans (gosec, trivy)
-	@echo "Scanning Go source with gosec..."
-	@if command -v gosec >/dev/null 2>&1; then \
-		gosec ./...; \
-	else \
-		echo "WARNING: gosec not installed, skipping"; \
-	fi
-	@echo ""
-	@echo "Scanning container image with trivy..."
-	@if command -v trivy >/dev/null 2>&1; then \
-		if docker images -q $(GATEWAY_IMAGE):$(IMAGE_TAG) 2>/dev/null | grep -q .; then \
-			trivy image $(GATEWAY_IMAGE):$(IMAGE_TAG); \
-		else \
-			echo "WARNING: Image $(GATEWAY_IMAGE):$(IMAGE_TAG) not found (run make build-images)"; \
-		fi; \
-	else \
-		echo "WARNING: trivy not installed, skipping"; \
-	fi
-	@echo ""
-	@echo "Scanning filesystem with trivy..."
-	@if command -v trivy >/dev/null 2>&1; then \
-		trivy fs --skip-dirs .beads .; \
-	else \
-		echo "WARNING: trivy not installed, skipping"; \
-	fi
+security-scan: ## Run security scans and emit auditable artifacts (non-strict mode)
+	SECURITY_SCAN_STRICT=0 scripts/security/collect-security-scan-artifacts.sh
+
+security-scan-strict: ## Run security scans in strict mode (fail if any scanner is skipped/fails)
+	SECURITY_SCAN_STRICT=1 scripts/security/collect-security-scan-artifacts.sh
+
+security-scan-validate: ## Validate generated security scan artifact manifest and required files
+	tests/e2e/validate_security_scan_artifacts.sh
+
+production-readiness-validate: security-scan-strict security-scan-validate ## Strict production-readiness security evidence gate
+	@echo "production-readiness-validate: PASS"
 
 # ---------------------------------------------------------------------------
 # Hidden targets (functional but not shown in make help)

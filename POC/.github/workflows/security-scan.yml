@@ -41,12 +41,24 @@ jobs:
           sarif_file: gosec-results.sarif
           category: gosec
 
+      - name: Build gosec summary artifact
+        if: always()
+        run: |
+          jq -n \
+            --arg scan "gosec" \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg artifact "gosec-results.sarif" \
+            --argjson result_count "$(jq '[.runs[]?.results[]?] | length' gosec-results.sarif)" \
+            '{scan:$scan, generated_at:$generated_at, artifact:$artifact, result_count:$result_count}' > gosec-summary.json
+
       - name: Upload gosec results as artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: gosec-results
-          path: gosec-results.sarif
+          path: |
+            gosec-results.sarif
+            gosec-summary.json
           retention-days: 30
 
   trivy-fs:
@@ -74,12 +86,24 @@ jobs:
           sarif_file: trivy-fs-results.sarif
           category: trivy-fs
 
+      - name: Build Trivy fs summary artifact
+        if: always()
+        run: |
+          jq -n \
+            --arg scan "trivy-fs" \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg artifact "trivy-fs-results.sarif" \
+            --argjson result_count "$(jq '[.runs[]?.results[]?] | length' trivy-fs-results.sarif)" \
+            '{scan:$scan, generated_at:$generated_at, artifact:$artifact, result_count:$result_count}' > trivy-fs-summary.json
+
       - name: Upload Trivy fs results as artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: trivy-fs-results
-          path: trivy-fs-results.sarif
+          path: |
+            trivy-fs-results.sarif
+            trivy-fs-summary.json
           retention-days: 30
 
   trivy-image:
@@ -120,12 +144,24 @@ jobs:
           sarif_file: trivy-image-results.sarif
           category: trivy-image
 
+      - name: Build Trivy image summary artifact
+        if: always()
+        run: |
+          jq -n \
+            --arg scan "trivy-image" \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg artifact "trivy-image-results.sarif" \
+            --argjson result_count "$(jq '[.runs[]?.results[]?] | length' trivy-image-results.sarif)" \
+            '{scan:$scan, generated_at:$generated_at, artifact:$artifact, result_count:$result_count}' > trivy-image-summary.json
+
       - name: Upload Trivy image results as artifact
         uses: actions/upload-artifact@v4
         if: always()
         with:
           name: trivy-image-results
-          path: trivy-image-results.sarif
+          path: |
+            trivy-image-results.sarif
+            trivy-image-summary.json
           retention-days: 30
 
   summary:
@@ -136,6 +172,52 @@ jobs:
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+
+      - name: Validate required scan artifacts exist
+        run: |
+          test -s gosec-results/gosec-results.sarif
+          test -s gosec-results/gosec-summary.json
+          test -s trivy-fs-results/trivy-fs-results.sarif
+          test -s trivy-fs-results/trivy-fs-summary.json
+          test -s trivy-image-results/trivy-image-results.sarif
+          test -s trivy-image-results/trivy-image-summary.json
+
+      - name: Build evidence manifest
+        run: |
+          mkdir -p security-scan-evidence
+          cp gosec-results/gosec-results.sarif security-scan-evidence/
+          cp gosec-results/gosec-summary.json security-scan-evidence/
+          cp trivy-fs-results/trivy-fs-results.sarif security-scan-evidence/
+          cp trivy-fs-results/trivy-fs-summary.json security-scan-evidence/
+          cp trivy-image-results/trivy-image-results.sarif security-scan-evidence/
+          cp trivy-image-results/trivy-image-summary.json security-scan-evidence/
+
+          for f in security-scan-evidence/*.sarif; do
+            jq -e '.runs' "$f" >/dev/null
+          done
+
+          jq -n \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile gosec security-scan-evidence/gosec-summary.json \
+            --slurpfile trivy_fs security-scan-evidence/trivy-fs-summary.json \
+            --slurpfile trivy_image security-scan-evidence/trivy-image-summary.json \
+            '{
+              schema_version: "security_scan_ci_evidence.v1",
+              generated_at: $generated_at,
+              scans: {
+                gosec: $gosec[0],
+                trivy_fs: $trivy_fs[0],
+                trivy_image: $trivy_image[0]
+              }
+            }' > security-scan-evidence/security-scan-manifest.json
+
+      - name: Upload consolidated security evidence bundle
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-evidence-bundle
+          path: security-scan-evidence/
+          retention-days: 30
 
       - name: Display summary
         run: |
@@ -151,6 +233,8 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "All SARIF results have been uploaded to the GitHub Security tab." >> $GITHUB_STEP_SUMMARY
           echo "View detailed findings: **Security** > **Code scanning**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Consolidated evidence bundle artifact: \`security-scan-evidence-bundle\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## Baseline" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY

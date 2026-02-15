@@ -541,7 +541,10 @@ make strict-runtime-validate
 | `make k8s-register-spire` | Register SPIRE workload entries (K8s) |
 | `make ci` | Full CI pipeline (lint + test + build) |
 | `make benchmark` | Run performance benchmarks |
-| `make security-scan` | Run security scans (gosec, trivy) |
+| `make security-scan` | Run security scans and emit artifact bundle (`build/security-scan/latest`) |
+| `make security-scan-strict` | Run security scans in strict mode (fail on skipped/failed scanners) |
+| `make security-scan-validate` | Validate required security evidence artifacts + manifest hashes |
+| `make production-readiness-validate` | Enforce strict security scan evidence gate for production readiness |
 | `make compliance-report` | Generate compliance report |
 | `make test-integration` | Run integration tests |
 | `make test-opa` | Run OPA policy tests |
