@@ -463,6 +463,44 @@ Notes:
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel-collector:4317` | OpenTelemetry collector gRPC endpoint |
 | `OTEL_SERVICE_NAME` | `mcp-security-gateway` | Service name in traces |
 
+### Dev vs Strict Operating Procedures
+
+Docker Compose dev mode:
+
+```bash
+docker compose -f docker-compose.yml up -d
+```
+
+Docker Compose strict production-intent mode:
+
+```bash
+export STRICT_UPSTREAM_URL="https://<strict-upstream>/mcp"
+export APPROVAL_SIGNING_KEY="<strong-signing-key-32+>"
+export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool"
+export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb"
+docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.yml up -d
+```
+
+K8s dev/local mode:
+
+```bash
+kustomize build infra/eks/overlays/local | kubectl apply -f -
+```
+
+K8s strict production-intent mode:
+
+```bash
+kustomize build infra/eks/overlays/staging | kubectl apply -f -
+# or
+kustomize build infra/eks/overlays/prod | kubectl apply -f -
+```
+
+Strict runtime wiring validation (fail-fast):
+
+```bash
+make strict-runtime-validate
+```
+
 ---
 
 ## 9. Make Targets Quick Reference

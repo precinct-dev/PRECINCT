@@ -371,11 +371,11 @@ services:
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
       - keydb-certs:/certs
-      - ./scripts/keydb-svid-refresh.sh:/usr/local/bin/keydb-svid-refresh.sh:ro
+      - ./scripts/keydb-svid-refresh.sh:/tmp/keydb-svid-refresh.sh:ro
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - CERT_DIR=/certs
-    entrypoint: ["/bin/sh", "-c", "/usr/local/bin/keydb-svid-refresh.sh init"]
+    entrypoint: ["/bin/sh", "-c", "/bin/sh /tmp/keydb-svid-refresh.sh init"]
     networks:
       - control-plane
     labels:

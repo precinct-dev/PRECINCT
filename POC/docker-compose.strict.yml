@@ -1,0 +1,19 @@
+services:
+  # Production-intent strict runtime override.
+  # Use with:
+  #   docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.yml up -d
+  mcp-security-gateway:
+    profiles:
+      - strict
+    ports:
+      - "9443:9443"
+    environment:
+      - SPIFFE_MODE=prod
+      - ENFORCEMENT_PROFILE=prod_standard
+      - MCP_TRANSPORT_MODE=mcp
+      - SPIFFE_LISTEN_PORT=9443
+      - KEYDB_URL=
+      - UPSTREAM_URL=${STRICT_UPSTREAM_URL:?STRICT_UPSTREAM_URL must be set for strict profile}
+      - APPROVAL_SIGNING_KEY=${APPROVAL_SIGNING_KEY:?APPROVAL_SIGNING_KEY must be set for strict profile}
+      - UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS=${UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS:?UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS must be set for strict profile}
+      - KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS=${KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS:?KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS must be set for strict profile}

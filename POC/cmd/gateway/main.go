@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,38 +21,33 @@ func main() {
 	// must use the correct scheme. We use SPIFFE_MODE to determine this.
 	if len(os.Args) > 1 && os.Args[1] == "health" {
 		spiffeMode := os.Getenv("SPIFFE_MODE")
-		port := os.Getenv("PORT")
-		if port == "" {
-			if spiffeMode == "prod" {
-				port = os.Getenv("SPIFFE_LISTEN_PORT")
-				if port == "" {
-					port = "9443"
-				}
-			} else {
+		var port string
+		if spiffeMode == "prod" {
+			port = os.Getenv("SPIFFE_LISTEN_PORT")
+			if port == "" {
+				port = "9443"
+			}
+		} else {
+			port = os.Getenv("PORT")
+			if port == "" {
 				port = "9090"
 			}
 		}
 
-		scheme := "http"
-		var client *http.Client
 		if spiffeMode == "prod" {
-			scheme = "https"
-			// Health check against our own HTTPS server -- skip TLS verification
-			// because the health check binary does not have a SPIRE SVID.
-			client = &http.Client{
-				Timeout: 2 * time.Second,
-				Transport: &http.Transport{
-					TLSClientConfig: &tls.Config{
-						InsecureSkipVerify: true, //nolint:gosec // Health check against localhost
-						MinVersion:         tls.VersionTLS12,
-					},
-				},
+			// In prod mode, the listener enforces mTLS client auth. Health checks
+			// from the same container may not have a client cert, so use a TCP
+			// readiness probe against the listen port instead of HTTP.
+			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%s", port), 2*time.Second)
+			if err != nil {
+				os.Exit(1)
 			}
-		} else {
-			client = &http.Client{Timeout: 2 * time.Second}
+			_ = conn.Close()
+			os.Exit(0)
 		}
 
-		resp, err := client.Get(fmt.Sprintf("%s://localhost:%s/health", scheme, port))
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Get(fmt.Sprintf("http://localhost:%s/health", port))
 		if err != nil {
 			os.Exit(1)
 		}
