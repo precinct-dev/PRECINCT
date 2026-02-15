@@ -1,153 +1,101 @@
 # Security Scan Baseline
 
-**As Of:** 2026-02-14
-**Last Updated:** 2026-02-14
-**Epic:** RFA-lo1.1 (Security Scanning Infrastructure)
+**As Of:** 2026-02-15
+**Last Updated:** 2026-02-15
+**Epic:** RFA-l6h6.7.5 (Security Evidence Hardening)
 
-This document establishes the security scanning baseline for the Agentic Reference Architecture. All findings documented here represent the state at the time of implementing automated security scanning (RFA-lo1.1).
+This document is the auditable baseline for security scan results and evidence provenance.
+Baseline claims in this file must map to concrete machine-readable artifacts.
 
-## Current Automation Wiring (2026-02-14)
+## Evidence Snapshot (2026-02-15)
 
-Security automation files now present and aligned:
+Baseline evidence was collected with:
 
-- CI workflow: `.github/workflows/ci.yaml` (push + pull_request + workflow_dispatch)
-- Security scan workflow: `.github/workflows/security-scan.yml`
-- Dependabot policy: `.github/dependabot.yml`
-- Local equivalent command: `make security-scan`
+- `make security-scan`
+- `make security-scan-validate`
 
-Known residual risks:
+Produced artifacts:
 
-1. This repository snapshot does not include a hosted GitHub Actions run URL artifact.
-2. Baseline findings tables remain intentionally minimal until first post-wiring CI security scan artifacts are collected and triaged.
-
-Historical context from RFA-lo1.1 is preserved below for traceability.
-
-## Purpose
-
-This baseline serves to:
-
-1. **Differentiate new vulnerabilities from known issues** - New findings in CI require investigation; baseline findings are tracked here
-2. **Document accepted risks** - Some findings may be accepted due to false positives, low impact, or mitigation in place
-3. **Track remediation progress** - Findings move from "accepted risk" to "remediated" as fixes are applied
-4. **Provide audit trail** - Security teams can review rationale for accepted risks
+- Local manifest: `build/security-scan/latest/security-scan-manifest.json`
+- Local per-scan summaries: `build/security-scan/latest/summaries/*.json`
+- Local raw scan outputs: `build/security-scan/latest/raw/*.sarif`, `build/security-scan/latest/raw/*.json`
+- Committed evidence snapshot: `docs/security/artifacts/security-scan-evidence-2026-02-15.json`
+- CI bundle source: `.github/workflows/security-scan.yml` uploads `security-scan-evidence-bundle`
 
 ## Scanning Tools
 
-| Tool | Version | Scan Type | Frequency |
-|------|---------|-----------|-----------|
-| gosec | v2.21.4+ | Go source code security analysis | Every PR + push to main |
-| trivy | 0.29.0+ | Container image CVE scanning | Every PR + push to main |
-| trivy | 0.29.0+ | Filesystem dependency scanning | Every PR + push to main |
+| Tool | Version | Scan Type | Baseline Result Count |
+|------|---------|-----------|-----------------------|
+| gosec | v2.21.4 | Go source code security analysis | 0 |
+| trivy | 0.29.0+ | Filesystem dependency vulnerability scan | 0 |
+| trivy | 0.29.0+ | Container image vulnerability scan | 0 |
 
 ## Baseline Findings
 
-### Go Source Code (gosec)
+### gosec
 
-**Status at baseline:** No gosec scan performed during story RFA-lo1.1 implementation (gosec not installed on developer machine).
+- Baseline status: `pass`
+- Baseline result count: `0`
+- Evidence:
+  - `docs/security/artifacts/security-scan-evidence-2026-02-15.json`
+  - `build/security-scan/latest/raw/gosec-results.sarif`
 
-**Action:** First CI run will establish gosec baseline. Any findings will be documented here with accept/remediate decision.
+### trivy filesystem
 
-**Expected categories to review:**
-- G101: Hardcoded credentials (expect 0 - credentials are in environment variables)
-- G104: Unhandled errors (will review and fix or accept with rationale)
-- G304: File path injection (will review context - some file operations are admin-only)
-- G402: TLS configuration (expect strong TLS config - verify settings)
+- Baseline status: `pass`
+- Baseline result count: `0`
+- Evidence:
+  - `docs/security/artifacts/security-scan-evidence-2026-02-15.json`
+  - `build/security-scan/latest/raw/trivy-fs-results.sarif`
+  - `build/security-scan/latest/raw/trivy-fs-results.json`
 
-### Container Images (trivy image)
+### trivy image
 
-**Status at baseline:** Container image not built during story RFA-lo1.1 implementation.
-
-**Action:** First CI run will establish image baseline. Expected findings:
-
-1. **Base image vulnerabilities (golang:1.23-alpine)**
-   - **Accepted risk:** Using official Golang images. Updates applied via Dependabot weekly.
-   - **Mitigation:** Multi-stage build - final image is distroless, contains only runtime binary.
-
-2. **Go runtime CVEs**
-   - **Threshold:** Only CRITICAL severity requires immediate action
-   - **Mitigation:** Go version pinned in go.mod, updated weekly via Dependabot
-
-**Acceptance criteria for image findings:**
-- CRITICAL: Must remediate or document explicit acceptance within 7 days
-- HIGH: Review and plan remediation within 30 days or accept with rationale
-- MEDIUM/LOW: Review quarterly, accept if no exploit path exists
-
-### Filesystem Dependencies (trivy fs)
-
-**Status at baseline:** Scan in progress during implementation. Will document findings from first full scan.
-
-**Expected findings:**
-
-1. **Go module dependencies**
-   - Managed via go.mod with Dependabot weekly updates
-   - CRITICAL/HIGH vulnerabilities in direct dependencies: remediate immediately
-   - Transitive dependencies: evaluate exploit path, may accept if unexploitable
-
-2. **Docker base image references**
-   - golang:1.23-alpine (build stage)
-   - gcr.io/distroless/static-debian12:nonroot (runtime stage)
-   - Managed via Dependabot weekly updates
-
-3. **Python dependencies (tools/compliance/)**
-   - Limited scope: compliance report generation only
-   - Not exposed to untrusted input
-   - Managed via requirements.txt with Dependabot
+- Baseline status: `pass`
+- Baseline result count: `0`
+- Evidence:
+  - `docs/security/artifacts/security-scan-evidence-2026-02-15.json`
+  - `build/security-scan/latest/raw/trivy-image-results.sarif`
+  - `build/security-scan/latest/raw/trivy-image-results.json`
 
 ## Accepted Risks
 
 ### AR-001: Development-Only Binaries in Repository
 
-**Finding:** Compiled binaries (gateway, gdpr-delete, service) present in repository root.
-**Severity:** LOW
-**Rationale:** Development convenience. .gitignore updated to prevent future commits of binaries.
-**Mitigation:** Binaries are rebuilt from source in CI. Production deployments use container images, not repository binaries.
-**Accepted:** 2026-02-06
-**Review Date:** 2026-05-06 (quarterly)
+**Finding:** Compiled binaries (gateway, gdpr-delete, service) present in repository root.  
+**Severity:** LOW  
+**Rationale:** Development convenience. `.gitignore` prevents future binary commits.  
+**Mitigation:** Binaries are rebuilt from source in CI. Production deployments use container images, not repository binaries.  
+**Accepted:** 2026-02-06  
+**Review Date:** 2026-05-06
 
-### AR-002: Offline Capability Delays Vulnerability Database Updates
+### AR-002: Offline Vulnerability DB Drift
 
-**Finding:** Trivy vulnerability database may be stale in offline development environments (BUSINESS.md 5.5).
-**Severity:** LOW
-**Rationale:** Offline capability is a documented requirement. Developers working offline accept stale CVE data.
+**Finding:** Trivy vulnerability database may be stale in offline environments.  
+**Severity:** LOW  
+**Rationale:** Offline operation is an explicit product requirement.  
 **Mitigation:**
-- CI always runs with latest trivy database (online environment)
-- Developers should run `trivy image --download-db-only` when returning online
-- Weekly Dependabot PRs ensure dependencies are current
 
-**Accepted:** 2026-02-06
-**Review Date:** Ongoing (acceptable trade-off for offline support)
+- CI scans run online and publish evidence artifacts.
+- Developers refresh DB when back online (`trivy image --download-db-only`).
+- Dependabot provides weekly dependency updates.
 
-## Remediation Tracking
+**Accepted:** 2026-02-06  
+**Review Date:** Ongoing
 
-| Finding ID | Tool | Severity | Description | Status | Target Date | Notes |
-|------------|------|----------|-------------|--------|-------------|-------|
-| (none yet) | - | - | - | - | - | First CI run will populate this table |
+## Readiness Gate
 
-## Baseline Update Process
+Production-intent readiness must use strict security evidence gates:
 
-This baseline is updated when:
+- `make security-scan-strict`
+- `make security-scan-validate`
+- `make production-readiness-validate`
 
-1. **New tools added** - Document tool version, scan type, expected findings
-2. **New findings accepted** - Add to "Accepted Risks" with rationale and review date
-3. **Findings remediated** - Move from "Accepted Risks" to "Remediated" section below
-4. **Quarterly review** - Re-evaluate accepted risks, update review dates
-
-## Remediated Findings
-
-(None yet - first baseline)
-
-## Next Steps
-
-1. **Capture first post-wiring CI run artifacts** - `.github/workflows/security-scan.yml` on PR/main
-2. **Review findings** - Triage gosec, trivy-image, trivy-fs results
-3. **Update baseline** - Document all findings with accept/remediate decision
-4. **Integrate with backlog** - Create stories for remediation work
-5. **Weekly Dependabot PRs** - Review and merge dependency updates
+These targets fail when required scan artifacts are missing, empty, or hash-mismatched against the generated manifest.
 
 ## References
 
-- Security scanning workflow: `.github/workflows/security-scan.yml`
-- Dependabot config: `.github/dependabot.yml`
-- Makefile target: `make security-scan`
-- Tool prerequisites: `docs/getting-started/prerequisites.md`
-- Business requirements: `docs/BUSINESS.md` (Section 5.5: Offline Capability)
+- Security scan workflow: `.github/workflows/security-scan.yml`
+- Local artifact collector: `scripts/security/collect-security-scan-artifacts.sh`
+- Artifact validator: `tests/e2e/validate_security_scan_artifacts.sh`
+- Committed snapshot: `docs/security/artifacts/security-scan-evidence-2026-02-15.json`
