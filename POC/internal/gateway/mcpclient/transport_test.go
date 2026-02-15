@@ -252,17 +252,36 @@ func TestTransport_Send_ReusedCallerID_UniqueWireIDs(t *testing.T) {
 			return
 		}
 		method, _ := rpcReq["method"].(string)
-		reqID := int(rpcReq["id"].(float64))
+		reqID := 0
+		hasID := false
+		if rawID, ok := rpcReq["id"]; ok {
+			switch v := rawID.(type) {
+			case float64:
+				reqID = int(v)
+				hasID = true
+			case int:
+				reqID = v
+				hasID = true
+			}
+		}
 
 		switch method {
 		case "initialize":
+			if !hasID {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Mcp-Session-Id", "test-session-reused-id")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock","version":"1.0"}}}`))
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock","version":"1.0"}}}`, reqID)))
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
 		case "tools/call":
+			if !hasID {
+				w.WriteHeader(http.StatusBadRequest)
+				return
+			}
 			mu.Lock()
 			wireIDs = append(wireIDs, reqID)
 			mu.Unlock()
