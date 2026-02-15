@@ -515,6 +515,28 @@ Strict runtime wiring validation (fail-fast):
 make strict-runtime-validate
 ```
 
+### OpenClaw Full-Port Release Gate (Runbook Policy)
+
+No OpenClaw full port work is allowed until strict Compose and K8s readiness is accepted.
+
+Enforced references:
+
+- Readiness epic: `RFA-l6h6.7`
+- Final strict conformance campaign: `RFA-l6h6.7.7`
+- Blocked OpenClaw implementation story: `RFA-l6h6.6.10`
+
+Required operator checks before any OpenClaw full-port start:
+
+```bash
+make strict-runtime-validate
+make production-readiness-validate
+make readiness-state-validate
+bd show RFA-l6h6.6.10 --json
+bd dep tree RFA-l6h6.7
+```
+
+If `RFA-l6h6.6.10` is not `blocked`, or `RFA-l6h6.7.7` is not accepted/closed, outcome is NO-GO for OpenClaw full port.
+
 ---
 
 ## 9. Make Targets Quick Reference
@@ -544,6 +566,7 @@ make strict-runtime-validate
 | `make security-scan` | Run security scans and emit artifact bundle (`build/security-scan/latest`) |
 | `make security-scan-strict` | Run security scans in strict mode (fail on skipped/failed scanners) |
 | `make security-scan-validate` | Validate required security evidence artifacts + manifest hashes |
+| `make readiness-state-validate` | Validate readiness docs/state snapshot against live `bd` status and OpenClaw gate dependency |
 | `make production-readiness-validate` | Enforce strict security scan evidence gate for production readiness |
 | `make compliance-report` | Generate compliance report |
 | `make test-integration` | Run integration tests |
