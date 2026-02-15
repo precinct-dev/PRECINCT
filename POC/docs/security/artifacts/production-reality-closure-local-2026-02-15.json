@@ -1,0 +1,37 @@
+{
+  "campaign_id": "RFA-l6h6.8.8-2026-02-15",
+  "story_id": "RFA-l6h6.8.8",
+  "scope": "local-k8s-in-docker-and-compose",
+  "executed_at": "2026-02-15T09:48:43Z",
+  "readiness_matrix": [
+    {"command": "make -C POC strict-runtime-validate", "result": "pass"},
+    {"command": "make -C POC readiness-state-validate", "result": "pass"},
+    {"command": "make -C POC production-readiness-validate", "result": "pass"},
+    {"command": "make -C POC ci-gate-parity-validate", "result": "pass"},
+    {"command": "make -C POC observability-evidence-gate-validate", "result": "pass"},
+    {"command": "make -C POC compose-production-intent-validate", "result": "pass"},
+    {"command": "make -C POC operations-readiness-validate", "result": "pass"},
+    {"command": "make -C POC test", "result": "pass"},
+    {"command": "make -C POC demo-compose", "result": "pass"},
+    {"command": "make -C POC demo-compose-strict-observability", "result": "pass"},
+    {"command": "make -C POC demo-k8s", "result": "pass"},
+    {"command": "make -C POC k8s-runtime-campaign", "result": "pass"}
+  ],
+  "blocker_statuses": {
+    "RFA-l6h6.8.1": "closed",
+    "RFA-l6h6.8.2": "closed",
+    "RFA-l6h6.8.3": "closed",
+    "RFA-l6h6.8.4": "closed",
+    "RFA-l6h6.8.5": "closed",
+    "RFA-l6h6.8.6": "closed",
+    "RFA-l6h6.8.7": "closed"
+  },
+  "go_no_go": {
+    "decision": "GO",
+    "basis": "All in-scope v24.3 blocker stories accepted/closed and consolidated local-scope readiness matrix passing."
+  },
+  "residual_risks": [
+    "GitHub workflows are manual-only by policy to avoid automatic CI spend; local readiness gates are the primary enforcement path.",
+    "OpenClaw full-port remains blocked by upstream dependency gate until this closure story is accepted."
+  ]
+}

@@ -2,20 +2,6 @@ name: Security Scan
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - "POC/**"
-      - ".github/workflows/security-scan.yml"
-      - ".github/dependabot.yml"
-  pull_request:
-    branches:
-      - main
-    paths:
-      - "POC/**"
-      - ".github/workflows/security-scan.yml"
-      - ".github/dependabot.yml"
 
 permissions:
   contents: read
