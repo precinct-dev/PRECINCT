@@ -34,6 +34,7 @@ func TestResolveEnforcementProfile_ProdStandardFailsWhenMediationDisabled(t *tes
 		EnforcementProfile:           enforcementProfileProdStandard,
 		SPIFFEMode:                   "prod",
 		MCPTransportMode:             "mcp",
+		UpstreamURL:                  "https://mcp-server.example.com/mcp",
 		EnforceModelMediationGate:    false,
 		EnforceHIPAAPromptSafetyGate: true,
 		EnforcementControlOverrides:  true,
@@ -53,6 +54,7 @@ func TestResolveEnforcementProfile_ProdHIPAAFailsWhenPromptSafetyDisabled(t *tes
 		EnforcementProfile:           enforcementProfileProdRegulatedHIPAA,
 		SPIFFEMode:                   "prod",
 		MCPTransportMode:             "mcp",
+		UpstreamURL:                  "https://mcp-server.example.com/mcp",
 		EnforceModelMediationGate:    true,
 		EnforceHIPAAPromptSafetyGate: false,
 		EnforcementControlOverrides:  true,
@@ -72,6 +74,7 @@ func TestResolveEnforcementProfile_StrictFailsWithoutApprovalSigningKey(t *testi
 		EnforcementProfile:           enforcementProfileProdStandard,
 		SPIFFEMode:                   "prod",
 		MCPTransportMode:             "mcp",
+		UpstreamURL:                  "https://mcp-server.example.com/mcp",
 		EnforceModelMediationGate:    true,
 		EnforceHIPAAPromptSafetyGate: true,
 		ApprovalSigningKey:           "",
@@ -92,6 +95,7 @@ func TestResolveEnforcementProfile_StrictFailsWithWeakApprovalSigningKey(t *test
 		EnforcementProfile:           enforcementProfileProdStandard,
 		SPIFFEMode:                   "prod",
 		MCPTransportMode:             "mcp",
+		UpstreamURL:                  "https://mcp-server.example.com/mcp",
 		EnforceModelMediationGate:    true,
 		EnforceHIPAAPromptSafetyGate: true,
 		ApprovalSigningKey:           "weak-key",
@@ -112,6 +116,7 @@ func TestResolveEnforcementProfile_StrictPassesWithStrongApprovalSigningKey(t *t
 		EnforcementProfile:           enforcementProfileProdStandard,
 		SPIFFEMode:                   "prod",
 		MCPTransportMode:             "mcp",
+		UpstreamURL:                  "https://mcp-server.example.com/mcp",
 		EnforceModelMediationGate:    true,
 		EnforceHIPAAPromptSafetyGate: true,
 		ApprovalSigningKey:           "prod-approval-signing-key-material-at-least-32",
@@ -124,6 +129,27 @@ func TestResolveEnforcementProfile_StrictPassesWithStrongApprovalSigningKey(t *t
 	}
 	if profile.Conformance.Status != "pass" {
 		t.Fatalf("expected strict profile conformance pass, got %q", profile.Conformance.Status)
+	}
+}
+
+func TestResolveEnforcementProfile_StrictFailsWithPlaintextUpstreamURL(t *testing.T) {
+	cfg := &Config{
+		EnforcementProfile:           enforcementProfileProdStandard,
+		SPIFFEMode:                   "prod",
+		MCPTransportMode:             "mcp",
+		UpstreamURL:                  "http://mcp-server.example.com/mcp",
+		EnforceModelMediationGate:    true,
+		EnforceHIPAAPromptSafetyGate: true,
+		ApprovalSigningKey:           "prod-approval-signing-key-material-at-least-32",
+		EnforcementControlOverrides:  true,
+	}
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure for plaintext upstream URL")
+	}
+	if !strings.Contains(err.Error(), "upstream_url must use https") {
+		t.Fatalf("expected upstream https requirement error, got: %v", err)
 	}
 }
 

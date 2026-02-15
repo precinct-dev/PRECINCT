@@ -1005,13 +1005,34 @@ func (g *Gateway) ensureMCPTransportInitialized(ctx context.Context) error {
 		detectCfg.OverallTimeout = time.Duration(g.config.MCPDetectTimeout) * time.Second
 	}
 
-	transport, err := mcpclient.DetectTransportWithConfig(ctx, g.config.UpstreamURL, nil, detectCfg)
+	httpClient, err := g.mcpTransportHTTPClient()
+	if err != nil {
+		return err
+	}
+
+	transport, err := mcpclient.DetectTransportWithConfig(ctx, g.config.UpstreamURL, httpClient, detectCfg)
 	if err != nil {
 		return err
 	}
 
 	g.mcpTransport = transport
 	return nil
+}
+
+// mcpTransportHTTPClient returns the HTTP client used by MCP transport detection.
+// In strict profiles, MCP transport must use the SPIFFE mTLS transport and must
+// never fall back to default plaintext HTTP client behavior.
+func (g *Gateway) mcpTransportHTTPClient() (*http.Client, error) {
+	isStrict := g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict"
+	if g.spiffeTLS != nil && g.spiffeTLS.UpstreamTransport != nil {
+		return &http.Client{
+			Transport: NewTracingTransport(g.spiffeTLS.UpstreamTransport),
+		}, nil
+	}
+	if isStrict {
+		return nil, fmt.Errorf("strict MCP transport requires SPIFFE mTLS upstream transport to be initialized")
+	}
+	return nil, nil
 }
 
 // processUpstreamResponse routes MCP responses through the appropriate UI

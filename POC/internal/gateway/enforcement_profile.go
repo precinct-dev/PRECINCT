@@ -3,6 +3,7 @@ package gateway
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,6 +70,7 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 		RequiredControlIDs: []string{
 			"spiffe_mode=prod",
 			"mcp_transport_mode=mcp",
+			"upstream_url=https",
 			"enforce_model_mediation_gate",
 			"approval_signing_key",
 		},
@@ -84,6 +86,7 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 		RequiredControlIDs: []string{
 			"spiffe_mode=prod",
 			"mcp_transport_mode=mcp",
+			"upstream_url=https",
 			"enforce_model_mediation_gate",
 			"enforce_hipaa_prompt_safety_gate",
 			"approval_signing_key",
@@ -147,6 +150,23 @@ func resolveEnforcementProfile(cfg *Config) (*enforcementProfileRuntime, error) 
 			violations = append(violations, "approval_signing_key must be set in strict profiles")
 		case !middleware.IsApprovalSigningKeyStrong(signingKey):
 			violations = append(violations, fmt.Sprintf("approval_signing_key must be at least %d characters and non-default", middleware.MinApprovalSigningKeyLength))
+		}
+
+		// Strict MCP mode must not permit plaintext upstream execution.
+		// Enforce HTTPS so the MCP path can only run over TLS transport.
+		if mcpMode == "mcp" {
+			upstream := strings.TrimSpace(cfg.UpstreamURL)
+			switch {
+			case upstream == "":
+				violations = append(violations, "upstream_url must be set in strict profiles when mcp_transport_mode=mcp")
+			default:
+				parsed, err := url.Parse(upstream)
+				if err != nil || parsed.Scheme == "" {
+					violations = append(violations, "upstream_url must be a valid URL in strict profiles when mcp_transport_mode=mcp")
+				} else if !strings.EqualFold(parsed.Scheme, "https") {
+					violations = append(violations, "upstream_url must use https in strict profiles when mcp_transport_mode=mcp")
+				}
+			}
 		}
 	}
 

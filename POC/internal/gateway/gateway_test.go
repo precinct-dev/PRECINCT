@@ -3082,6 +3082,72 @@ func TestMCPTransport_GatewayUsesTransportInterface(t *testing.T) {
 	t.Log("PASS: gateway uses Transport interface with lazy initialization")
 }
 
+func TestMCPTransportHTTPClient_StrictRequiresSPIFFETLS(t *testing.T) {
+	cfg := &Config{
+		UpstreamURL:                  "https://mcp-server.example.com/mcp",
+		OPAPolicyDir:                 testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath:       testutil.ToolRegistryConfigPath(),
+		AuditLogPath:                 "",
+		OPAPolicyPath:                testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:          1024,
+		SPIFFEMode:                   "prod",
+		MCPTransportMode:             "mcp",
+		EnforcementProfile:           enforcementProfileProdStandard,
+		EnforceModelMediationGate:    true,
+		EnforceHIPAAPromptSafetyGate: true,
+		ApprovalSigningKey:           "prod-approval-signing-key-material-at-least-32",
+		EnforcementControlOverrides:  true,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	_, err = gw.mcpTransportHTTPClient()
+	if err == nil {
+		t.Fatal("expected strict mode to reject MCP client selection without SPIFFE mTLS transport")
+	}
+	if !strings.Contains(err.Error(), "strict MCP transport requires SPIFFE mTLS upstream transport") {
+		t.Fatalf("expected strict SPIFFE requirement error, got: %v", err)
+	}
+}
+
+func TestMCPTransportHTTPClient_UsesSPIFFETransportWhenAvailable(t *testing.T) {
+	cfg := &Config{
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	gw.spiffeTLS = &SPIFFETLSConfig{
+		UpstreamTransport: &http.Transport{},
+	}
+
+	client, err := gw.mcpTransportHTTPClient()
+	if err != nil {
+		t.Fatalf("expected SPIFFE transport-backed MCP client, got error: %v", err)
+	}
+	if client == nil {
+		t.Fatal("expected non-nil HTTP client when SPIFFE transport is configured")
+	}
+	if _, ok := client.Transport.(*TracingTransport); !ok {
+		t.Fatalf("expected MCP client transport to be wrapped with TracingTransport, got %T", client.Transport)
+	}
+}
+
 // --- RFA-xhr: Transport Resilience Integration Tests ---
 // These tests prove resilience features work through the full gateway.
 
