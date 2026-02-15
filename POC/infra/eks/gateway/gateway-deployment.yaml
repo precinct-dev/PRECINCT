@@ -61,8 +61,13 @@ spec:
             - name: SPIFFE_LISTEN_PORT
               value: "9090"
             # Upstream MCP tool server (in tools namespace)
+            # Strict profiles require an https:// upstream URL with SPIFFE mTLS transport.
             - name: UPSTREAM_URL
               value: "http://mcp-server.tools.svc.cluster.local:8081/mcp"
+            # Keep dev/permissive profile explicit in this base manifest.
+            # Production overlays should set prod_standard/prod_regulated_hipaa.
+            - name: ENFORCEMENT_PROFILE
+              value: "dev"
             # OPA policy directory (mounted from ConfigMap)
             - name: OPA_POLICY_DIR
               value: "/config/opa"

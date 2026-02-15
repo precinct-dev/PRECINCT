@@ -397,7 +397,7 @@ The gateway is configured via environment variables. The most commonly needed on
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `9090` | Gateway HTTP listen port |
-| `UPSTREAM_URL` | `http://mock-mcp-server:8082` | Target MCP server URL |
+| `UPSTREAM_URL` | `http://mock-mcp-server:8082` | Target MCP server URL (dev). For strict profiles with `MCP_TRANSPORT_MODE=mcp`, this must be `https://...` |
 | `LOG_LEVEL` | `info` | Log level (debug, info, warn, error) |
 | `MCP_TRANSPORT_MODE` | `mcp` | Transport mode: `mcp` (Streamable HTTP) or `proxy` (reverse proxy) |
 | `MAX_REQUEST_SIZE_BYTES` | `10485760` | Maximum request body size (10MB) |
@@ -410,6 +410,24 @@ The gateway is configured via environment variables. The most commonly needed on
 | `SPIFFE_TRUST_DOMAIN` | `poc.local` | SPIFFE trust domain |
 | `SPIFFE_LISTEN_PORT` | `9443` | mTLS listen port (prod mode) |
 | `SPIFFE_ENDPOINT_SOCKET` | `unix:///tmp/spire-agent/public/api.sock` | SPIRE agent workload API socket |
+
+### Strict Profile MCP Transport (Compose + K8s)
+
+Use this set as a baseline when validating production-readiness transport posture:
+
+| Variable | Required Value |
+|----------|----------------|
+| `ENFORCEMENT_PROFILE` | `prod_standard` or `prod_regulated_hipaa` |
+| `SPIFFE_MODE` | `prod` |
+| `MCP_TRANSPORT_MODE` | `mcp` |
+| `UPSTREAM_URL` | `https://<mcp-upstream>/mcp` |
+| `APPROVAL_SIGNING_KEY` | strong non-default key (>=32 chars) |
+
+Notes:
+
+- Strict startup fails if `UPSTREAM_URL` is not `https://...` in MCP mode.
+- Strict MCP transport fails closed if SPIFFE mTLS upstream transport is not initialized.
+- Keep `UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS` explicit for blue/green/canary identity overlap windows.
 
 ### Security Controls
 

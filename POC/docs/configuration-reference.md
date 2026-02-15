@@ -32,7 +32,7 @@ function `ConfigFromEnv()`.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `9090` | HTTP listen port for the gateway |
-| `UPSTREAM_URL` | `http://host.docker.internal:8081/mcp` | Backend MCP server URL. Docker Compose overrides to `http://mock-mcp-server:8082` |
+| `UPSTREAM_URL` | `http://host.docker.internal:8081/mcp` | Backend MCP server URL. Docker Compose overrides to `http://mock-mcp-server:8082` for dev. In strict profiles with `MCP_TRANSPORT_MODE=mcp`, this must be `https://...` (startup fails otherwise) |
 | `MAX_REQUEST_SIZE_BYTES` | `10485760` (10 MB) | Maximum request body size in bytes |
 | `LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error` |
 | `AUDIT_LOG_PATH` | `/var/log/gateway/audit.jsonl` | Path to the JSONL audit log file |
@@ -79,7 +79,7 @@ Profile bundles and required controls:
 | Profile | Startup Gate Mode | Required Runtime Controls |
 |---------|-------------------|---------------------------|
 | `dev` | permissive | Portable defaults; no strict startup fail on production invariants |
-| `prod_standard` | strict | `SPIFFE_MODE=prod`, `MCP_TRANSPORT_MODE=mcp`, `ENFORCE_MODEL_MEDIATION_GATE=true`, strong `APPROVAL_SIGNING_KEY` |
+| `prod_standard` | strict | `SPIFFE_MODE=prod`, `MCP_TRANSPORT_MODE=mcp`, `UPSTREAM_URL=https://...`, `ENFORCE_MODEL_MEDIATION_GATE=true`, strong `APPROVAL_SIGNING_KEY` |
 | `prod_regulated_hipaa` | strict | `prod_standard` controls + `ENFORCE_HIPAA_PROMPT_SAFETY_GATE=true` |
 
 Migration notes for approval signing key hardening:
@@ -96,6 +96,11 @@ Strict profile defaults for SPIFFE peer identity pinning:
 - KeyDB (`KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS` when unset):
   - `spiffe://<trust-domain>/keydb`
   - `spiffe://<trust-domain>/ns/data/sa/keydb`
+
+Strict MCP transport invariants:
+
+- In strict profiles, startup fails if `UPSTREAM_URL` is empty, invalid, or not `https://...` while `MCP_TRANSPORT_MODE=mcp`.
+- In strict profiles, MCP transport initialization fails closed unless SPIFFE mTLS transport wiring is active (no fallback to implicit default HTTP client semantics).
 
 Backward-compatibility behavior:
 

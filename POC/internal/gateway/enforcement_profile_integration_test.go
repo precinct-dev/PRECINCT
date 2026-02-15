@@ -11,7 +11,7 @@ import (
 )
 
 func TestEnforcementProfile_StrictStartupFailsFastWithoutApprovalSigningKey(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
@@ -43,7 +43,7 @@ func TestEnforcementProfile_StrictStartupFailsFastWithoutApprovalSigningKey(t *t
 }
 
 func TestEnforcementProfile_StrictStartupPassesWithStrongApprovalSigningKey(t *testing.T) {
-	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()

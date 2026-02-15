@@ -466,7 +466,7 @@ services:
       - "9090:9090"   # MCP JSON-RPC API (HTTP, dev mode)
     environment:
       - PORT=9090
-      - UPSTREAM_URL=http://mock-mcp-server:8082  # RFA-71u: Point to mock MCP server in Docker network
+      - UPSTREAM_URL=http://mock-mcp-server:8082  # Dev profile default. Strict MCP profiles require https://... upstream.
       - DEMO_RUGPULL_ADMIN_ENABLED=1  # Demo-only: gateway mediates upstream rugpull toggles (RFA-1r0x)
       - OPA_POLICY_DIR=/config/opa
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
@@ -474,6 +474,7 @@ services:
       - MODEL_PROVIDER_CATALOG_PATH=/config/model-provider-catalog.v2.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760
       - SPIFFE_MODE=dev
+      - ENFORCEMENT_PROFILE=dev
       - SPIFFE_TRUST_DOMAIN=poc.local
       - SPIFFE_LISTEN_PORT=9443
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
@@ -485,6 +486,8 @@ services:
       - OTEL_SERVICE_NAME=mcp-security-gateway
       - KEYDB_URL=redis://keydb:6379  # RFA-hh5.1: KeyDB session persistence (auto-converts to rediss://keydb:6380 in prod mode per RFA-8z8.2)
       - MCP_TRANSPORT_MODE=${MCP_TRANSPORT_MODE:-mcp}  # RFA-5u9: "mcp" (default) or "proxy" (backward compat reverse proxy)
+      # Strict transport profile example (Compose): set SPIFFE_MODE=prod, ENFORCEMENT_PROFILE=prod_standard,
+      # MCP_TRANSPORT_MODE=mcp, and UPSTREAM_URL=https://<spiffe-mtls-upstream>/mcp.
       # Demo determinism: do NOT inherit host GROQ_API_KEY. Step-up gating should be unconfigured
       # in demo-compose so we can deterministically demonstrate deep scan blocking at step 10.
       - GROQ_API_KEY=
