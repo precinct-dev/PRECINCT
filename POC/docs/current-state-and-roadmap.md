@@ -28,21 +28,21 @@ Current story-state snapshot (as-of 2026-02-15):
 | `RFA-l6h6.7.4` | closed | closed 2026-02-14 | strict attestation fail-closed wiring accepted |
 | `RFA-l6h6.7.5` | closed | closed 2026-02-14 | security evidence hardening accepted |
 | `RFA-l6h6.7.6` | closed | closed 2026-02-14 | docs/state integrity and release-gate validation accepted |
-| `RFA-l6h6.7.7` | in_progress | verified 2026-02-15 | final strict Compose + K8s campaign executing |
+| `RFA-l6h6.7.7` | closed | closed 2026-02-14 | final strict Compose + K8s campaign accepted |
 | `RFA-l6h6.6.10` | blocked | verified 2026-02-15 | OpenClaw full port blocked by `RFA-l6h6.7.7` |
 
 Known residual risks:
 
 1. EKS remains offline-validated; no live cloud deployment evidence is captured in this repository.
 2. Security-scan automation wiring is restored, but this repo snapshot does not include a hosted GitHub Actions run artifact link.
-3. OpenClaw full-port implementation remains NO-GO until strict Compose + K8s readiness campaign story `RFA-l6h6.7.7` is accepted and epic `RFA-l6h6.7` is closed.
+3. Epic `RFA-l6h6.7` is accepted/closed; OpenClaw full-port execution (`RFA-l6h6.6.10`) remains blocked by broader backlog gating (`RFA-l6h6.6` parent-open state).
 
 Claim reconciliation summary:
 
 | Prior claim | Corrected as-built statement | Evidence source |
 |------------|------------------------------|-----------------|
-| “The project is development-complete.” | Production-readiness closure still has open story `RFA-l6h6.7.7` pending campaign completion. | beads epic `RFA-l6h6.7` |
-| “No open functional work remains.” | Final strict conformance campaign and OpenClaw gate closure remain open. | beads issue `RFA-l6h6.7.7`; OpenClaw gate `RFA-l6h6.6.10` |
+| “The project is development-complete.” | Production-readiness closure epic `RFA-l6h6.7` is accepted and closed. | beads epic `RFA-l6h6.7` |
+| “No open functional work remains.” | OpenClaw implementation story remains blocked in the broader program backlog. | beads issue `RFA-l6h6.6.10` |
 | CI/security automation gaps listed as unresolved in hardening context | CI push/PR triggers, `security-scan.yml`, and `.github/dependabot.yml` now exist. | `.github/workflows/ci.yaml`, `.github/workflows/security-scan.yml`, `.github/dependabot.yml`, `RFA-l6h6.6.7` evidence |
 
 ---
@@ -53,7 +53,7 @@ The Agentic AI Security Reference Architecture implements a **Model Context Prot
 
 Two deployment targets exist: a Docker Compose stack for local development and validation, and Kubernetes manifests (EKS-targeted) for production-grade deployment.
 
-Core Phase 1 capability gaps (SPIKE Nexus, deep scan, session persistence, mTLS, observability, compliance automation, cosign verification, CLI setup wizard, registry hot-reload) have been addressed, and the production-delta closure program is in finalization.
+Core Phase 1 capability gaps (SPIKE Nexus, deep scan, session persistence, mTLS, observability, compliance automation, cosign verification, CLI setup wizard, registry hot-reload) have been addressed, and the production-readiness closure epic (`RFA-l6h6.7`) is accepted and closed.
 
 ---
 
@@ -230,7 +230,7 @@ Implements SEP-1865 (Apps Extension) security:
 
 ## 4. Current Status
 
-All Phase 1 functional gaps have been addressed. Production-readiness closure is in finalization with final campaign execution in `RFA-l6h6.7.7`, while `RFA-l6h6.6.10` (OpenClaw full port) remains intentionally blocked.
+All Phase 1 functional gaps have been addressed. Production-readiness closure epic `RFA-l6h6.7` is accepted/closed, while `RFA-l6h6.6.10` (OpenClaw full port) remains intentionally blocked by broader backlog state.
 
 ### 4.1 Rego Cannot Do Cryptographic Signature Verification
 
