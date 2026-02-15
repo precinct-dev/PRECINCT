@@ -1,35 +1,48 @@
 # Current State and Roadmap
 
-**As Of:** 2026-02-14
-**Last Updated:** 2026-02-14
+**As Of:** 2026-02-15
+**Last Updated:** 2026-02-15
 **Branch:** main (all epic branches merged and deleted)
-**Reference Architecture Version:** 2.2
+**Reference Architecture Version:** 2.4
 
 ---
 
-## 0. As-Built Snapshot (2026-02-14)
+## 0. As-Built Snapshot (2026-02-15)
 
 This document is a live status summary. Historical implementation detail is preserved
 below, but current planning truth is tracked by the active beads backlog and accepted
 story evidence.
 
-Current closure status (`RFA-l6h6.6`):
+Current production-readiness closure status (`RFA-l6h6.7`) is tracked in:
 
-- Accepted and closed: `RFA-l6h6.6.1` through `RFA-l6h6.6.7`
-- Open: `RFA-l6h6.6.8` (docs reconciliation), `RFA-l6h6.6.9` (OpenClaw blueprint), `RFA-l6h6.6.10` (OpenClaw full port; blocked by `.6.9`)
+- `docs/status/production-readiness-state.json` (authoritative as-of snapshot)
+- `tests/e2e/validate_readiness_state_integrity.sh` (deterministic drift validator against live `bd`)
+
+Current story-state snapshot (as-of 2026-02-15):
+
+| Story | Status | Date Reference | Notes |
+|-------|--------|----------------|-------|
+| `RFA-l6h6.7.1` | closed | closed 2026-02-14 | strict MCP transport hardening accepted |
+| `RFA-l6h6.7.2` | closed | closed 2026-02-14 | strict runtime wiring accepted (K8s + Compose) |
+| `RFA-l6h6.7.3` | closed | closed 2026-02-14 | JSON-RPC correlation safety accepted |
+| `RFA-l6h6.7.4` | closed | closed 2026-02-14 | strict attestation fail-closed wiring accepted |
+| `RFA-l6h6.7.5` | closed | closed 2026-02-14 | security evidence hardening accepted |
+| `RFA-l6h6.7.6` | in_progress | verified 2026-02-15 | docs/state integrity and release-gate validation |
+| `RFA-l6h6.7.7` | open | verified 2026-02-15 | final strict Compose + K8s campaign pending |
+| `RFA-l6h6.6.10` | blocked | verified 2026-02-15 | OpenClaw full port blocked by `RFA-l6h6.7.7` |
 
 Known residual risks:
 
 1. EKS remains offline-validated; no live cloud deployment evidence is captured in this repository.
 2. Security-scan automation wiring is restored, but this repo snapshot does not include a hosted GitHub Actions run artifact link.
-3. OpenClaw full-port implementation is not complete until `.6.9` and `.6.10` are accepted.
+3. OpenClaw full-port implementation remains NO-GO until strict Compose + K8s readiness campaign story `RFA-l6h6.7.7` is accepted and epic `RFA-l6h6.7` is closed.
 
 Claim reconciliation summary:
 
 | Prior claim | Corrected as-built statement | Evidence source |
 |------------|------------------------------|-----------------|
-| “The project is development-complete.” | Production-delta closure still has open stories (`.6.8/.6.9/.6.10`). | beads epic `RFA-l6h6.6` |
-| “No open functional work remains.” | OpenClaw blueprint + execution and docs reconciliation remain open. | beads issues `RFA-l6h6.6.8/9/10` |
+| “The project is development-complete.” | Production-readiness closure still has open stories (`RFA-l6h6.7.6`, `RFA-l6h6.7.7`). | beads epic `RFA-l6h6.7` |
+| “No open functional work remains.” | Final strict conformance campaign and OpenClaw gate closure remain open. | beads issues `RFA-l6h6.7.6/7`; OpenClaw gate `RFA-l6h6.6.10` |
 | CI/security automation gaps listed as unresolved in hardening context | CI push/PR triggers, `security-scan.yml`, and `.github/dependabot.yml` now exist. | `.github/workflows/ci.yaml`, `.github/workflows/security-scan.yml`, `.github/dependabot.yml`, `RFA-l6h6.6.7` evidence |
 
 ---
@@ -217,7 +230,7 @@ Implements SEP-1865 (Apps Extension) security:
 
 ## 4. Current Status
 
-All Phase 1 functional gaps have been addressed. Production-delta closure is in finalization with remaining open work for documentation reconciliation and OpenClaw secure-port planning/execution (`RFA-l6h6.6.8`, `RFA-l6h6.6.9`, `RFA-l6h6.6.10`).
+All Phase 1 functional gaps have been addressed. Production-readiness closure is in finalization with remaining open work in `RFA-l6h6.7.6` (state integrity) and `RFA-l6h6.7.7` (final strict Compose + K8s campaign), while `RFA-l6h6.6.10` (OpenClaw full port) remains intentionally blocked.
 
 ### 4.1 Rego Cannot Do Cryptographic Signature Verification
 
@@ -333,6 +346,9 @@ opa test config/opa/ --v0-compatible -v
 
 # Compliance report
 make compliance-report               # Generates XLSX/CSV/PDF in reports/
+
+# Readiness state integrity (doc-state drift check against bd)
+make readiness-state-validate
 
 # GDPR right-to-deletion
 make gdpr-delete SPIFFE_ID=spiffe://poc.local/agent/example

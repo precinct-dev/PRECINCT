@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate production-readiness-validate \
+.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -528,6 +528,9 @@ security-scan-strict: ## Run security scans in strict mode (fail if any scanner 
 
 security-scan-validate: ## Validate generated security scan artifact manifest and required files
 	tests/e2e/validate_security_scan_artifacts.sh
+
+readiness-state-validate: ## Validate readiness state docs against live bd story state
+	tests/e2e/validate_readiness_state_integrity.sh
 
 production-readiness-validate: security-scan-strict security-scan-validate ## Strict production-readiness security evidence gate
 	@echo "production-readiness-validate: PASS"
