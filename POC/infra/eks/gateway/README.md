@@ -133,7 +133,7 @@ Strict overlay notes:
 
 - `infra/eks/overlays/staging` and `infra/eks/overlays/prod` set `ENFORCEMENT_PROFILE=prod_standard`.
 - Strict overlays pin `MCP_TRANSPORT_MODE=mcp`, `SPIFFE_MODE=prod`, and `UPSTREAM_URL=https://...`.
-- `APPROVAL_SIGNING_KEY` is wired via `gateway-runtime-secrets` (`approval_signing_key` key).
+- `APPROVAL_SIGNING_KEY` is wired via `gateway-runtime-secrets` (`approval_signing_key` key), but the secret is expected to be provisioned out-of-band (external secret manager/cluster secret bootstrap). Staging/prod overlays intentionally do not ship literal signing-key defaults in-repo.
 
 ## Updating OPA Policies
 
