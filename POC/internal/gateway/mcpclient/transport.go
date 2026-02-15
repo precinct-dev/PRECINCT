@@ -149,7 +149,10 @@ func (t *StreamableHTTPTransport) Initialize(ctx context.Context) error {
 // The caller must have called Initialize() first (or rely on the gateway's
 // lazy initialization logic).
 func (t *StreamableHTTPTransport) Send(ctx context.Context, req *JSONRPCRequest) (*JSONRPCResponse, error) {
-	resp, err := t.doPost(ctx, req)
+	wireReq := *req
+	wireReq.ID = nextWireRequestID()
+
+	resp, err := t.doPost(ctx, &wireReq)
 	if err != nil {
 		return nil, fmt.Errorf("send failed: %w", err)
 	}
@@ -168,7 +171,7 @@ func (t *StreamableHTTPTransport) Send(ctx context.Context, req *JSONRPCRequest)
 		}
 
 		// Retry the original request with the new session
-		resp, err = t.doPost(ctx, req)
+		resp, err = t.doPost(ctx, &wireReq)
 		if err != nil {
 			return nil, fmt.Errorf("retry after re-initialize failed: %w", err)
 		}
@@ -184,7 +187,13 @@ func (t *StreamableHTTPTransport) Send(ctx context.Context, req *JSONRPCRequest)
 
 	// Content-type negotiation: handle both JSON and SSE responses
 	contentType := resp.Header.Get("Content-Type")
-	return t.parseResponse(resp.Body, contentType)
+	rpcResp, err := t.parseResponse(resp.Body, contentType)
+	if err != nil {
+		return nil, err
+	}
+	// Preserve caller-visible ID semantics while using a unique wire ID.
+	rpcResp.ID = req.ID
+	return rpcResp, nil
 }
 
 // parseResponse parses the response body based on Content-Type.

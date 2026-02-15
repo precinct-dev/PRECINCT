@@ -226,6 +226,107 @@ func TestTransport_Send_ToolsCall(t *testing.T) {
 	}
 }
 
+func TestTransport_Send_ReusedCallerID_UniqueWireIDs(t *testing.T) {
+	var mu sync.Mutex
+	wireIDs := make([]int, 0, 8)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+
+		var rpcReq map[string]interface{}
+		if err := json.Unmarshal(body, &rpcReq); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		method, _ := rpcReq["method"].(string)
+		reqID := int(rpcReq["id"].(float64))
+
+		switch method {
+		case "initialize":
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "test-session-reused-id")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock","version":"1.0"}}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		case "tools/call":
+			mu.Lock()
+			wireIDs = append(wireIDs, reqID)
+			mu.Unlock()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"ok":true}}`, reqID)))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	transport := NewStreamableHTTPTransport(server.URL, server.Client())
+	ctx := context.Background()
+	if err := transport.Initialize(ctx); err != nil {
+		t.Fatalf("Initialize failed: %v", err)
+	}
+
+	const n = 5
+	var wg sync.WaitGroup
+	errCh := make(chan error, n)
+
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			req := &JSONRPCRequest{
+				JSONRPC: "2.0",
+				ID:      1, // Intentionally reused caller ID
+				Method:  "tools/call",
+				Params:  ToolCallParams{Name: "web_search", Arguments: map[string]interface{}{"query": "hello"}},
+			}
+			resp, err := transport.Send(ctx, req)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			if resp.ID != req.ID {
+				errCh <- fmt.Errorf("caller-visible ID mismatch: got %d want %d", resp.ID, req.ID)
+			}
+		}()
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(wireIDs) != n {
+		t.Fatalf("expected %d wire IDs, got %d", n, len(wireIDs))
+	}
+	seen := make(map[int]struct{}, n)
+	for _, id := range wireIDs {
+		seen[id] = struct{}{}
+	}
+	if len(seen) != n {
+		t.Fatalf("expected %d unique wire IDs, got %d (%v)", n, len(seen), wireIDs)
+	}
+}
+
 func TestTransport_Send_ToolsList(t *testing.T) {
 	server := newMockMCPServer(t, nil)
 	defer server.Close()

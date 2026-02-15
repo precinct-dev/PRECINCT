@@ -463,6 +463,126 @@ func TestLegacySSETransport_DispatchByID(t *testing.T) {
 	}
 }
 
+func TestLegacySSETransport_ReusedCallerID_UniqueWireIDs(t *testing.T) {
+	var mu sync.Mutex
+	var sseWriter http.ResponseWriter
+	var sseFlusher http.Flusher
+	wireIDs := make([]int, 0, 8)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/sse":
+			flusher, ok := w.(http.Flusher)
+			if !ok {
+				http.Error(w, "streaming not supported", http.StatusInternalServerError)
+				return
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			flusher.Flush()
+
+			mu.Lock()
+			sseWriter = w
+			sseFlusher = flusher
+			mu.Unlock()
+
+			<-r.Context().Done()
+
+		case r.Method == http.MethodPost && r.URL.Path == "/message":
+			body, err := io.ReadAll(r.Body)
+			if err != nil {
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+
+			var rpcReq JSONRPCRequest
+			if err := json.Unmarshal(body, &rpcReq); err != nil {
+				http.Error(w, "invalid JSON", http.StatusBadRequest)
+				return
+			}
+
+			token := ""
+			if params, ok := rpcReq.Params.(map[string]interface{}); ok {
+				if v, ok := params["token"].(string); ok {
+					token = v
+				}
+			}
+
+			mu.Lock()
+			wireIDs = append(wireIDs, rpcReq.ID)
+			if sseWriter != nil {
+				resp := fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"token":"%s"}}`, rpcReq.ID, token)
+				_, _ = fmt.Fprintf(sseWriter, "event: message\ndata: %s\n\n", resp)
+				sseFlusher.Flush()
+			}
+			mu.Unlock()
+
+			w.WriteHeader(http.StatusAccepted)
+
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	transport := NewLegacySSETransport(server.URL, server.Client())
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := transport.Connect(ctx); err != nil {
+		t.Fatalf("Connect failed: %v", err)
+	}
+	defer func() { _ = transport.Close(context.Background()) }()
+
+	const n = 5
+	var wg sync.WaitGroup
+	errCh := make(chan error, n)
+
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			req := &JSONRPCRequest{
+				JSONRPC: "2.0",
+				ID:      1, // Intentionally reused caller ID
+				Method:  "tools/call",
+				Params: map[string]interface{}{
+					"token": fmt.Sprintf("req-%d", idx),
+				},
+			}
+			resp, err := transport.Send(ctx, req)
+			if err != nil {
+				errCh <- fmt.Errorf("send %d failed: %w", idx, err)
+				return
+			}
+			if resp.ID != req.ID {
+				errCh <- fmt.Errorf("send %d returned caller ID mismatch: got %d want %d", idx, resp.ID, req.ID)
+				return
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	close(errCh)
+	for err := range errCh {
+		t.Fatal(err)
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(wireIDs) != n {
+		t.Fatalf("expected %d wire IDs, got %d", n, len(wireIDs))
+	}
+	seen := make(map[int]struct{}, n)
+	for _, id := range wireIDs {
+		seen[id] = struct{}{}
+	}
+	if len(seen) != n {
+		t.Fatalf("expected %d unique wire IDs, got %d (%v)", n, len(seen), wireIDs)
+	}
+}
+
 // --- Transport interface compliance ---
 
 func TestLegacySSETransport_ImplementsTransport(t *testing.T) {

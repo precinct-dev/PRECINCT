@@ -312,6 +312,10 @@ func (t *LegacySSETransport) readEndpointEvent(ctx context.Context, scanner *buf
 // Send sends a JSON-RPC request by POSTing to the message URL and waits for
 // the response to arrive on the SSE stream, matched by request ID.
 func (t *LegacySSETransport) Send(ctx context.Context, req *JSONRPCRequest) (*JSONRPCResponse, error) {
+	wireReq := *req
+	wireReq.ID = nextWireRequestID()
+	wireID := wireReq.ID
+
 	t.mu.Lock()
 	if !t.connected {
 		t.mu.Unlock()
@@ -320,19 +324,19 @@ func (t *LegacySSETransport) Send(ctx context.Context, req *JSONRPCRequest) (*JS
 
 	// Register a channel for this request ID
 	ch := make(chan *JSONRPCResponse, 1)
-	t.pending[req.ID] = ch
+	t.pending[wireID] = ch
 	messageURL := t.messageURL
 	t.mu.Unlock()
 
 	// Clean up the pending entry when we're done
 	defer func() {
 		t.mu.Lock()
-		delete(t.pending, req.ID)
+		delete(t.pending, wireID)
 		t.mu.Unlock()
 	}()
 
 	// POST the JSON-RPC request to the message URL
-	body, err := json.Marshal(req)
+	body, err := json.Marshal(&wireReq)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
@@ -375,6 +379,8 @@ func (t *LegacySSETransport) Send(ctx context.Context, req *JSONRPCRequest) (*JS
 		if rpcResp == nil {
 			return nil, fmt.Errorf("SSE transport closed while waiting for response")
 		}
+		// Preserve caller-visible ID semantics while using a unique wire ID.
+		rpcResp.ID = req.ID
 		return rpcResp, nil
 	case <-time.After(timeout):
 		return nil, fmt.Errorf("timeout waiting for SSE response for request ID %d", req.ID)
