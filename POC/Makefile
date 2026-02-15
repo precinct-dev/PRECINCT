@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate \
+.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate strict-overlay-operationalization-validate \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -472,10 +472,15 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 	tests/e2e/network-policy/verify-network-policy-manifest-wiring.sh; \
 	echo "Validating strict runtime wiring (K8s + Compose)..."; \
 	tests/e2e/validate_strict_runtime_wiring.sh; \
+	echo "Validating strict overlay operationalization (no placeholders/literal runtime secrets)..."; \
+	tests/e2e/validate_strict_overlay_operationalization.sh; \
 	echo "k8s-validate: PASS"
 
 strict-runtime-validate: ## Validate strict runtime wiring for K8s overlays and Compose override
 	tests/e2e/validate_strict_runtime_wiring.sh
+
+strict-overlay-operationalization-validate: ## Validate staging/prod overlays have no placeholder image refs or in-repo runtime secret defaults
+	tests/e2e/validate_strict_overlay_operationalization.sh
 
 k8s-runtime-campaign: ## Run K8s runtime allow/deny campaign and emit machine-readable report
 	python3 tests/e2e/k8s_runtime_validation_campaign.py \

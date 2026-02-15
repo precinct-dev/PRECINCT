@@ -14,7 +14,6 @@ kind: Kustomization
 
 resources:
   - ../base
-  - gateway-runtime-secrets.yaml
   # Admission control (OPA Gatekeeper + sigstore/policy-controller)
   - ../../admission
   # cert-manager TLS auto-generation for policy-controller webhook (RFA-tv9)
@@ -22,11 +21,11 @@ resources:
 
 images:
   - name: mcp-security-gateway
-    newName: ghcr.io/OWNER/agentic-ref-arch/mcp-security-gateway
+    newName: ghcr.io/ramxx/agentic-ref-arch/mcp-security-gateway
     newTag: staging  # mcp-security-gateway
-  - name: python  # placeholder MCP server image
-    newName: python
-    newTag: "3.12-slim"
+  - name: python
+    newName: ghcr.io/ramxx/agentic-ref-arch/s3-mcp-server
+    newTag: staging  # mcp-server
 
 patches:
   # --------------------------------------------------------------------------
@@ -119,6 +118,16 @@ patches:
           spec:
             containers:
               - name: mcp-server
+                command:
+                  - /app/s3-mcp-server
+                args: []
+                env:
+                  - name: PORT
+                    value: "8081"
+                  - name: AWS_REGION
+                    value: "us-west-2"
+                  - name: ALLOWED_BUCKETS
+                    value: "agentic-ref-arch-staging:gateway/"
                 resources:
                   requests:
                     cpu: 100m
