@@ -54,6 +54,7 @@ configMapGenerator:
     files:
       - tool-registry.yaml=gateway-config/tool-registry.yaml
       - tool-registry.yaml.sig=gateway-config/tool-registry.yaml.sig
+      - destinations.yaml=gateway-config/destinations.yaml
       - capability-registry-v2.yaml=gateway-config/capability-registry-v2.yaml
       - model-provider-catalog.v2.yaml=gateway-config/model-provider-catalog.v2.yaml
       - model-provider-catalog.v2.yaml.sig=gateway-config/model-provider-catalog.v2.yaml.sig
@@ -190,6 +191,12 @@ patches:
                     value: "mcp"
                   - name: SPIFFE_TRUST_DOMAIN
                     value: "agentic-ref-arch.poc"
+                  - name: DESTINATIONS_CONFIG_PATH
+                    value: "/config/destinations/destinations.yaml"
+                volumeMounts:
+                  - name: config-destinations
+                    mountPath: /config/destinations
+                    readOnly: true
                 resources:
                   requests:
                     cpu: 50m
@@ -197,6 +204,13 @@ patches:
                   limits:
                     cpu: 100m
                     memory: 128Mi
+            volumes:
+              - name: config-destinations
+                configMap:
+                  name: gateway-config
+                  items:
+                    - key: destinations.yaml
+                      path: destinations.yaml
 
   # --------------------------------------------------------------------------
   # MCP Server: use mock-mcp-server for local dev (Streamable HTTP transport)

@@ -162,11 +162,19 @@ func New(cfg *Config) (*Gateway, error) {
 		dal, err := middleware.LoadDestinationAllowlist(cfg.DestinationsConfigPath)
 		if err != nil {
 			// Fall back to defaults if config file not found
+			log.Printf("WARNING: failed to load destination allowlist from %s: %v (using built-in defaults)", cfg.DestinationsConfigPath, err)
 			destinationAllowlist = middleware.DefaultDestinationAllowlist()
 		} else {
+			log.Printf(
+				"Destination allowlist loaded from %s (entries=%d, api.groq.com_allowed=%t)",
+				cfg.DestinationsConfigPath,
+				len(dal.Allowed),
+				dal.IsAllowed("api.groq.com"),
+			)
 			destinationAllowlist = dal
 		}
 	} else {
+		log.Printf("WARNING: DESTINATIONS_CONFIG_PATH is empty; using built-in destination allowlist defaults")
 		destinationAllowlist = middleware.DefaultDestinationAllowlist()
 	}
 
