@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-bootstrap-verify up down test lint clean logs demo demo-compose demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate strict-overlay-operationalization-validate promotion-identity-validate \
+.PHONY: help compose-verify compose-production-intent-preflight compose-production-intent-validate compose-bootstrap-verify operations-backup-restore-drill operations-readiness-validate observability-evidence-gate-validate up down test lint clean logs demo demo-compose demo-compose-strict-observability demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate strict-overlay-operationalization-validate promotion-identity-validate ci-gate-parity-validate \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -34,6 +34,21 @@ help: ## Show available targets
 
 compose-verify: ## Verify Compose third-party images are digest-pinned (no :latest)
 	@bash scripts/compose-verify.sh
+
+compose-production-intent-preflight: ## Validate compose production-intent image lock + provenance policy wiring
+	@bash scripts/compose-production-intent-preflight.sh
+
+compose-production-intent-validate: ## Validate compose production-intent gate including deterministic negative-path failure
+	@bash tests/e2e/validate_compose_production_intent_supply_chain.sh
+
+operations-backup-restore-drill: ## Execute operational backup/restore drill and write auditable artifacts
+	@bash scripts/operations/run_backup_restore_drill.sh
+
+operations-readiness-validate: ## Validate operational readiness pack (runbooks + drill artifacts + SLO ownership)
+	@bash tests/e2e/validate_operational_readiness_pack.sh
+
+observability-evidence-gate-validate: ## Validate strict/non-strict observability evidence gate behavior
+	@bash tests/e2e/validate_observability_evidence_gate.sh
 
 compose-bootstrap-verify: ## Verify one-shot bootstrap containers completed successfully
 	@bash scripts/compose-bootstrap-verify.sh
@@ -207,6 +222,9 @@ demo: ## Run E2E demo (Docker Compose + K8s)
 
 demo-compose: ## Run E2E demo (Docker Compose)
 	@bash demo/run.sh compose
+
+demo-compose-strict-observability: ## Run E2E demo (Docker Compose) with strict observability evidence enforcement
+	@DEMO_STRICT_OBSERVABILITY=1 bash demo/run.sh compose
 
 demo-k8s: ## Run E2E demo (K8s)
 	@bash demo/run.sh k8s
@@ -484,6 +502,9 @@ strict-overlay-operationalization-validate: ## Validate staging/prod overlays ha
 
 promotion-identity-validate: ## Validate promote workflow enforces constrained cosign signer identity checks
 	tests/e2e/validate_promotion_identity_policy.sh
+
+ci-gate-parity-validate: ## Validate CI workflow enforces strict readiness + demo parity + scheduled K8s policy gate
+	tests/e2e/validate_ci_gate_parity.sh
 
 k8s-runtime-campaign: ## Run K8s runtime allow/deny campaign and emit machine-readable report
 	python3 tests/e2e/k8s_runtime_validation_campaign.py \
