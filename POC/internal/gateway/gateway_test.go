@@ -3288,6 +3288,8 @@ func TestMCPTransport_OversizedResponse(t *testing.T) {
 		MCPProbeTimeout:        5,
 		MCPDetectTimeout:       15,
 		MCPRequestTimeout:      10,
+		RateLimitRPM:           1000,
+		RateLimitBurst:         100,
 	}
 
 	gw, err := New(cfg)
@@ -3380,6 +3382,8 @@ func TestMCPTransport_404MidConversation(t *testing.T) {
 		MCPProbeTimeout:        5,
 		MCPDetectTimeout:       15,
 		MCPRequestTimeout:      10,
+		RateLimitRPM:           1000,
+		RateLimitBurst:         100,
 	}
 
 	gw, err := New(cfg)
@@ -3525,6 +3529,120 @@ func TestMCPTransport_SessionIsolation(t *testing.T) {
 	}
 
 	t.Logf("PASS: session isolation verified (concurrent=%d, session_ids=%v)", concurrency, sessionIDs)
+}
+
+func TestMCPTransport_ReusedCallerID_UsesUniqueWireIDs(t *testing.T) {
+	var mu sync.Mutex
+	wireIDs := make([]int, 0, 4)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var rpcReq map[string]interface{}
+		_ = json.Unmarshal(body, &rpcReq)
+		method, _ := rpcReq["method"].(string)
+
+		switch method {
+		case "initialize":
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Mcp-Session-Id", "wire-id-test-session")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"wire-id-test","version":"1.0"}}}`))
+		case "notifications/initialized":
+			w.WriteHeader(http.StatusOK)
+		case "tools/list":
+			wireID := int(rpcReq["id"].(float64))
+			mu.Lock()
+			wireIDs = append(wireIDs, wireID)
+			mu.Unlock()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"tools":[{"name":"tavily_search","description":"Search","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string"}}}}]}}`, wireID)))
+		default:
+			w.WriteHeader(http.StatusBadRequest)
+		}
+	}))
+	defer server.Close()
+
+	cfg := &Config{
+		UpstreamURL:            server.URL,
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		MCPTransportMode:       "mcp",
+		MCPProbeTimeout:        5,
+		MCPDetectTimeout:       15,
+		MCPRequestTimeout:      10,
+		RateLimitRPM:           1000,
+		RateLimitBurst:         100,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	t.Cleanup(func() { _ = gw.Close() })
+
+	handler := gw.Handler()
+
+	type result struct {
+		code int
+		body []byte
+	}
+	results := make(chan result, 2)
+
+	send := func() {
+		reqBody := `{"jsonrpc":"2.0","method":"tools/list","params":{},"id":99}`
+		req := httptest.NewRequest("POST", "/", bytes.NewBufferString(reqBody))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		respBody, _ := io.ReadAll(rec.Body)
+		results <- result{code: rec.Code, body: respBody}
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		send()
+	}()
+	go func() {
+		defer wg.Done()
+		send()
+	}()
+	wg.Wait()
+	close(results)
+
+	for res := range results {
+		if res.code != http.StatusOK {
+			t.Fatalf("Expected 200, got %d (body=%s)", res.code, string(res.body))
+		}
+		var rpcResp map[string]interface{}
+		if err := json.Unmarshal(res.body, &rpcResp); err != nil {
+			t.Fatalf("Failed to decode response: %v", err)
+		}
+		if int(rpcResp["id"].(float64)) != 99 {
+			t.Fatalf("Expected caller-visible response id=99, got %v", rpcResp["id"])
+		}
+	}
+
+	mu.Lock()
+	defer mu.Unlock()
+	if len(wireIDs) != 2 {
+		t.Fatalf("Expected 2 wire IDs, got %d", len(wireIDs))
+	}
+	if wireIDs[0] == wireIDs[1] {
+		t.Fatalf("Expected unique wire IDs for reused caller ID, got %v", wireIDs)
+	}
 }
 
 // TestMCPTransport_ConfigDefaults verifies AC1/AC2/AC3: timeout config fields

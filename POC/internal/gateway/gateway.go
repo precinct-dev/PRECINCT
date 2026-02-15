@@ -15,6 +15,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/example/agentic-security-poc/internal/gateway/mcpclient"
@@ -52,6 +53,7 @@ type Gateway struct {
 	registryStop               func()                            // RFA-dh9: stop function for registry fsnotify watcher
 	mcpTransport               mcpclient.Transport               // RFA-0dz: MCP transport (lazy init, auto-detected: Streamable HTTP or Legacy SSE)
 	mcpTransportMu             sync.Mutex                        // RFA-9ol: protects lazy initialization of mcpTransport
+	mcpRequestIDCounter        uint64                            // RFA-l6h6.7.3: monotonic fallback JSON-RPC request ID generator
 	modelPlanePolicy           *modelPlanePolicyEngine           // RFA-owgw.2: model plane policy enforcement
 	ingressPolicy              *ingressPlanePolicyEngine         // RFA-owgw.3: ingress plane admission controls
 	contextPolicy              *contextPlanePolicyEngine         // RFA-owgw.5: context and memory admission governance
@@ -581,7 +583,7 @@ func (g *Gateway) proxyHandler() http.Handler {
 		}
 
 		// Extract MCP method from request body (already captured by BodyCapture middleware)
-		mcpMethod, mcpParams := g.extractMCPMethodAndParams(ctx)
+		mcpMethod, mcpParams, mcpRequestID := g.extractMCPMethodAndParams(ctx)
 		reqInfo := NewMCPRequestInfo(mcpMethod, mcpParams)
 
 		server := r.Header.Get("X-MCP-Server")
@@ -599,7 +601,7 @@ func (g *Gateway) proxyHandler() http.Handler {
 		// httputil.ReverseProxy path with full UI processing for backward compat.
 		if g.config.MCPTransportMode == "mcp" {
 			// MCP path: translate SDK request -> MCP JSON-RPC -> upstream -> response
-			g.handleMCPRequest(proxyRW, r.WithContext(ctx), mcpMethod, mcpParams, server, tenant)
+			g.handleMCPRequest(proxyRW, r.WithContext(ctx), mcpMethod, mcpParams, mcpRequestID, server, tenant)
 		} else {
 			// Legacy path: full UI response processing pipeline
 			g.processUpstreamResponse(proxyRW, r.WithContext(ctx), reqInfo, server, tenant)
@@ -648,7 +650,14 @@ func (prw *proxyResponseWriter) Write(b []byte) (int, error) {
 // ready yet.
 //
 // ALL errors use middleware.WriteGatewayError() with proper GatewayError structs.
-func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, method string, params map[string]interface{}, server, tenant string) {
+func (g *Gateway) handleMCPRequest(
+	w http.ResponseWriter,
+	r *http.Request,
+	method string,
+	params map[string]interface{},
+	clientRequestID *int,
+	server, tenant string,
+) {
 	ctx := r.Context()
 
 	// RFA-6fse.2: Request-side enforcement for ui:// resource reads MUST occur
@@ -684,10 +693,15 @@ func (g *Gateway) handleMCPRequest(w http.ResponseWriter, r *http.Request, metho
 		return
 	}
 
+	rpcID := g.nextMCPRequestID()
+	if clientRequestID != nil {
+		rpcID = *clientRequestID
+	}
+
 	// Build JSON-RPC request from the extracted method and params
 	rpcReq := &mcpclient.JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      1, // Walking skeleton uses a fixed ID; session story will add proper ID tracking
+		ID:      rpcID,
 		Method:  method,
 		Params:  params,
 	}
@@ -927,7 +941,7 @@ func (g *Gateway) refreshObservedToolHashes(ctx context.Context, server string) 
 
 	rpcReq := &mcpclient.JSONRPCRequest{
 		JSONRPC: "2.0",
-		ID:      1,
+		ID:      g.nextMCPRequestID(),
 		Method:  "tools/list",
 		Params:  map[string]any{},
 	}
@@ -1253,19 +1267,34 @@ func (c *uiResponseCapture) Write(b []byte) (int, error) {
 
 // extractMCPMethodAndParams parses the MCP JSON-RPC method and params from the
 // request body already captured in context by BodyCapture middleware.
-func (g *Gateway) extractMCPMethodAndParams(ctx context.Context) (string, map[string]interface{}) {
+func (g *Gateway) extractMCPMethodAndParams(ctx context.Context) (string, map[string]interface{}, *int) {
 	body := middleware.GetRequestBody(ctx)
 	if len(body) == 0 {
-		return "", nil
+		return "", nil, nil
 	}
 	var req struct {
 		Method string                 `json:"method"`
 		Params map[string]interface{} `json:"params"`
+		ID     interface{}            `json:"id"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
-		return "", nil
+		return "", nil, nil
 	}
-	return req.Method, req.Params
+
+	switch v := req.ID.(type) {
+	case float64:
+		id := int(v)
+		if v == float64(id) {
+			return req.Method, req.Params, &id
+		}
+	}
+
+	return req.Method, req.Params, nil
+}
+
+func (g *Gateway) nextMCPRequestID() int {
+	next := atomic.AddUint64(&g.mcpRequestIDCounter, 1)
+	return int(next)
 }
 
 // dataHandleDereferenceHandler returns approved views of handle-ized data (RFA-qq0.16)
