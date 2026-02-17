@@ -32,6 +32,6 @@
   },
   "residual_risks": [
     "GitHub workflows are manual-only by policy to avoid automatic CI spend; local readiness gates are the primary enforcement path.",
-    "OpenClaw full-port remains blocked by upstream dependency gate until this closure story is accepted."
+    "OpenClaw full-port reassessment should be rerun against the latest upstream source baseline before promotion decisions."
   ]
 }

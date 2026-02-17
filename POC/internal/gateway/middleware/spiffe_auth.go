@@ -62,12 +62,18 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 			// from the URI SAN (Subject Alternative Name) of the peer certificate.
 			spiffeID = ExtractSPIFFEIDFromTLS(r)
 			if spiffeID == "" {
+				message := "No valid SPIFFE ID in client certificate"
+				remediation := "Present a valid client certificate with a spiffe:// URI SAN."
+				if strings.TrimSpace(r.Header.Get("X-SPIFFE-ID")) != "" {
+					message = "No valid SPIFFE ID in client certificate (X-SPIFFE-ID header is ignored in prod mode)"
+					remediation = "SPIFFE_MODE=prod does not trust X-SPIFFE-ID headers. Present a valid client certificate with a spiffe:// URI SAN."
+				}
 				WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
 					Code:           ErrAuthMissingIdentity,
-					Message:        "No valid SPIFFE ID in client certificate",
+					Message:        message,
 					Middleware:     "spiffe_auth",
 					MiddlewareStep: 3,
-					Remediation:    "Present a valid client certificate with a spiffe:// URI SAN.",
+					Remediation:    remediation,
 				})
 				return
 			}

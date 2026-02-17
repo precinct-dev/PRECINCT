@@ -1,7 +1,9 @@
 package middleware
 
 import (
+	"bufio"
 	"fmt"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -304,6 +306,14 @@ func (w *circuitBreakerResponseWriter) Write(b []byte) (int, error) {
 		w.written = true
 	}
 	return w.ResponseWriter.Write(b)
+}
+
+func (w *circuitBreakerResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return http.NewResponseController(w.ResponseWriter).Hijack()
+}
+
+func (w *circuitBreakerResponseWriter) Flush() {
+	_ = http.NewResponseController(w.ResponseWriter).Flush()
 }
 
 // CircuitBreakerMiddleware creates HTTP middleware that implements the circuit

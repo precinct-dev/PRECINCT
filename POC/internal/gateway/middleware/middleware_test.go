@@ -306,6 +306,28 @@ func TestSPIFFEAuthProd(t *testing.T) {
 		}
 	})
 
+	t.Run("ProdModeIgnoresHeaderIdentityWithoutTLS", func(t *testing.T) {
+		capturedSPIFFEID = ""
+		req := httptest.NewRequest("POST", "/", nil)
+		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/header-only/dev")
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusUnauthorized {
+			t.Fatalf("Expected 401 for header-only identity in prod mode, got %d", rec.Code)
+		}
+		var ge GatewayError
+		if err := json.Unmarshal(rec.Body.Bytes(), &ge); err != nil {
+			t.Fatalf("Expected GatewayError JSON, got: %s", rec.Body.String())
+		}
+		if !strings.Contains(strings.ToLower(ge.Message), "ignored in prod mode") {
+			t.Fatalf("Expected prod-mode header ignore message, got %q", ge.Message)
+		}
+		if !strings.Contains(strings.ToLower(ge.Remediation), "does not trust x-spiffe-id headers") {
+			t.Fatalf("Expected remediation to explain header behavior in prod mode, got %q", ge.Remediation)
+		}
+	})
+
 	t.Run("TLSWithNoPeerCertsReturns401", func(t *testing.T) {
 		capturedSPIFFEID = ""
 		req := httptest.NewRequest("POST", "/", nil)
@@ -684,6 +706,201 @@ func TestToolRegistryVerify_ObservedHashRefresh_DeniesOnMismatch(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), ErrRegistryHashMismatch) {
 		t.Fatalf("Expected error code %q in body. Body: %s", ErrRegistryHashMismatch, rec.Body.String())
+	}
+}
+
+func TestToolRegistryVerify_ObservedHashUnavailable_CompatibilityModeAllows(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: tavily_search
+    description: "Search the web"
+    hash: "expected123"
+    risk_level: low
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	observed := NewObservedToolHashCache(1 * time.Minute)
+	nextCalled := false
+	sawVerified := true
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		sawVerified = GetToolHashVerified(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}), registry, observed, nil)
+
+	body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"hi"}},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("X-MCP-Server", "default")
+	req = req.WithContext(WithRequestBody(req.Context(), body))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected compatibility allow (200), got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !nextCalled {
+		t.Fatal("Expected request to reach next handler in compatibility mode")
+	}
+	if sawVerified {
+		t.Fatal("Expected hash verification marker false when observed hash is unavailable")
+	}
+}
+
+func TestToolRegistryVerify_ObservedHashUnavailable_FailClosedDenies(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: tavily_search
+    description: "Search the web"
+    hash: "expected123"
+    risk_level: low
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	observed := NewObservedToolHashCache(1 * time.Minute)
+	nextCalled := false
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}), registry, observed, nil, WithObservedHashFailClosed(true))
+
+	body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"hi"}},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("X-MCP-Server", "default")
+	req = req.WithContext(WithRequestBody(req.Context(), body))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if nextCalled {
+		t.Fatal("Expected fail-closed deny before next handler")
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var ge GatewayError
+	if err := json.Unmarshal(rec.Body.Bytes(), &ge); err != nil {
+		t.Fatalf("Expected GatewayError JSON, got: %s", rec.Body.String())
+	}
+	if ge.Code != ErrRegistryHashMismatch {
+		t.Fatalf("Expected code=%s, got %s", ErrRegistryHashMismatch, ge.Code)
+	}
+	if ge.ReasonCode != "observed_hash_unavailable" {
+		t.Fatalf("Expected reason_code observed_hash_unavailable, got %q", ge.ReasonCode)
+	}
+	if ge.MiddlewareStep != 5 {
+		t.Fatalf("Expected middleware_step=5, got %d", ge.MiddlewareStep)
+	}
+}
+
+func TestToolRegistryVerify_ObservedHashRefreshFailure_DeniesWithReason(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: tavily_search
+    description: "Search the web"
+    hash: "expected123"
+    risk_level: low
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	observed := NewObservedToolHashCache(1 * time.Minute)
+	nextCalled := false
+	refresh := func(ctx context.Context, server string) (map[string]string, error) {
+		return nil, fmt.Errorf("refresh backend unavailable")
+	}
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}), registry, observed, refresh, WithObservedHashFailClosed(true))
+
+	body := []byte(`{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"hi"}},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("X-MCP-Server", "default")
+	req = req.WithContext(WithRequestBody(req.Context(), body))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if nextCalled {
+		t.Fatal("Expected deny before next handler when refresh fails")
+	}
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("Expected 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var ge GatewayError
+	if err := json.Unmarshal(rec.Body.Bytes(), &ge); err != nil {
+		t.Fatalf("Expected GatewayError JSON, got: %s", rec.Body.String())
+	}
+	if ge.ReasonCode != "observed_hash_refresh_failed" {
+		t.Fatalf("Expected reason_code observed_hash_refresh_failed, got %q", ge.ReasonCode)
+	}
+	if ge.Details == nil || ge.Details["refresh_error"] == nil {
+		t.Fatalf("Expected refresh_error detail in response, got %+v", ge.Details)
+	}
+}
+
+func TestToolRegistryVerify_LegacyDirectMethod_ObservedHashUnavailable_StrictAllows(t *testing.T) {
+	tmpDir := t.TempDir()
+	configPath := tmpDir + "/tools.yaml"
+	config := `tools:
+  - name: read
+    description: "Read file contents"
+    hash: "expected123"
+    risk_level: low
+`
+	_ = os.WriteFile(configPath, []byte(config), 0644)
+
+	registry, err := NewToolRegistry(configPath)
+	if err != nil {
+		t.Fatalf("Failed to create registry: %v", err)
+	}
+
+	observed := NewObservedToolHashCache(1 * time.Minute)
+	nextCalled := false
+	sawVerified := true
+	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		sawVerified = GetToolHashVerified(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}), registry, observed, nil, WithObservedHashFailClosed(true))
+
+	// Direct tool invocation (legacy mode), not tools/call envelope.
+	body := []byte(`{"jsonrpc":"2.0","method":"read","params":{"file_path":"/tmp/demo.txt"},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	req.Header.Set("X-MCP-Server", "default")
+	req = req.WithContext(WithRequestBody(req.Context(), body))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected compatibility allow (200) for legacy direct method, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !nextCalled {
+		t.Fatal("Expected request to reach next handler for legacy direct method")
+	}
+	if sawVerified {
+		t.Fatal("Expected hash verification marker false when observed hash is unavailable")
 	}
 }
 

@@ -22,7 +22,9 @@ reset_rate_limit_state() {
 }
 
 REPORT_PATH="${POC_DIR}/tests/e2e/artifacts/conformance-report.json"
-HARNESS_SPIFFE_ID="${SECONDARY_SPIFFE_ID}"
+# Conformance suites include admin-plane RuleOps checks, which require an
+# admin-authorized principal. Use the default researcher SPIFFE identity.
+HARNESS_SPIFFE_ID="${DEFAULT_SPIFFE_ID}"
 
 reset_rate_limit_state "${HARNESS_SPIFFE_ID}"
 log_info "Reset rate-limit keys for harness SPIFFE: ${HARNESS_SPIFFE_ID}"

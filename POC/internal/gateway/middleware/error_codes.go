@@ -48,6 +48,10 @@ const (
 	// Session Context (step 8) -- 403 Forbidden
 	ErrExfiltrationDetected = "exfiltration_detected"
 
+	// Response Firewall (step 14) -- 503 / 500
+	ErrResponseHandleStoreUnavailable = "response_handle_store_unavailable"
+	ErrResponseHandleizationFailed    = "response_handleization_failed"
+
 	// UI Capability Gating -- 403 Forbidden
 	ErrUICapabilityDenied = "ui_capability_denied"
 	ErrUIResourceBlocked  = "ui_resource_blocked"

@@ -1,0 +1,329 @@
+package integration
+
+import (
+	"bufio"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/example/agentic-security-poc/internal/gateway"
+	"github.com/example/agentic-security-poc/internal/testutil"
+	"github.com/gorilla/websocket"
+)
+
+type openClawWSRequestFrameIntegration struct {
+	Type   string         `json:"type"`
+	ID     string         `json:"id"`
+	Method string         `json:"method"`
+	Params map[string]any `json:"params,omitempty"`
+}
+
+type openClawWSErrorShapeIntegration struct {
+	Code       string         `json:"code"`
+	Message    string         `json:"message"`
+	ReasonCode string         `json:"reason_code,omitempty"`
+	Details    map[string]any `json:"details,omitempty"`
+}
+
+type openClawWSResponseFrameIntegration struct {
+	Type    string                           `json:"type"`
+	ID      string                           `json:"id"`
+	OK      bool                             `json:"ok"`
+	Payload map[string]any                   `json:"payload,omitempty"`
+	Error   *openClawWSErrorShapeIntegration `json:"error,omitempty"`
+}
+
+type openClawWSAuditRecord struct {
+	Action     string `json:"action"`
+	DecisionID string `json:"decision_id"`
+	TraceID    string `json:"trace_id"`
+	Result     string `json:"result"`
+	Path       string `json:"path"`
+}
+
+type openClawWSTestEnv struct {
+	server       *httptest.Server
+	gateway      *gateway.Gateway
+	auditLogPath string
+}
+
+func newOpenClawWSTestEnv(t *testing.T) *openClawWSTestEnv {
+	t.Helper()
+
+	tmpDir := t.TempDir()
+	destinationsPath := filepath.Join(tmpDir, "destinations.yaml")
+	if err := os.WriteFile(destinationsPath, []byte("allowed_destinations:\n  - \"127.0.0.1\"\n  - \"localhost\"\n  - \"::1\"\n"), 0644); err != nil {
+		t.Fatalf("write destinations.yaml: %v", err)
+	}
+
+	auditLogPath := filepath.Join(tmpDir, "audit.log")
+	cfg := &gateway.Config{
+		Port:                   0,
+		UpstreamURL:            "http://127.0.0.1:65535",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           auditLogPath,
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		RateLimitRPM:           100000,
+		RateLimitBurst:         100000,
+		SPIFFEMode:             "dev",
+		DestinationsConfigPath: destinationsPath,
+	}
+
+	gw, err := gateway.New(cfg)
+	if err != nil {
+		t.Fatalf("gateway.New failed: %v", err)
+	}
+
+	server := httptest.NewServer(gw.Handler())
+	t.Cleanup(func() {
+		server.Close()
+		_ = gw.Close()
+	})
+
+	return &openClawWSTestEnv{
+		server:       server,
+		gateway:      gw,
+		auditLogPath: auditLogPath,
+	}
+}
+
+func (e *openClawWSTestEnv) wsURL() string {
+	return strings.Replace(e.server.URL, "http://", "ws://", 1) + "/openclaw/ws"
+}
+
+func readOpenClawWSResponseIntegration(t *testing.T, conn *websocket.Conn) openClawWSResponseFrameIntegration {
+	t.Helper()
+	var frame openClawWSResponseFrameIntegration
+	if err := conn.ReadJSON(&frame); err != nil {
+		t.Fatalf("read websocket response: %v", err)
+	}
+	return frame
+}
+
+func dialOpenClawWSIntegration(t *testing.T, wsURL, spiffeID string) (*websocket.Conn, *http.Response, error) {
+	t.Helper()
+	headers := http.Header{}
+	if strings.TrimSpace(spiffeID) != "" {
+		headers.Set("X-SPIFFE-ID", spiffeID)
+	}
+	return websocket.DefaultDialer.Dial(wsURL, headers)
+}
+
+func TestOpenClawWS_AuthenticatedSuccess_Integration(t *testing.T) {
+	env := newOpenClawWSTestEnv(t)
+	conn, resp, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	if err != nil {
+		status := 0
+		if resp != nil {
+			status = resp.StatusCode
+		}
+		t.Fatalf("dial websocket failed (status=%d): %v", status, err)
+	}
+	defer conn.Close()
+
+	if err := conn.WriteJSON(openClawWSRequestFrameIntegration{
+		Type:   "req",
+		ID:     "connect-1",
+		Method: "connect",
+		Params: map[string]any{
+			"role":   "operator",
+			"scopes": []string{"devices:read", "devices:write"},
+		},
+	}); err != nil {
+		t.Fatalf("write connect frame: %v", err)
+	}
+	connectResp := readOpenClawWSResponseIntegration(t, conn)
+	if !connectResp.OK {
+		t.Fatalf("expected connect success, got error=%+v", connectResp.Error)
+	}
+	if connectResp.Payload["decision_id"] == nil || connectResp.Payload["trace_id"] == nil {
+		t.Fatalf("expected connect correlation fields, got payload=%+v", connectResp.Payload)
+	}
+
+	if err := conn.WriteJSON(openClawWSRequestFrameIntegration{
+		Type:   "req",
+		ID:     "ping-1",
+		Method: "devices.ping",
+		Params: map[string]any{"device_id": "device-alpha"},
+	}); err != nil {
+		t.Fatalf("write devices.ping frame: %v", err)
+	}
+	pingResp := readOpenClawWSResponseIntegration(t, conn)
+	if !pingResp.OK {
+		t.Fatalf("expected devices.ping success, got error=%+v", pingResp.Error)
+	}
+	if got, _ := pingResp.Payload["device_id"].(string); got != "device-alpha" {
+		t.Fatalf("expected device_id=device-alpha, got %q", got)
+	}
+	if pingResp.Payload["decision_id"] == nil || pingResp.Payload["trace_id"] == nil {
+		t.Fatalf("expected ping correlation fields, got payload=%+v", pingResp.Payload)
+	}
+}
+
+func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
+	t.Run("unauthenticated handshake denied", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		_, resp, err := dialOpenClawWSIntegration(t, env.wsURL(), "")
+		if err == nil {
+			t.Fatal("expected handshake failure without SPIFFE identity")
+		}
+		if resp == nil || resp.StatusCode != http.StatusUnauthorized {
+			status := 0
+			if resp != nil {
+				status = resp.StatusCode
+			}
+			t.Fatalf("expected 401 unauthorized, got %d", status)
+		}
+	})
+
+	t.Run("forbidden control method denied", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
+		}
+		defer conn.Close()
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "connect-node",
+			Method: "connect",
+			Params: map[string]any{"role": "node"},
+		})
+		connectResp := readOpenClawWSResponseIntegration(t, conn)
+		if !connectResp.OK {
+			t.Fatalf("expected node connect success, got error=%+v", connectResp.Error)
+		}
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "devices-list-deny",
+			Method: "devices.list",
+		})
+		denyResp := readOpenClawWSResponseIntegration(t, conn)
+		if denyResp.OK {
+			t.Fatal("expected devices.list deny for node without scopes")
+		}
+		if denyResp.Error == nil || denyResp.Error.ReasonCode != "WS_METHOD_FORBIDDEN" {
+			t.Fatalf("expected WS_METHOD_FORBIDDEN, got error=%+v", denyResp.Error)
+		}
+	})
+
+	t.Run("malformed control payload denied", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
+		}
+		defer conn.Close()
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "connect-op",
+			Method: "connect",
+			Params: map[string]any{"role": "operator"},
+		})
+		connectResp := readOpenClawWSResponseIntegration(t, conn)
+		if !connectResp.OK {
+			t.Fatalf("expected operator connect success, got error=%+v", connectResp.Error)
+		}
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "malformed-ping",
+			Method: "devices.ping",
+			Params: map[string]any{},
+		})
+		denyResp := readOpenClawWSResponseIntegration(t, conn)
+		if denyResp.OK {
+			t.Fatal("expected malformed devices.ping deny")
+		}
+		if denyResp.Error == nil || denyResp.Error.ReasonCode != "WS_PAYLOAD_MALFORMED" {
+			t.Fatalf("expected WS_PAYLOAD_MALFORMED, got error=%+v", denyResp.Error)
+		}
+	})
+}
+
+func TestAuditOpenClawWSCorrelation_Integration(t *testing.T) {
+	env := newOpenClawWSTestEnv(t)
+	conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	if err != nil {
+		t.Fatalf("dial websocket failed: %v", err)
+	}
+
+	_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+		Type:   "req",
+		ID:     "connect-node",
+		Method: "connect",
+		Params: map[string]any{"role": "node"},
+	})
+	connectResp := readOpenClawWSResponseIntegration(t, conn)
+	if !connectResp.OK {
+		t.Fatalf("expected connect success, got error=%+v", connectResp.Error)
+	}
+
+	_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+		Type:   "req",
+		ID:     "deny-devices-list",
+		Method: "devices.list",
+	})
+	denyResp := readOpenClawWSResponseIntegration(t, conn)
+	if denyResp.OK {
+		t.Fatal("expected devices.list deny for node without scopes")
+	}
+	if denyResp.Error == nil {
+		t.Fatalf("expected deny response with error payload, got %+v", denyResp)
+	}
+	_ = conn.Close()
+
+	foundDenyEvent := false
+	for i := 0; i < 30; i++ {
+		file, err := os.Open(env.auditLogPath)
+		if err == nil {
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if line == "" {
+					continue
+				}
+
+				var record openClawWSAuditRecord
+				if err := json.Unmarshal([]byte(line), &record); err != nil {
+					continue
+				}
+				if record.Action != "openclaw.ws.devices.list" {
+					continue
+				}
+				if record.DecisionID == "" || record.TraceID == "" {
+					_ = file.Close()
+					t.Fatalf("expected decision/trace IDs in audit record, got %+v", record)
+				}
+				if record.Path != "/openclaw/ws" {
+					_ = file.Close()
+					t.Fatalf("expected audit path /openclaw/ws, got %s", record.Path)
+				}
+				if !strings.Contains(record.Result, "reason_code=WS_METHOD_FORBIDDEN") {
+					_ = file.Close()
+					t.Fatalf("expected deny reason in audit result, got %q", record.Result)
+				}
+				foundDenyEvent = true
+				break
+			}
+			_ = file.Close()
+			if foundDenyEvent {
+				break
+			}
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !foundDenyEvent {
+		t.Fatalf("expected openclaw ws deny audit event in %s", env.auditLogPath)
+	}
+}

@@ -43,6 +43,11 @@ function `ConfigFromEnv()`.
 | `MCP_TRANSPORT_MODE` | `mcp` | Transport mode: `mcp` (MCP Streamable HTTP) or `proxy` (reverse proxy, backward compatible) |
 | `ALLOWED_BASE_PATH` | Current working directory | Base directory for OPA path-based access control (read/grep tools). All file access is restricted to paths under this directory |
 
+SPIFFE identity mode behavior:
+
+- `SPIFFE_MODE=dev`: identity is read from `X-SPIFFE-ID` header (development compatibility only).
+- `SPIFFE_MODE=prod`: identity is extracted from client mTLS certificate `spiffe://` URI SAN; `X-SPIFFE-ID` headers are ignored.
+
 ### Enforcement Profiles
 
 | Variable | Default | Description |
@@ -50,6 +55,7 @@ function `ConfigFromEnv()`.
 | `ENFORCEMENT_PROFILE` | `dev` | Runtime profile bundle: `dev`, `prod_standard`, `prod_regulated_hipaa` |
 | `ENFORCE_MODEL_MEDIATION_GATE` | `true` | Enforces mediated model egress (`direct`/`bypass` denied) |
 | `ENFORCE_HIPAA_PROMPT_SAFETY_GATE` | `true` | Enables HIPAA prompt safety deny checks when HIPAA profile policy is active |
+| `MODEL_POLICY_INTENT_PREPEND_ENABLED` | `false` | Prepends compact policy-intent guidance to OpenAI-compatible model messages. Strict production-intent overlays set this to `true` |
 | `PROFILE_METADATA_EXPORT_PATH` | _(empty)_ | Optional path to write active profile metadata as JSON at startup |
 | `APPROVAL_SIGNING_KEY` | _(empty)_ | HMAC signing key for step-up approval capability tokens. In strict profiles (`prod_standard`, `prod_regulated_hipaa`), startup fails if missing, too short, or a known weak/default value |
 | `UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS` | _(empty)_ | Comma-separated upstream SPIFFE IDs allowed for mTLS peer pinning. When empty in strict profiles, secure defaults are auto-applied |
@@ -101,10 +107,27 @@ Strict MCP transport invariants:
 
 - In strict profiles, startup fails if `UPSTREAM_URL` is empty, invalid, or not `https://...` while `MCP_TRANSPORT_MODE=mcp`.
 - In strict profiles, MCP transport initialization fails closed unless SPIFFE mTLS transport wiring is active (no fallback to implicit default HTTP client semantics).
+- In strict profiles, tool hash verification is fail-closed. If observed `tools/list` hashes are unavailable, missing, or refresh fails, `tools/call` is denied with explicit `reason_code` values (`observed_hash_unavailable`, `observed_hash_missing`, `observed_hash_refresh_failed`).
+- In strict overlays, `MODEL_POLICY_INTENT_PREPEND_ENABLED=true` injects compact policy-intent XML for model calls. This guidance is advisory only; runtime policy enforcement remains authoritative.
+- Policy-intent projection is safe for model context: it contains sanitized intent labels only (allowed/prohibited classes + escalation hints) and never exposes internal policy code or Rego source.
+
+Policy-intent projection schema (compact XML v1):
+
+```xml
+<policy_intent version="1">
+  <actor>spiffe://...</actor>
+  <model provider="groq" name="..." residency="us" risk="low" compliance="standard" mediation="mediated"/>
+  <allowed><item>mediated_model_call</item></allowed>
+  <prohibited><item>direct_egress</item><item>policy_bypass</item>...</prohibited>
+  <escalation>request_step_up_approval_when_action_is_high_risk_or_uncertain</escalation>
+  <authority>advisory_only_runtime_policy_enforcement_remains_authoritative</authority>
+</policy_intent>
+```
 
 Backward-compatibility behavior:
 
 - In `dev`, empty peer-identity allowlists preserve permissive trust-domain behavior for local workflows.
+- In `dev` compatibility mode, proxy paths without an observed-hash refresher may still allow `tools/call` with `hash_verified=false`. Production-intent profiles must not rely on this path.
 - In strict profiles, pinning is fail-closed by default (auto defaults or explicit env allowlists).
 - Multi-instance/blue-green deployments should provide multiple IDs in the allowlist (comma-separated) so overlap windows do not break mTLS.
 

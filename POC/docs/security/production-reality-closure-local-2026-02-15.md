@@ -22,4 +22,4 @@ Decision basis:
 ## Residual Risks
 
 1. GitHub CI workflows are manual-only; enforcement is local-command driven.
-2. OpenClaw full-port remains dependency-gated until closure acceptance is recorded.
+2. Historical at run time: OpenClaw full-port was dependency-gated until later acceptance/closure and reassessment (`RFA-l6h6.6.10`, `RFA-l6h6.6.17.1`).

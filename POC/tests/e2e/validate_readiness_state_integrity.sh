@@ -81,5 +81,5 @@ if [[ "${allowed_blocker_status_match}" -ne 1 ]]; then
   fail "blocker story ${required_blocker_story_id} status ${blocker_status} is outside allowed gate statuses"
 fi
 
-echo "[PASS] OpenClaw full-port story ${gate_story_id} remains dependency-blocked by ${required_blocker_story_id}"
+echo "[PASS] OpenClaw full-port gate story ${gate_story_id} matches expected status (${expected_gate_status}) with dependency linkage to ${required_blocker_story_id}"
 echo "[PASS] readiness state integrity validation passed"

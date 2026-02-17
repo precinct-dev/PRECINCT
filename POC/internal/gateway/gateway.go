@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"crypto/tls"
@@ -9,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -445,11 +447,18 @@ func (g *Gateway) Handler() http.Handler {
 	if g.config.MCPTransportMode == "mcp" {
 		toolHashRefresher = g.refreshObservedToolHashes
 	}
-	handler = middleware.ToolRegistryVerify(handler, g.registry, g.observedToolHashes, toolHashRefresher) // 5
-	handler = middleware.AuditLog(handler, g.auditor)                                                     // 4
-	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                         // 3
-	handler = middleware.BodyCapture(handler)                                                             // 2
-	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes)                          // 1
+	failClosedObservedHash := g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict"
+	handler = middleware.ToolRegistryVerify(
+		handler,
+		g.registry,
+		g.observedToolHashes,
+		toolHashRefresher,
+		middleware.WithObservedHashFailClosed(failClosedObservedHash),
+	) // 5
+	handler = middleware.AuditLog(handler, g.auditor)                            // 4
+	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                // 3
+	handler = middleware.BodyCapture(handler)                                    // 2
+	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
 
 	// Add endpoints
 	mux := http.NewServeMux()
@@ -566,6 +575,38 @@ func (g *Gateway) proxyHandler() http.Handler {
 			return
 		}
 
+		if g.handleOpenClawWSEntry(proxyRW, r.WithContext(ctx)) {
+			result := "allowed"
+			if proxyRW.statusCode >= 400 {
+				result = "denied"
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "openclaw_ws_wrapper"),
+				attribute.String("mcp.gateway.middleware", v24MiddlewareOpenClawWS),
+				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
+				attribute.String("mcp.v24.endpoint", r.URL.Path),
+			)
+			return
+		}
+
+		if g.handleOpenClawHTTPEntry(proxyRW, r.WithContext(ctx)) {
+			result := "allowed"
+			if proxyRW.statusCode >= 400 {
+				result = "denied"
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "openclaw_http_wrapper"),
+				attribute.String("mcp.gateway.middleware", v24MiddlewareOpenClawHTTP),
+				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
+				attribute.String("mcp.v24.endpoint", r.URL.Path),
+			)
+			return
+		}
+
 		// Phase 3 walking skeleton: internal plane entry points are served
 		// from the gateway boundary under /v1/* and still pass the full middleware chain.
 		if g.handlePhase3PlaneEntry(proxyRW, r.WithContext(ctx)) {
@@ -655,6 +696,14 @@ func (prw *proxyResponseWriter) Write(b []byte) (int, error) {
 		prw.written = true
 	}
 	return prw.ResponseWriter.Write(b)
+}
+
+func (prw *proxyResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return http.NewResponseController(prw.ResponseWriter).Hijack()
+}
+
+func (prw *proxyResponseWriter) Flush() {
+	_ = http.NewResponseController(prw.ResponseWriter).Flush()
 }
 
 // handleMCPRequest translates an SDK-format request into an MCP JSON-RPC request,

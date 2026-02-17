@@ -45,6 +45,8 @@ type HandleizedResponse struct {
 	Summary        string `json:"summary"`
 }
 
+var marshalHandleizedResponse = json.Marshal
+
 // responseCapture wraps http.ResponseWriter to capture the response body and status
 // before it reaches the client, allowing the response firewall to inspect and
 // potentially replace the response.
@@ -128,6 +130,7 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 		ctx, span := tracer.Start(r.Context(), "gateway.response_firewall",
 			trace.WithAttributes(
 				attribute.String("mcp.gateway.middleware", "response_firewall"),
+				attribute.Int("mcp.gateway.step", 14),
 			),
 		)
 		defer span.End()
@@ -198,10 +201,17 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 				span.SetAttributes(
 					attribute.Int("handles_created", 0),
 					attribute.Bool("data_handleized", false),
-					attribute.String("mcp.result", "allowed"),
-					attribute.String("mcp.reason", "handle store error - fail open"),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "handle_store_unavailable"),
 				)
-				capture.flushTo(w)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusServiceUnavailable, GatewayError{
+					Code:           ErrResponseHandleStoreUnavailable,
+					Message:        "Sensitive response could not be secured because handle storage is unavailable.",
+					ReasonCode:     "handle_store_unavailable",
+					Middleware:     "response_firewall",
+					MiddlewareStep: 14,
+					Remediation:    "Restore handle storage availability, then retry the request.",
+				})
 				return
 			}
 
@@ -213,16 +223,23 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 				Summary:        fmt.Sprintf("Response data from %s stored securely. Use the handle to request approved views (aggregates, redacted rows).", toolName),
 			}
 
-			respJSON, err := json.Marshal(handleResp)
+			respJSON, err := marshalHandleizedResponse(handleResp)
 			if err != nil {
 				fmt.Printf("[ERROR] Failed to marshal handle response: %v\n", err)
 				span.SetAttributes(
 					attribute.Int("handles_created", 0),
 					attribute.Bool("data_handleized", false),
-					attribute.String("mcp.result", "allowed"),
-					attribute.String("mcp.reason", "marshal error"),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "handleization_failed"),
 				)
-				capture.flushTo(w)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusInternalServerError, GatewayError{
+					Code:           ErrResponseHandleizationFailed,
+					Message:        "Sensitive response could not be transformed into a secure handleized envelope.",
+					ReasonCode:     "handleization_failed",
+					Middleware:     "response_firewall",
+					MiddlewareStep: 14,
+					Remediation:    "Review response-firewall serialization path and retry the request.",
+				})
 				return
 			}
 

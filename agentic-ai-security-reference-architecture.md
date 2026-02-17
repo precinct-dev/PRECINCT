@@ -2703,6 +2703,49 @@ Model weights are only one part of the supply chain. In practice, the highest‑
 - Record **bundle/registry digests** in audit logs for forensic traceability.
 - Deny deployment if signatures are missing or invalid on enforcement‑critical components.
 
+### 10.5.2 Pre-Deployment Scanning of MCP Servers and Agent Skills (Strongly Recommended)
+
+The UASGS enforces security at **runtime** -- verifying tool hashes, scanning content, enforcing policy on every request. However, runtime enforcement is the *last* line of defense. A complementary **shift-left** practice is to scan MCP servers and agent skills *before* they are deployed or installed, catching vulnerabilities, embedded secrets, prompt injection payloads, and supply chain risks at build/install time.
+
+**This capability is out of scope for the UASGS** (it is not a build-time or workstation tool), but it is strongly recommended as part of a defense-in-depth posture. Organizations should integrate one or more of the following tools into their CI/CD pipelines and developer workflows.
+
+#### MCP Server Scanners
+
+These tools perform static analysis, software composition analysis (SCA), and vulnerability scanning on MCP server packages before installation:
+
+| Tool | Maintainer | Capabilities | Link |
+|------|-----------|--------------|------|
+| **agent-scan** (formerly mcp-scan) | Snyk / Invariant Labs | SAST, SCA, CVE detection, tool poisoning analysis | github.com/invariantlabs-ai/mcp-scan |
+| **mcp-scanner** | Cisco AI Defense | Tool poisoning, shadowing, and MCP-specific threat detection | github.com/cisco-ai-defense/mcp-scanner |
+| **mcpscanner** | Pangea | MCP server security analysis | github.com/pangeacyber/mcpscanner |
+
+#### Agent Skill Scanners
+
+Agent skills (prompt templates, scripts, and configuration files installed into AI coding assistants) represent a distinct attack surface from MCP servers. Skills can contain prompt injection in frontmatter, exfiltration patterns in scripts, and role hijacking payloads:
+
+| Tool | Maintainer | Capabilities | Link |
+|------|-----------|--------------|------|
+| **skulto** | Asteroid Belt | Offline-first skill scanner with prompt injection detection across frontmatter, references, and scripts; threat severity levels (CRITICAL/HIGH/MEDIUM/LOW); 33+ platform support; Go-based CLI | github.com/asteroid-belt/skulto |
+| **skill-scanner** | Cisco AI Defense | Skill-specific security scanning | github.com/cisco-ai-defense/skill-scanner |
+
+#### Integration Point
+
+The recommended integration pattern places pre-deployment scanning *before* artifacts enter the runtime environment:
+
+```
+Developer installs skill/MCP server
+    |
+    v  (skulto scan / agent-scan / mcp-scanner)
+    |
+Pre-deployment gate: PASS/FAIL with severity report
+    |
+    v  (approved artifacts deployed to infrastructure)
+    |
+Runtime enforcement: UASGS (tool registry hash verification, DLP, deep scan, policy)
+```
+
+Organizations should treat scan results as a **deployment gate** -- artifacts with CRITICAL or HIGH findings should not be deployed without explicit review and risk acceptance.
+
 ### 10.6 Design Philosophy: Autonomy With Adaptive Guardrails
 
 This architecture is built on a simple premise: **autonomy is desirable, but risk is contextual**. The system should feel permissive for low‑stakes actions and progressively more strict as actions become irreversible or high impact.

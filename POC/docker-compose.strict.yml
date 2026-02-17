@@ -11,6 +11,8 @@ services:
       - SPIFFE_MODE=prod
       - ENFORCEMENT_PROFILE=prod_standard
       - MCP_TRANSPORT_MODE=mcp
+      - ENFORCE_MODEL_MEDIATION_GATE=true
+      - MODEL_POLICY_INTENT_PREPEND_ENABLED=true
       - SPIFFE_LISTEN_PORT=9443
       - KEYDB_URL=
       - UPSTREAM_URL=${STRICT_UPSTREAM_URL:?STRICT_UPSTREAM_URL must be set for strict profile}

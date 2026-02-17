@@ -1,0 +1,83 @@
+{
+  "story_id": "RFA-l6h6.6.10",
+  "executed_on": "2026-02-16",
+  "full_port_status": "implemented_with_controls",
+  "no_bypass_proof": {
+    "status": "pass",
+    "evidence": [
+      "POC/internal/gateway/gateway.go route dispatch into OpenClaw HTTP+WS adapters within middleware chain",
+      "POC/internal/gateway/openclaw_http_adapter.go policy-mediated model/tool paths",
+      "POC/internal/gateway/openclaw_ws_adapter.go fail-closed WS allowlist"
+    ],
+    "tests": [
+      "POC/tests/e2e/artifacts/openclaw-full-port-gateway-tests-2026-02-16.log",
+      "POC/tests/e2e/artifacts/openclaw-full-port-integration-tests-2026-02-16.log"
+    ]
+  },
+  "security_controls": {
+    "status": "pass",
+    "adversarial_checks": [
+      {
+        "name": "unauthorized_admin_control_denied",
+        "status": "pass",
+        "command": "go test ./internal/gateway/... -run 'TestV24AdminEndpointsEnforceSPIFFEAuth' -count=1"
+      },
+      {
+        "name": "direct_egress_bypass_denied",
+        "status": "pass",
+        "command": "go test ./internal/gateway/... -run 'TestModelPlane_DirectEgressBypassDenied' -count=1"
+      },
+      {
+        "name": "audit_chain_and_decision_correlation",
+        "status": "pass",
+        "command": "go test ./tests/integration/... -run 'AuditOpenClawWSCorrelation' -count=1"
+      },
+      {
+        "name": "openclaw_targeted_campaign",
+        "status": "pass",
+        "command": "bash tests/e2e/validate_openclaw_port_campaign.sh"
+      },
+      {
+        "name": "full_e2e_campaign",
+        "status": "pass",
+        "command": "bash POC/tests/e2e/run_all.sh",
+        "evidence": "POC/tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log"
+      }
+    ]
+  },
+  "comparative_posture": {
+    "status": "delivered",
+    "artifact_json": "POC/docs/security/artifacts/openclaw-port-comparative-2026-02-16.json",
+    "artifact_md": "POC/docs/security/openclaw-port-comparative-2026-02-16.md"
+  },
+  "operations_package": {
+    "status": "delivered",
+    "runbooks": [
+      "POC/docs/operations/runbooks/openclaw-incident-triage-and-response.md",
+      "POC/docs/operations/runbooks/openclaw-rollback-and-recovery.md"
+    ],
+    "ownership_matrix": "POC/docs/operations/openclaw-control-ownership-matrix.md",
+    "drill_artifacts": [
+      "POC/docs/operations/artifacts/openclaw-operations-drill-latest.json",
+      "POC/docs/operations/artifacts/openclaw-operations-drill-latest.md",
+      "POC/docs/operations/artifacts/backup-restore-drill-latest.json"
+    ]
+  },
+  "go_live_recommendation": {
+    "decision": "GO",
+    "rationale": "Core wrapper controls are active and validated, framework-gap defects were remediated and accepted, and the post-gap full E2E reassessment reports zero failures.",
+    "blocking_issue_ids": [],
+    "resolved_issue_ids": [
+      "RFA-4kd5",
+      "RFA-8a43",
+      "RFA-p7yw",
+      "RFA-thkk",
+      "RFA-ik18"
+    ],
+    "decision_evidence": [
+      "POC/docs/security/openclaw-framework-closure-reassessment-2026-02-16.md",
+      "POC/docs/security/artifacts/openclaw-framework-closure-reassessment-2026-02-16.json",
+      "POC/tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log"
+    ]
+  }
+}

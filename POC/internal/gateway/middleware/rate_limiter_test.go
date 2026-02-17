@@ -473,6 +473,44 @@ func TestRateLimitMiddleware_AllowedRequest(t *testing.T) {
 	}
 }
 
+func TestRateLimitMiddleware_AdminApprovalsUseSeparateBucket(t *testing.T) {
+	store := NewInMemoryRateLimitStore()
+	limiter := NewRateLimiter(1, 1, store)
+
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := RateLimitMiddleware(next, limiter)
+	spiffeID := "spiffe://example.org/agent/test"
+
+	// Exhaust the default data-plane bucket with /mcp traffic.
+	req1 := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req1 = req1.WithContext(WithSPIFFEID(req1.Context(), spiffeID))
+	rec1 := httptest.NewRecorder()
+	handler.ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("expected first /mcp request 200, got %d", rec1.Code)
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+	req2 = req2.WithContext(WithSPIFFEID(req2.Context(), spiffeID))
+	rec2 := httptest.NewRecorder()
+	handler.ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected second /mcp request 429, got %d", rec2.Code)
+	}
+
+	// Approval admin path should use a dedicated bucket and still be allowed.
+	adminReq := httptest.NewRequest(http.MethodPost, "/admin/approvals/deny", nil)
+	adminReq = adminReq.WithContext(WithSPIFFEID(adminReq.Context(), spiffeID))
+	adminRec := httptest.NewRecorder()
+	handler.ServeHTTP(adminRec, adminReq)
+	if adminRec.Code != http.StatusOK {
+		t.Fatalf("expected /admin/approvals/deny request 200, got %d", adminRec.Code)
+	}
+}
+
 func TestRateLimitMiddleware_MissingSPIFFEID(t *testing.T) {
 	store := NewInMemoryRateLimitStore()
 	limiter := NewRateLimiter(100, 20, store)

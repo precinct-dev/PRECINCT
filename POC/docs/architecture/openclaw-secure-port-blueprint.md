@@ -1,8 +1,9 @@
 # OpenClaw Secure-Port Blueprint and Go/No-Go Gate
 
-**As Of:** 2026-02-14
+**As Of:** 2026-02-16
 **Story:** RFA-l6h6.6.9
-**Blocked Execution Story:** RFA-l6h6.6.10
+**Execution Story Status:** RFA-l6h6.6.10 accepted/closed (2026-02-16)
+**Post-Gap Reassessment:** RFA-l6h6.6.17.1 accepted/closed (GO beyond framework-closure gate)
 
 ## 1. Purpose
 
@@ -135,4 +136,4 @@ The implementation backlog is decomposed into self-contained work packages that 
 
 ## 11. Recommendation
 
-Current recommendation: **GO for implementation planning only**, **NO-GO for production intent** until `RFA-l6h6.6.10` completes with AC-level evidence.
+Current recommendation: implementation and framework-closure reassessment gates are satisfied. Maintain this blueprint as the security baseline and rerun promotion evidence when upstream `~/workspace/openclaw` changes materially.

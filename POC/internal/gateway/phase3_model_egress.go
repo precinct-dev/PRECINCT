@@ -77,8 +77,14 @@ func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request)
 	planeReq := g.buildModelPlaneRequestFromOpenAI(r, payload)
 	traceID, decisionID := getDecisionCorrelationIDs(r, planeReq.Envelope)
 	decision, reason, status, metadata := g.evaluateModelPlaneDecision(r, planeReq)
+	projectionEnabled := g.shouldApplyPolicyIntentProjection()
+	projectionApplied := false
+	projectionFormat := ""
 
 	if decision != DecisionAllow {
+		metadata["policy_intent_projection_enabled"] = projectionEnabled
+		metadata["policy_intent_projection_applied"] = false
+		metadata["policy_intent_projection_format"] = ""
 		resp := PlaneDecisionV2{
 			Decision:   decision,
 			ReasonCode: reason,
@@ -100,6 +106,16 @@ func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request)
 		return true
 	}
 
+	if projectionEnabled {
+		projection := buildModelPolicyIntentProjection(planeReq.Policy.Attributes, planeReq.Envelope)
+		if projection != "" {
+			projectionApplied = prependSystemPolicyIntentMessage(payload, projection)
+			if projectionApplied {
+				projectionFormat = "xml.v1"
+			}
+		}
+	}
+
 	egress, err := g.executeModelEgress(r.Context(), planeReq.Policy.Attributes, payload, r.Header.Get("Authorization"))
 	if err != nil {
 		denyReason := ReasonModelProviderUnavailable
@@ -107,8 +123,11 @@ func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request)
 			denyReason = ReasonModelDestinationDenied
 		}
 		denyMetadata := map[string]any{
-			"error":    err.Error(),
-			"provider": strings.ToLower(getStringAttr(planeReq.Policy.Attributes, "provider", "openai")),
+			"error":                            err.Error(),
+			"provider":                         strings.ToLower(getStringAttr(planeReq.Policy.Attributes, "provider", "openai")),
+			"policy_intent_projection_enabled": projectionEnabled,
+			"policy_intent_projection_applied": projectionApplied,
+			"policy_intent_projection_format":  projectionFormat,
 		}
 		resp := PlaneDecisionV2{
 			Decision:   DecisionDeny,
@@ -151,18 +170,21 @@ func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request)
 		TraceID:    traceID,
 		DecisionID: decisionID,
 		Metadata: map[string]any{
-			"provider_used":       egress.providerUsed,
-			"upstream_status":     egress.upstreamStatus,
-			"fallback_attempted":  egress.fallbackAttempted,
-			"policy_reason_code":  reason,
-			"policy_decision":     decision,
-			"policy_http_status":  status,
-			"openai_compat_route": openAICompatChatCompletionsPath,
+			"provider_used":                    egress.providerUsed,
+			"upstream_status":                  egress.upstreamStatus,
+			"fallback_attempted":               egress.fallbackAttempted,
+			"policy_reason_code":               reason,
+			"policy_decision":                  decision,
+			"policy_http_status":               status,
+			"openai_compat_route":              openAICompatChatCompletionsPath,
+			"policy_intent_projection_enabled": projectionEnabled,
+			"policy_intent_projection_applied": projectionApplied,
+			"policy_intent_projection_format":  projectionFormat,
 		},
 	}
 	g.logPlaneDecision(r, resp, finalStatus)
 
-	writeProviderResponse(w, egress, decisionID, traceID, finalReason)
+	writeProviderResponse(w, egress, decisionID, traceID, finalReason, projectionEnabled, projectionApplied)
 	return true
 }
 
@@ -396,6 +418,16 @@ func (g *Gateway) applyEnforcementProfileDefaults(attrs map[string]any) {
 	}
 }
 
+func (g *Gateway) shouldApplyPolicyIntentProjection() bool {
+	if g == nil {
+		return false
+	}
+	if g.config != nil && g.config.ModelPolicyIntentPrependEnabled {
+		return true
+	}
+	return g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict"
+}
+
 func (g *Gateway) resolveProviderTarget(provider string, attrs map[string]any) (*url.URL, error) {
 	provider = strings.ToLower(strings.TrimSpace(provider))
 	expectedEndpoint, hasExpectedEndpoint := g.ensureModelPlanePolicy().expectedProviderEndpoint(provider)
@@ -553,7 +585,7 @@ func (g *Gateway) invokeProvider(ctx context.Context, target *url.URL, payload m
 	}, nil
 }
 
-func writeProviderResponse(w http.ResponseWriter, result *modelEgressResult, decisionID, traceID string, reason ReasonCode) {
+func writeProviderResponse(w http.ResponseWriter, result *modelEgressResult, decisionID, traceID string, reason ReasonCode, projectionEnabled, projectionApplied bool) {
 	copyHeaderIfPresent(w.Header(), result.responseHeaders, "Content-Type")
 	copyHeaderIfPresent(w.Header(), result.responseHeaders, "OpenAI-Processing-Ms")
 	copyHeaderIfPresent(w.Header(), result.responseHeaders, "X-Request-Id")
@@ -561,6 +593,7 @@ func writeProviderResponse(w http.ResponseWriter, result *modelEgressResult, dec
 	w.Header().Set("X-UASGS-Trace-ID", traceID)
 	w.Header().Set("X-UASGS-Reason-Code", string(reason))
 	w.Header().Set("X-UASGS-Provider-Used", result.providerUsed)
+	w.Header().Set("X-UASGS-Policy-Intent-Projection", projectionHeaderValue(projectionEnabled, projectionApplied))
 	w.WriteHeader(result.statusCode)
 	_, _ = w.Write(result.responseBody)
 }
@@ -572,6 +605,144 @@ func copyHeaderIfPresent(dst http.Header, src http.Header, key string) {
 	if v := src.Get(key); strings.TrimSpace(v) != "" {
 		dst.Set(key, v)
 	}
+}
+
+func projectionHeaderValue(enabled, applied bool) string {
+	if !enabled {
+		return "disabled"
+	}
+	if applied {
+		return "applied"
+	}
+	return "enabled_not_applied"
+}
+
+func buildModelPolicyIntentProjection(attrs map[string]any, envelope RunEnvelope) string {
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+	provider := sanitizeProjectionToken(getStringAttr(attrs, "provider", "unknown"))
+	model := sanitizeProjectionToken(getStringAttr(attrs, "model", "unspecified"))
+	residency := sanitizeProjectionToken(getStringAttr(attrs, "residency_intent", "unspecified"))
+	riskMode := sanitizeProjectionToken(getStringAttr(attrs, "risk_mode", "unspecified"))
+	compliance := sanitizeProjectionToken(getStringAttr(attrs, "compliance_profile", "standard"))
+	mediation := sanitizeProjectionToken(getStringAttr(attrs, "mediation_mode", "mediated"))
+	actor := sanitizeProjectionToken(envelope.ActorSPIFFEID)
+	if actor == "" {
+		actor = "unknown"
+	}
+
+	prohibited := []string{
+		"direct_egress",
+		"policy_bypass",
+		"credential_exfiltration",
+		"unapproved_destination",
+	}
+	if parseBoolAttr(attrs, "prompt_has_phi") || strings.Contains(compliance, "hipaa") {
+		prohibited = append(prohibited, "phi_disclosure")
+	}
+	if parseBoolAttr(attrs, "prompt_has_pii") {
+		prohibited = append(prohibited, "pii_disclosure")
+	}
+
+	escalation := "request_step_up_approval_when_action_is_high_risk_or_uncertain"
+	if parseBoolAttr(attrs, "step_up_approved") {
+		escalation = "step_up_approval_present_keep_actions_within_approved_scope"
+	}
+
+	var prohibitedItems strings.Builder
+	for _, item := range prohibited {
+		prohibitedItems.WriteString("<item>")
+		prohibitedItems.WriteString(xmlEscape(item))
+		prohibitedItems.WriteString("</item>")
+	}
+
+	return "<policy_intent version=\"1\"><actor>" + xmlEscape(actor) + "</actor>" +
+		"<model provider=\"" + xmlEscape(provider) +
+		"\" name=\"" + xmlEscape(model) +
+		"\" residency=\"" + xmlEscape(residency) +
+		"\" risk=\"" + xmlEscape(riskMode) +
+		"\" compliance=\"" + xmlEscape(compliance) +
+		"\" mediation=\"" + xmlEscape(mediation) + "\"/>" +
+		"<allowed><item>mediated_model_call</item></allowed>" +
+		"<prohibited>" + prohibitedItems.String() + "</prohibited>" +
+		"<escalation>" + xmlEscape(escalation) + "</escalation>" +
+		"<authority>advisory_only_runtime_policy_enforcement_remains_authoritative</authority>" +
+		"</policy_intent>"
+}
+
+func prependSystemPolicyIntentMessage(payload map[string]any, projection string) bool {
+	if payload == nil || strings.TrimSpace(projection) == "" {
+		return false
+	}
+	systemMsg := map[string]any{
+		"role":    "system",
+		"name":    "uasgs_policy_intent",
+		"content": projection,
+	}
+	rawMessages, ok := payload["messages"]
+	if !ok {
+		payload["messages"] = []any{systemMsg}
+		return true
+	}
+	msgs, ok := rawMessages.([]any)
+	if !ok {
+		payload["messages"] = []any{systemMsg}
+		return true
+	}
+	payload["messages"] = append([]any{systemMsg}, msgs...)
+	return true
+}
+
+func sanitizeProjectionToken(raw string) string {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if raw == "" {
+		return ""
+	}
+	if len(raw) > 120 {
+		raw = raw[:120]
+	}
+	var b strings.Builder
+	for _, ch := range raw {
+		switch {
+		case ch >= 'a' && ch <= 'z':
+			b.WriteRune(ch)
+		case ch >= '0' && ch <= '9':
+			b.WriteRune(ch)
+		case ch == '-' || ch == '_' || ch == '.' || ch == ':' || ch == '/':
+			b.WriteRune(ch)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
+}
+
+func parseBoolAttr(attrs map[string]any, key string) bool {
+	v, ok := attrs[key]
+	if !ok {
+		return false
+	}
+	switch vv := v.(type) {
+	case bool:
+		return vv
+	case string:
+		b, err := strconv.ParseBool(strings.TrimSpace(vv))
+		return err == nil && b
+	default:
+		return false
+	}
+}
+
+func xmlEscape(raw string) string {
+	replacer := strings.NewReplacer(
+		"&", "&amp;",
+		"<", "&lt;",
+		">", "&gt;",
+		"\"", "&quot;",
+		"'", "&apos;",
+	)
+	return replacer.Replace(raw)
 }
 
 func extractOpenAIPrompt(payload map[string]any) string {

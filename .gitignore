@@ -15,3 +15,6 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Runtime operations artifacts
+POC/docs/operations/artifacts/

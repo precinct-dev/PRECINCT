@@ -75,6 +75,19 @@ func TestResolveEnforcementProfile_ProdHIPAAFailsWhenPromptSafetyDisabled(t *tes
 	}
 }
 
+func TestResolveEnforcementProfile_StrictFailsWhenSPIFFEDevModeConfigured(t *testing.T) {
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.SPIFFEMode = "dev"
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure when spiffe_mode=dev")
+	}
+	if !strings.Contains(err.Error(), "spiffe_mode must be prod") {
+		t.Fatalf("expected strict SPIFFE mode violation, got: %v", err)
+	}
+}
+
 func TestResolveEnforcementProfile_StrictFailsWithoutApprovalSigningKey(t *testing.T) {
 	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
 	cfg.ApprovalSigningKey = ""

@@ -90,7 +90,7 @@
         "name": "openclaw_gate_dependency",
         "result": "pass",
         "command": "bd show RFA-l6h6.6.10 --json",
-        "evidence": "RFA-l6h6.6.10 remains blocked by RFA-l6h6.7.7"
+        "evidence": "Historical at campaign time: RFA-l6h6.6.10 was blocked by RFA-l6h6.7.7"
       }
     ]
   },
@@ -108,7 +108,7 @@
   "go_no_go": {
     "decision": "GO",
     "decision_rule": "GO only when closure stories RFA-l6h6.7.1 through RFA-l6h6.7.6 are accepted and all campaign checks pass",
-    "rationale": "Compose strict, K8s strict validation suite, adversarial denial checks, readiness-state integrity, and security evidence gates all passed. OpenClaw story remains dependency-gated until this campaign story is accepted and closed."
+    "rationale": "Compose strict, K8s strict validation suite, adversarial denial checks, readiness-state integrity, and security evidence gates all passed. Historical note: OpenClaw story was dependency-gated at campaign time."
   },
   "residual_risks": [
     "K8s strict evidence in this repository is based on rendered-manifest and policy wiring validation, not external cloud staging/prod runtime deployment proof.",
