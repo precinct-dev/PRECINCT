@@ -7,6 +7,7 @@ For Kubernetes-first hardening decisions, see [Kubernetes-First Hardening Guide]
 For K8s runtime validation checklist and campaign execution, see [K8s Runtime Validation Campaign](architecture/k8s-runtime-validation-campaign.md).
 For portability class decisions per feature, see [Compose Backport Decision Ledger](architecture/compose-backport-decision-ledger.md).
 For non-K8s adaptation constraints, see [Non-K8s Cloud Adaptation Guide](architecture/non-k8s-cloud-adaptation-guide.md).
+For strategy and tradeoffs when onboarding apps without upstream source modifications, see [No-Upstream-Modification Integration Playbook](sdk/no-upstream-mod-integration-playbook.md).
 For detailed prerequisites, see [Prerequisites](getting-started/prerequisites.md).
 For EKS IaC details, see [EKS IaC Approach](eks-iac.md).
 
@@ -98,6 +99,14 @@ make demo-compose
 ```
 
 All services should show status `healthy`. The demo suite exercises all 13 middleware layers with real requests through the gateway.
+
+Latest OpenClaw latest-source validation evidence (2026-02-16 UTC):
+
+- `bash tests/e2e/run_all.sh` -> `105 pass / 0 fail / 3 skip` (`POC/tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log`)
+- `bash tests/e2e/validate_openclaw_port_campaign.sh` -> `4 pass / 0 fail` (`POC/tests/e2e/artifacts/rfa-t1hb-openclaw-campaign-20260216T185105Z.log`)
+- `make readiness-state-validate` -> PASS (`POC/tests/e2e/artifacts/rfa-t1hb-readiness-state-20260216T185105Z.log`)
+- Final decision package: `POC/docs/security/openclaw-latest-source-final-decision-2026-02-16.md` (**GO**, follow-up bug `RFA-655e` accepted/closed)
+- Separation model: upstream OpenClaw source remains in `~/workspace/openclaw`; security mediation remains in `POC` wrapper/control-plane components.
 
 ### Step 4: View Traces
 
@@ -516,7 +525,7 @@ Production-intent compose requirements:
 
 - Required services must set `pull_policy: always` and use digest-pinned immutable image refs from `config/compose-production-intent.env`.
 - Provenance/signature policy requirements are codified in `config/compose-production-intent-policy.json`.
-- Deterministic validation command: `make compose-production-intent-validate` (includes negative-path failure test).
+- Deterministic validation command: `make compose-production-intent-validate` (includes supply-chain and egress-control negative-path failure tests).
 
 Migration notes:
 
@@ -546,25 +555,34 @@ make strict-runtime-validate
 
 ### OpenClaw Full-Port Release Gate (Runbook Policy)
 
-No OpenClaw full port work is allowed until strict Compose and K8s readiness is accepted.
+OpenClaw promotion decisions must reference accepted framework-closure evidence and the latest upstream source baseline.
 
 Enforced references:
 
 - Readiness epic: `RFA-l6h6.7`
 - Final strict conformance campaign: `RFA-l6h6.7.7`
-- Blocked OpenClaw implementation story: `RFA-l6h6.6.10`
+- OpenClaw execution story: `RFA-l6h6.6.10` (accepted/closed)
+- Framework-gap closure epic: `RFA-l6h6.6.17` (accepted/closed)
+- Post-gap reassessment: `RFA-l6h6.6.17.1` (accepted/closed)
+- Latest-source closure chain: `RFA-pnxr`, `RFA-ysa5`, `RFA-oo21`, `RFA-t1hb`, `RFA-6mp8`, `RFA-655e` (accepted/closed)
+- Latest-source final decision artifact: `POC/docs/security/openclaw-latest-source-final-decision-2026-02-16.md`
 
-Required operator checks before any OpenClaw full-port start:
+Required operator checks before any OpenClaw promotion/reassessment:
 
 ```bash
 make strict-runtime-validate
 make production-readiness-validate
 make readiness-state-validate
 bd show RFA-l6h6.6.10 --json
+bd show RFA-l6h6.6.17.1 --json
 bd dep tree RFA-l6h6.7
+cd ~/workspace/openclaw && git rev-parse HEAD
 ```
 
-If `RFA-l6h6.6.10` is not `blocked`, or `RFA-l6h6.7.7` is not accepted/closed, outcome is NO-GO for OpenClaw full port.
+Current gate interpretation:
+- **GO past framework-closure gate** when `RFA-l6h6.7.7`, `RFA-l6h6.6.10`, and `RFA-l6h6.6.17.1` are accepted/closed and validation evidence is current.
+- **GO for latest-source OpenClaw cycle** when latest-source closure chain stories are accepted/closed and no unresolved follow-up bugs remain.
+- **NO-GO** if any gate story is open/rejected/blocked, validation evidence is stale, or latest-source follow-up bugs are unresolved.
 
 ### Cloud Adaptation Playbooks
 
@@ -573,6 +591,7 @@ For managed-cloud adaptation beyond local Docker Desktop K8s:
 - `docs/architecture/cloud-adaptation-playbooks.md` (AWS EKS + EKS/Fargate, GKE, AKS)
 - `docs/architecture/cloudflare-workers-compensating-controls.md` (Workers-specific compensating controls)
 - `docs/architecture/non-k8s-cloud-adaptation-guide.md` (runtime-agnostic control mapping)
+- `docs/operations/managed-cloud-bootstrap-prerequisites.md` (managed staging bootstrap/access prerequisite contract + handoff template)
 
 ### GHCR Fail-Closed Live Signature Path (What It Means)
 
@@ -587,6 +606,17 @@ In fail-closed mode, image verification must succeed against the registry/signin
 metadata for required production-intent images. If auth/token retrieval or signature
 verification fails, release validation fails (no silent skip).
 
+Required credential inputs for live signature mode:
+
+- `COMPOSE_PROD_REGISTRY_USERNAME`
+- `COMPOSE_PROD_REGISTRY_TOKEN`
+
+Reference docs:
+
+- `docs/security/compose-signature-prerequisite-contract.md`
+- `docs/operations/runbooks/compose-signature-credential-injection.md`
+- `make compose-production-intent-preflight-signature-prereqs` (deterministic missing-prerequisite validator)
+
 For local/dev without registry credentials, non-strict mode remains available for
 workflow continuity, but that is not equivalent evidence for cloud release sign-off.
 
@@ -599,9 +629,11 @@ workflow continuity, but that is not equivalent evidence for cloud release sign-
 | `make help` | Show all documented targets |
 | `make compose-verify` | Verify compose third-party images and Dockerfile base images are digest-pinned |
 | `make compose-production-intent-preflight` | Validate production-intent compose image lock + provenance policy wiring |
-| `make compose-production-intent-validate` | Run production-intent compose gate with deterministic negative-path failure test |
+| `make compose-production-intent-preflight-signature-prereqs` | Validate fail-closed live-signature credential prerequisite behavior |
+| `make compose-production-intent-validate` | Run production-intent compose gate with deterministic supply-chain + egress negative-path failure tests |
 | `make operations-backup-restore-drill` | Execute operational backup/restore drill and publish latest drill artifacts |
 | `make operations-readiness-validate` | Validate operations readiness pack (runbooks, drill artifacts, SLO ownership) |
+| `make managed-cloud-bootstrap-prereqs-validate` | Validate managed-cloud bootstrap prerequisites and deterministic fail-fast preflight behavior |
 | `make up` | Start Docker Compose stack (waits for all services healthy) |
 | `make down` | Stop Docker Compose stack |
 | `make clean` | Full cleanup (containers, volumes, build artifacts) |

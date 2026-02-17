@@ -47,6 +47,23 @@ repository_prefix="$(jq -r '.artifact_source.repository // empty' "${POLICY_FILE
 [[ -n "${repository_prefix}" ]] || fail "policy missing artifact_source.repository"
 required_image_prefix="${registry_prefix}/${repository_prefix}/"
 
+if [[ "${VERIFY_SIGNATURES}" == "1" ]]; then
+  require_cmd cosign
+
+  missing_vars=()
+  [[ -n "${COMPOSE_PROD_REGISTRY_USERNAME:-}" ]] || missing_vars+=("COMPOSE_PROD_REGISTRY_USERNAME")
+  [[ -n "${COMPOSE_PROD_REGISTRY_TOKEN:-}" ]] || missing_vars+=("COMPOSE_PROD_REGISTRY_TOKEN")
+  if [[ "${#missing_vars[@]}" -gt 0 ]]; then
+    fail "Missing required environment variables for live signature mode: ${missing_vars[*]}"
+  fi
+
+  if ! printf '%s' "${COMPOSE_PROD_REGISTRY_TOKEN}" | docker login "${registry_prefix}" \
+    -u "${COMPOSE_PROD_REGISTRY_USERNAME}" --password-stdin >/dev/null 2>&1; then
+    fail "Registry authentication failed for ${registry_prefix} in live signature mode. Verify credentials and access scope."
+  fi
+  pass "live signature mode registry authentication prerequisites satisfied"
+fi
+
 # Load env lock into shell environment to resolve expected image refs.
 set -a
 # shellcheck disable=SC1090

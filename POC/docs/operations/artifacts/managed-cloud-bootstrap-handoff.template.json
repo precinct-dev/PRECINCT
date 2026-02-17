@@ -1,0 +1,31 @@
+{
+  "contract_version": "managed-cloud-bootstrap.v1",
+  "request_id": "fill-me",
+  "requested_at_utc": "YYYY-MM-DDTHH:MM:SSZ",
+  "environment": "staging",
+  "provider": "digitalocean|eks|gke",
+  "cluster": {
+    "name": "fill-me",
+    "region": "fill-me",
+    "kubernetes_version": "fill-me",
+    "nodepool_summary": "fill-me"
+  },
+  "access": {
+    "kube_context": "fill-me",
+    "credential_owner": "fill-me",
+    "rotation_policy_ref": "fill-me"
+  },
+  "required_namespaces": [
+    "gateway",
+    "spire-system",
+    "spike-system",
+    "data",
+    "tools"
+  ],
+  "handoff_contacts": {
+    "platform_primary": "fill-me",
+    "platform_backup": "fill-me",
+    "security_primary": "fill-me"
+  },
+  "notes": "Attach evidence links and bootstrap status."
+}
