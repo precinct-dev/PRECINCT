@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-production-intent-preflight compose-production-intent-preflight-signature-prereqs compose-production-intent-validate compose-bootstrap-verify operations-backup-restore-drill operations-readiness-validate managed-cloud-bootstrap-prereqs-validate app-pack-model-validate app-integration-strategy-docs-validate gateway-bypass-case26-validate observability-evidence-gate-validate up down test lint clean logs demo demo-compose demo-compose-strict-observability demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign local-k8s-runtime-campaign-artifacts-validate production-reality-closure-local-artifacts-validate ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate story-evidence-validate production-readiness-validate strict-overlay-operationalization-validate promotion-identity-validate ci-gate-parity-validate \
+.PHONY: help compose-verify compose-production-intent-preflight compose-production-intent-preflight-signature-prereqs compose-production-intent-validate compose-bootstrap-verify operations-backup-restore-drill operations-readiness-validate managed-cloud-bootstrap-prereqs-validate framework-taxonomy-mappings-validate app-pack-model-validate app-integration-strategy-docs-validate gateway-bypass-case26-validate observability-evidence-gate-validate up down test lint clean logs demo demo-compose demo-compose-strict-observability demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign local-k8s-runtime-campaign-artifacts-validate production-reality-closure-local-artifacts-validate ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate story-evidence-validate production-readiness-validate strict-overlay-operationalization-validate promotion-identity-validate ci-gate-parity-validate \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -53,6 +53,9 @@ operations-readiness-validate: ## Validate operational readiness pack (runbooks 
 
 managed-cloud-bootstrap-prereqs-validate: ## Validate managed-cloud bootstrap prerequisite contract and deterministic preflight behavior
 	@bash tests/e2e/validate_managed_cloud_bootstrap_prereqs.sh
+
+framework-taxonomy-mappings-validate: ## Validate MITRE ATLAS + OWASP taxonomy mapping coverage for framework_refs signal keys
+	@bash tests/e2e/validate_framework_taxonomy_mappings.sh
 
 app-pack-model-validate: ## Validate app integration pack model docs and OpenClaw reference pack manifest
 	@bash tests/e2e/validate_app_integration_pack_model.sh

@@ -52,6 +52,20 @@ func TestResolveFrameworkRefs_StatusDerivedSignals(t *testing.T) {
 	}
 }
 
+func TestFrameworkTaxonomyCoverage_MITREIsComplete(t *testing.T) {
+	missing := missingTaxonomyCoverage(mitreAtlasBySignalKey)
+	if len(missing) > 0 {
+		t.Fatalf("missing MITRE mappings for signal keys: %v", missing)
+	}
+}
+
+func TestFrameworkTaxonomyCoverage_OWASPIsComplete(t *testing.T) {
+	missing := missingTaxonomyCoverage(owaspAgenticBySignalKey)
+	if len(missing) > 0 {
+		t.Fatalf("missing OWASP mappings for signal keys: %v", missing)
+	}
+}
+
 func TestAuditLog_EmitsFrameworkRefsFromSignals(t *testing.T) {
 	tmpDir := t.TempDir()
 	auditPath := filepath.Join(tmpDir, "audit.jsonl")
@@ -116,5 +130,15 @@ func TestAuditLog_EmitsFrameworkRefsFromSignals(t *testing.T) {
 	}
 	if !reflect.DeepEqual(event.Security.FrameworkRefs.SignalKeys, want) {
 		t.Fatalf("signal keys mismatch\nwant: %v\ngot:  %v", want, event.Security.FrameworkRefs.SignalKeys)
+	}
+
+	wantMITRE := []string{"AML.T0010", "AML.T0024", "AML.T0029", "AML.T0051", "AML.T0098"}
+	if !reflect.DeepEqual(event.Security.FrameworkRefs.MITREAtlas, wantMITRE) {
+		t.Fatalf("mitre ids mismatch\nwant: %v\ngot:  %v", wantMITRE, event.Security.FrameworkRefs.MITREAtlas)
+	}
+
+	wantOWASP := []string{"ASI01", "ASI02", "ASI04", "ASI05"}
+	if !reflect.DeepEqual(event.Security.FrameworkRefs.OWASPAgenticTop10, wantOWASP) {
+		t.Fatalf("owasp ids mismatch\nwant: %v\ngot:  %v", wantOWASP, event.Security.FrameworkRefs.OWASPAgenticTop10)
 	}
 }

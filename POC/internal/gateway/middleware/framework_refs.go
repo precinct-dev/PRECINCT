@@ -62,6 +62,8 @@ func resolveFrameworkRefs(flags []string, toolHashVerified bool, statusCode int)
 	sort.Strings(sortedKeys)
 
 	return &FrameworkRefs{
-		SignalKeys: sortedKeys,
+		SignalKeys:        sortedKeys,
+		MITREAtlas:        mapTaxonomyIDs(sortedKeys, mitreAtlasBySignalKey),
+		OWASPAgenticTop10: mapTaxonomyIDs(sortedKeys, owaspAgenticBySignalKey),
 	}
 }

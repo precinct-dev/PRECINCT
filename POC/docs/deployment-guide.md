@@ -8,6 +8,7 @@ For K8s runtime validation checklist and campaign execution, see [K8s Runtime Va
 For portability class decisions per feature, see [Compose Backport Decision Ledger](architecture/compose-backport-decision-ledger.md).
 For non-K8s adaptation constraints, see [Non-K8s Cloud Adaptation Guide](architecture/non-k8s-cloud-adaptation-guide.md).
 For strategy and tradeoffs when onboarding apps without upstream source modifications, see [No-Upstream-Modification Integration Playbook](sdk/no-upstream-mod-integration-playbook.md).
+For framework taxonomy mappings (MITRE ATLAS + OWASP Agentic Top 10) on audit signal keys, see [Framework Taxonomy Signal Mappings](security/framework-taxonomy-signal-mappings.md).
 For detailed prerequisites, see [Prerequisites](getting-started/prerequisites.md).
 For EKS IaC details, see [EKS IaC Approach](eks-iac.md).
 
@@ -634,6 +635,7 @@ workflow continuity, but that is not equivalent evidence for cloud release sign-
 | `make operations-backup-restore-drill` | Execute operational backup/restore drill and publish latest drill artifacts |
 | `make operations-readiness-validate` | Validate operations readiness pack (runbooks, drill artifacts, SLO ownership) |
 | `make managed-cloud-bootstrap-prereqs-validate` | Validate managed-cloud bootstrap prerequisites and deterministic fail-fast preflight behavior |
+| `make framework-taxonomy-mappings-validate` | Validate MITRE ATLAS + OWASP Agentic Top 10 mapping coverage for audit signal keys |
 | `make up` | Start Docker Compose stack (waits for all services healthy) |
 | `make down` | Stop Docker Compose stack |
 | `make clean` | Full cleanup (containers, volumes, build artifacts) |
