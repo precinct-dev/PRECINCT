@@ -1,0 +1,44 @@
+{
+  "schema_version": "framework_signal_mapping.owasp_agentic_top10.v1",
+  "generated_for": "gateway.security.framework_refs",
+  "required_signal_keys": [
+    "availability.rate_limited",
+    "content.blocked",
+    "data.pii_detected",
+    "policy.authorization_denied",
+    "policy.step_up_blocked",
+    "prompt.injection_blocked",
+    "prompt.injection_detected",
+    "prompt.jailbreak_detected",
+    "tool.hash_unverified"
+  ],
+  "mappings": {
+    "availability.rate_limited": [
+      "ASI04"
+    ],
+    "content.blocked": [
+      "ASI05"
+    ],
+    "data.pii_detected": [
+      "ASI05"
+    ],
+    "policy.authorization_denied": [
+      "ASI03"
+    ],
+    "policy.step_up_blocked": [
+      "ASI03"
+    ],
+    "prompt.injection_blocked": [
+      "ASI01"
+    ],
+    "prompt.injection_detected": [
+      "ASI01"
+    ],
+    "prompt.jailbreak_detected": [
+      "ASI01"
+    ],
+    "tool.hash_unverified": [
+      "ASI02"
+    ]
+  }
+}
