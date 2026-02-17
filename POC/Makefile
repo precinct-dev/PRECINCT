@@ -1,4 +1,4 @@
-.PHONY: help compose-verify compose-production-intent-preflight compose-production-intent-validate compose-bootstrap-verify operations-backup-restore-drill operations-readiness-validate observability-evidence-gate-validate up down test lint clean logs demo demo-compose demo-compose-strict-observability demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign local-k8s-runtime-campaign-artifacts-validate production-reality-closure-local-artifacts-validate ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate production-readiness-validate strict-overlay-operationalization-validate promotion-identity-validate ci-gate-parity-validate \
+.PHONY: help compose-verify compose-production-intent-preflight compose-production-intent-preflight-signature-prereqs compose-production-intent-validate compose-bootstrap-verify operations-backup-restore-drill operations-readiness-validate managed-cloud-bootstrap-prereqs-validate app-pack-model-validate app-integration-strategy-docs-validate gateway-bypass-case26-validate observability-evidence-gate-validate up down test lint clean logs demo demo-compose demo-compose-strict-observability demo-k8s agw-demo agw-operate-demo compliance-demo k8s-up k8s-down k8s-validate k8s-runtime-campaign local-k8s-runtime-campaign-artifacts-validate production-reality-closure-local-artifacts-validate ci conformance benchmark security-scan security-scan-strict security-scan-validate readiness-state-validate story-evidence-validate production-readiness-validate strict-overlay-operationalization-validate promotion-identity-validate ci-gate-parity-validate \
 		       setup register-spire k8s-register-spire test-integration test-opa build build-images \
 		       compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave \
 		       k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry upgrade-check upgrade upgrade-all \
@@ -38,14 +38,30 @@ compose-verify: ## Verify Compose third-party images are digest-pinned (no :late
 compose-production-intent-preflight: ## Validate compose production-intent image lock + provenance policy wiring
 	@bash scripts/compose-production-intent-preflight.sh
 
+compose-production-intent-preflight-signature-prereqs: ## Validate fail-closed compose live-signature prerequisite behavior
+	@bash tests/e2e/validate_compose_signature_prereqs.sh
+
 compose-production-intent-validate: ## Validate compose production-intent gate including deterministic negative-path failure
 	@bash tests/e2e/validate_compose_production_intent_supply_chain.sh
+	@bash tests/e2e/validate_compose_production_intent_egress.sh
 
 operations-backup-restore-drill: ## Execute operational backup/restore drill and write auditable artifacts
 	@bash scripts/operations/run_backup_restore_drill.sh
 
 operations-readiness-validate: ## Validate operational readiness pack (runbooks + drill artifacts + SLO ownership)
 	@bash tests/e2e/validate_operational_readiness_pack.sh
+
+managed-cloud-bootstrap-prereqs-validate: ## Validate managed-cloud bootstrap prerequisite contract and deterministic preflight behavior
+	@bash tests/e2e/validate_managed_cloud_bootstrap_prereqs.sh
+
+app-pack-model-validate: ## Validate app integration pack model docs and OpenClaw reference pack manifest
+	@bash tests/e2e/validate_app_integration_pack_model.sh
+
+app-integration-strategy-docs-validate: ## Validate no-upstream-mod integration strategy docs and cross-links
+	@bash tests/e2e/validate_app_integration_strategy_docs.sh
+
+gateway-bypass-case26-validate: ## Validate SDK case-26 gateway-bypass timeout conformance across compose+k8s logs
+	@bash tests/e2e/validate_gateway_bypass_case26.sh
 
 observability-evidence-gate-validate: ## Validate strict/non-strict observability evidence gate behavior
 	@bash tests/e2e/validate_observability_evidence_gate.sh
@@ -580,6 +596,13 @@ security-scan-validate: ## Validate generated security scan artifact manifest an
 
 readiness-state-validate: ## Validate readiness state docs against live bd story state
 	tests/e2e/validate_readiness_state_integrity.sh
+
+story-evidence-validate: ## Validate backticked POC evidence paths referenced in a bd story (usage: make story-evidence-validate STORY_ID=<id>)
+	@if [ -z "$(STORY_ID)" ]; then \
+		echo "ERROR: STORY_ID is required (ex: make story-evidence-validate STORY_ID=RFA-l6h6.6.11)"; \
+		exit 1; \
+	fi
+	tests/e2e/validate_story_evidence_paths.sh "$(STORY_ID)"
 
 production-readiness-validate: security-scan-strict security-scan-validate ## Strict production-readiness security evidence gate
 	@echo "production-readiness-validate: PASS"

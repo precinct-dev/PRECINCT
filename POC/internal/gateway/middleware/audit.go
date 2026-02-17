@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -43,8 +44,9 @@ type AuditEvent struct {
 
 // SecurityAudit contains security-related audit information
 type SecurityAudit struct {
-	ToolHashVerified bool     `json:"tool_hash_verified"`
-	SafeZoneFlags    []string `json:"safezone_flags,omitempty"`
+	ToolHashVerified bool           `json:"tool_hash_verified"`
+	SafeZoneFlags    []string       `json:"safezone_flags,omitempty"`
+	FrameworkRefs    *FrameworkRefs `json:"framework_refs,omitempty"`
 }
 
 // AuthzAudit contains authorization-related audit information
@@ -327,6 +329,14 @@ func (rw *responseWriter) WriteHeader(code int) {
 	rw.ResponseWriter.WriteHeader(code)
 }
 
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return http.NewResponseController(rw.ResponseWriter).Hijack()
+}
+
+func (rw *responseWriter) Flush() {
+	_ = http.NewResponseController(rw.ResponseWriter).Flush()
+}
+
 // AuditLog middleware logs all requests with structured JSON
 func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -360,9 +370,11 @@ func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 		if len(flags) == 0 {
 			flags = GetSecurityFlags(ctx)
 		}
+		toolHashVerified := GetToolHashVerified(ctx)
 		securityAudit := &SecurityAudit{
-			ToolHashVerified: GetToolHashVerified(ctx),
+			ToolHashVerified: toolHashVerified,
 			SafeZoneFlags:    flags,
+			FrameworkRefs:    resolveFrameworkRefs(flags, toolHashVerified, wrapped.statusCode),
 		}
 
 		// Build authorization audit info
