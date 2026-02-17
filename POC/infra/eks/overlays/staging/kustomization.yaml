@@ -68,6 +68,10 @@ patches:
                     value: "prod_standard"
                   - name: MCP_TRANSPORT_MODE
                     value: "mcp"
+                  - name: ENFORCE_MODEL_MEDIATION_GATE
+                    value: "true"
+                  - name: MODEL_POLICY_INTENT_PREPEND_ENABLED
+                    value: "true"
                   - name: SPIFFE_MODE
                     value: "prod"
                   - name: UPSTREAM_URL

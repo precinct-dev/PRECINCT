@@ -79,3 +79,15 @@ Bad:
 - Expected: all pass, or only baseline failures <list>
 - Reject if any additional failure appears
 ```
+
+## Evidence Path Guard (Pre-Acceptance)
+
+Before PM acceptance, validate that backticked `POC/...` evidence paths referenced
+in story notes still exist in the tracked repository.
+
+- Command:
+  - `make -C POC story-evidence-validate STORY_ID=<story-id>`
+- Script:
+  - `POC/tests/e2e/validate_story_evidence_paths.sh`
+
+Reject or reconcile the story if this check reports missing files.

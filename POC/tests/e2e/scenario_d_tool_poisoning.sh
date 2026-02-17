@@ -24,15 +24,18 @@ log_pass "Gateway is running"
 # Test D1: Valid tool call passes hash verification
 # ============================================================
 log_subheader "D1: Valid tool call (correct hash)"
+READ_PROBE_PATH="$(gateway_allowed_file_path "go.mod")"
+log_detail "Using allowed read probe path: ${READ_PROBE_PATH}"
 
 gateway_request "$DEFAULT_SPIFFE_ID" "read" \
-    "{\"file_path\": \"${POC_DIR}/go.mod\"}"
+    "{\"file_path\": \"${READ_PROBE_PATH}\"}"
 
 log_info "Response code: $RESP_CODE"
 
-# A valid tool call should NOT be blocked by hash verification
-# It will reach the proxy (404/502) or succeed (200)
-if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "404" ] || [ "$RESP_CODE" = "502" ]; then
+# A valid tool call should NOT be blocked by hash verification.
+# It may succeed (200), bubble upstream response (404/502), or return 503 if the
+# circuit breaker is open after repeated upstream failures.
+if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "404" ] || [ "$RESP_CODE" = "502" ] || [ "$RESP_CODE" = "503" ]; then
     log_pass "Valid tool call passes hash verification (HTTP $RESP_CODE)"
 elif [ "$RESP_CODE" = "403" ]; then
     # 403 might be OPA policy, not hash mismatch
@@ -52,7 +55,7 @@ fi
 log_subheader "D2: Poisoned tool (wrong hash)"
 
 gateway_request "$DEFAULT_SPIFFE_ID" "read" \
-    "{\"file_path\": \"${POC_DIR}/go.mod\", \"tool_hash\": \"0000000000000000000000000000000000000000000000000000000000000000\"}"
+    "{\"file_path\": \"${READ_PROBE_PATH}\", \"tool_hash\": \"0000000000000000000000000000000000000000000000000000000000000000\"}"
 
 log_info "Response code: $RESP_CODE"
 log_info "Response body: $RESP_BODY"

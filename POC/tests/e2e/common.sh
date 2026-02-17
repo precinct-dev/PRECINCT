@@ -21,6 +21,41 @@ OTEL_URL="${OTEL_URL:-http://localhost:4318}"
 # The e2e scripts live in tests/e2e/ so the POC root is two levels up.
 POC_DIR="${POC_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 
+# Resolve the effective OPA allowlist base path used by the running gateway.
+# Priority: explicit env override -> container ALLOWED_BASE_PATH -> container workdir.
+resolve_gateway_allowed_base_path() {
+    if [ -n "${GATEWAY_ALLOWED_BASE_PATH:-}" ]; then
+        echo "$GATEWAY_ALLOWED_BASE_PATH"
+        return
+    fi
+
+    local base_path=""
+    local container_env=""
+    container_env=$(docker inspect mcp-security-gateway --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true)
+    if [ -n "$container_env" ]; then
+        base_path=$(echo "$container_env" | awk -F= '/^ALLOWED_BASE_PATH=/{print substr($0, index($0, "=") + 1); exit}')
+    fi
+
+    if [ -z "$base_path" ]; then
+        base_path=$(docker inspect mcp-security-gateway --format '{{.Config.WorkingDir}}' 2>/dev/null || true)
+    fi
+
+    if [ -z "$base_path" ]; then
+        base_path="/app"
+    fi
+
+    echo "$base_path"
+}
+
+GATEWAY_ALLOWED_BASE_PATH="$(resolve_gateway_allowed_base_path)"
+
+gateway_allowed_file_path() {
+    local relative_path="${1:-go.mod}"
+    local base_path="${GATEWAY_ALLOWED_BASE_PATH%/}"
+    local rel_path="${relative_path#/}"
+    echo "${base_path}/${rel_path}"
+}
+
 # Default test SPIFFE ID (DSPy researcher agent)
 DEFAULT_SPIFFE_ID="spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 # Secondary agent for cross-agent tests

@@ -3,7 +3,7 @@
 **Snapshot Date:** 2026-02-06
 **Snapshot Branch:** epic/RFA-qq0-poc-docker-compose
 **Snapshot Epic:** RFA-qq0 (POC Docker Compose)
-**As Of (Current Program Context):** 2026-02-14
+**As Of (Current Program Context):** 2026-02-16
 **Status:** Archived historical validation output, retained for traceability.
 
 ## Scope Notice
@@ -16,10 +16,15 @@ For current status:
 
 - `current-state-and-roadmap.md` (as-built summary + residual risks)
 - active closure stories in epic `RFA-l6h6.6`
+- latest-source OpenClaw rerun evidence:
+  - `POC/tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log`
+  - `POC/tests/e2e/artifacts/rfa-t1hb-openclaw-campaign-20260216T185105Z.log`
+- latest-source final decision + follow-up closure:
+  - `POC/docs/security/openclaw-latest-source-final-decision-2026-02-16.md` (`RFA-655e` accepted/closed)
 
 Claim reconciliation (historical -> current):
 
-| Historical statement in this report | Current status (2026-02-14) | Evidence source |
+| Historical statement in this report | Current status (2026-02-16) | Evidence source |
 |-------------------------------------|------------------------------|-----------------|
 | “SPIKE Nexus commented out in compose” (known gap table) | SPIKE Nexus is active in compose and validated in later stories. | `docker-compose.yml`, accepted SPIKE parity stories |
 | “mTLS enforcement dev-mode only” (known gap table) | Strict-profile startup and peer identity pinning are implemented. | accepted `RFA-l6h6.6.6` evidence |
@@ -29,7 +34,7 @@ Known residual risks (current, not from 2026-02-06 snapshot):
 
 1. Hosted CI run links are not embedded in this repository snapshot.
 2. EKS remains offline-validated unless separately deployed in cloud.
-3. OpenClaw full-port implementation remains gated by open closure stories.
+3. OpenClaw latest-source promotion decisions must stay tied to upstream baseline commit `5d40d47501c19465761f503ebb12667b83eea84f` while preserving the separation model (`~/workspace/openclaw` upstream source vs `POC` security wrapper).
 
 ## Executive Summary
 

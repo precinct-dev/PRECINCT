@@ -1,7 +1,7 @@
 # Agentic AI Security Reference Architecture
 ## Executive Narrative for Decision Makers
 
-Date: 2026-02-11  
+Date: 2026-02-15  
 Audience: CIO, CISO, CTO, Risk, Legal, Privacy, Platform Leadership
 
 ---
@@ -55,6 +55,35 @@ Agentic systems create a risk profile that traditional API security does not ful
 - Weak cross-team evidence when auditors ask for proof
 
 The architecture solves these risks at the policy boundary, not in ad hoc framework-specific code.
+
+---
+
+## The Objections Leaders Ask First (and the Current Position)
+
+Executives are right to challenge agentic designs early. The core objections are known, and this architecture now has clear answers at decision-making level:
+
+1. **"Are we creating standing over-privilege for agents?"**  
+   The target model is bounded autonomy: low-risk actions flow quickly; high-risk actions require just-in-time approval and tighter accountability.
+
+2. **"Can agents understand limits before they fail?"**  
+   The direction is explicit: policy should not only block bad actions at runtime, it should also guide planning so teams avoid predictable violations and wasted cycles.
+
+3. **"Do new browser-native agent patterns break control models?"**  
+   Dynamic tool exposure is treated as a governance problem, not an exception. New capabilities still require trust boundaries, approval semantics, and provenance.
+
+4. **"What about agent-to-agent delegation?"**  
+   Delegation is treated as another governed interface. The same enterprise expectations apply: identity, authorization, monitoring, and auditability.
+
+5. **"Can operations inspect live posture at any point in time?"**  
+   Live visibility is a first-class requirement. Leadership should expect continuous operational signals plus point-in-time evidence that supports incident response and regulatory review.
+
+6. **"Are logs truly immutable or just hard to edit?"**  
+   The posture is explicit: tamper-evident everywhere, immutable retention in production-grade environments, and clearly documented boundaries in lower environments.
+
+7. **"Do we have meaningful human control and emergency stop authority?"**  
+   Yes, through bounded human-in-the-loop controls and emergency override patterns designed for accountability, not silent bypass.
+
+These objections are not edge cases. They are now central to the architecture's trust argument.
 
 ---
 
@@ -131,6 +160,19 @@ For RLM-style flows, it adds:
 - mandatory mediation of internal sub-calls
 - explicit mode-selection and trajectory telemetry
 
+### 6) It addresses governance confidence, not just security mechanics
+
+Security controls only matter if leadership can trust them under pressure.
+
+This architecture is intentionally designed for that trust test:
+
+- clear accountability for privileged actions,
+- auditable decision trails for legal and regulatory scrutiny,
+- bounded override patterns for true emergencies,
+- and explicit statements of where assurances are strongest vs. where compensating controls are used.
+
+That is how a program avoids "security theater" while still moving fast.
+
 ---
 
 ## What This Means for Overall Posture
@@ -170,6 +212,9 @@ The architecture now includes the core scaffolding needed for production defensi
 3. Recurring RuleOps evidence (approvals, canary outcomes, rollback readiness).
 4. Operating-effectiveness evidence cadence for SOC 2 Type 2 and ISO 27001.
 5. HIPAA legal-operational uplift (BAA, safeguard mappings, training/sanction workflows, breach process).
+6. Proactive policy guidance to agents so violations are reduced before runtime enforcement.
+7. Governance patterns for dynamic/discovered capabilities in browser-facing agent ecosystems.
+8. A unified cross-plane emergency stop posture with clear activation authority and recovery criteria.
 
 This is the right kind of gap profile: operational hardening, not missing architecture.
 

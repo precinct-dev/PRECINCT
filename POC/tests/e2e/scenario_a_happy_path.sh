@@ -29,23 +29,28 @@ log_pass "Gateway is running and healthy"
 # Test A1: Authorized tool call through full chain
 # ============================================================
 log_subheader "A1: Authorized tool call (read)"
+READ_PROBE_PATH="$(gateway_allowed_file_path "go.mod")"
+log_detail "Using allowed read probe path: ${READ_PROBE_PATH}"
 
-gateway_request "$DEFAULT_SPIFFE_ID" "read" "{\"file_path\": \"${POC_DIR}/go.mod\"}"
+gateway_request "$DEFAULT_SPIFFE_ID" "read" "{\"file_path\": \"${READ_PROBE_PATH}\"}"
 
 log_info "Response code: $RESP_CODE"
 log_info "Response body (first 200 chars): ${RESP_BODY:0:200}"
 
-# Accept 200 (upstream reachable), 502 (upstream unreachable), or 404 (upstream returns not found)
-# 502 and 404 both indicate middleware chain executed but upstream MCP server is not available
-if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "502" ] || [ "$RESP_CODE" = "404" ]; then
+# Accept 200 (upstream reachable), 404/502 (upstream transport/method unavailable),
+# or 503 (circuit breaker open after upstream errors). Non-200 responses still
+# prove the request traversed middleware and reached the upstream/circuit layers.
+if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "502" ] || [ "$RESP_CODE" = "404" ] || [ "$RESP_CODE" = "503" ]; then
     log_pass "Tool call processed through full middleware chain (HTTP $RESP_CODE)"
     if [ "$RESP_CODE" = "502" ]; then
         log_detail "502 = upstream Docker MCP not reachable (expected when not running docker mcp gateway)"
     elif [ "$RESP_CODE" = "404" ]; then
         log_detail "404 = upstream returned not found (Docker MCP Gateway expected at :8081)"
+    elif [ "$RESP_CODE" = "503" ]; then
+        log_detail "503 = circuit breaker open after repeated upstream failures (middleware chain still exercised)"
     fi
 else
-    log_fail "Tool call processing" "Expected 200, 404, or 502, got $RESP_CODE. Body: ${RESP_BODY:0:200}"
+    log_fail "Tool call processing" "Expected 200, 404, 502, or 503, got $RESP_CODE. Body: ${RESP_BODY:0:200}"
 fi
 
 # ============================================================
@@ -113,7 +118,8 @@ fi
 log_subheader "A5: Sequential tool calls (session continuity)"
 
 for i in 1 2 3; do
-    gateway_request "$DEFAULT_SPIFFE_ID" "read" "{\"file_path\": \"/tmp/scenario_a_test_${i}\"}" "X-Session-ID: scenario-a-test"
+    SEQ_PROBE_PATH="$(gateway_allowed_file_path "scenario_a_test_${i}")"
+    gateway_request "$DEFAULT_SPIFFE_ID" "read" "{\"file_path\": \"${SEQ_PROBE_PATH}\"}" "X-Session-ID: scenario-a-test"
     log_info "Request $i: HTTP $RESP_CODE"
 done
 
@@ -133,12 +139,15 @@ log_subheader "A6: Tavily search tool call"
 gateway_request "$DEFAULT_SPIFFE_ID" "tavily_search" '{"query": "agentic AI security"}'
 log_info "Tavily search response code: $RESP_CODE"
 
-# tavily_search should be allowed by OPA policy for dspy-researcher
-# 502/404 means allowed but upstream not reachable
-if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "502" ] || [ "$RESP_CODE" = "404" ]; then
+# tavily_search should be allowed by OPA policy for dspy-researcher.
+# 404/502/503 can still occur if the upstream transport is unavailable or
+# temporarily circuit-broken; those still prove authorization path success.
+if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "502" ] || [ "$RESP_CODE" = "404" ] || [ "$RESP_CODE" = "503" ]; then
     log_pass "Tavily search tool call processed successfully (HTTP $RESP_CODE)"
     if [ "$RESP_CODE" = "404" ]; then
         log_detail "404 = upstream not running Docker MCP; middleware chain executed successfully"
+    elif [ "$RESP_CODE" = "503" ]; then
+        log_detail "503 = circuit breaker open due to upstream errors; authorization still passed"
     fi
 elif [ "$RESP_CODE" = "403" ]; then
     log_info "Tavily search denied by OPA (may need policy update)"

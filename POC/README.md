@@ -157,6 +157,7 @@ scripts/                  Setup and operational scripts
 | [docs/operations/session-management.md](docs/operations/session-management.md) | Session and exfiltration detection |
 | [docs/compliance/gdpr-article-30-ropa.md](docs/compliance/gdpr-article-30-ropa.md) | GDPR Article 30 compliance |
 | [docs/security/baseline.md](docs/security/baseline.md) | Security baseline |
+| [docs/security/agentic-zero-trust-faq.md](docs/security/agentic-zero-trust-faq.md) | Living FAQ for zero-trust security review questions |
 | [docs/architecture/deployment-patterns.md](docs/architecture/deployment-patterns.md) | Deployment architecture |
 | [docs/architecture/cloud-adaptation-playbooks.md](docs/architecture/cloud-adaptation-playbooks.md) | Step-by-step adaptation playbooks for AWS/GCP/Azure |
 | [docs/architecture/cloudflare-workers-compensating-controls.md](docs/architecture/cloudflare-workers-compensating-controls.md) | Cloudflare Workers compensating controls and sign-off checklist |

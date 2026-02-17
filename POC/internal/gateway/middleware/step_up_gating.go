@@ -127,6 +127,7 @@ type GuardResult struct {
 }
 
 const openAICompatChatCompletionsPath = "/openai/v1/chat/completions"
+const openClawResponsesPath = "/v1/responses"
 
 // GroqGuardClient is the interface for calling the guard model
 type GroqGuardClient interface {
@@ -854,7 +855,10 @@ func requiresModelApproval(r *http.Request) bool {
 	if r == nil {
 		return false
 	}
-	if r.Method != http.MethodPost || r.URL == nil || r.URL.Path != openAICompatChatCompletionsPath {
+	if r.Method != http.MethodPost || r.URL == nil {
+		return false
+	}
+	if r.URL.Path != openAICompatChatCompletionsPath && r.URL.Path != openClawResponsesPath {
 		return false
 	}
 	riskMode := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Risk-Mode")))

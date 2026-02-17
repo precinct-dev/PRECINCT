@@ -1,13 +1,13 @@
 # Current State and Roadmap
 
-**As Of:** 2026-02-15
-**Last Updated:** 2026-02-15
+**As Of:** 2026-02-16
+**Last Updated:** 2026-02-16
 **Branch:** main (all epic branches merged and deleted)
 **Reference Architecture Version:** 2.4
 
 ---
 
-## 0. As-Built Snapshot (2026-02-15)
+## 0. As-Built Snapshot (2026-02-16)
 
 This document is a live status summary. Historical implementation detail is preserved
 below, but current planning truth is tracked by the active beads backlog and accepted
@@ -18,7 +18,7 @@ Current production-readiness closure status (`RFA-l6h6.7`) is tracked in:
 - `docs/status/production-readiness-state.json` (authoritative as-of snapshot)
 - `tests/e2e/validate_readiness_state_integrity.sh` (deterministic drift validator against live `bd`)
 
-Current story-state snapshot (as-of 2026-02-15):
+Current story-state snapshot (as-of 2026-02-16):
 
 | Story | Status | Date Reference | Notes |
 |-------|--------|----------------|-------|
@@ -29,21 +29,24 @@ Current story-state snapshot (as-of 2026-02-15):
 | `RFA-l6h6.7.5` | closed | closed 2026-02-14 | security evidence hardening accepted |
 | `RFA-l6h6.7.6` | closed | closed 2026-02-14 | docs/state integrity and release-gate validation accepted |
 | `RFA-l6h6.7.7` | closed | closed 2026-02-14 | final strict Compose + K8s campaign accepted |
-| `RFA-l6h6.6.10` | blocked | verified 2026-02-15 | OpenClaw full port blocked by `RFA-l6h6.7.7` |
+| `RFA-l6h6.6.10` | closed | closed 2026-02-16 | OpenClaw full-port execution accepted; framework-gap reassessment completed in `RFA-l6h6.6.17.1` |
 
 Known residual risks:
 
 1. EKS remains offline-validated; no live cloud deployment evidence is captured in this repository.
 2. Security-scan automation wiring is restored, but this repo snapshot does not include a hosted GitHub Actions run artifact link.
-3. Epic `RFA-l6h6.7` is accepted/closed; OpenClaw full-port execution (`RFA-l6h6.6.10`) remains blocked by broader backlog gating (`RFA-l6h6.6` parent-open state).
+3. Epic `RFA-l6h6.7` is accepted/closed; OpenClaw full-port execution (`RFA-l6h6.6.10`) and framework-gap closure reassessment (`RFA-l6h6.6.17.1`) are accepted/closed with post-gap rerun evidence (`run_all` fail=0).
+4. Latest-source OpenClaw validation cycle reran on 2026-02-16 (`RFA-t1hb`) with `run_all` -> `105 pass / 0 fail / 3 skip` and targeted OpenClaw campaign -> `4 pass / 0 fail` (`POC/tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log`, `POC/tests/e2e/artifacts/rfa-t1hb-openclaw-campaign-20260216T185105Z.log`).
+5. Latest-source OpenClaw runtime follow-up bug `RFA-655e` is accepted/closed; final latest-source decision package remains **GO** with no unresolved follow-up gaps (`POC/docs/security/openclaw-latest-source-final-decision-2026-02-16.md`).
 
 Claim reconciliation summary:
 
 | Prior claim | Corrected as-built statement | Evidence source |
 |------------|------------------------------|-----------------|
 | “The project is development-complete.” | Production-readiness closure epic `RFA-l6h6.7` is accepted and closed. | beads epic `RFA-l6h6.7` |
-| “No open functional work remains.” | OpenClaw implementation story remains blocked in the broader program backlog. | beads issue `RFA-l6h6.6.10` |
+| “No open functional work remains.” | OpenClaw latest-source secure-port closure chain is complete (`RFA-pnxr`, `RFA-ysa5`, `RFA-oo21`, `RFA-t1hb`, `RFA-6mp8`, `RFA-655e` all accepted/closed). | beads issues listed + decision artifact `POC/docs/security/openclaw-latest-source-final-decision-2026-02-16.md` |
 | CI/security automation gaps listed as unresolved in hardening context | CI push/PR triggers, `security-scan.yml`, and `.github/dependabot.yml` now exist. | `.github/workflows/ci.yaml`, `.github/workflows/security-scan.yml`, `.github/dependabot.yml`, `RFA-l6h6.6.7` evidence |
+| `RFA-l6h6.5.1` evidence paths are currently executable from tracked repo state | Historical `RFA-l6h6.5.1` evidence references files removed in commit `ab60428` ("Relocate use-case-specific files to gitignored local directory"); reconciliation is tracked in `RFA-l6h6.6.16`. | `git show --name-status ab60428`, beads issues `RFA-l6h6.5.1`, `RFA-l6h6.6.16` |
 
 ---
 
@@ -230,7 +233,7 @@ Implements SEP-1865 (Apps Extension) security:
 
 ## 4. Current Status
 
-All Phase 1 functional gaps have been addressed. Production-readiness closure epic `RFA-l6h6.7` is accepted/closed, while `RFA-l6h6.6.10` (OpenClaw full port) remains intentionally blocked by broader backlog state.
+All Phase 1 functional gaps have been addressed. Production-readiness closure epic `RFA-l6h6.7` is accepted/closed, OpenClaw full-port execution story `RFA-l6h6.6.10` is accepted/closed, and framework-gap closure reassessment (`RFA-l6h6.6.17.1`) is accepted/closed with a GO decision for advancing beyond the framework-closure gate.
 
 ### 4.1 Rego Cannot Do Cryptographic Signature Verification
 

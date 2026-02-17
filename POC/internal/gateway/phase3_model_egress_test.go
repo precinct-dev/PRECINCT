@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -156,6 +157,154 @@ func TestOpenAICompat_FallbackApplied(t *testing.T) {
 	}
 	if rec.Header().Get("X-UASGS-Provider-Used") != "azure_openai" {
 		t.Fatalf("expected fallback provider azure_openai, got %s", rec.Header().Get("X-UASGS-Provider-Used"))
+	}
+}
+
+func TestOpenAICompat_ModelPolicyIntentProjectionPrepended(t *testing.T) {
+	var capturedMessages []any
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var upstreamPayload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&upstreamPayload); err != nil {
+			t.Fatalf("decode upstream payload: %v", err)
+		}
+		capturedMessages, _ = upstreamPayload["messages"].([]any)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-proj","choices":[{"index":0,"message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer provider.Close()
+
+	gw, _ := newPhase3TestGateway(t)
+	gw.config.ModelPolicyIntentPrependEnabled = true
+	handler := gw.Handler()
+
+	rec := postOpenAICompat(t, handler, map[string]string{
+		"Authorization":            "Bearer test-token",
+		"X-Model-Provider":         "groq",
+		"X-Provider-Endpoint-Groq": provider.URL,
+		"X-Residency-Intent":       "us",
+		"X-Budget-Profile":         "standard",
+		"X-Budget-Units":           "1",
+	}, map[string]any{
+		"model": "llama-3.3-70b-versatile",
+		"messages": []map[string]any{
+			{"role": "user", "content": "Hello model"},
+		},
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("X-UASGS-Policy-Intent-Projection") != "applied" {
+		t.Fatalf("expected projection header applied, got %q", rec.Header().Get("X-UASGS-Policy-Intent-Projection"))
+	}
+	if len(capturedMessages) < 2 {
+		t.Fatalf("expected prepended + original messages, got %d", len(capturedMessages))
+	}
+
+	first, ok := capturedMessages[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first message object, got %T", capturedMessages[0])
+	}
+	if role := stringValue(first["role"]); role != "system" {
+		t.Fatalf("expected first message role=system, got %q", role)
+	}
+	content := stringValue(first["content"])
+	if !strings.Contains(content, "<policy_intent version=\"1\">") {
+		t.Fatalf("expected XML policy intent projection, got %q", content)
+	}
+	if strings.Contains(strings.ToLower(content), "package ") || strings.Contains(strings.ToLower(content), "rego") {
+		t.Fatalf("projection should not disclose policy code, got %q", content)
+	}
+
+	second, ok := capturedMessages[1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected second message object, got %T", capturedMessages[1])
+	}
+	if text := stringValue(second["content"]); text != "Hello model" {
+		t.Fatalf("expected original user message preserved, got %q", text)
+	}
+}
+
+func TestOpenAICompat_ModelPlaneDenied_PolicyIntentAdvisoryOnly(t *testing.T) {
+	upstreamCalled := false
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer provider.Close()
+
+	gw, _ := newPhase3TestGateway(t)
+	gw.config.ModelPolicyIntentPrependEnabled = true
+	handler := gw.Handler()
+
+	rec := postOpenAICompat(t, handler, map[string]string{
+		"X-Model-Provider":         "unknown-provider",
+		"X-Provider-Endpoint-Groq": provider.URL,
+	}, map[string]any{
+		"model": "whatever",
+		"messages": []map[string]any{
+			{"role": "user", "content": "test"},
+		},
+	})
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if upstreamCalled {
+		t.Fatal("provider should not be called when model plane denies request")
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	details, _ := body["details"].(map[string]any)
+	if got, _ := details["policy_intent_projection_enabled"].(bool); !got {
+		t.Fatalf("expected projection_enabled=true in deny details, got %v", details["policy_intent_projection_enabled"])
+	}
+	if got, _ := details["policy_intent_projection_applied"].(bool); got {
+		t.Fatalf("expected projection_applied=false on deny path, got %v", got)
+	}
+}
+
+func TestOpenAICompat_PolicyIntentProjection_DeterministicAndRedacted(t *testing.T) {
+	attrs := map[string]any{
+		"provider":           "groq",
+		"model":              "llama-3.3-70b-versatile",
+		"residency_intent":   "us",
+		"risk_mode":          "high",
+		"compliance_profile": "hipaa",
+		"mediation_mode":     "mediated",
+		"prompt_has_phi":     true,
+		"prompt_has_pii":     true,
+		"step_up_approved":   false,
+		"prompt":             `package mcp_policy default allow = true`,
+	}
+	envelope := RunEnvelope{ActorSPIFFEID: "spiffe://poc.local/agents/test/prod"}
+
+	first := buildModelPolicyIntentProjection(attrs, envelope)
+	second := buildModelPolicyIntentProjection(attrs, envelope)
+	if first != second {
+		t.Fatalf("expected deterministic projection output, got mismatch\n1=%s\n2=%s", first, second)
+	}
+	if !strings.Contains(first, "<policy_intent version=\"1\">") {
+		t.Fatalf("expected XML envelope, got %q", first)
+	}
+	if !strings.Contains(first, "<item>phi_disclosure</item>") || !strings.Contains(first, "<item>pii_disclosure</item>") {
+		t.Fatalf("expected PHI/PII prohibited classes in projection, got %q", first)
+	}
+
+	lower := strings.ToLower(first)
+	disallowedFragments := []string{
+		"package ",
+		"default allow",
+		"import rego",
+		"deny[msg]",
+	}
+	for _, frag := range disallowedFragments {
+		if strings.Contains(lower, frag) {
+			t.Fatalf("projection must not disclose policy code fragment %q: %q", frag, first)
+		}
 	}
 }
 

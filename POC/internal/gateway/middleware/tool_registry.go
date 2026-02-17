@@ -756,8 +756,30 @@ func ComputeHash(description string, inputSchema map[string]interface{}) string 
 // RFA-6fse.4: Enables gateway-owned rug-pull protection without client tool_hash.
 type ObservedToolHashRefresher func(ctx context.Context, server string) (map[string]string, error)
 
+type toolRegistryVerifyOptions struct {
+	failClosedWhenObservedUnavailable bool
+}
+
+// ToolRegistryVerifyOption customizes ToolRegistryVerify behavior.
+type ToolRegistryVerifyOption func(*toolRegistryVerifyOptions)
+
+// WithObservedHashFailClosed toggles fail-closed behavior when gateway-owned
+// observed hash data is unavailable for tools/call verification.
+func WithObservedHashFailClosed(enabled bool) ToolRegistryVerifyOption {
+	return func(cfg *toolRegistryVerifyOptions) {
+		cfg.failClosedWhenObservedUnavailable = enabled
+	}
+}
+
 // ToolRegistryVerify middleware verifies tool authorization with hash checking and poisoning detection (RFA-qq0.19)
-func ToolRegistryVerify(next http.Handler, registry *ToolRegistry, observed *ObservedToolHashCache, refresh ObservedToolHashRefresher) http.Handler {
+func ToolRegistryVerify(next http.Handler, registry *ToolRegistry, observed *ObservedToolHashCache, refresh ObservedToolHashRefresher, opts ...ToolRegistryVerifyOption) http.Handler {
+	verifyOpts := toolRegistryVerifyOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&verifyOpts)
+		}
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// RFA-m6j.2: Create OTel span for step 5
 		ctx, span := tracer.Start(r.Context(), "gateway.tool_registry_verify",
@@ -889,49 +911,83 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry, observed *Obs
 			// Gateway-owned rug-pull verification:
 			// Compare observed upstream tools/list hash to the registry baseline hash.
 			observedHash, ok, stale := observed.Get(server, toolName)
+			refreshErr := error(nil)
 			if !ok || stale {
 				if refresh != nil {
 					if hashes, err := refresh(ctx, server); err == nil {
 						observed.SetMany(server, hashes)
+					} else {
+						refreshErr = err
 					}
 				}
 				observedHash, ok, _ = observed.Get(server, toolName)
 			}
 
 			if !ok || observedHash == "" {
-				// Proxy-mode compatibility: if no refresher is available, we cannot
-				// perform gateway-owned verification. Fail open (but do NOT claim
-				// hash_verified=true). tools/list response stripping (when implemented)
-				// can still reduce discovery of mismatched tools.
-				if refresh == nil {
+				// Legacy direct-method compatibility:
+				// Strict fail-closed observed-hash enforcement is scoped to tools/call.
+				// Some upstream servers may support direct tool invocation without
+				// advertising every direct method in tools/list, which would otherwise
+				// produce false-deny behavior for valid allow-path calls.
+				if !parsed.IsToolsCall() {
 					span.SetAttributes(
 						attribute.Bool("hash_verified", false),
 						attribute.String("mcp.result", "allowed"),
-						attribute.String("mcp.reason", "observed hash unavailable (no refresher)"),
+						attribute.String("mcp.reason", "observed hash unavailable for legacy direct method"),
 					)
 					toolHashVerified = false
 					ctx = WithToolHashVerified(ctx, toolHashVerified)
 					next.ServeHTTP(w, r.WithContext(ctx))
 					return
 				}
+
+				// Compatibility mode: when no refresher is available and strict
+				// fail-closed is not enabled, preserve proxy-mode behavior.
+				if refresh == nil && !verifyOpts.failClosedWhenObservedUnavailable {
+					span.SetAttributes(
+						attribute.Bool("hash_verified", false),
+						attribute.String("mcp.result", "allowed"),
+						attribute.String("mcp.reason", "observed hash unavailable (compatibility mode)"),
+					)
+					toolHashVerified = false
+					ctx = WithToolHashVerified(ctx, toolHashVerified)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+
+				reasonCode := "observed_hash_missing"
+				remediation := "Ensure the upstream MCP server supports tools/list and the gateway can reach it to refresh tool metadata."
+				if refresh == nil {
+					reasonCode = "observed_hash_unavailable"
+					remediation = "Enable MCP transport tools/list refresh for this path, or seed observed tool hashes before tools/call."
+				} else if refreshErr != nil {
+					reasonCode = "observed_hash_refresh_failed"
+					remediation = "Fix upstream tools/list refresh failures and retry. Check MCP transport health and upstream availability."
+				}
+				details := map[string]any{
+					"tool":          toolName,
+					"server":        server,
+					"expected_hash": expectedHash,
+					"observed_hash": "",
+					"reason":        reasonCode,
+				}
+				if refreshErr != nil {
+					details["refresh_error"] = refreshErr.Error()
+				}
+
 				span.SetAttributes(
 					attribute.Bool("hash_verified", false),
 					attribute.String("mcp.result", "denied"),
-					attribute.String("mcp.reason", "observed_hash_missing"),
+					attribute.String("mcp.reason", reasonCode),
 				)
 				WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
 					Code:           ErrRegistryHashMismatch,
 					Message:        "Tool metadata hash not observed; cannot verify rug-pull protection",
+					ReasonCode:     reasonCode,
 					Middleware:     "tool_registry_verify",
 					MiddlewareStep: 5,
-					Details: map[string]any{
-						"tool":          toolName,
-						"server":        server,
-						"expected_hash": expectedHash,
-						"observed_hash": "",
-						"reason":        "observed_hash_missing",
-					},
-					Remediation: "Ensure the upstream MCP server supports tools/list and the gateway can reach it to refresh tool metadata.",
+					Details:        details,
+					Remediation:    remediation,
 				})
 				return
 			}

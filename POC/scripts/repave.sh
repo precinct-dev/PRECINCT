@@ -104,6 +104,34 @@ ensure_running() {
   echo "[repave] service ${svc} not running; starting it..."
   if [[ "${svc}" == "phoenix" || "${svc}" == "otel-collector" ]]; then
     "${compose_phoenix[@]}" up -d --wait --wait-timeout 180 "${svc}"
+  elif [[ "${svc}" == "mcp-security-gateway" ]]; then
+    # Gateway repave must not block on one-shot bootstrap services that may remain
+    # in long-running/retry states after prior incidents.
+    "${compose_main[@]}" up -d --no-deps --wait --wait-timeout 180 "${svc}" || true
+
+    cid="$(container_id_for "${svc}")"
+    if [[ -z "${cid}" ]]; then
+      local created_cid created_state
+      created_cid="$("${compose_main[@]}" ps -aq "${svc}" 2>/dev/null || true)"
+      if [[ -n "${created_cid}" ]]; then
+        created_state="$(docker inspect --format '{{.State.Status}}' "${created_cid}" 2>/dev/null || true)"
+        if [[ "${created_state}" == "created" ]]; then
+          echo "[repave] gateway remained in created state after compose up; forcing docker start"
+          docker start "${created_cid}" >/dev/null
+        fi
+      fi
+    fi
+
+    local deadline
+    deadline=$((SECONDS + 90))
+    while (( SECONDS < deadline )); do
+      if verify_gateway_health; then
+        return 0
+      fi
+      sleep 2
+    done
+    echo "ERROR: gateway did not become healthy while ensuring running state" >&2
+    return 1
   else
     "${compose_main[@]}" up -d --wait --wait-timeout 180 "${svc}"
   fi

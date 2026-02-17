@@ -17,7 +17,7 @@ Decision basis:
   - direct egress bypass attempts
   - unsigned/bad-signature artifact acceptance in strict paths
 - Readiness-state drift validator and security evidence gate both passed.
-- `RFA-l6h6.6.10` remains dependency-blocked by `RFA-l6h6.7.7` until acceptance.
+- Historical at run time: `RFA-l6h6.6.10` was dependency-blocked by `RFA-l6h6.7.7` until acceptance (now accepted/closed and reassessed under `RFA-l6h6.6.17.1`).
 
 ## Residual Risks
 

@@ -6,6 +6,7 @@ import (
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -37,6 +38,15 @@ type RateLimiter struct {
 	// token-consumption primitive (e.g., in-memory store). KeyDB uses an atomic
 	// Lua script, so this is only used as a fallback.
 	locks sync.Map // map[string]*sync.Mutex keyed by SPIFFE ID
+}
+
+func rateLimitBucketKey(spiffeID, requestPath string) string {
+	// Keep approval admin lifecycle calls in a dedicated bucket so
+	// control-plane operations are not starved by data-plane traffic.
+	if requestPath == "/admin/approvals" || strings.HasPrefix(requestPath, "/admin/approvals/") {
+		return "admin-approvals:" + spiffeID
+	}
+	return spiffeID
 }
 
 // NewRateLimiter creates a new rate limiter with the given RPM, burst, and store.
@@ -422,8 +432,10 @@ func RateLimitMiddleware(next http.Handler, limiter *RateLimiter) http.Handler {
 			return
 		}
 
+		bucketKey := rateLimitBucketKey(spiffeID, r.URL.Path)
+
 		// Check rate limit
-		allowed, remaining, resetTime := limiter.Allow(spiffeID)
+		allowed, remaining, resetTime := limiter.Allow(bucketKey)
 
 		// Calculate retry_after_seconds for rate limit response
 		retryAfter := int(time.Until(resetTime).Seconds())
@@ -436,6 +448,7 @@ func RateLimitMiddleware(next http.Handler, limiter *RateLimiter) http.Handler {
 			attribute.Int("remaining", remaining),
 			attribute.Int("limit", limiter.rpm),
 			attribute.Int("burst", limiter.burst),
+			attribute.String("bucket_key", bucketKey),
 		)
 
 		// Add rate limit headers to response (in ALL cases, per AC #6)

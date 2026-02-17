@@ -301,7 +301,7 @@ before upstream proxy forwarding:
 | Endpoint family | Runtime entry | Scope |
 |-----------------|---------------|-------|
 | `/v1/ingress/submit`, `/v1/ingress/admit`, `/v1/context/admit`, `/v1/model/call`, `/v1/tool/execute`, `/v1/loop/check` | Phase 3 control-plane dispatcher | Ingress, context, model, tool, and loop policy decisions |
-| `/openai/v1/chat/completions` | OpenAI-compatible model egress entry | Mediated model egress with provider trust/fallback controls |
+| `/openai/v1/chat/completions` | OpenAI-compatible model egress entry | Mediated model egress with provider trust/fallback controls and optional policy-intent prepend (`MODEL_POLICY_INTENT_PREPEND_ENABLED`) |
 | `/v1/connectors/*` | Connector conformance authority entry | Register/validate/approve/activate/revoke/status/report lifecycle |
 | `/admin/dlp/rulesets*` | RuleOps admin entry | Governed DLP ruleset lifecycle |
 | `/admin/approvals*` | Approval capability admin entry | Human-in-the-loop step-up lifecycle |
@@ -464,7 +464,7 @@ Complete catalog of all 25 error codes defined in `internal/gateway/middleware/e
 | Code | Step | HTTP | Middleware | Description | Remediation |
 |------|------|------|------------|-------------|-------------|
 | `request_too_large` | 1 | 413 | `request_size_limit` | Request payload exceeds `MAX_REQUEST_SIZE_BYTES` (default: 10 MB) | Reduce payload size or increase `MAX_REQUEST_SIZE_BYTES` |
-| `auth_missing_identity` | 3 | 401 | `spiffe_auth` | `X-SPIFFE-ID` header missing from request | Add the `X-SPIFFE-ID` header with a valid SPIFFE identity |
+| `auth_missing_identity` | 3 | 401 | `spiffe_auth` | Caller identity missing for active SPIFFE mode (`X-SPIFFE-ID` in `dev`, mTLS cert URI SAN in `prod`) | In `dev`, send `X-SPIFFE-ID`; in `prod`, present a valid client certificate with `spiffe://` URI SAN |
 | `auth_invalid_identity` | 3 | 401 | `spiffe_auth` | SPIFFE ID is not within the configured trust domain | Use a SPIFFE ID under the `SPIFFE_TRUST_DOMAIN` (default: `poc.local`) |
 | `registry_hash_mismatch` | 5 | 403 | `tool_registry_verify` | Tool definition hash does not match the registered hash (possible tool poisoning) | Re-register the tool with the correct hash, or investigate potential tampering |
 | `registry_tool_unknown` | 5 | 403 | `tool_registry_verify` | The requested tool is not registered in the tool registry | Register the tool in `config/tool-registry.yaml` |
@@ -509,7 +509,7 @@ Every request to `POST /` passes through these middleware layers in order:
 |------|-----------|----------|---------|
 | 1 | Request Size Limit | Rejects payloads exceeding `MAX_REQUEST_SIZE_BYTES` (default: 10 MB) | Yes (413) |
 | 2 | Body Capture | Captures request body into context for downstream middleware | No |
-| 3 | SPIFFE Auth | Validates caller identity (`X-SPIFFE-ID` header or mTLS certificate) | Yes (401) |
+| 3 | SPIFFE Auth | Validates caller identity (`X-SPIFFE-ID` in `dev`; mTLS cert URI SAN in `prod`; header ignored in `prod`) | Yes (401) |
 | 4 | Audit Log | Creates audit event with decision ID; logs result after request completes | No |
 | 5 | Tool Registry Verify | Verifies tool exists in registry and hash matches (anti-poisoning) | Yes (403) |
 | 6 | OPA Policy | Evaluates authorization policy (agent + tool + path grants) | Yes (403) |
@@ -831,7 +831,7 @@ Key gateway configuration parameters that affect API behavior:
 The gateway enforces the same 13-layer inbound security chain in both transport modes. The key difference is how the gateway communicates with the upstream MCP server:
 
 - `MCP_TRANSPORT_MODE=mcp`: the gateway acts as an MCP JSON-RPC client to the upstream MCP server. This enables internal control-plane calls (for example: `tools/list` refreshes used by security enforcement).
-- `MCP_TRANSPORT_MODE=proxy`: the gateway reverse-proxies requests to the upstream. Security enforcement remains active, but upstream-introspection behaviors may be best-effort.
+- `MCP_TRANSPORT_MODE=proxy`: the gateway reverse-proxies requests to the upstream. In `dev`, upstream-introspection can run in compatibility mode (request may proceed with `hash_verified=false` when no refresher exists). In strict production-intent profiles, observed-hash verification is fail-closed and missing/failed refresh denies `tools/call`.
 
 Security controls to expect in both modes:
 - UI controls are enforced (capability mediation / blocking).

@@ -3,6 +3,7 @@ package middleware
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,8 +12,9 @@ import (
 
 // mockHandleStore is a test implementation of the HandleStore interface
 type mockHandleStore struct {
-	entries map[string][]byte
-	lastRef string
+	entries  map[string][]byte
+	lastRef  string
+	storeErr error
 }
 
 func newMockHandleStore() *mockHandleStore {
@@ -22,6 +24,9 @@ func newMockHandleStore() *mockHandleStore {
 }
 
 func (m *mockHandleStore) Store(rawData []byte, spiffeID, toolName string) (string, error) {
+	if m.storeErr != nil {
+		return "", m.storeErr
+	}
 	ref := "mock_ref_" + toolName
 	m.entries[ref] = rawData
 	m.lastRef = ref
@@ -254,6 +259,107 @@ func TestResponseFirewallSensitiveUpstreamError(t *testing.T) {
 	// No handle should be created for error responses
 	if len(store.entries) != 0 {
 		t.Errorf("Expected no handles for error response, got %d", len(store.entries))
+	}
+}
+
+func TestResponseFirewallSensitiveToolStoreFailureFailsClosed(t *testing.T) {
+	registry := setupTestRegistry(t, "high")
+	store := &mockHandleStore{
+		entries:  make(map[string][]byte),
+		storeErr: errors.New("handle store unavailable"),
+	}
+
+	sensitiveData := `{"transactions": [{"id": 1, "amount": 50000, "ssn": "123-45-6789"}]}`
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(sensitiveData))
+	})
+
+	handler := ResponseFirewall(upstream, registry, store, 300)
+	body := []byte(`{"jsonrpc":"2.0","method":"test_tool","params":{},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/agents/test/dev")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Expected 503, got %d", rec.Code)
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte("123-45-6789")) {
+		t.Fatal("Response should not contain raw sensitive data when handle store fails")
+	}
+
+	var ge GatewayError
+	if err := json.Unmarshal(rec.Body.Bytes(), &ge); err != nil {
+		t.Fatalf("failed to decode gateway error: %v body=%q", err, rec.Body.String())
+	}
+	if ge.Code != ErrResponseHandleStoreUnavailable {
+		t.Fatalf("expected code %q, got %q", ErrResponseHandleStoreUnavailable, ge.Code)
+	}
+	if ge.ReasonCode != "handle_store_unavailable" {
+		t.Fatalf("expected reason_code handle_store_unavailable, got %q", ge.ReasonCode)
+	}
+	if ge.Middleware != "response_firewall" {
+		t.Fatalf("expected middleware response_firewall, got %q", ge.Middleware)
+	}
+	if ge.MiddlewareStep != 14 {
+		t.Fatalf("expected middleware_step 14, got %d", ge.MiddlewareStep)
+	}
+}
+
+func TestResponseFirewallSensitiveToolMarshalFailureFailsClosed(t *testing.T) {
+	registry := setupTestRegistry(t, "high")
+	store := newMockHandleStore()
+
+	orig := marshalHandleizedResponse
+	marshalHandleizedResponse = func(v any) ([]byte, error) {
+		return nil, errors.New("marshal exploded")
+	}
+	t.Cleanup(func() { marshalHandleizedResponse = orig })
+
+	sensitiveData := `{"transactions": [{"id": 1, "amount": 50000, "ssn": "123-45-6789"}]}`
+	upstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(sensitiveData))
+	})
+
+	handler := ResponseFirewall(upstream, registry, store, 300)
+	body := []byte(`{"jsonrpc":"2.0","method":"test_tool","params":{},"id":1}`)
+	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+	ctx := WithRequestBody(req.Context(), body)
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/agents/test/dev")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("Expected 500, got %d", rec.Code)
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte("123-45-6789")) {
+		t.Fatal("Response should not contain raw sensitive data when marshal fails")
+	}
+
+	var ge GatewayError
+	if err := json.Unmarshal(rec.Body.Bytes(), &ge); err != nil {
+		t.Fatalf("failed to decode gateway error: %v body=%q", err, rec.Body.String())
+	}
+	if ge.Code != ErrResponseHandleizationFailed {
+		t.Fatalf("expected code %q, got %q", ErrResponseHandleizationFailed, ge.Code)
+	}
+	if ge.ReasonCode != "handleization_failed" {
+		t.Fatalf("expected reason_code handleization_failed, got %q", ge.ReasonCode)
+	}
+	if ge.Middleware != "response_firewall" {
+		t.Fatalf("expected middleware response_firewall, got %q", ge.Middleware)
+	}
+	if ge.MiddlewareStep != 14 {
+		t.Fatalf("expected middleware_step 14, got %d", ge.MiddlewareStep)
 	}
 }
 

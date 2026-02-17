@@ -40,6 +40,12 @@ main() {
       || fail "tool egress missing allowlisted private range ${cidr}"
   done
 
+  info "Checking gateway egress does not include broad external HTTPS allow..."
+  if awk 'BEGIN{RS="---"} /kind:[[:space:]]*NetworkPolicy/ && /name:[[:space:]]*gateway-allow-egress/ {print}' "$gateway_policy" | \
+      grep -Eq '(^|[[:space:]])port:[[:space:]]*443([[:space:]]|$)'; then
+    fail "gateway egress still contains broad port 443 allow"
+  fi
+
   info "NetworkPolicy manifest wiring checks passed."
 }
 

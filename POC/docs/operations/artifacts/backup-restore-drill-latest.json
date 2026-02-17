@@ -1,7 +1,7 @@
 {
   "schema_version": "ops_backup_restore_drill.v1",
-  "generated_at": "2026-02-15T05:00:10Z",
-  "date": "2026-02-15",
+  "generated_at": "2026-02-16T03:52:55Z",
+  "date": "2026-02-16",
   "status": "pass",
   "commands": [
     "make phoenix-up",
@@ -14,26 +14,26 @@
     {
       "name": "keydb_backup_restore",
       "status": "pass",
-      "key": "ops:backup-restore:20260215T050010Z",
-      "expected_value": "drill-value-20260215T050010Z"
+      "key": "ops:backup-restore:20260216T035255Z",
+      "expected_value": "drill-value-20260216T035255Z"
     },
     {
       "name": "spike_nexus_backup_restore",
       "status": "pass",
-      "marker_file": "drill-marker-20260215T050010Z.txt"
+      "marker_file": "drill-marker-20260216T035255Z.txt"
     },
     {
       "name": "audit_log_backup_restore",
       "status": "pass",
-      "original_lines": 11,
-      "restored_lines": 11,
-      "original_sha256": "f0c3ab3bc8556999fdc6f33d55d0fe800579816b7c91ebd4db7ec9d91a0b28df",
-      "restored_sha256": "f0c3ab3bc8556999fdc6f33d55d0fe800579816b7c91ebd4db7ec9d91a0b28df"
+      "original_lines": 247,
+      "restored_lines": 247,
+      "original_sha256": "1db60729314c5d3710ccea16eab83be874d44cdf8071b0de70a06d1ad48e02ec",
+      "restored_sha256": "1db60729314c5d3710ccea16eab83be874d44cdf8071b0de70a06d1ad48e02ec"
     }
   ],
   "artifacts": [
-    "docs/operations/artifacts/backups/20260215T050010Z/keydb-dump.rdb",
-    "docs/operations/artifacts/backups/20260215T050010Z/spike-nexus-data",
-    "docs/operations/artifacts/backups/20260215T050010Z/audit.jsonl"
+    "docs/operations/artifacts/backups/20260216T035255Z/keydb-dump.rdb",
+    "docs/operations/artifacts/backups/20260216T035255Z/spike-nexus-data",
+    "docs/operations/artifacts/backups/20260216T035255Z/audit.jsonl"
   ]
 }
