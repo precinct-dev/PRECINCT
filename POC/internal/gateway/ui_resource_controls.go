@@ -17,7 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 )
@@ -209,8 +209,7 @@ func (rc *UIResourceControls) ApplyResourceControls(
 		// Check cache for hash mismatch (rug-pull detection)
 		cached := rc.cache.Get(server, resourceURI)
 		if cached != nil && cached.ContentHash != hash {
-			log.Printf("[CRITICAL] UI resource hash mismatch: server=%s uri=%s expected=%s got=%s",
-				server, resourceURI, cached.ContentHash, hash)
+			slog.Error("UI resource hash mismatch", "server", server, "uri", resourceURI, "expected", cached.ContentHash, "got", hash)
 			return UIResourceControlResult{
 				Allowed:  false,
 				Reason:   "hash_mismatch",

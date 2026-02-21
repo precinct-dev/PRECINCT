@@ -16,6 +16,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"go.opentelemetry.io/otel/attribute"
@@ -165,7 +166,7 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 
 		case ClassificationInternal:
 			// Pass through, audit logging happens in the audit middleware
-			fmt.Printf("[AUDIT] Internal tool response: tool=%s\n", toolName)
+			slog.Info("internal tool response", "tool", toolName)
 			span.SetAttributes(
 				attribute.Int("handles_created", 0),
 				attribute.Bool("data_handleized", false),
@@ -197,7 +198,7 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 			// Store raw data in handle store
 			ref, err := store.Store(capture.body.Bytes(), spiffeID, toolName)
 			if err != nil {
-				fmt.Printf("[ERROR] Failed to store handle: %v\n", err)
+				slog.Error("failed to store handle", "error", err)
 				span.SetAttributes(
 					attribute.Int("handles_created", 0),
 					attribute.Bool("data_handleized", false),
@@ -225,7 +226,7 @@ func ResponseFirewall(next http.Handler, registry *ToolRegistry, store HandleSto
 
 			respJSON, err := marshalHandleizedResponse(handleResp)
 			if err != nil {
-				fmt.Printf("[ERROR] Failed to marshal handle response: %v\n", err)
+				slog.Error("failed to marshal handle response", "error", err)
 				span.SetAttributes(
 					attribute.Int("handles_created", 0),
 					attribute.Bool("data_handleized", false),

@@ -5,7 +5,7 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sync"
@@ -131,13 +131,13 @@ func (e *OPAEngine) loadPolicies() error {
 			dataPath := filepath.Join(e.policyDir, file.Name())
 			content, err := os.ReadFile(dataPath)
 			if err != nil {
-				log.Printf("Warning: failed to read data file %s: %v", file.Name(), err)
+				slog.Warn("failed to read data file", "file", file.Name(), "error", err)
 				continue
 			}
 
 			var data map[string]interface{}
 			if err := yaml.Unmarshal(content, &data); err != nil {
-				log.Printf("Warning: failed to parse YAML data file %s: %v", file.Name(), err)
+				slog.Warn("failed to parse YAML data file", "file", file.Name(), "error", err)
 				continue
 			}
 
@@ -146,7 +146,7 @@ func (e *OPAEngine) loadPolicies() error {
 			for key, value := range data {
 				path := storage.MustParsePath("/" + key)
 				if err := storage.WriteOne(ctx, dataStore, storage.AddOp, path, value); err != nil {
-					log.Printf("Warning: failed to write data to store for key %s: %v", key, err)
+					slog.Warn("failed to write data to store", "key", key, "error", err)
 				}
 			}
 		}
@@ -194,7 +194,7 @@ func (e *OPAEngine) loadPolicies() error {
 		// Context policy is optional -- log warning but do not fail startup.
 		// Fail-closed: if context policy cannot compile, EvaluateContextPolicy
 		// will deny all context injection requests via the nil-query check.
-		log.Printf("Warning: failed to compile context policy: %v (context injection will be denied)", err)
+		slog.Warn("failed to compile context policy, context injection will be denied", "error", err)
 	} else {
 		contextQueryPtr = &contextPrepared
 	}
@@ -220,7 +220,7 @@ func (e *OPAEngine) loadPolicies() error {
 		r := rego.New(ruleOpts...)
 		p, compileErr := r.PrepareForEval(ctx)
 		if compileErr != nil {
-			log.Printf("Warning: failed to compile UI policy rule %s: %v (UI policy evaluation will use defaults)", rule.name, compileErr)
+			slog.Warn("failed to compile UI policy rule, using defaults", "rule", rule.name, "error", compileErr)
 			uiCompileOK = false
 			break
 		}
@@ -252,7 +252,7 @@ func (e *OPAEngine) loadPolicies() error {
 	}
 	e.mu.Unlock()
 
-	log.Printf("OPA policies loaded successfully from %s", e.policyDir)
+	slog.Info("OPA policies loaded successfully", "policy_dir", e.policyDir)
 	return nil
 }
 
@@ -286,7 +286,7 @@ func (e *OPAEngine) Evaluate(input OPAInput) (bool, string, error) {
 	results, err := query.Eval(ctx, rego.EvalInput(input))
 	if err != nil {
 		// Fail closed on evaluation error
-		log.Printf("OPA evaluation error: %v", err)
+		slog.Error("OPA evaluation error", "error", err)
 		return false, "opa_evaluation_error", nil
 	}
 
@@ -337,7 +337,7 @@ func (e *OPAEngine) EvaluateContextPolicy(input ContextPolicyInput) (bool, strin
 	results, err := query.Eval(ctx, rego.EvalInput(input))
 	if err != nil {
 		// Fail closed on evaluation error
-		log.Printf("OPA context policy evaluation error: %v", err)
+		slog.Error("OPA context policy evaluation error", "error", err)
 		return false, "context_policy_evaluation_error", nil
 	}
 
@@ -397,22 +397,22 @@ func (e *OPAEngine) EvaluateUIPolicy(input UIPolicyInput) (UIPolicyResult, error
 	var err error
 	result.DenyUIResource, err = evalBoolRule(ctx, &queries.denyUIResource, evalInput)
 	if err != nil {
-		log.Printf("OPA UI policy evaluation error (deny_ui_resource): %v", err)
+		slog.Error("OPA UI policy evaluation error", "rule", "deny_ui_resource", "error", err)
 	}
 
 	result.DenyAppToolCall, err = evalBoolRule(ctx, &queries.denyAppToolCall, evalInput)
 	if err != nil {
-		log.Printf("OPA UI policy evaluation error (deny_app_tool_call): %v", err)
+		slog.Error("OPA UI policy evaluation error", "rule", "deny_app_tool_call", "error", err)
 	}
 
 	result.RequiresStepUp, err = evalBoolRule(ctx, &queries.requiresStepUp, evalInput)
 	if err != nil {
-		log.Printf("OPA UI policy evaluation error (requires_step_up): %v", err)
+		slog.Error("OPA UI policy evaluation error", "rule", "requires_step_up", "error", err)
 	}
 
 	result.ExcessiveAppCalls, err = evalBoolRule(ctx, &queries.excessiveAppCalls, evalInput)
 	if err != nil {
-		log.Printf("OPA UI policy evaluation error (excessive_app_calls): %v", err)
+		slog.Error("OPA UI policy evaluation error", "rule", "excessive_app_calls", "error", err)
 	}
 
 	return result, nil
@@ -475,11 +475,11 @@ func (e *OPAEngine) watchLoop() {
 			if event.Op&(fsnotify.Write|fsnotify.Create) != 0 {
 				ext := filepath.Ext(event.Name)
 				if ext == ".rego" || ext == ".yaml" || ext == ".yml" {
-					log.Printf("Policy file changed: %s, reloading...", event.Name)
+					slog.Info("policy file changed, reloading", "file", event.Name)
 					if _, err := e.Reload(); err != nil {
-						log.Printf("Warning: failed to reload policies: %v (keeping previous policy)", err)
+						slog.Warn("failed to reload policies, keeping previous policy", "error", err)
 					} else {
-						log.Printf("Policies reloaded successfully")
+						slog.Info("policies reloaded successfully")
 					}
 				}
 			}
@@ -488,7 +488,7 @@ func (e *OPAEngine) watchLoop() {
 			if !ok {
 				return
 			}
-			log.Printf("Policy watcher error: %v", err)
+			slog.Error("policy watcher error", "error", err)
 
 		case <-e.stopChan:
 			return

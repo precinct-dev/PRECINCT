@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -161,19 +161,18 @@ func New(cfg *Config) (*Gateway, error) {
 		dal, err := middleware.LoadDestinationAllowlist(cfg.DestinationsConfigPath)
 		if err != nil {
 			// Fall back to defaults if config file not found
-			log.Printf("WARNING: failed to load destination allowlist from %s: %v (using built-in defaults)", cfg.DestinationsConfigPath, err)
+			slog.Warn("failed to load destination allowlist, using built-in defaults", "path", cfg.DestinationsConfigPath, "error", err)
 			destinationAllowlist = middleware.DefaultDestinationAllowlist()
 		} else {
-			log.Printf(
-				"Destination allowlist loaded from %s (entries=%d, api.groq.com_allowed=%t)",
-				cfg.DestinationsConfigPath,
-				len(dal.Allowed),
-				dal.IsAllowed("api.groq.com"),
+			slog.Info("destination allowlist loaded",
+				"path", cfg.DestinationsConfigPath,
+				"entries", len(dal.Allowed),
+				"api.groq.com_allowed", dal.IsAllowed("api.groq.com"),
 			)
 			destinationAllowlist = dal
 		}
 	} else {
-		log.Printf("WARNING: DESTINATIONS_CONFIG_PATH is empty; using built-in destination allowlist defaults")
+		slog.Warn("DESTINATIONS_CONFIG_PATH is empty, using built-in destination allowlist defaults")
 		destinationAllowlist = middleware.DefaultDestinationAllowlist()
 	}
 
@@ -245,7 +244,7 @@ func New(cfg *Config) (*Gateway, error) {
 		start := time.Now()
 		for {
 			if svid, err := x509Src.GetX509SVID(); err == nil {
-				log.Printf("SPIKE Nexus mTLS: using client SVID %s", svid.ID)
+				slog.Info("SPIKE Nexus mTLS: using client SVID", "svid_id", svid.ID)
 				break
 			}
 			if time.Since(start) > 30*time.Second {
@@ -255,7 +254,7 @@ func New(cfg *Config) (*Gateway, error) {
 			time.Sleep(250 * time.Millisecond)
 		}
 		spikeX509 = x509Src
-		log.Printf("SPIKE Nexus: mTLS configured via SPIRE X509Source")
+		slog.Info("SPIKE Nexus: mTLS configured via SPIRE X509Source")
 
 		// devMode=true when x509Source is nil (no SPIRE agent) -- auto-populate OwnerID.
 		// Even with mTLS, SPIKE Nexus v0.8.0 may not return owner metadata,
@@ -282,7 +281,7 @@ func New(cfg *Config) (*Gateway, error) {
 		if err := registry.SetPublicKey(pemData); err != nil {
 			return nil, fmt.Errorf("failed to set registry public key: %w", err)
 		}
-		log.Printf("[tool-registry] attestation configured with public key from %s", cfg.ToolRegistryPublicKey)
+		slog.Info("tool-registry attestation configured", "public_key_path", cfg.ToolRegistryPublicKey)
 	}
 	if enforcementProfile.StartupGateMode == "strict" {
 		reloadResult, err := registry.Reload()
@@ -292,8 +291,7 @@ func New(cfg *Config) (*Gateway, error) {
 		if !reloadResult.CosignVerified {
 			return nil, fmt.Errorf("strict tool registry attestation verification failed: signature verification is mandatory")
 		}
-		log.Printf("[tool-registry] strict startup attestation passed: %d tools, %d ui_resources",
-			reloadResult.ToolCount, reloadResult.UIResourceCount)
+		slog.Info("tool-registry strict startup attestation passed", "tools", reloadResult.ToolCount, "ui_resources", reloadResult.UIResourceCount)
 	}
 
 	// RFA-dh9: Start fsnotify watcher on tool registry YAML for hot-reload.
@@ -312,11 +310,11 @@ func New(cfg *Config) (*Gateway, error) {
 	proxy.Transport = NewTracingTransport(proxy.Transport)
 
 	// RFA-8z8.1: Log which SPIFFE mode is active at startup (AC5)
-	log.Printf("SPIFFE mode: %s", cfg.SPIFFEMode)
-	log.Printf("enforcement profile: %s (mediation_gate=%t hipaa_prompt_safety_gate=%t)",
-		enforcementProfile.Name,
-		enforcementProfile.Controls.EnforceModelMediationGate,
-		enforcementProfile.Controls.EnforceHIPAAPromptSafety,
+	slog.Info("spiffe mode configured", "mode", cfg.SPIFFEMode)
+	slog.Info("enforcement profile configured",
+		"profile", enforcementProfile.Name,
+		"mediation_gate", enforcementProfile.Controls.EnforceModelMediationGate,
+		"hipaa_prompt_safety_gate", enforcementProfile.Controls.EnforceHIPAAPromptSafety,
 	)
 
 	// Start deep scan result processor in background
@@ -1825,13 +1823,13 @@ func (g *Gateway) EnableSPIFFETLS(ctx context.Context) error {
 			if g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict" {
 				return fmt.Errorf("failed to enable keydb TLS in strict profile: %w", err)
 			}
-			log.Printf("WARNING: Failed to enable KeyDB TLS: %v (non-strict profile fallback)", err)
+			slog.Warn("failed to enable KeyDB TLS, non-strict profile fallback", "error", err)
 			// Non-strict profiles keep transition compatibility. Strict profiles
 			// fail-fast above so production posture remains fail-closed.
 		}
 	}
 
-	log.Printf("SPIFFE mTLS: server TLS configured, upstream proxy transport set to mTLS")
+	slog.Info("SPIFFE mTLS: server TLS configured, upstream proxy transport set to mTLS")
 
 	return nil
 }
@@ -1866,7 +1864,7 @@ func (g *Gateway) enableKeyDBTLS(spiffeTLS *SPIFFETLSConfig, keyDBAuthzAllowedSP
 	g.sessionContext = middleware.NewSessionContext(g.sessionStore)
 	g.rateLimiter = middleware.NewRateLimiter(g.config.RateLimitRPM, g.config.RateLimitBurst, rateLimitStore)
 
-	log.Printf("SPIFFE mTLS: KeyDB client configured with TLS (URL: %s)", keyDBURL)
+	slog.Info("SPIFFE mTLS: KeyDB client configured with TLS", "keydb_url", keyDBURL)
 
 	return nil
 }

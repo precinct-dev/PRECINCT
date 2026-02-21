@@ -13,7 +13,7 @@ package gateway
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"strings"
 
@@ -85,7 +85,7 @@ func NewUICapabilityGating(uiConfig *UIConfig, grantsPath string) *UICapabilityG
 
 	grants, err := LoadUICapabilityGrants(grantsPath)
 	if err != nil {
-		log.Printf("[WARN] Failed to load UI capability grants from %s: %v (operating with no grants)", grantsPath, err)
+		slog.Warn("failed to load UI capability grants, operating with no grants", "path", grantsPath, "error", err)
 		return g
 	}
 

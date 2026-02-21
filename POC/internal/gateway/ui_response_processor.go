@@ -16,7 +16,7 @@ package gateway
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/example/agentic-security-poc/internal/gateway/middleware"
 )
@@ -71,7 +71,7 @@ func (p *UIResponseProcessor) ProcessToolsListResponse(
 	// Step 1: Apply capability gating (strip _meta.ui for denied/unapproved)
 	gatedBody, gatingEvents, err := p.capabilityGating.ApplyUICapabilityGating(responseBody, server, tenant)
 	if err != nil {
-		log.Printf("[ERROR] UI capability gating failed: %v", err)
+		slog.Error("UI capability gating failed", "error", err)
 		return responseBody
 	}
 
@@ -101,7 +101,7 @@ func (p *UIResponseProcessor) mediateCSPAndPermissions(
 	// Parse the JSON-RPC response
 	var response map[string]interface{}
 	if err := json.Unmarshal(responseBody, &response); err != nil {
-		log.Printf("[ERROR] CSP mediation: failed to parse tools/list response: %v", err)
+		slog.Error("CSP mediation: failed to parse tools/list response", "error", err)
 		return responseBody
 	}
 
@@ -238,7 +238,7 @@ func (p *UIResponseProcessor) mediateCSPAndPermissions(
 	// Re-serialize
 	processedBody, err := json.Marshal(response)
 	if err != nil {
-		log.Printf("[ERROR] CSP mediation: failed to re-serialize response: %v", err)
+		slog.Error("CSP mediation: failed to re-serialize response", "error", err)
 		return responseBody
 	}
 
