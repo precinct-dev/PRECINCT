@@ -183,6 +183,115 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("node without device identity denied", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
+		}
+		defer conn.Close()
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "connect-node-no-device",
+			Method: "connect",
+			Params: map[string]any{"role": "node"},
+		})
+		denyResp := readOpenClawWSResponseIntegration(t, conn)
+		if denyResp.OK {
+			t.Fatal("expected node connect without device identity to be denied")
+		}
+		if denyResp.Error == nil || denyResp.Error.ReasonCode != "WS_DEVICE_REQUIRED" {
+			t.Fatalf("expected WS_DEVICE_REQUIRED, got error=%+v", denyResp.Error)
+		}
+	})
+
+	t.Run("node with device identity allowed", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
+		}
+		defer conn.Close()
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "connect-node-with-device",
+			Method: "connect",
+			Params: map[string]any{
+				"role": "node",
+				"device": map[string]any{
+					"id": "device-integ-test",
+				},
+				"auth": map[string]any{
+					"token": "tok-integ-test",
+				},
+			},
+		})
+		connectResp := readOpenClawWSResponseIntegration(t, conn)
+		if !connectResp.OK {
+			t.Fatalf("expected node connect with device identity to succeed, got error=%+v", connectResp.Error)
+		}
+		if connectResp.Payload == nil {
+			t.Fatal("expected connect payload")
+		}
+		authBlock, _ := connectResp.Payload["auth"].(map[string]any)
+		if authBlock == nil {
+			t.Fatal("expected auth block in connect response")
+		}
+		if got, _ := authBlock["device"].(string); got != "device-integ-test" {
+			t.Fatalf("expected device=device-integ-test in auth, got %q", got)
+		}
+	})
+
+	t.Run("operator without device identity allowed", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
+		}
+		defer conn.Close()
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "connect-op-no-device",
+			Method: "connect",
+			Params: map[string]any{"role": "operator"},
+		})
+		connectResp := readOpenClawWSResponseIntegration(t, conn)
+		if !connectResp.OK {
+			t.Fatalf("expected operator connect without device identity to succeed, got error=%+v", connectResp.Error)
+		}
+	})
+
+	t.Run("operator with device identity allowed", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
+		}
+		defer conn.Close()
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "connect-op-with-device",
+			Method: "connect",
+			Params: map[string]any{
+				"role": "operator",
+				"device": map[string]any{
+					"id": "device-op-integ",
+				},
+				"auth": map[string]any{
+					"token": "tok-op-integ",
+				},
+			},
+		})
+		connectResp := readOpenClawWSResponseIntegration(t, conn)
+		if !connectResp.OK {
+			t.Fatalf("expected operator connect with device identity to succeed, got error=%+v", connectResp.Error)
+		}
+	})
+
 	t.Run("forbidden control method denied", func(t *testing.T) {
 		env := newOpenClawWSTestEnv(t)
 		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
@@ -195,7 +304,15 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 			Type:   "req",
 			ID:     "connect-node",
 			Method: "connect",
-			Params: map[string]any{"role": "node"},
+			Params: map[string]any{
+				"role": "node",
+				"device": map[string]any{
+					"id": "device-forbidden-test",
+				},
+				"auth": map[string]any{
+					"token": "tok-forbidden-test",
+				},
+			},
 		})
 		connectResp := readOpenClawWSResponseIntegration(t, conn)
 		if !connectResp.OK {
@@ -252,78 +369,154 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 }
 
 func TestAuditOpenClawWSCorrelation_Integration(t *testing.T) {
-	env := newOpenClawWSTestEnv(t)
-	conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
-	if err != nil {
-		t.Fatalf("dial websocket failed: %v", err)
-	}
-
-	_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
-		Type:   "req",
-		ID:     "connect-node",
-		Method: "connect",
-		Params: map[string]any{"role": "node"},
-	})
-	connectResp := readOpenClawWSResponseIntegration(t, conn)
-	if !connectResp.OK {
-		t.Fatalf("expected connect success, got error=%+v", connectResp.Error)
-	}
-
-	_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
-		Type:   "req",
-		ID:     "deny-devices-list",
-		Method: "devices.list",
-	})
-	denyResp := readOpenClawWSResponseIntegration(t, conn)
-	if denyResp.OK {
-		t.Fatal("expected devices.list deny for node without scopes")
-	}
-	if denyResp.Error == nil {
-		t.Fatalf("expected deny response with error payload, got %+v", denyResp)
-	}
-	_ = conn.Close()
-
-	foundDenyEvent := false
-	for i := 0; i < 30; i++ {
-		file, err := os.Open(env.auditLogPath)
-		if err == nil {
-			scanner := bufio.NewScanner(file)
-			for scanner.Scan() {
-				line := strings.TrimSpace(scanner.Text())
-				if line == "" {
-					continue
-				}
-
-				var record openClawWSAuditRecord
-				if err := json.Unmarshal([]byte(line), &record); err != nil {
-					continue
-				}
-				if record.Action != "openclaw.ws.devices.list" {
-					continue
-				}
-				if record.DecisionID == "" || record.TraceID == "" {
-					_ = file.Close()
-					t.Fatalf("expected decision/trace IDs in audit record, got %+v", record)
-				}
-				if record.Path != "/openclaw/ws" {
-					_ = file.Close()
-					t.Fatalf("expected audit path /openclaw/ws, got %s", record.Path)
-				}
-				if !strings.Contains(record.Result, "reason_code=WS_METHOD_FORBIDDEN") {
-					_ = file.Close()
-					t.Fatalf("expected deny reason in audit result, got %q", record.Result)
-				}
-				foundDenyEvent = true
-				break
-			}
-			_ = file.Close()
-			if foundDenyEvent {
-				break
-			}
+	t.Run("method forbidden audit", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
 		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	if !foundDenyEvent {
-		t.Fatalf("expected openclaw ws deny audit event in %s", env.auditLogPath)
-	}
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "connect-node",
+			Method: "connect",
+			Params: map[string]any{
+				"role": "node",
+				"device": map[string]any{
+					"id": "device-audit-test",
+				},
+				"auth": map[string]any{
+					"token": "tok-audit-test",
+				},
+			},
+		})
+		connectResp := readOpenClawWSResponseIntegration(t, conn)
+		if !connectResp.OK {
+			t.Fatalf("expected connect success, got error=%+v", connectResp.Error)
+		}
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "deny-devices-list",
+			Method: "devices.list",
+		})
+		denyResp := readOpenClawWSResponseIntegration(t, conn)
+		if denyResp.OK {
+			t.Fatal("expected devices.list deny for node without scopes")
+		}
+		if denyResp.Error == nil {
+			t.Fatalf("expected deny response with error payload, got %+v", denyResp)
+		}
+		_ = conn.Close()
+
+		foundDenyEvent := false
+		for i := 0; i < 30; i++ {
+			file, err := os.Open(env.auditLogPath)
+			if err == nil {
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					line := strings.TrimSpace(scanner.Text())
+					if line == "" {
+						continue
+					}
+
+					var record openClawWSAuditRecord
+					if err := json.Unmarshal([]byte(line), &record); err != nil {
+						continue
+					}
+					if record.Action != "openclaw.ws.devices.list" {
+						continue
+					}
+					if record.DecisionID == "" || record.TraceID == "" {
+						_ = file.Close()
+						t.Fatalf("expected decision/trace IDs in audit record, got %+v", record)
+					}
+					if record.Path != "/openclaw/ws" {
+						_ = file.Close()
+						t.Fatalf("expected audit path /openclaw/ws, got %s", record.Path)
+					}
+					if !strings.Contains(record.Result, "reason_code=WS_METHOD_FORBIDDEN") {
+						_ = file.Close()
+						t.Fatalf("expected deny reason in audit result, got %q", record.Result)
+					}
+					foundDenyEvent = true
+					break
+				}
+				_ = file.Close()
+				if foundDenyEvent {
+					break
+				}
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if !foundDenyEvent {
+			t.Fatalf("expected openclaw ws deny audit event in %s", env.auditLogPath)
+		}
+	})
+
+	t.Run("device required audit", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
+		}
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type:   "req",
+			ID:     "connect-node-no-device-audit",
+			Method: "connect",
+			Params: map[string]any{"role": "node"},
+		})
+		denyResp := readOpenClawWSResponseIntegration(t, conn)
+		if denyResp.OK {
+			t.Fatal("expected node connect without device identity to be denied")
+		}
+		if denyResp.Error == nil || denyResp.Error.ReasonCode != "WS_DEVICE_REQUIRED" {
+			t.Fatalf("expected WS_DEVICE_REQUIRED, got error=%+v", denyResp.Error)
+		}
+		_ = conn.Close()
+
+		foundDeviceRequiredEvent := false
+		for i := 0; i < 30; i++ {
+			file, err := os.Open(env.auditLogPath)
+			if err == nil {
+				scanner := bufio.NewScanner(file)
+				for scanner.Scan() {
+					line := strings.TrimSpace(scanner.Text())
+					if line == "" {
+						continue
+					}
+
+					var record openClawWSAuditRecord
+					if err := json.Unmarshal([]byte(line), &record); err != nil {
+						continue
+					}
+					if record.Action != "openclaw.ws.connect" {
+						continue
+					}
+					if !strings.Contains(record.Result, "reason_code=WS_DEVICE_REQUIRED") {
+						continue
+					}
+					if record.DecisionID == "" || record.TraceID == "" {
+						_ = file.Close()
+						t.Fatalf("expected decision/trace IDs in audit record, got %+v", record)
+					}
+					if record.Path != "/openclaw/ws" {
+						_ = file.Close()
+						t.Fatalf("expected audit path /openclaw/ws, got %s", record.Path)
+					}
+					foundDeviceRequiredEvent = true
+					break
+				}
+				_ = file.Close()
+				if foundDeviceRequiredEvent {
+					break
+				}
+			}
+			time.Sleep(50 * time.Millisecond)
+		}
+		if !foundDeviceRequiredEvent {
+			t.Fatalf("expected openclaw ws device-required deny audit event in %s", env.auditLogPath)
+		}
+	})
 }
