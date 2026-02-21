@@ -297,7 +297,7 @@ func setupUIPolicyEngine(t *testing.T, grantsYAML string) *OPAEngine {
 
 	// Write a minimal MCP policy so the main query compiles
 	mcpPolicy := `package mcp
-default allow = {"allow": true, "reason": "allowed"}
+default allow := {"allow": true, "reason": "allowed"}
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, "mcp_policy.rego"), []byte(mcpPolicy), 0644); err != nil {
 		t.Fatalf("Failed to write MCP policy: %v", err)
@@ -793,7 +793,7 @@ func TestOPAUIPolicy_NoPolicyLoaded(t *testing.T) {
 
 	// Only MCP policy, no UI policy
 	mcpPolicy := `package mcp
-default allow = {"allow": true, "reason": "allowed"}
+default allow := {"allow": true, "reason": "allowed"}
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, "mcp_policy.rego"), []byte(mcpPolicy), 0644); err != nil {
 		t.Fatalf("Failed to write MCP policy: %v", err)

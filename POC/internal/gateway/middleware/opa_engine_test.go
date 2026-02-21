@@ -16,8 +16,8 @@ func TestOPAEngineInitialization(t *testing.T) {
 
 	// Write minimal valid policy
 	policyContent := `package test
-default allow = false
-allow = true {
+default allow := false
+allow if {
 	input.tool == "allowed_tool"
 }
 `
@@ -55,20 +55,20 @@ func TestOPAEngineEvaluate(t *testing.T) {
 
 	// Write test policy with structured result
 	policyContent := `package mcp
-default allow = {
+default allow := {
 	"allow": false,
 	"reason": "default_deny"
 }
-allow = {
+allow := {
 	"allow": true,
 	"reason": "allowed"
-} {
+} if {
 	input.tool == "allowed_tool"
 }
-allow = {
+allow := {
 	"allow": false,
 	"reason": "tool_not_allowed"
-} {
+} if {
 	input.tool != "allowed_tool"
 }
 `
@@ -168,7 +168,7 @@ func TestOPAEngineHotReload(t *testing.T) {
 
 	// Write initial policy (denies everything)
 	initialPolicy := `package mcp
-default allow = {
+default allow := {
 	"allow": false,
 	"reason": "default_deny"
 }
@@ -201,7 +201,7 @@ default allow = {
 
 	// Update policy (allows everything)
 	updatedPolicy := `package mcp
-default allow = {
+default allow := {
 	"allow": true,
 	"reason": "allowed"
 }
@@ -263,7 +263,7 @@ session_is_high_risk if {
 
 	// Also need a basic MCP policy so the main query compiles
 	mcpPolicy := `package mcp
-default allow = {"allow": true, "reason": "allowed"}
+default allow := {"allow": true, "reason": "allowed"}
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, "mcp_policy.rego"), []byte(mcpPolicy), 0644); err != nil {
 		t.Fatalf("Failed to write MCP policy: %v", err)
@@ -460,7 +460,7 @@ func TestOPAEngineContextPolicyFailClosed(t *testing.T) {
 
 	// Only write MCP policy, no context policy
 	mcpPolicy := `package mcp
-default allow = {"allow": true, "reason": "allowed"}
+default allow := {"allow": true, "reason": "allowed"}
 `
 	if err := os.WriteFile(filepath.Join(tmpDir, "mcp_policy.rego"), []byte(mcpPolicy), 0644); err != nil {
 		t.Fatalf("Failed to write MCP policy: %v", err)
@@ -503,8 +503,7 @@ func TestOPAEngineConfigInjection(t *testing.T) {
 
 	// Write a policy that uses data.config.allowed_base_path for path restriction
 	policyContent := `package mcp
-import future.keywords.if
-import future.keywords.in
+import rego.v1
 
 default poc_directory := "__UNCONFIGURED__"
 poc_directory := data.config.allowed_base_path
@@ -612,7 +611,7 @@ func TestOPAEnginePerformance(t *testing.T) {
 	policyPath := filepath.Join(tmpDir, "test_policy.rego")
 
 	policyContent := `package mcp
-default allow = {
+default allow := {
 	"allow": true,
 	"reason": "allowed"
 }

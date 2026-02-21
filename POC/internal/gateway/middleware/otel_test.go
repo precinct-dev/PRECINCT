@@ -1382,9 +1382,9 @@ func TestOTelSpan_OPAPolicy_WithRealOPAEngine(t *testing.T) {
 	policyPath := tmpDir + "/mcp_policy.rego"
 	policy := `package mcp
 
-default allow = false
+default allow := false
 
-allow {
+allow if {
     input.tool == "file_read"
 }
 `

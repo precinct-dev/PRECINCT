@@ -1,7 +1,5 @@
 package middleware
 
-//lint:file-ignore SA1019 OPA v1 migration is tracked separately; this engine intentionally uses compatibility packages for now.
-
 import (
 	"context"
 	"fmt"
@@ -11,9 +9,9 @@ import (
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/open-policy-agent/opa/rego"          //nolint:staticcheck // OPA v1 migration tracked separately.
-	"github.com/open-policy-agent/opa/storage"       //nolint:staticcheck // OPA v1 migration tracked separately.
-	"github.com/open-policy-agent/opa/storage/inmem" //nolint:staticcheck // OPA v1 migration tracked separately.
+	"github.com/open-policy-agent/opa/v1/rego"
+	"github.com/open-policy-agent/opa/v1/storage"
+	"github.com/open-policy-agent/opa/v1/storage/inmem"
 	"gopkg.in/yaml.v3"
 )
 
