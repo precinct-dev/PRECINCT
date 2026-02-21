@@ -4,7 +4,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POC_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 ARTIFACT_DIR="${POC_DIR}/tests/e2e/artifacts"
-STAMP="${OPENCLAW_CAMPAIGN_DATE:-2026-02-16}"
+STAMP="${OPENCLAW_CAMPAIGN_DATE:-2026-02-21}"
 LOG_PATH="${ARTIFACT_DIR}/openclaw-port-campaign-${STAMP}.log"
 JSON_PATH="${ARTIFACT_DIR}/openclaw-port-campaign-${STAMP}.json"
 RESULTS_TSV="$(mktemp)"
