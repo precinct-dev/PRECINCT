@@ -1,12 +1,27 @@
 {
   "schema_version": "app.integration.pack.v1",
   "pack_id": "openclaw",
-  "pack_version": "2026-02-16",
+  "pack_version": "2026-02-21",
   "upstream": {
     "repo": "/Users/ramirosalas/workspace/openclaw",
     "branch": "main",
-    "commit": "5d40d47501c19465761f503ebb12667b83eea84f"
+    "commit": "302fa03f4164094d6938ea3243889963230576d4"
   },
+  "upstream_changelog": [
+    {
+      "from_commit": "5d40d47501",
+      "to_commit": "302fa03f41",
+      "date": "2026-02-21",
+      "http_api_changes": "none",
+      "ws_protocol_changes": [
+        "node role now requires device identity during connect (ddcb2d79b)",
+        "allowInsecureAuth config deprecated; only dangerouslyDisableDeviceAuth honored (protocol.md)",
+        "auth surface refactored: separate HTTP vs WS authorize functions (36a0df423)",
+        "role-policy and connect-policy extracted to separate modules (51149fcaf)"
+      ],
+      "adapter_impact": "WS adapter updated to enforce device-identity for node role"
+    }
+  ],
   "ownership": {
     "model": "sdk_plus_pack",
     "core_policy": "gateway_core"
@@ -57,7 +72,8 @@
           "registry_tool_unknown",
           "registry_hash_mismatch",
           "deepscan_blocked",
-          "dlp_credentials_detected"
+          "dlp_credentials_detected",
+          "ws_device_required"
         ],
         "timeout_behavior_non_strict": "accept_case26_gateway_timeout_variance",
         "timeout_behavior_strict": "fail_closed"
