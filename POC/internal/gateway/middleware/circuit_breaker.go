@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -336,9 +337,29 @@ func CircuitBreakerMiddleware(next http.Handler, cb *CircuitBreaker) http.Handle
 		currentState := cb.State()
 		span.SetAttributes(attribute.String("state", currentState.String()))
 
+		// Record circuit breaker state metric
+		if gwMetrics != nil {
+			gwMetrics.CircuitBreakerState.Record(ctx, int64(currentState),
+				metric.WithAttributes(
+					attribute.String("circuit_name", "default"),
+				),
+			)
+		}
+
 		// Check if request is allowed
 		if !cb.AllowRequest() {
 			retryAfter := cb.RetryAfterSeconds()
+
+			// Record circuit breaker denial metric
+			if gwMetrics != nil {
+				gwMetrics.DenialTotal.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("middleware", "circuit_breaker"),
+						attribute.String("reason", "circuit_open"),
+						attribute.String("spiffe_id", GetSPIFFEID(ctx)),
+					),
+				)
+			}
 
 			span.SetAttributes(
 				attribute.String("mcp.result", "denied"),

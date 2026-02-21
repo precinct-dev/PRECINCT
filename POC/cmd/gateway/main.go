@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/example/agentic-security-poc/internal/gateway"
+	gwmetrics "github.com/example/agentic-security-poc/internal/gateway/metrics"
 )
 
 func main() {
@@ -68,6 +69,13 @@ func main() {
 	otelShutdown, err := gateway.InitTracer(context.Background(), cfg.OTelEndpoint, cfg.OTelServiceName)
 	if err != nil {
 		log.Fatalf("Failed to initialize OTel tracer: %v", err)
+	}
+
+	// GAP-3: Initialize OpenTelemetry MeterProvider for application metrics.
+	// When OTelEndpoint is empty, this is a no-op (no-op meter already in use).
+	meterShutdown, err := gwmetrics.InitMeterProvider(context.Background(), cfg.OTelEndpoint, cfg.OTelServiceName)
+	if err != nil {
+		log.Fatalf("Failed to initialize OTel meter provider: %v", err)
 	}
 
 	// Create gateway server
@@ -145,6 +153,11 @@ func main() {
 	// Close gateway resources (including SPIFFE TLS)
 	if err := gw.Close(); err != nil {
 		log.Printf("Gateway close error: %v", err)
+	}
+
+	// GAP-3: Flush pending OTel metrics before exit.
+	if err := meterShutdown(ctx); err != nil {
+		log.Printf("OTel meter shutdown error: %v", err)
 	}
 
 	// RFA-m6j.1: Flush pending OTel spans before exit.
