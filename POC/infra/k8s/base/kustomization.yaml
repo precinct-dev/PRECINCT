@@ -1,0 +1,31 @@
+# ------------------------------------------------------------------------------
+# Kustomize Base - Cloud-Agnostic Kubernetes Manifests
+# Story: oc-ko5 (GAP-7)
+#
+# References all cloud-agnostic resource groups. Environment-specific overlays
+# (dev, local, staging, prod) patch this base with appropriate replicas,
+# image tags, resource limits, and logging.
+#
+# This base works on ANY conformant Kubernetes cluster:
+#   - AWS EKS
+#   - Google GKE
+#   - Azure AKS
+#   - kind (local)
+#   - k3s
+#   - Docker Desktop Kubernetes
+#
+# Cloud-specific resources (IRSA, S3 audit sink, etc.) are NOT included here.
+# They belong in cloud-specific overlays (see infra/eks/ for AWS/EKS).
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - gateway
+  - mcp-server
+  - policies
+  - observability
+
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize

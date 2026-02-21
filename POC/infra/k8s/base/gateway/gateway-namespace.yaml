@@ -1,0 +1,23 @@
+# ------------------------------------------------------------------------------
+# Gateway Namespace
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# Dedicated namespace for the MCP Security Gateway.
+# Pod security standards enforce restricted profile (non-root, no privilege
+# escalation, read-only root filesystem, etc.).
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+  labels:
+    app.kubernetes.io/part-of: mcp-security-gateway
+    # Opt-in namespace for sigstore/policy-controller admission interception.
+    policy.sigstore.dev/include: "true"
+    # NetworkPolicy ingress allowlist marker for gateway consumers.
+    networking.agentic.io/gateway-ingress-allowed: "true"
+    # Label used by NetworkPolicy namespaceSelector to allow traffic FROM gateway
+    name: gateway
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

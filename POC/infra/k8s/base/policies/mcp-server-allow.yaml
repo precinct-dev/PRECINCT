@@ -1,0 +1,84 @@
+# ------------------------------------------------------------------------------
+# MCP Server Allow NetworkPolicies
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# Explicit allow rules for the MCP tool server (tools namespace).
+# These rules layer on top of the default-deny policy to permit only the
+# traffic flows required for tool servers to function:
+#
+#   INGRESS:
+#     - From gateway namespace on port 8081 (JSON-RPC requests)
+#       Tool servers can ONLY receive traffic from the gateway.
+#
+#   EGRESS:
+#     - To kube-dns on port 53 (DNS resolution)
+#     - To private RFC1918 CIDRs only (in-cluster dependencies)
+#     - Public internet denied by default
+# ------------------------------------------------------------------------------
+
+# Allow inbound from gateway namespace only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-server-allow-ingress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow inbound ONLY from gateway namespace pods on port 8081
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mcp-security-gateway
+      ports:
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8082
+---
+# Allow tool server egress to DNS + private network destinations
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-server-allow-egress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server
+  policyTypes:
+    - Egress
+  egress:
+    # Allow egress to kube-dns for DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # Allow private-network egress only (cluster dependencies)
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
