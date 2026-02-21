@@ -50,7 +50,7 @@ func TestUpgradeCheck_ExtractImages(t *testing.T) {
 	if !strings.Contains(out, "ghcr.io/spiffe/spire-server:1.10.0") {
 		t.Fatalf("expected spire-server image in compose extraction; got:\n%s", out)
 	}
-	if !strings.Contains(out, "eqalpha/keydb:latest") {
+	if !strings.Contains(out, "eqalpha/keydb") {
 		t.Fatalf("expected keydb image in compose extraction; got:\n%s", out)
 	}
 

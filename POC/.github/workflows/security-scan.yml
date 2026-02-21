@@ -1,14 +1,14 @@
 name: Security Scan
 
 on:
-  workflow_dispatch:  # Manual-only until GH Actions credits are replenished
-  # pull_request:
-  #   branches:
-  #     - main
-  #     - 'epic/**'
-  # push:
-  #   branches:
-  #     - main
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - 'epic/**'
+  push:
+    branches:
+      - main
 
 permissions:
   contents: read
