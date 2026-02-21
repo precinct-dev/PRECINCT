@@ -1,8 +1,8 @@
 # ------------------------------------------------------------------------------
-# MCP Security Gateway Service
+# PRECINCT Gateway Service
 # Story: RFA-9fv.4
 #
-# ClusterIP service exposing the MCP Security Gateway on port 9090.
+# ClusterIP service exposing the PRECINCT Gateway on port 9090.
 # Other workloads (agents, tools, operators) connect to this service to:
 #   - Submit MCP JSON-RPC requests through the security middleware chain
 #   - Perform health checks

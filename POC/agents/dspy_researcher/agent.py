@@ -3,7 +3,7 @@ DSPy Research Agent - RFA-qq0.7, refactored with mcp-gateway-sdk (RFA-tj9.3)
 
 A DSPy-based research agent that demonstrates security gateway integration.
 Performs research by searching with Tavily and reading local files via the
-MCP security gateway, then synthesizes findings into a structured report.
+PRECINCT Gateway, then synthesizes findings into a structured report.
 
 All tool calls are routed through the gateway MCP endpoint via the shared SDK.
 Identity: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev

@@ -119,7 +119,7 @@ func main() {
 	// Start server in goroutine
 	go func() {
 		if cfg.SPIFFEMode == "prod" {
-			log.Printf("Starting MCP Security Gateway (HTTPS/mTLS) on port %d", cfg.SPIFFEListenPort)
+			log.Printf("Starting PRECINCT Gateway (HTTPS/mTLS) on port %d", cfg.SPIFFEListenPort)
 			log.Printf("Upstream MCP server (mTLS): %s", cfg.UpstreamURL)
 			log.Printf("SPIFFE trust domain: %s", cfg.SPIFFETrustDomain)
 			// ListenAndServeTLS with empty cert/key file paths because the TLS
@@ -128,7 +128,7 @@ func main() {
 				log.Fatalf("Server failed: %v", err)
 			}
 		} else {
-			log.Printf("Starting MCP Security Gateway (HTTP) on port %d", cfg.Port)
+			log.Printf("Starting PRECINCT Gateway (HTTP) on port %d", cfg.Port)
 			log.Printf("Upstream MCP server: %s", cfg.UpstreamURL)
 			log.Printf("OPA policy directory: %s", cfg.OPAPolicyDir)
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

@@ -1,7 +1,7 @@
-# Agentic AI Security Reference Architecture -- AI Skill
+# PRECINCT (Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools) -- AI Skill
 
-This is a structured knowledge file for AI coding assistants. It encodes the
-Agentic AI Security Reference Architecture, enabling any AI assistant (Claude,
+This is a structured knowledge file for AI coding assistants. It encodes
+PRECINCT, enabling any AI assistant (Claude,
 Copilot, Cursor, Gemini, etc.) to generate correct, security-compliant code
 for this architecture.
 
@@ -13,7 +13,7 @@ relevant to the user's task.
 
 ## Section 1: Architecture Overview
 
-The MCP Security Gateway is an HTTP reverse proxy that interposes a 13-layer
+The PRECINCT Gateway is an HTTP reverse proxy that interposes a 13-layer
 security middleware chain between AI agents and MCP (Model Context Protocol)
 servers. Every tool call passes through all 13 layers before reaching the
 upstream MCP server.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compliance Report Generator -- Agentic Reference Architecture POC.
+"""Compliance Report Generator -- PRECINCT POC.
 
 Reads the control taxonomy YAML, audit logs, and policy configurations to
 produce machine-readable evidence bundles (JSON + CSV) plus analyst-friendly
@@ -907,7 +907,7 @@ def write_xlsx(rows: list[dict[str, str]], output_path: Path) -> None:
     today = date.today().isoformat()
     ws_summary.append(["Compliance Report Summary"])
     ws_summary.append([])
-    ws_summary.append(["Architecture", "Agentic AI Security Reference Architecture"])
+    ws_summary.append(["Architecture", "PRECINCT"])
     ws_summary.append(["Version", "POC v1.0"])
     ws_summary.append(["Report Date", today])
     ws_summary.append(["Total Controls", len({r["control_id"] for r in rows})])
@@ -971,7 +971,7 @@ def write_xlsx(rows: list[dict[str, str]], output_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 # Architecture name and version used in the PDF cover page.
-_ARCH_NAME = "Agentic AI Security Reference Architecture"
+_ARCH_NAME = "PRECINCT"
 _ARCH_VERSION = "POC v1.0"
 
 
@@ -1260,7 +1260,7 @@ def write_pdf(
     pdf.cell(0, 8, "Scope Limitations", new_x="LMARGIN", new_y="NEXT")
     pdf.set_font("Helvetica", "", 9)
     limitations_text = [
-        "This report covers controls implemented in the MCP Security Gateway middleware chain only.",
+        "This report covers controls implemented in the PRECINCT Gateway middleware chain only.",
         "Infrastructure-level controls (network segmentation, host hardening, key management) are out of scope.",
         "Supply chain controls (container signing, SBOM) are documented but not runtime-enforced in this POC.",
         "Production deployments require additional controls: enterprise PKI, HSM integration, SIEM forwarding.",

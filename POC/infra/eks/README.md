@@ -1,4 +1,4 @@
-# EKS Cluster Baseline -- Agentic Reference Architecture POC
+# EKS Cluster Baseline -- PRECINCT POC
 
 **NOTE: This is an AWS/EKS-specific optional overlay.** For cloud-agnostic
 Kubernetes manifests that work on any conformant cluster (EKS, GKE, AKS, kind,

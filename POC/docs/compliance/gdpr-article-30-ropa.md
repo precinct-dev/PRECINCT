@@ -25,13 +25,13 @@ agentic AI system.
 
 ### Data Processor
 
-The **MCP Security Gateway** acts as a data processor under GDPR Article 4(8). It
+The **PRECINCT Gateway** acts as a data processor under GDPR Article 4(8). It
 processes personal data on behalf of the controller to enforce security policies,
 perform audit logging, and maintain session state.
 
 | Field                        | Value                                         |
 |------------------------------|-----------------------------------------------|
-| Processor Name               | MCP Security Gateway                          |
+| Processor Name               | PRECINCT Gateway                          |
 | Component Version            | v1.0                                          |
 | Deployment Model             | Docker Compose (self-hosted)                  |
 | Processing Location          | Controller's infrastructure (on-premises or cloud) |
@@ -208,7 +208,7 @@ occurs within the controller's infrastructure:
 
 | Component          | Location                                     | Transfer? |
 |--------------------|----------------------------------------------|-----------|
-| MCP Security Gateway | Controller's infrastructure                | No        |
+| PRECINCT Gateway | Controller's infrastructure                | No        |
 | KeyDB              | Controller's infrastructure (Docker Compose) | No        |
 | SPIRE Server       | Controller's infrastructure                  | No        |
 | Audit Logs         | Controller's infrastructure (local filesystem) | No      |

@@ -5,7 +5,7 @@ an orchestrator agent delegates tool calls to worker agents through the MCP Secu
 Gateway. It covers SPIFFE identity flow, audit trail attribution, and an assessment of
 whether gateway middleware changes are needed.
 
-**Context**: The MCP Security Gateway (as implemented in `internal/gateway/gateway.go`)
+**Context**: The PRECINCT Gateway (as implemented in `internal/gateway/gateway.go`)
 enforces a 13-step middleware chain plus a response firewall on every request. This
 document addresses how that enforcement model extends to multi-agent topologies.
 
@@ -298,7 +298,7 @@ sequenceDiagram
     participant Orch as Orchestrator Agent<br/>spiffe://.../sa/orchestrator-planner
     participant WorkerA as Worker A (Code Review)<br/>spiffe://.../sa/worker-code-review
     participant WorkerB as Worker B (Email Sender)<br/>spiffe://.../sa/worker-email-sender
-    participant GW as MCP Security Gateway
+    participant GW as PRECINCT Gateway
     participant MCP as MCP Server
 
     User->>Orch: "Review code and email summary"

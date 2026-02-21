@@ -5,7 +5,7 @@ A PydanticAI-based Q&A agent that demonstrates security gateway integration
 with structured output using Pydantic models.
 
 Performs Q&A by searching with Tavily and reading local files via the
-MCP security gateway, then produces a structured answer with citations
+PRECINCT Gateway, then produces a structured answer with citations
 and confidence scores.
 
 All tool calls are routed through the gateway MCP endpoint via the shared SDK.

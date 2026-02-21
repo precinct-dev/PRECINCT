@@ -5,7 +5,7 @@ Story: RFA-9fv.4
 ## Architecture
 
 The MCP tool server runs in the `tools` namespace and receives JSON-RPC
-requests from the MCP Security Gateway. In the Docker Compose POC, the Docker
+requests from the PRECINCT Gateway. In the Docker Compose POC, the Docker
 MCP server is managed by Docker Desktop's MCP Toolkit. In EKS, we deploy it
 as a regular container.
 

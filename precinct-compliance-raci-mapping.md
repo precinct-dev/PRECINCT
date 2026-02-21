@@ -1,5 +1,7 @@
-# Agentic AI Security Reference Architecture
+# PRECINCT
 ## Compliance Crosswalk + RACI Operating Model (Production)
+
+PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools
 
 Document version: 1.2  
 Date: 2026-02-11  
@@ -13,7 +15,7 @@ This document shows how the architecture can be defended for SOC 2 Type 2, ISO 2
 
 It has been updated to reflect the approved Phase 3 architecture direction:
 
-- Unified Agentic Security Gateway System (UASGS)
+- PRECINCT Gateway
 - Five governed planes (LLM, Context/Memory, Tool, Loop, Ingress)
 - Mandatory context admission invariants
 - RLM governance model
@@ -100,7 +102,7 @@ Legend:
 | Process | CISO | Security Architecture | Platform Engineering | SRE/Operations | App/Agent Engineering | GRC/Compliance | Privacy Office/DPO | Legal Counsel | SecOps/IR | Internal Audit |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Threat model baseline (STRIDE/PASTA) | A | R | C | C | C | C | C | C | C | I |
-| UASGS policy and schema lifecycle (policy input v2, audit taxonomy v2) | I | A/R | R | C | C | C | I | I | C | I |
+| PRECINCT Gateway policy and schema lifecycle (policy input v2, audit taxonomy v2) | I | A/R | R | C | C | C | I | I | C | I |
 | Identity and mTLS posture management | I | A | R | R | I | I | I | I | C | I |
 | Secrets/referential credential controls | I | A | R | R | C | I | I | I | C | I |
 | LLM provider catalog and trust policy (endpoint, residency, budget, fallback) | I | A | R | R | C | C | C | C | C | I |
@@ -274,7 +276,7 @@ Do not claim production defensibility unless all are true:
 
 1. RACI ownership is formally assigned with named primary/backup owners.
 2. Evidence pipelines are automated, immutable where required, and periodically tested.
-3. UASGS mediation is mandatory for model egress and ingress admission in production.
+3. PRECINCT Gateway mediation is mandatory for model egress and ingress admission in production.
 4. Context admission invariants are enforced (`no-scan-no-send`, `no-provenance-no-persist`, `no-verification-no-load`, `minimum-necessary`).
 5. Legal/privacy prerequisites (DPIA, SCC, BAA where applicable) are embedded in release gates.
 6. Break-glass approvals are time-boxed, reason-coded, and reviewed after use.

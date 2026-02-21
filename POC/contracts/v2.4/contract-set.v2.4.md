@@ -1,6 +1,6 @@
-# UASGS Canonical Contract Set v2.4
+# PRECINCT Gateway Canonical Contract Set v2.4
 
-This document freezes the canonical UASGS control-plane contract set for version `2.4.0`.
+This document freezes the canonical PRECINCT Gateway control-plane contract set for version `2.4.0`.
 It is the normative reference for endpoint contracts, wire schemas, versioning policy,
 and backward-compatibility mappings.
 

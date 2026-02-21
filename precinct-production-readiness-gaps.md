@@ -1,8 +1,10 @@
-# Agentic AI Security Production Readiness Gap Analysis
+# PRECINCT Production Readiness Gap Analysis
+
+PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools
 
 **Status:** Draft for architecture review  
 **Date:** 2026-02-13  
-**Reviewed baseline:** `agentic-ai-security-reference-architecture.md` (v2.3)  
+**Reviewed baseline:** `precinct-reference-architecture.md` (v2.3)  
 **Assessed implementation:** `POC/` (gateway, policies, infra, compliance tooling)
 
 ---
@@ -50,7 +52,7 @@ Top reasons:
 
 Review basis:
 
-- Full reference architecture sections 1-13 (`agentic-ai-security-reference-architecture.md`).
+- Full reference architecture sections 1-13 (`precinct-reference-architecture.md`).
 - Production requirements and go/no-go criteria (`10.13.6`, `10.13.7`, `10.14`, `10.15`, `10.19`).
 - Phase 3 roadmap commitments (`12`).
 - Current POC state and code (`POC/docs/current-state-and-roadmap.md`, `POC/internal/gateway/phase3_*`, middleware, infra docs).
@@ -173,7 +175,7 @@ Assessment style:
 
 - **Architecture reference examples:** e.g., `/v1/ingress/submit`, HIPAA reason-code set.
 - **Current state:** POC uses `/v1/ingress/admit`; different prompt-safety reason codes.
-- **Evidence:** `agentic-ai-security-reference-architecture.md` vs `POC/internal/gateway/phase3_runtime_helpers.go` and `POC/internal/gateway/phase3_contracts.go`.
+- **Evidence:** `precinct-reference-architecture.md` vs `POC/internal/gateway/phase3_runtime_helpers.go` and `POC/internal/gateway/phase3_contracts.go`.
 - **Risk:** integration ambiguity and brittle client contracts.
 - **Status:** `Partial`
 - **Required change:** freeze canonical contract set and publish versioned API + reason-code catalog.

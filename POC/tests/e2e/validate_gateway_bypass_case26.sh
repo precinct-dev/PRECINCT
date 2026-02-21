@@ -36,8 +36,8 @@ count_case26_proof() {
     local sdk_marker="$2"
     local proof_marker="$3"
     awk -v sdk="$sdk_marker" -v proof="$proof_marker" '
-        /MCP Security Gateway -- Go SDK Demo/ {active = (sdk == "go"); in_case = 0}
-        /MCP Security Gateway -- Python SDK Demo/ {active = (sdk == "python"); in_case = 0}
+        /PRECINCT Gateway -- Go SDK Demo/ {active = (sdk == "go"); in_case = 0}
+        /PRECINCT Gateway -- Python SDK Demo/ {active = (sdk == "python"); in_case = 0}
         active && /\[26\/28\] Gateway-only path/ {in_case = 1; next}
         in_case && /\[27\/28\]/ {in_case = 0}
         in_case && $0 ~ proof {count++}

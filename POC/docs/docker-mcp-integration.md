@@ -610,7 +610,7 @@ docker mcp config reset tavily
 
 **Architecture:**
 ```
-MCP Security Gateway (Go)
+PRECINCT Gateway (Go)
     ↓ HTTP/JSON-RPC
 Docker MCP Gateway (localhost:8081)
     ↓

@@ -56,11 +56,11 @@ func TestOpenAICompat_ModelEgressSuccess(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec.Header().Get("X-UASGS-Reason-Code") != string(ReasonModelAllow) {
-		t.Fatalf("expected reason %s, got %s", ReasonModelAllow, rec.Header().Get("X-UASGS-Reason-Code"))
+	if rec.Header().Get("X-Precinct-Reason-Code") != string(ReasonModelAllow) {
+		t.Fatalf("expected reason %s, got %s", ReasonModelAllow, rec.Header().Get("X-Precinct-Reason-Code"))
 	}
-	if rec.Header().Get("X-UASGS-Provider-Used") != "groq" {
-		t.Fatalf("expected provider groq, got %s", rec.Header().Get("X-UASGS-Provider-Used"))
+	if rec.Header().Get("X-Precinct-Provider-Used") != "groq" {
+		t.Fatalf("expected provider groq, got %s", rec.Header().Get("X-Precinct-Provider-Used"))
 	}
 }
 
@@ -152,11 +152,11 @@ func TestOpenAICompat_FallbackApplied(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec.Header().Get("X-UASGS-Reason-Code") != string(ReasonModelFallbackApplied) {
-		t.Fatalf("expected reason %s, got %s", ReasonModelFallbackApplied, rec.Header().Get("X-UASGS-Reason-Code"))
+	if rec.Header().Get("X-Precinct-Reason-Code") != string(ReasonModelFallbackApplied) {
+		t.Fatalf("expected reason %s, got %s", ReasonModelFallbackApplied, rec.Header().Get("X-Precinct-Reason-Code"))
 	}
-	if rec.Header().Get("X-UASGS-Provider-Used") != "azure_openai" {
-		t.Fatalf("expected fallback provider azure_openai, got %s", rec.Header().Get("X-UASGS-Provider-Used"))
+	if rec.Header().Get("X-Precinct-Provider-Used") != "azure_openai" {
+		t.Fatalf("expected fallback provider azure_openai, got %s", rec.Header().Get("X-Precinct-Provider-Used"))
 	}
 }
 
@@ -194,8 +194,8 @@ func TestOpenAICompat_ModelPolicyIntentProjectionPrepended(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if rec.Header().Get("X-UASGS-Policy-Intent-Projection") != "applied" {
-		t.Fatalf("expected projection header applied, got %q", rec.Header().Get("X-UASGS-Policy-Intent-Projection"))
+	if rec.Header().Get("X-Precinct-Policy-Intent-Projection") != "applied" {
+		t.Fatalf("expected projection header applied, got %q", rec.Header().Get("X-Precinct-Policy-Intent-Projection"))
 	}
 	if len(capturedMessages) < 2 {
 		t.Fatalf("expected prepended + original messages, got %d", len(capturedMessages))

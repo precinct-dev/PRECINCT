@@ -1,5 +1,5 @@
 // Package metrics defines and registers OTel application metrics for the
-// MCP security gateway's key operational signals. Metrics are exposed via
+// PRECINCT Gateway's key operational signals. Metrics are exposed via
 // the global OTel MeterProvider, matching the existing tracing pattern.
 package metrics
 

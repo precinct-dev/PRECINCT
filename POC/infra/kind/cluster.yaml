@@ -10,7 +10,7 @@ name: agentic-poc
 nodes:
   - role: control-plane
     extraPortMappings:
-      # MCP Security Gateway (NodePort 30090 -> host 30090)
+      # PRECINCT Gateway (NodePort 30090 -> host 30090)
       - containerPort: 30090
         hostPort: 30090
         protocol: TCP

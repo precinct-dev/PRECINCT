@@ -7,7 +7,7 @@
 # valid cosign signatures from the CI pipeline.
 #
 # Enforcement namespaces (non-local runtime overlays):
-#   - gateway: MCP Security Gateway
+#   - gateway: PRECINCT Gateway
 #   - tools:   MCP Tool Servers
 #
 # Rejection behavior:

@@ -785,7 +785,7 @@ def test_request_size_limit(url: str) -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="MCP Security Gateway -- Python SDK Demo")
+    parser = argparse.ArgumentParser(description="PRECINCT Gateway -- Python SDK Demo")
     parser.add_argument("--gateway-url", default="http://localhost:9090",
                         help="Gateway base URL (default: http://localhost:9090)")
     args = parser.parse_args()
@@ -793,7 +793,7 @@ def main() -> None:
     url = args.gateway_url
 
     print("========================================")
-    print("  MCP Security Gateway -- Python SDK Demo")
+    print("  PRECINCT Gateway -- Python SDK Demo")
     print(f"  Gateway: {url}")
     print("========================================")
     print()

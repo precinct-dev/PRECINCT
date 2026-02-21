@@ -1,4 +1,4 @@
-# DESIGN.md -- Agentic AI Security Reference Architecture
+# DESIGN.md -- PRECINCT (Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools)
 
 **Version:** 1.0
 **Date:** 2026-02-06
@@ -237,7 +237,7 @@ The CLI setup command (`make setup` or a standalone `./setup.sh`) is the entry p
 #### 4.1.1 Prerequisite Check Output
 
 ```
-Agentic AI Security Gateway -- Setup
+PRECINCT Gateway -- Setup
 =====================================
 
 Checking prerequisites...

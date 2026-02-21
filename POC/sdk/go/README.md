@@ -1,6 +1,6 @@
-# MCP Security Gateway -- Go SDK
+# PRECINCT Gateway -- Go SDK
 
-A Go client for making MCP JSON-RPC tool calls through the MCP Security Gateway.
+A Go client for making MCP JSON-RPC tool calls through the PRECINCT Gateway.
 The SDK handles JSON-RPC envelope construction, required HTTP headers, structured
 error parsing, retry logic with exponential backoff, and session management.
 

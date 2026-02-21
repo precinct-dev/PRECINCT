@@ -1,7 +1,7 @@
 # Supply Chain Security: Hardened Base Images
 
 **Last Updated**: 2026-02-05
-**Context**: Agentic AI Security Reference Architecture
+**Context**: PRECINCT
 
 ## Executive Summary
 
@@ -39,7 +39,7 @@ Based on current industry standards and security research:
 
 ## Approved Base Images
 
-### Go Services (MCP Security Gateway, spike-cli, Context Fetcher)
+### Go Services (PRECINCT Gateway, spike-cli, Context Fetcher)
 
 **Builder Stage:**
 ```dockerfile

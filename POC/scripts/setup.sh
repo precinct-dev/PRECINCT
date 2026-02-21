@@ -58,7 +58,7 @@ print_section() {
 # PHASE 1: Prerequisite Checks
 # =============================================================================
 
-print_header "MCP Security Gateway - Setup Wizard"
+print_header "PRECINCT Gateway - Setup Wizard"
 echo "  This wizard will guide you through configuring the Agentic"
 echo "  Reference Architecture POC (Docker Compose tier)."
 echo ""

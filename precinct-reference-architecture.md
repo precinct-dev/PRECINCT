@@ -1,8 +1,10 @@
-# Agentic AI Security Reference Architecture
+# PRECINCT
+
+PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools
 
 ## Authentication, Authorization, and Secrets Management for Agentic Systems (MCP and Beyond)
 
-**Version 2.4 — Consolidated Reference Architecture (UASGS + Phase 3 Hardened Controls)**
+**Version 2.4 — Consolidated Reference Architecture (PRECINCT Gateway + Phase 3 Hardened Controls)**
 
 *Ramiro | February 2026*
 
@@ -25,7 +27,7 @@ The architecture integrates four core technologies:
 | **SPIFFE/SPIRE** | Workload identity | Cryptographic agent identity via SVIDs |
 | **SPIKE** | Secrets management | SPIFFE-native secrets with late-binding tokens |
 | **OPA** | Authorization | Fine-grained, policy-as-code authorization |
-| **Unified Agentic Security Gateway System (UASGS)** | Enforcement | Inline inspection, tool/model/ingress governance, DLP |
+| **PRECINCT Gateway** | Enforcement | Inline inspection, tool/model/ingress governance, DLP |
 
 The architecture supports both:
 - **single-purpose, recyclable agents without long-term memory** (ephemeral workloads), and
@@ -61,7 +63,7 @@ Phase 3 extends this architecture into a full multi-plane control system:
 4. [SPIFFE for Agent Identity](#4-spiffe-for-agent-identity)
 5. [SPIKE for Secrets Management](#5-spike-for-secrets-management)
 6. [OPA for Authorization](#6-opa-for-authorization)
-7. [Unified Agentic Security Gateway System (UASGS)](#7-unified-agentic-security-gateway-system-uasgs)
+7. [PRECINCT Gateway](#7-precinct-gateway)
    - 7.9 [MCP-UI (Apps Extension) Security](#79-mcp-ui-apps-extension-security)
    - 7.10 [Mandatory Model Mediation (Production Baseline)](#710-mandatory-model-mediation-production-baseline)
    - 7.11 [Context Admission Invariants (Hard Requirements)](#711-context-admission-invariants-hard-requirements)
@@ -238,7 +240,7 @@ The paper "Securing the Model Context Protocol (MCP): Risks, Controls, and Gover
 | Authentication & Authorization | Identity verification, fine-grained permissions | SPIFFE + OPA |
 | Provenance Tracking | Origin and integrity of tools and data | Tool Registry with hashes |
 | Isolation & Sandboxing | Contain breaches, limit blast radius | Container + NetworkPolicy + gVisor |
-| Inline Policy Enforcement | Real-time traffic inspection and filtering | UASGS |
+| Inline Policy Enforcement | Real-time traffic inspection and filtering | PRECINCT Gateway |
 | Centralized Governance | Single control point for policies and audit | OPA bundles + OTEL |
 
 ### 3.4 MCP Apps Extension (SEP-1865)
@@ -592,7 +594,7 @@ path "secrets/internal-services/*":
 path "*":
   token_redemption:
     allowed_spiffe_ids:
-      - "spiffe://acme.corp/gateways/uasgs-gateway/*"
+      - "spiffe://acme.corp/gateways/precinct-gateway/*"
 ```
 
 ### 5.7 Defense Analysis
@@ -631,7 +633,7 @@ Open Policy Agent (OPA) provides a general-purpose policy engine that evaluates 
 | Resource usage | Shared with application | Separate container |
 | Policy updates | In-process bundle refresh | Independent refresh |
 
-**Recommendation**: Embed OPA as a Go library for UASGS. The latency improvement is critical for a proxy in the hot path.
+**Recommendation**: Embed OPA as a Go library for PRECINCT Gateway. The latency improvement is critical for a proxy in the hot path.
 
 ### 6.3 Rego Policies for Agent Authorization
 
@@ -761,11 +763,11 @@ tool_grants:
 
 ---
 
-## 7. Unified Agentic Security Gateway System (UASGS)
+## 7. PRECINCT Gateway
 
 ### 7.1 System Purpose and Position
 
-UASGS is the enforcement point for all security controls. It sits between agents and external capabilities (tools, model providers, ingress sources), providing:
+PRECINCT Gateway is the enforcement point for all security controls. It sits between agents and external capabilities (tools, model providers, ingress sources), providing:
 
 1. **Identity verification** (SPIFFE)
 2. **Authorization enforcement** (OPA)
@@ -804,7 +806,7 @@ Example request (canonical / portable across clients and languages):
 }
 ```
 
-Note: MCP `tools/call` remains the canonical tool invocation interface. Phase 3 extends UASGS with additional interfaces for model egress, memory, ingress admission, and DLP RuleOps control-plane operations.
+Note: MCP `tools/call` remains the canonical tool invocation interface. Phase 3 extends PRECINCT Gateway with additional interfaces for model egress, memory, ingress admission, and DLP RuleOps control-plane operations.
 
 **Legacy shortcut (deprecated / migration-only):** some deployments may accept `method: "<tool_name>"` with tool-specific params. This is not MCP-spec compliant and should not be treated as the primary integration path. The gateway may support it temporarily to ease migrations, but documentation and SDKs should prefer `tools/call`.
 
@@ -812,7 +814,7 @@ Note: MCP `tools/call` remains the canonical tool invocation interface. Phase 3 
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
-│                           MCP SECURITY GATEWAY                                         │
+│                           PRECINCT GATEWAY                                              │
 │                                                                                        │
 │  ┌─────────────────────────────────────────────────────────────────────────────────┐   │
 │  │                         FAST PATH (<5ms added latency)                          │   │
@@ -1811,7 +1813,7 @@ ui:
 
 #### 7.9.11 Threat Model Summary for MCP-UI
 
-| Threat | UASGS Control | Residual Risk |
+| Threat | PRECINCT Gateway Control | Residual Risk |
 |--------|----------------|---------------|
 | **XSS via UI resource** | Content scanning (dangerous pattern detection), hash verification, CSP mediation | Novel XSS vectors that evade static patterns. Mitigated by host sandbox. |
 | **Clickjacking** | CSP `frameDomains` always denied, step-up gating for high-risk app-driven calls | Social engineering within the sandboxed app itself. |
@@ -1825,10 +1827,10 @@ ui:
 
 ### 7.10 Mandatory Model Mediation (Production Baseline)
 
-For production profiles, model-provider traffic must be mediated by UASGS. Enforce all three together:
+For production profiles, model-provider traffic must be mediated by PRECINCT Gateway. Enforce all three together:
 
-1. **Policy gate**: model calls denied unless decision path is UASGS-mediated.
-2. **Identity gate**: only UASGS model-plane workload identity may egress to provider endpoints.
+1. **Policy gate**: model calls denied unless decision path is PRECINCT Gateway-mediated.
+2. **Identity gate**: only PRECINCT Gateway model-plane workload identity may egress to provider endpoints.
 3. **Network gate**: cluster/cloud egress policy blocks direct provider access from agent workloads.
 
 This closes bypass ambiguity and makes model-provider governance auditable.
@@ -1848,7 +1850,7 @@ Regulated profile behavior:
 
 ### 7.12 Ingress Connector Conformance (Non-MITM by Default)
 
-UASGS remains protocol-agnostic and does not need to be a universal transparent MITM.
+PRECINCT Gateway remains protocol-agnostic and does not need to be a universal transparent MITM.
 
 Production requirement:
 - ingress adapters/connectors must pass conformance checks and register signed manifests before enablement
@@ -1877,7 +1879,7 @@ flowchart TB
     ING["Ingress Connectors (Webhook/Queue/Schedule)"]
   end
 
-  subgraph U["Unified Agentic Security Gateway System (UASGS)"]
+  subgraph U["PRECINCT Gateway"]
     FAST["Fast Path: Identity -> Policy -> DLP -> Registry -> Session -> Rate/CB"]
     DEEP["Deep Path: Prompt Guards / Classifiers"]
     SUB["Substitution Engine (SPIKE refs)"]
@@ -2033,7 +2035,7 @@ func (g *Gateway) buildMiddlewareChain() http.Handler {
 
 Phase 3 note:
 - The chain above is the canonical **tool-plane request path**.
-- Production UASGS implementations should add sibling enforced paths for:
+- Production PRECINCT Gateway implementations should add sibling enforced paths for:
   - model egress (`/v1/model/call`) with mandatory mediation gates
   - ingress admission (`/v1/ingress/submit`) with connector conformance checks
   - context admission (`/v1/context/admit`) with prompt-safety invariants
@@ -2106,7 +2108,7 @@ func (s *SubstitutionEngine) ProcessRequest(
 ### 9.4 Shared Multi-Plane Contracts (Go Reference)
 
 ```go
-package uasgs
+package precinct
 
 import "time"
 
@@ -2154,7 +2156,7 @@ type CallerContext struct {
 ### 9.5 Model Egress Handler (Go Reference)
 
 ```go
-package uasgs
+package precinct
 
 import "net/http"
 
@@ -2218,7 +2220,7 @@ func (g *Gateway) HandleModelCall(w http.ResponseWriter, r *http.Request) {
 ### 9.6 Ingress Admission Handler (Go Reference)
 
 ```go
-package uasgs
+package precinct
 
 import "net/http"
 
@@ -2268,7 +2270,7 @@ func (g *Gateway) HandleIngressSubmit(w http.ResponseWriter, r *http.Request) {
 ### 9.7 Context Admission + HIPAA Prompt Safety (Go Reference)
 
 ```go
-package uasgs
+package precinct
 
 import "net/http"
 
@@ -2328,7 +2330,7 @@ func (g *Gateway) HandleContextAdmit(w http.ResponseWriter, r *http.Request) {
 ### 9.8 DLP RuleOps Controller (Go Reference)
 
 ```go
-package uasgs
+package precinct
 
 import (
     "fmt"
@@ -2388,24 +2390,24 @@ func (g *Gateway) HandleRulePromote(w http.ResponseWriter, r *http.Request) {
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: uasgs-gateway
-  namespace: uasgs-system
+  name: precinct-gateway
+  namespace: precinct-system
 spec:
   replicas: 3
   selector:
     matchLabels:
-      app: uasgs-gateway
+      app: precinct-gateway
   template:
     metadata:
       labels:
-        app: uasgs-gateway
+        app: precinct-gateway
       annotations:
-        spiffe.io/spiffe-id: "spiffe://acme.corp/gateways/uasgs-gateway/prod"
+        spiffe.io/spiffe-id: "spiffe://acme.corp/gateways/precinct-gateway/prod"
     spec:
-      serviceAccountName: uasgs-gateway
+      serviceAccountName: precinct-gateway
       containers:
         - name: gateway
-          image: acme.corp/uasgs-gateway:v1.0.0
+          image: acme.corp/precinct-gateway:v1.0.0
           ports:
             - containerPort: 8443
               name: https
@@ -2451,7 +2453,7 @@ spec:
             path: /run/spire/sockets
         - name: config
           configMap:
-            name: uasgs-gateway-config
+            name: precinct-gateway-config
         - name: models
           persistentVolumeClaim:
             claimName: prompt-guard-model
@@ -2473,10 +2475,10 @@ spec:
     - from:
         - namespaceSelector:
             matchLabels:
-              name: uasgs-system
+              name: precinct-system
           podSelector:
             matchLabels:
-              app: uasgs-gateway
+              app: precinct-gateway
       ports:
         - protocol: TCP
           port: 8080
@@ -2499,14 +2501,14 @@ Phase 3 companion deployment guidance (same trust model):
 - Deploy ingress connectors as separate workloads with:
   - signed connector manifest
   - connector conformance version label
-  - restricted egress to UASGS ingress admission endpoint only
+  - restricted egress to PRECINCT Gateway ingress admission endpoint only
 - Deploy RuleOps admin API in a restricted namespace/segment with:
   - admin-only RBAC
   - mandatory approval workflow integration
   - immutable audit sink wiring
 - If model egress throughput requires separation, deploy an LLM egress broker:
-  - keep policy authority in UASGS
-  - keep event schema and reason codes identical to UASGS contracts
+  - keep policy authority in PRECINCT Gateway
+  - keep event schema and reason codes identical to PRECINCT Gateway contracts
 
 ---
 
@@ -2705,9 +2707,9 @@ Model weights are only one part of the supply chain. In practice, the highest‑
 
 ### 10.5.2 Pre-Deployment Scanning of MCP Servers and Agent Skills (Strongly Recommended)
 
-The UASGS enforces security at **runtime** -- verifying tool hashes, scanning content, enforcing policy on every request. However, runtime enforcement is the *last* line of defense. A complementary **shift-left** practice is to scan MCP servers and agent skills *before* they are deployed or installed, catching vulnerabilities, embedded secrets, prompt injection payloads, and supply chain risks at build/install time.
+The PRECINCT Gateway enforces security at **runtime** -- verifying tool hashes, scanning content, enforcing policy on every request. However, runtime enforcement is the *last* line of defense. A complementary **shift-left** practice is to scan MCP servers and agent skills *before* they are deployed or installed, catching vulnerabilities, embedded secrets, prompt injection payloads, and supply chain risks at build/install time.
 
-**This capability is out of scope for the UASGS** (it is not a build-time or workstation tool), but it is strongly recommended as part of a defense-in-depth posture. Organizations should integrate one or more of the following tools into their CI/CD pipelines and developer workflows.
+**This capability is out of scope for the PRECINCT Gateway** (it is not a build-time or workstation tool), but it is strongly recommended as part of a defense-in-depth posture. Organizations should integrate one or more of the following tools into their CI/CD pipelines and developer workflows.
 
 #### MCP Server Scanners
 
@@ -2741,7 +2743,7 @@ Pre-deployment gate: PASS/FAIL with severity report
     |
     v  (approved artifacts deployed to infrastructure)
     |
-Runtime enforcement: UASGS (tool registry hash verification, DLP, deep scan, policy)
+Runtime enforcement: PRECINCT Gateway (tool registry hash verification, DLP, deep scan, policy)
 ```
 
 Organizations should treat scan results as a **deployment gate** -- artifacts with CRITICAL or HIGH findings should not be deployed without explicit review and risk acceptance.
@@ -2835,7 +2837,7 @@ Local development should be runnable from a single command and still preserve th
 
 Recommended approach:
 1. Provide a `docker compose` profile that boots:
-   - `uasgs-gateway`
+   - `precinct-gateway`
    - `opa-bundle-server` (or a local bundle mount)
    - `tool-registry` (static file for local)
    - `otel-collector` + a local log sink (stdout/json or Loki)
@@ -3237,7 +3239,7 @@ These profiles are intended to make the architecture deployable in the environme
 **Typical runtime**: Docker Desktop / OrbStack / Colima.
 
 **Recommended components**
-- `uasgs-gateway`
+- `precinct-gateway`
 - `spire-server` + `spire-agent` (dev-mode attestation; clearly labeled)
 - `opa-bundle` (local file mount or local bundle server)
 - `tool-registry` (static allowlist file)
@@ -3263,7 +3265,7 @@ These profiles are intended to make the architecture deployable in the environme
 **Recommended components**
 - Systemd-managed `spire-agent` on each VM (host-level)
 - A small number of containerized services:
-  - `uasgs-gateway`
+  - `precinct-gateway`
   - `spike-nexus` (+ keepers if HA is needed)
   - `opa-bundle-server` (or signed bundle file mounts)
   - `otel-collector`
@@ -3385,8 +3387,8 @@ This section makes adoption explicit and minimizes friction: developers should o
 
 #### 10.14.1 Developer Contract (What App Teams Must Do)
 
-**D1. Route agent/tool/model traffic through UASGS**
-- Configure the client/runtime to use UASGS endpoints (no direct tool calls or model-provider calls in production).
+**D1. Route agent/tool/model traffic through PRECINCT Gateway**
+- Configure the client/runtime to use PRECINCT Gateway endpoints (no direct tool calls or model-provider calls in production).
 - Treat “gateway denied” as a normal outcome (handle retries, fallbacks, and “approval required”).
 
 **D2. Onboard tools through the Tool Registry workflow**
@@ -3424,7 +3426,7 @@ This section makes adoption explicit and minimizes friction: developers should o
 
 **P2. Policy and enforcement**
 - OPA bundle distribution, policy testing, and safe rollouts (canary + rollback).
-- Deterministic enforcement at UASGS (tool allowlist, schema validation, step-up gating, response firewall, model egress mediation).
+- Deterministic enforcement at PRECINCT Gateway (tool allowlist, schema validation, step-up gating, response firewall, model egress mediation).
 
 **P3. Secrets safety**
 - SPIKE late-binding tokens, gateway substitution, and strict non-logging of secret material.
@@ -3667,7 +3669,7 @@ To keep this architecture solid for teams using different stacks, use this imple
 
 ### 11.1 Defense Coverage Matrix
 
-| Threat | SPIFFE | SPIKE (Token) | OPA | UASGS | Coverage |
+| Threat | SPIFFE | SPIKE (Token) | OPA | PRECINCT Gateway | Coverage |
 |--------|--------|---------------|-----|-------|----------|
 | Identity spoofing | ✅ | | | | **Full** |
 | Credential exfiltration | | ✅ | | | **Full** |
@@ -3700,7 +3702,7 @@ To keep this architecture solid for teams using different stacks, use this imple
 | UI resource rug-pull | ✅ Full | UI Resource Registry hash verification |
 | Permission escalation via UI | ✅ Full | Permissions denied by default, stripped by gateway |
 | Nested frame attacks via UI | ✅ Full | frameDomains hard-denied at gateway |
-| Provider endpoint spoofing / misrouting | ✅ High | UASGS model egress policy (TLS identity + DNS integrity + residency gating + no-bypass gates) |
+| Provider endpoint spoofing / misrouting | ✅ High | PRECINCT Gateway model egress policy (TLS identity + DNS integrity + residency gating + no-bypass gates) |
 
 ### 11.3 Residual Risks
 
@@ -3762,7 +3764,7 @@ To keep this architecture solid for teams using different stacks, use this imple
 | Model artifact integrity checks | Model digests/signatures |
 | Behavioral baselines | Session context |
 | Human approval workflows | UI integration |
-| UASGS-mediated model egress controls | Provider catalog + policy + residency governance |
+| PRECINCT Gateway-mediated model egress controls | Provider catalog + policy + residency governance |
 | Mandatory model mediation enforcement | Policy + identity + network gates |
 | Ingress connector conformance framework | Adapter SDK/spec + signed manifest validation |
 | DLP RuleOps control plane | Ruleset lifecycle + canary + rollback + audit events |
@@ -3812,8 +3814,8 @@ This is **not required for v1**, but may become compelling if constrained decodi
 
 This reference architecture is extended by:
 
-- `agentic-ai-security-production-readiness-gaps.md`
-- `agentic-ai-security-production-closure-architecture.md`
+- `precinct-production-readiness-gaps.md`
+- `precinct-production-closure-architecture.md`
 
 Normative intent of this addendum:
 

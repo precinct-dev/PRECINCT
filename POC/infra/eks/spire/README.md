@@ -1,4 +1,4 @@
-# SPIRE Deployment on EKS -- Agentic Reference Architecture POC
+# SPIRE Deployment on EKS -- PRECINCT POC
 
 Kubernetes manifests for deploying SPIRE Server (HA) and Agent (DaemonSet) on the EKS cluster provisioned by RFA-9fv.2.
 
@@ -36,7 +36,7 @@ Story: RFA-9fv.3
 | Workload | SPIFFE ID | Selectors |
 |----------|-----------|-----------|
 | SPIRE Agent (node) | `spiffe://agentic-ref-arch.poc/agent/k8s-psat` | `k8s_psat:cluster:agentic-ref-arch-poc` |
-| MCP Security Gateway | `spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway` | `k8s:ns:gateway`, `k8s:sa:mcp-security-gateway` |
+| PRECINCT Gateway | `spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway` | `k8s:ns:gateway`, `k8s:sa:mcp-security-gateway` |
 | MCP Tool Servers | `spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool` | `k8s:ns:tools`, `k8s:sa:mcp-tool` |
 | SPIKE Nexus | `spiffe://agentic-ref-arch.poc/ns/spike-system/sa/spike-nexus` | `k8s:ns:spike-system`, `k8s:sa:spike-nexus` |
 

@@ -435,7 +435,7 @@ services:
     tmpfs:
       - /tmp
 
-  # MCP Security Gateway - Security enforcement point for all MCP requests
+  # PRECINCT Gateway - Security enforcement point for all MCP requests
   mcp-security-gateway:
     build:
       context: .

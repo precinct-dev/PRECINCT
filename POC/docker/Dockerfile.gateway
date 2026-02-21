@@ -1,4 +1,4 @@
-# Multi-Stage Dockerfile for MCP Security Gateway
+# Multi-Stage Dockerfile for PRECINCT Gateway
 # Reference: POC/docs/supply-chain-images.md
 
 # ============================================================================

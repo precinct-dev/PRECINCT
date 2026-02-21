@@ -2,7 +2,7 @@
 # Gateway Deployment Makefile
 # Story: RFA-9fv.4
 #
-# Targets for deploying and managing the MCP Security Gateway on EKS.
+# Targets for deploying and managing the PRECINCT Gateway on EKS.
 # Deployment order: namespace/RBAC -> ConfigMap -> deployment -> service
 #
 # Prerequisites:
@@ -65,12 +65,12 @@ deploy: deploy-configmap deploy-gateway ## Deploy all gateway components (Config
 		@echo "ConfigMap created with OPA policies and tool registry."
 
 deploy-gateway: ## Deploy gateway Deployment and Service
-	@echo "=== Deploying MCP Security Gateway ==="
+	@echo "=== Deploying PRECINCT Gateway ==="
 	$(KUBECTL) apply -f gateway-deployment.yaml
 	$(KUBECTL) apply -f gateway-service.yaml
 	@echo "Waiting for gateway pod to be ready..."
 	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/mcp-security-gateway --timeout=120s
-	@echo "MCP Security Gateway deployed."
+	@echo "PRECINCT Gateway deployed."
 
 # ---------------------------------------------------------------------------
 # Verification targets
@@ -133,7 +133,7 @@ dry-run: ## Validate all manifests (kubeconform or kubectl dry-run)
 # ---------------------------------------------------------------------------
 
 undeploy: ## Remove all gateway resources
-	@echo "=== Removing MCP Security Gateway ==="
+	@echo "=== Removing PRECINCT Gateway ==="
 	-$(KUBECTL) delete -f gateway-deployment.yaml --ignore-not-found
 	-$(KUBECTL) delete -f gateway-service.yaml --ignore-not-found
 	-$(KUBECTL) -n $(NAMESPACE) delete configmap gateway-config --ignore-not-found

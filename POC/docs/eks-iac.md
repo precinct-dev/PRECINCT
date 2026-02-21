@@ -2,7 +2,7 @@
 
 **Spike:** RFA-9fv.1
 **Date:** 2026-02-05
-**Context:** Agentic Reference Architecture -- choose an IaC tool for provisioning an EKS cluster in a single AWS account, us-west-2 (Oregon).
+**Context:** PRECINCT -- choose an IaC tool for provisioning an EKS cluster in a single AWS account, us-west-2 (Oregon).
 
 ---
 
@@ -160,7 +160,7 @@ If the team later decides Terraform's BSL is acceptable, switching back requires
 
 ## Project-Specific Recommendation
 
-For the Agentic Reference Architecture, OpenTofu/Terraform is the strongest choice because:
+For the PRECINCT, OpenTofu/Terraform is the strongest choice because:
 
 1. **The project will grow.** Beyond EKS, we need VPC with NetworkPolicy-capable CNI, IAM roles for SPIRE workload identity, S3 for state/artifacts, and potentially ALB/NLB for ingress. Terraform handles all of these in one codebase.
 

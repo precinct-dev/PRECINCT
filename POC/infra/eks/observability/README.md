@@ -2,7 +2,7 @@
 
 **Story:** RFA-9fv.7
 
-Full observability stack for the Agentic Reference Architecture POC on EKS:
+Full observability stack for the PRECINCT POC on EKS:
 OTEL collector routing traces to Phoenix, structured audit logs to S3 with
 Object Lock, and Phoenix for trace visualization.
 

@@ -26,10 +26,10 @@
 ## Routing and Enforcement
 | Surface | Upstream OpenClaw behavior | POC wrapped behavior | Compatibility | Security posture delta |
 |---|---|---|---|---|
-| `POST /v1/responses` | Accepts OpenResponses request and executes agent/model flow | Accepts normalized OpenResponses payload and routes through model-plane policy + mediated provider egress | Partial parity | Enforces UASGS reason-coded model policy decisions before any egress |
+| `POST /v1/responses` | Accepts OpenResponses request and executes agent/model flow | Accepts normalized OpenResponses payload and routes through model-plane policy + mediated provider egress | Partial parity | Enforces PRECINCT Gateway reason-coded model policy decisions before any egress |
 | `POST /tools/invoke` | Resolves tool list and executes tool directly in gateway runtime | Accepts invoke payload and evaluates tool-plane admission through wrapper policy contracts | Partial parity | No direct tool execution path from OpenClaw-facing endpoint; policy decision only |
 | Authn/Authz | Gateway auth modes (token/password/trusted proxy) | SPIFFE identity middleware + plane-specific policy reasons | Intentional divergence | Stronger identity binding in wrapper path |
-| Denials | Endpoint-specific error payloads | Canonical UASGS reason codes (`X-UASGS-Reason-Code`) + decision/trace correlation IDs | Compatible with documented hardening | Deterministic deny telemetry for audit and incident triage |
+| Denials | Endpoint-specific error payloads | Canonical PRECINCT Gateway reason codes (`X-Precinct-Reason-Code`) + decision/trace correlation IDs | Compatible with documented hardening | Deterministic deny telemetry for audit and incident triage |
 
 ## `/v1/responses` Request/Response Mapping
 | OpenClaw field | Wrapped mapping | Notes |

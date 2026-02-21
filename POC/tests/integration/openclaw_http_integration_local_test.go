@@ -81,7 +81,7 @@ func TestOpenClawHTTP_OpenResponses_Integration(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if got := resp.Header.Get("X-UASGS-Reason-Code"); got != string(gateway.ReasonModelAllow) {
+	if got := resp.Header.Get("X-Precinct-Reason-Code"); got != string(gateway.ReasonModelAllow) {
 		t.Fatalf("expected reason %s, got %s", gateway.ReasonModelAllow, got)
 	}
 }
@@ -117,7 +117,7 @@ func TestOpenClawHTTP_ToolsInvoke_Integration(t *testing.T) {
 	if denyResp.StatusCode != http.StatusForbidden {
 		t.Fatalf("expected 403 for denied tool, got %d body=%v", denyResp.StatusCode, denyBody)
 	}
-	if got := denyResp.Header.Get("X-UASGS-Reason-Code"); got != string(gateway.ReasonToolCLICommandDenied) {
+	if got := denyResp.Header.Get("X-Precinct-Reason-Code"); got != string(gateway.ReasonToolCLICommandDenied) {
 		t.Fatalf("expected reason %s, got %s", gateway.ReasonToolCLICommandDenied, got)
 	}
 }

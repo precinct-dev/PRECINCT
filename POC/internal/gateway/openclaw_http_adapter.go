@@ -236,11 +236,11 @@ func (g *Gateway) handleOpenClawResponses(w http.ResponseWriter, r *http.Request
 	copyHeaderIfPresent(w.Header(), egress.responseHeaders, "OpenAI-Processing-Ms")
 	copyHeaderIfPresent(w.Header(), egress.responseHeaders, "X-Request-Id")
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-UASGS-Decision-ID", decisionID)
-	w.Header().Set("X-UASGS-Trace-ID", traceID)
-	w.Header().Set("X-UASGS-Reason-Code", string(finalReason))
-	w.Header().Set("X-UASGS-Provider-Used", egress.providerUsed)
-	w.Header().Set("X-UASGS-Policy-Intent-Projection", projectionHeaderValue(projectionEnabled, projectionApplied))
+	w.Header().Set("X-Precinct-Decision-ID", decisionID)
+	w.Header().Set("X-Precinct-Trace-ID", traceID)
+	w.Header().Set("X-Precinct-Reason-Code", string(finalReason))
+	w.Header().Set("X-Precinct-Provider-Used", egress.providerUsed)
+	w.Header().Set("X-Precinct-Policy-Intent-Projection", projectionHeaderValue(projectionEnabled, projectionApplied))
 	w.WriteHeader(finalStatus)
 	_ = json.NewEncoder(w).Encode(response)
 }
@@ -356,9 +356,9 @@ func (g *Gateway) handleOpenClawToolsInvoke(w http.ResponseWriter, r *http.Reque
 		Metadata:   mergeMetadata(eval.Metadata, map[string]any{"openclaw_route": adapter.ToolsInvokePath}),
 	}
 	g.logPlaneDecision(r, resp, eval.HTTPStatus)
-	w.Header().Set("X-UASGS-Decision-ID", decisionID)
-	w.Header().Set("X-UASGS-Trace-ID", traceID)
-	w.Header().Set("X-UASGS-Reason-Code", string(eval.Reason))
+	w.Header().Set("X-Precinct-Decision-ID", decisionID)
+	w.Header().Set("X-Precinct-Trace-ID", traceID)
+	w.Header().Set("X-Precinct-Reason-Code", string(eval.Reason))
 
 	if eval.Decision != DecisionAllow {
 		writeOpenClawToolError(w, eval.HTTPStatus, req.Tool, decisionID, traceID, eval.Reason, "tool invocation denied by policy")
@@ -463,9 +463,9 @@ func writeOpenClawResponseError(
 	message string,
 ) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-UASGS-Decision-ID", decisionID)
-	w.Header().Set("X-UASGS-Trace-ID", traceID)
-	w.Header().Set("X-UASGS-Reason-Code", string(reason))
+	w.Header().Set("X-Precinct-Decision-ID", decisionID)
+	w.Header().Set("X-Precinct-Trace-ID", traceID)
+	w.Header().Set("X-Precinct-Reason-Code", string(reason))
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"id":         "resp_" + decisionID,
@@ -499,9 +499,9 @@ func writeOpenClawToolError(
 	message string,
 ) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("X-UASGS-Decision-ID", decisionID)
-	w.Header().Set("X-UASGS-Trace-ID", traceID)
-	w.Header().Set("X-UASGS-Reason-Code", string(reason))
+	w.Header().Set("X-Precinct-Decision-ID", decisionID)
+	w.Header().Set("X-Precinct-Trace-ID", traceID)
+	w.Header().Set("X-Precinct-Reason-Code", string(reason))
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"ok": false,

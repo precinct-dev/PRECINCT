@@ -168,7 +168,7 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		}
 
 		// Phase 3 plane entry points and OpenAI-compatible model egress are
-		// governed by dedicated UASGS contracts, not MCP tool-grant policy.
+		// governed by dedicated PRECINCT Gateway contracts, not MCP tool-grant policy.
 		// App WebSocket wrapper upgrades are also governed by dedicated wrapper
 		// authz logic and should not be blocked by MCP tool-grant policy.
 		if strings.HasPrefix(r.URL.Path, "/v1/") ||

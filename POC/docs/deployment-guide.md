@@ -1,6 +1,6 @@
 # Deployment Guide
 
-This is the consolidated deployment guide for the Agentic AI Security Reference Architecture. It covers Docker Compose (development/evaluation), local Kubernetes (Docker Desktop), and references to EKS production deployment.
+This is the consolidated deployment guide for the PRECINCT. It covers Docker Compose (development/evaluation), local Kubernetes (Docker Desktop), and references to EKS production deployment.
 
 For detailed architecture context, see [Deployment Patterns](architecture/deployment-patterns.md).
 For Kubernetes-first hardening decisions, see [Kubernetes-First Hardening Guide](architecture/k8s-hardening-portability-matrix.md).

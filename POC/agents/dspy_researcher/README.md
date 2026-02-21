@@ -6,7 +6,7 @@ gateway, then synthesizes findings into a structured report.
 
 ## Architecture
 
-All tool calls are routed through the MCP Security Gateway -- no direct tool access.
+All tool calls are routed through the PRECINCT Gateway -- no direct tool access.
 
 ```
 Agent -> Gateway (9090) -> [13-step middleware chain] -> Docker MCP Server (8081)
@@ -76,7 +76,7 @@ python agent.py "zero trust architecture for AI agents"
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GATEWAY_URL` | `http://localhost:9090` | MCP Security Gateway URL |
+| `GATEWAY_URL` | `http://localhost:9090` | PRECINCT Gateway URL |
 | `SPIFFE_ID` | `spiffe://poc.local/agents/mcp-client/dspy-researcher/dev` | Agent SPIFFE identity |
 | `OTEL_ENDPOINT` | `http://localhost:4317` | OpenTelemetry collector gRPC endpoint |
 | `LLM_MODEL` | `groq/openai/gpt-oss-20b` | DSPy LLM model identifier |

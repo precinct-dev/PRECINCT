@@ -48,7 +48,7 @@ func TestOpenClawHTTP_OpenResponsesSuccess(t *testing.T) {
 		"X-Budget-Profile":         "standard",
 		"X-Budget-Units":           "1",
 		"X-Compliance-Profile":     "standard",
-		"X-UASGS-Test-Correlation": "openclaw-http-responses",
+		"X-Precinct-Test-Correlation": "openclaw-http-responses",
 	}, `{
 		"model":"llama-3.3-70b-versatile",
 		"input":"Summarize this policy decision."
@@ -57,7 +57,7 @@ func TestOpenClawHTTP_OpenResponsesSuccess(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("X-UASGS-Reason-Code"); got != string(ReasonModelAllow) {
+	if got := rec.Header().Get("X-Precinct-Reason-Code"); got != string(ReasonModelAllow) {
 		t.Fatalf("expected reason %s, got %s", ReasonModelAllow, got)
 	}
 
@@ -88,7 +88,7 @@ func TestOpenClawHTTP_ToolsInvokeAllowed(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("X-UASGS-Reason-Code"); got != string(ReasonToolAllow) {
+	if got := rec.Header().Get("X-Precinct-Reason-Code"); got != string(ReasonToolAllow) {
 		t.Fatalf("expected reason %s, got %s", ReasonToolAllow, got)
 	}
 
@@ -129,7 +129,7 @@ func TestOpenClawHTTP_DangerousToolDenied(t *testing.T) {
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for dangerous tool, got %d body=%s", rec.Code, rec.Body.String())
 	}
-	if got := rec.Header().Get("X-UASGS-Reason-Code"); got != string(ReasonToolCLICommandDenied) {
+	if got := rec.Header().Get("X-Precinct-Reason-Code"); got != string(ReasonToolCLICommandDenied) {
 		t.Fatalf("expected reason %s, got %s", ReasonToolCLICommandDenied, got)
 	}
 }

@@ -1,6 +1,6 @@
 # Deployment Patterns: Docker Compose vs Kubernetes
 
-This document classifies all security controls in the Agentic Reference Architecture
+This document classifies all security controls in the PRECINCT
 by their deployment mode: **Universal** (present in both Docker Compose and Kubernetes),
 **K8s-Native** (Kubernetes only), or **K8s-Equivalent** (different mechanism, same outcome).
 
@@ -19,7 +19,7 @@ This classification is referenced by the compliance report for controls marked
 
 ## 1. Universal Controls (Docker Compose AND Kubernetes)
 
-These controls are enforced by the MCP Security Gateway's 13-middleware chain.
+These controls are enforced by the PRECINCT Gateway's 13-middleware chain.
 They execute identically in both deployment modes because the gateway binary is the
 same -- only the orchestration layer differs.
 

@@ -1859,8 +1859,8 @@ class TestGDPRArticle30ROPA:
         assert "deploying organization" in content.lower(), (
             "Should identify deploying organization as controller"
         )
-        assert "MCP Security Gateway" in content, (
-            "Should identify MCP Security Gateway as processor"
+        assert "PRECINCT Gateway" in content, (
+            "Should identify PRECINCT Gateway as processor"
         )
 
     def test_ropa_section_2_data_subject_categories(self):
