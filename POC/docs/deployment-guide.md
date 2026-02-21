@@ -101,13 +101,13 @@ make demo-compose
 
 All services should show status `healthy`. The demo suite exercises all 13 middleware layers with real requests through the gateway.
 
-Latest OpenClaw latest-source validation evidence (2026-02-16 UTC):
+Latest external-app latest-source validation evidence (2026-02-16 UTC):
 
 - `bash tests/e2e/run_all.sh` -> `105 pass / 0 fail / 3 skip` (`POC/tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log`)
-- `bash tests/e2e/validate_openclaw_port_campaign.sh` -> `4 pass / 0 fail` (`POC/tests/e2e/artifacts/rfa-t1hb-openclaw-campaign-20260216T185105Z.log`)
+- Targeted case-study campaign rerun -> `4 pass / 0 fail` (latest campaign artifact in `POC/tests/e2e/artifacts/`)
 - `make readiness-state-validate` -> PASS (`POC/tests/e2e/artifacts/rfa-t1hb-readiness-state-20260216T185105Z.log`)
-- Final decision package: `POC/docs/security/openclaw-latest-source-final-decision-2026-02-16.md` (**GO**, follow-up bug `RFA-655e` accepted/closed)
-- Separation model: upstream OpenClaw source remains in `~/workspace/openclaw`; security mediation remains in `POC` wrapper/control-plane components.
+- Final decision package: latest external-app final decision artifact (**GO**, follow-up bug `RFA-655e` accepted/closed)
+- Separation model: upstream case-study source remains isolated from this repository; security mediation remains in `POC` wrapper/control-plane components.
 
 ### Step 4: View Traces
 
@@ -554,21 +554,21 @@ Strict runtime wiring validation (fail-fast):
 make strict-runtime-validate
 ```
 
-### OpenClaw Full-Port Release Gate (Runbook Policy)
+### External-App Full-Port Release Gate (Runbook Policy)
 
-OpenClaw promotion decisions must reference accepted framework-closure evidence and the latest upstream source baseline.
+External-app promotion decisions must reference accepted framework-closure evidence and the latest upstream source baseline.
 
 Enforced references:
 
 - Readiness epic: `RFA-l6h6.7`
 - Final strict conformance campaign: `RFA-l6h6.7.7`
-- OpenClaw execution story: `RFA-l6h6.6.10` (accepted/closed)
+- External-app execution story: `RFA-l6h6.6.10` (accepted/closed)
 - Framework-gap closure epic: `RFA-l6h6.6.17` (accepted/closed)
 - Post-gap reassessment: `RFA-l6h6.6.17.1` (accepted/closed)
 - Latest-source closure chain: `RFA-pnxr`, `RFA-ysa5`, `RFA-oo21`, `RFA-t1hb`, `RFA-6mp8`, `RFA-655e` (accepted/closed)
-- Latest-source final decision artifact: `POC/docs/security/openclaw-latest-source-final-decision-2026-02-16.md`
+- Latest-source final decision artifact: latest external-app final decision artifact in `POC/docs/security/`
 
-Required operator checks before any OpenClaw promotion/reassessment:
+Required operator checks before any external-app promotion/reassessment:
 
 ```bash
 make strict-runtime-validate
@@ -577,12 +577,12 @@ make readiness-state-validate
 bd show RFA-l6h6.6.10 --json
 bd show RFA-l6h6.6.17.1 --json
 bd dep tree RFA-l6h6.7
-cd ~/workspace/openclaw && git rev-parse HEAD
+cd <upstream-reference-app-repo> && git rev-parse HEAD
 ```
 
 Current gate interpretation:
 - **GO past framework-closure gate** when `RFA-l6h6.7.7`, `RFA-l6h6.6.10`, and `RFA-l6h6.6.17.1` are accepted/closed and validation evidence is current.
-- **GO for latest-source OpenClaw cycle** when latest-source closure chain stories are accepted/closed and no unresolved follow-up bugs remain.
+- **GO for latest-source external-app cycle** when latest-source closure chain stories are accepted/closed and no unresolved follow-up bugs remain.
 - **NO-GO** if any gate story is open/rejected/blocked, validation evidence is stale, or latest-source follow-up bugs are unresolved.
 
 ### Cloud Adaptation Playbooks
@@ -659,7 +659,7 @@ workflow continuity, but that is not equivalent evidence for cloud release sign-
 | `make security-scan` | Run security scans and emit artifact bundle (`build/security-scan/latest`) |
 | `make security-scan-strict` | Run security scans in strict mode (fail on skipped/failed scanners) |
 | `make security-scan-validate` | Validate required security evidence artifacts + manifest hashes |
-| `make readiness-state-validate` | Validate readiness docs/state snapshot against live `bd` status and OpenClaw gate dependency |
+| `make readiness-state-validate` | Validate readiness docs/state snapshot against live `bd` status and external-app gate dependency |
 | `make production-readiness-validate` | Enforce strict security scan evidence gate for production readiness |
 | `make ci-gate-parity-validate` | Validate manual-only CI workflow policy (strict readiness + demo coverage + manual K8s policy gate) |
 | `make observability-evidence-gate-validate` | Validate strict/non-strict observability evidence gate behavior |

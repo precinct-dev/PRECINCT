@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-DEFAULT_PACK_JSON="${ROOT_DIR}/packs/openclaw/pack.v1.json"
+DEFAULT_PACK_JSON="${ROOT_DIR}/packs/reference-app/pack.v1.json"
 PACK_JSON="${1:-${DEFAULT_PACK_JSON}}"
 ARCH_DOC="${ROOT_DIR}/docs/architecture/app-integration-pack-model.md"
 SDK_DOC="${ROOT_DIR}/docs/sdk/app-pack-authoring-guide.md"
@@ -18,7 +18,7 @@ pass() {
 
 [[ -f "${ARCH_DOC}" ]] || fail "missing architecture doc: ${ARCH_DOC}"
 [[ -f "${SDK_DOC}" ]] || fail "missing sdk authoring doc: ${SDK_DOC}"
-[[ -f "${PACK_JSON}" ]] || fail "missing OpenClaw pack manifest: ${PACK_JSON}"
+[[ -f "${PACK_JSON}" ]] || fail "missing reference app pack manifest: ${PACK_JSON}"
 
 jq empty "${PACK_JSON}" >/dev/null 2>&1 || fail "pack manifest is not valid JSON"
 pass "pack manifest parses as valid JSON"

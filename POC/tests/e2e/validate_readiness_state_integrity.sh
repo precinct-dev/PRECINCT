@@ -61,25 +61,25 @@ while IFS= read -r row; do
   echo "[PASS] ${id} status matches (${actual_status})"
 done < <(jq -c '.story_states[]' "${SNAPSHOT_PATH}")
 
-gate_story_id="$(jq -r '.openclaw_full_port_gate.story_id' "${SNAPSHOT_PATH}")"
-expected_gate_status="$(jq -r '.openclaw_full_port_gate.expected_status' "${SNAPSHOT_PATH}")"
-required_blocker_story_id="$(jq -r '.openclaw_full_port_gate.required_blocker_story_id' "${SNAPSHOT_PATH}")"
+gate_story_id="$(jq -r '.external_app_full_port_gate.story_id' "${SNAPSHOT_PATH}")"
+expected_gate_status="$(jq -r '.external_app_full_port_gate.expected_status' "${SNAPSHOT_PATH}")"
+required_blocker_story_id="$(jq -r '.external_app_full_port_gate.required_blocker_story_id' "${SNAPSHOT_PATH}")"
 
 actual_gate_status="$(read_bd_field "${gate_story_id}" '.[0].status // empty')"
 [[ -n "${actual_gate_status}" ]] || fail "unable to read bd status for ${gate_story_id}"
 
 if [[ "${actual_gate_status}" != "${expected_gate_status}" ]]; then
-  fail "OpenClaw full-port gate status drift for ${gate_story_id}: expected ${expected_gate_status}, got ${actual_gate_status}"
+  fail "External-app full-port gate status drift for ${gate_story_id}: expected ${expected_gate_status}, got ${actual_gate_status}"
 fi
 
 dependency_present="$(bd show "${gate_story_id}" --json | jq -r --arg blocker "${required_blocker_story_id}" 'if ((.[0].dependencies // []) | map(select(.id == $blocker and .dependency_type == "blocks")) | length) > 0 then 1 else 0 end')"
-[[ "${dependency_present}" -eq 1 ]] || fail "OpenClaw full-port story ${gate_story_id} is missing blocker dependency on ${required_blocker_story_id}"
+[[ "${dependency_present}" -eq 1 ]] || fail "External-app full-port story ${gate_story_id} is missing blocker dependency on ${required_blocker_story_id}"
 
 blocker_status="$(read_bd_field "${required_blocker_story_id}" '.[0].status // empty')"
-allowed_blocker_status_match="$(jq -r --arg status "${blocker_status}" '.openclaw_full_port_gate.required_blocker_statuses | any(. == $status) | if . then 1 else 0 end' "${SNAPSHOT_PATH}")"
+allowed_blocker_status_match="$(jq -r --arg status "${blocker_status}" '.external_app_full_port_gate.required_blocker_statuses | any(. == $status) | if . then 1 else 0 end' "${SNAPSHOT_PATH}")"
 if [[ "${allowed_blocker_status_match}" -ne 1 ]]; then
   fail "blocker story ${required_blocker_story_id} status ${blocker_status} is outside allowed gate statuses"
 fi
 
-echo "[PASS] OpenClaw full-port gate story ${gate_story_id} matches expected status (${expected_gate_status}) with dependency linkage to ${required_blocker_story_id}"
+echo "[PASS] External-app full-port gate story ${gate_story_id} matches expected status (${expected_gate_status}) with dependency linkage to ${required_blocker_story_id}"
 echo "[PASS] readiness state integrity validation passed"

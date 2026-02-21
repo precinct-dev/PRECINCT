@@ -18,7 +18,7 @@ type openClawFunctionCall struct {
 	Arguments string
 }
 
-func (g *Gateway) handleOpenClawHTTPEntry(w http.ResponseWriter, r *http.Request) bool {
+func (g *Gateway) handleAppHTTPEntry(w http.ResponseWriter, r *http.Request) bool {
 	if r == nil || r.URL == nil {
 		return false
 	}
@@ -35,6 +35,10 @@ func (g *Gateway) handleOpenClawHTTPEntry(w http.ResponseWriter, r *http.Request
 	}
 }
 
+func (g *Gateway) handleOpenClawHTTPEntry(w http.ResponseWriter, r *http.Request) bool {
+	return g.handleAppHTTPEntry(w, r)
+}
+
 func (g *Gateway) handleOpenClawResponses(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeV24GatewayError(
@@ -43,7 +47,7 @@ func (g *Gateway) handleOpenClawResponses(w http.ResponseWriter, r *http.Request
 			http.StatusMethodNotAllowed,
 			middleware.ErrMCPInvalidRequest,
 			"method not allowed",
-			v24MiddlewareOpenClawHTTP,
+			v24MiddlewareAppWrapperHTTP,
 			ReasonContractInvalid,
 			map[string]any{
 				"route":           adapter.ResponsesPath,
@@ -61,7 +65,7 @@ func (g *Gateway) handleOpenClawResponses(w http.ResponseWriter, r *http.Request
 			http.StatusBadRequest,
 			middleware.ErrMCPInvalidRequest,
 			"unable to read request body",
-			v24MiddlewareOpenClawHTTP,
+			v24MiddlewareAppWrapperHTTP,
 			ReasonContractInvalid,
 			map[string]any{
 				"route": adapter.ResponsesPath,
@@ -78,7 +82,7 @@ func (g *Gateway) handleOpenClawResponses(w http.ResponseWriter, r *http.Request
 			http.StatusBadRequest,
 			middleware.ErrContractValidationFailed,
 			"invalid OpenClaw responses request",
-			v24MiddlewareOpenClawHTTP,
+			v24MiddlewareAppWrapperHTTP,
 			ReasonContractInvalid,
 			map[string]any{
 				"route": adapter.ResponsesPath,
@@ -95,7 +99,7 @@ func (g *Gateway) handleOpenClawResponses(w http.ResponseWriter, r *http.Request
 			http.StatusBadRequest,
 			middleware.ErrContractValidationFailed,
 			"stream=true is not supported on secure wrapper path; use stream=false",
-			v24MiddlewareOpenClawHTTP,
+			v24MiddlewareAppWrapperHTTP,
 			ReasonContractInvalid,
 			map[string]any{
 				"route": adapter.ResponsesPath,
@@ -249,7 +253,7 @@ func (g *Gateway) handleOpenClawToolsInvoke(w http.ResponseWriter, r *http.Reque
 			http.StatusMethodNotAllowed,
 			middleware.ErrMCPInvalidRequest,
 			"method not allowed",
-			v24MiddlewareOpenClawHTTP,
+			v24MiddlewareAppWrapperHTTP,
 			ReasonContractInvalid,
 			map[string]any{
 				"route":           adapter.ToolsInvokePath,
@@ -267,7 +271,7 @@ func (g *Gateway) handleOpenClawToolsInvoke(w http.ResponseWriter, r *http.Reque
 			http.StatusBadRequest,
 			middleware.ErrMCPInvalidRequest,
 			"unable to read request body",
-			v24MiddlewareOpenClawHTTP,
+			v24MiddlewareAppWrapperHTTP,
 			ReasonContractInvalid,
 			map[string]any{
 				"route": adapter.ToolsInvokePath,
@@ -284,7 +288,7 @@ func (g *Gateway) handleOpenClawToolsInvoke(w http.ResponseWriter, r *http.Reque
 			http.StatusBadRequest,
 			middleware.ErrContractValidationFailed,
 			"invalid tools.invoke request",
-			v24MiddlewareOpenClawHTTP,
+			v24MiddlewareAppWrapperHTTP,
 			ReasonContractInvalid,
 			map[string]any{
 				"route": adapter.ToolsInvokePath,

@@ -575,7 +575,7 @@ func (g *Gateway) proxyHandler() http.Handler {
 			return
 		}
 
-		if g.handleOpenClawWSEntry(proxyRW, r.WithContext(ctx)) {
+		if g.handleAppWSEntry(proxyRW, r.WithContext(ctx)) {
 			result := "allowed"
 			if proxyRW.statusCode >= 400 {
 				result = "denied"
@@ -583,15 +583,15 @@ func (g *Gateway) proxyHandler() http.Handler {
 			span.SetAttributes(
 				attribute.Int("status_code", proxyRW.statusCode),
 				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "openclaw_ws_wrapper"),
-				attribute.String("mcp.gateway.middleware", v24MiddlewareOpenClawWS),
+				attribute.String("mcp.reason", "app_ws_wrapper"),
+				attribute.String("mcp.gateway.middleware", v24MiddlewareAppWrapperWS),
 				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
 				attribute.String("mcp.v24.endpoint", r.URL.Path),
 			)
 			return
 		}
 
-		if g.handleOpenClawHTTPEntry(proxyRW, r.WithContext(ctx)) {
+		if g.handleAppHTTPEntry(proxyRW, r.WithContext(ctx)) {
 			result := "allowed"
 			if proxyRW.statusCode >= 400 {
 				result = "denied"
@@ -599,8 +599,8 @@ func (g *Gateway) proxyHandler() http.Handler {
 			span.SetAttributes(
 				attribute.Int("status_code", proxyRW.statusCode),
 				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "openclaw_http_wrapper"),
-				attribute.String("mcp.gateway.middleware", v24MiddlewareOpenClawHTTP),
+				attribute.String("mcp.reason", "app_http_wrapper"),
+				attribute.String("mcp.gateway.middleware", v24MiddlewareAppWrapperHTTP),
 				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
 				attribute.String("mcp.v24.endpoint", r.URL.Path),
 			)

@@ -56,9 +56,9 @@ Use this sequence to migrate any agent app into pack+SDK adaptation without chan
    - one passing Compose artifact
    - one passing K8s artifact
 
-Reference mapping for OpenClaw defaults:
+Reference mapping for case-study defaults:
 
-- `docs/sdk/openclaw-defaults-to-pack-sdk-map.md`
+- `docs/sdk/<reference-app>-defaults-to-pack-sdk-map.md`
 
 ## Responsibilities
 

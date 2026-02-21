@@ -347,6 +347,7 @@ run_go_demo() {
     docker run --rm --network "$network" \
         ${DOCKER_ADD_HOST} \
         ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
+        ${DEMO_K8S_EGRESS_PROBE_RESULT:+-e DEMO_K8S_EGRESS_PROBE_RESULT=$DEMO_K8S_EGRESS_PROBE_RESULT} \
         ${DEMO_RUGPULL_ADMIN_URL:+-e DEMO_RUGPULL_ADMIN_URL=$DEMO_RUGPULL_ADMIN_URL} \
         "$GO_IMAGE" --gateway-url="$url"
     return $?
@@ -359,6 +360,7 @@ run_python_demo() {
     docker run --rm --network "$network" \
         ${DOCKER_ADD_HOST} \
         ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
+        ${DEMO_K8S_EGRESS_PROBE_RESULT:+-e DEMO_K8S_EGRESS_PROBE_RESULT=$DEMO_K8S_EGRESS_PROBE_RESULT} \
         ${DEMO_RUGPULL_ADMIN_URL:+-e DEMO_RUGPULL_ADMIN_URL=$DEMO_RUGPULL_ADMIN_URL} \
         "$PY_IMAGE" --gateway-url="$url"
     return $?
@@ -527,6 +529,187 @@ collect_mcp_transport_proof_k8s() {
     echo ""
 }
 
+k8s_probe_direct_external_egress() {
+    local probe_url="${1:-https://api.groq.com/openai/v1/chat/completions}"
+    local probe_output=""
+    local probe_rc=0
+    local probe_status=""
+    local probe_runtime=""
+    local attempt_summaries=()
+
+    _probe_exec_not_found() {
+        local msg
+        msg="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+        [[ "$msg" == *"executable file not found"* ]] || [[ "$msg" == *"not found in \$path"* ]] || [[ "$msg" == *"no such file or directory"* ]]
+    }
+
+    _run_probe_attempt() {
+        local runtime="$1"
+        shift
+        probe_runtime="$runtime"
+        set +e
+        probe_output="$(kubectl -n tools exec deploy/mcp-server -- "$@" 2>&1)"
+        probe_rc=$?
+        set -e
+
+        if [ "$probe_rc" -eq 0 ]; then
+            probe_status="allowed"
+            return 0
+        fi
+        if _probe_exec_not_found "$probe_output"; then
+            probe_status="unavailable"
+            return 0
+        fi
+
+        case "$runtime" in
+            curl)
+                probe_status="blocked"
+                ;;
+            wget)
+                if [ "$probe_rc" -eq 8 ]; then
+                    probe_status="allowed"
+                else
+                    probe_status="blocked"
+                fi
+                ;;
+            node|python3|python)
+                if [ "$probe_rc" -eq 7 ]; then
+                    probe_status="blocked"
+                else
+                    probe_status="error"
+                fi
+                ;;
+            *)
+                probe_status="error"
+                ;;
+        esac
+    }
+
+    log "Verifying in-cluster direct external egress is blocked (tools/mcp-server)"
+
+    _run_probe_attempt "curl" curl -m 4 -sS -o /dev/null -w '%{http_code}' "$probe_url"
+    attempt_summaries+=("curl status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
+    if [ "$probe_status" = "allowed" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
+        err "In-cluster external egress probe reached a public endpoint (runtime=curl)"
+        err "Probe output: ${probe_output}"
+        return 1
+    fi
+    if [ "$probe_status" = "blocked" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
+        ok "In-cluster external egress is blocked as expected (runtime=curl)"
+        return 0
+    fi
+
+    _run_probe_attempt "wget" wget -T 4 -q -O /dev/null "$probe_url"
+    attempt_summaries+=("wget status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
+    if [ "$probe_status" = "allowed" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
+        err "In-cluster external egress probe reached a public endpoint (runtime=wget)"
+        err "Probe output: ${probe_output}"
+        return 1
+    fi
+    if [ "$probe_status" = "blocked" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
+        ok "In-cluster external egress is blocked as expected (runtime=wget)"
+        return 0
+    fi
+
+    _run_probe_attempt "node" node -e '
+const https = require("https");
+const url = process.argv[1];
+const req = https.request(url, { method: "GET" }, (res) => {
+  console.log(`ALLOWED:${res.statusCode}`);
+  res.resume();
+  process.exit(0);
+});
+req.setTimeout(4000, () => req.destroy(new Error("timeout")));
+req.on("error", (err) => {
+  console.log(`BLOCKED:${err.name}:${err.message}`);
+  process.exit(7);
+});
+req.end();
+' "$probe_url"
+    attempt_summaries+=("node status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
+    if [ "$probe_status" = "allowed" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
+        err "In-cluster external egress probe reached a public endpoint (runtime=node)"
+        err "Probe output: ${probe_output}"
+        return 1
+    fi
+    if [ "$probe_status" = "blocked" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
+        ok "In-cluster external egress is blocked as expected (runtime=node)"
+        return 0
+    fi
+
+    _run_probe_attempt "python3" python3 -c '
+import sys
+import urllib.error
+import urllib.request
+
+url = sys.argv[1]
+req = urllib.request.Request(url, method="GET")
+try:
+    with urllib.request.urlopen(req, timeout=4.0) as resp:
+        print(f"ALLOWED:{resp.status}")
+        raise SystemExit(0)
+except urllib.error.HTTPError as exc:
+    print(f"ALLOWED_HTTP_ERROR:{exc.code}")
+    raise SystemExit(0)
+except Exception as exc:
+    print(f"BLOCKED:{type(exc).__name__}:{exc}")
+    raise SystemExit(7)
+' "$probe_url"
+    attempt_summaries+=("python3 status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
+    if [ "$probe_status" = "allowed" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
+        err "In-cluster external egress probe reached a public endpoint (runtime=python3)"
+        err "Probe output: ${probe_output}"
+        return 1
+    fi
+    if [ "$probe_status" = "blocked" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
+        ok "In-cluster external egress is blocked as expected (runtime=python3)"
+        return 0
+    fi
+
+    _run_probe_attempt "python" python -c '
+import sys
+import urllib
+
+url = sys.argv[1]
+req = urllib.request.Request(url, method="GET")
+try:
+    with urllib.request.urlopen(req, timeout=4.0) as resp:
+        print("ALLOWED:%s" % resp.status)
+        raise SystemExit(0)
+except urllib.error.HTTPError as exc:
+    print("ALLOWED_HTTP_ERROR:%s" % exc.code)
+    raise SystemExit(0)
+except Exception as exc:
+    print("BLOCKED:%s:%s" % (type(exc).__name__, exc))
+    raise SystemExit(7)
+' "$probe_url"
+    attempt_summaries+=("python status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
+    if [ "$probe_status" = "allowed" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
+        err "In-cluster external egress probe reached a public endpoint (runtime=python)"
+        err "Probe output: ${probe_output}"
+        return 1
+    fi
+    if [ "$probe_status" = "blocked" ]; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
+        ok "In-cluster external egress is blocked as expected (runtime=python)"
+        return 0
+    fi
+
+    DEMO_K8S_EGRESS_PROBE_RESULT="error"
+    err "In-cluster egress probe could not find a supported runtime inside tools/mcp-server"
+    err "Probe attempts: ${attempt_summaries[*]}"
+    return 1
+}
+
 print_otel_proof() {
     log "OpenTelemetry traces"
     if [ "$PHOENIX_AVAILABLE" = true ]; then
@@ -577,10 +760,12 @@ run_demo_cycle() {
     local mode="$1"
     local url
     local network
+    DEMO_K8S_EGRESS_PROBE_RESULT=""
 
     # In Docker Compose mode we wire a mock guard model into the gateway so the
-    # deep scan deny path (step 10) is deterministic. Gate strict demo checks
-    # to compose only so k8s runs remain compatible with external guard config.
+    # deep scan deny path (step 10) is deterministic. K8s keeps non-strict deep
+    # scan behavior for compatibility with external guard config, but we still
+    # enforce direct external egress blocking via an in-cluster probe.
     DEMO_STRICT_DEEPSCAN=""
     if [ "$mode" = "compose" ]; then
         DEMO_STRICT_DEEPSCAN="1"
@@ -684,6 +869,7 @@ run_demo_cycle() {
         # ConnectError/ECONNREFUSED in the containerized demos.
         ensure_k8s_demo_ingress "$network"
         wait_for_health_k8s "$url" "$network" || exit 1
+        k8s_probe_direct_external_egress "https://api.groq.com/openai/v1/chat/completions" || exit 1
 
         # Determinism: ensure upstream rugpull state is OFF before running tests.
         # Fail-fast rather than letting the demo fail later with a confusing
