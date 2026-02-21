@@ -57,11 +57,8 @@ type Gateway struct {
 	mcpTransportMu             sync.Mutex                        // RFA-9ol: protects lazy initialization of mcpTransport
 	mcpRequestIDCounter        uint64                            // RFA-l6h6.7.3: monotonic fallback JSON-RPC request ID generator
 	modelPlanePolicy           *modelPlanePolicyEngine           // RFA-owgw.2: model plane policy enforcement
-	ingressPolicy              *ingressPlanePolicyEngine         // RFA-owgw.3: ingress plane admission controls
-	contextPolicy              *contextPlanePolicyEngine         // RFA-owgw.5: context and memory admission governance
 	loopPolicy                 *loopPlanePolicyEngine            // RFA-owgw.4: loop plane immutable external limits
 	toolPolicy                 *toolPlanePolicyEngine            // RFA-owgw.6: tool plane protocol adapters and capability registry v2
-	rlmPolicy                  *rlmGovernanceEngine              // RFA-owgw.11: recursive language model governance
 	breakGlass                 *breakGlassManager                // RFA-l6h6.1.5: bounded break-glass emergency overrides
 	enforcementProfile         *enforcementProfileRuntime        // RFA-l6h6.1.6: startup-constrained runtime enforcement profile
 	dlpRuleOps                 *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
@@ -389,11 +386,8 @@ func New(cfg *Config) (*Gateway, error) {
 		sessionStore:               sessionStore,
 		registryStop:               registryStop,
 		modelPlanePolicy:           modelPlanePolicy,
-		ingressPolicy:              newIngressPlanePolicyEngine(),
-		contextPolicy:              newContextPlanePolicyEngine(),
 		loopPolicy:                 newLoopPlanePolicyEngine(),
 		toolPolicy:                 newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
-		rlmPolicy:                  newRLMGovernanceEngine(),
 		breakGlass:                 newBreakGlassManager(auditor),
 		enforcementProfile:         enforcementProfile,
 		dlpRuleOps:                 dlpRuleOps,
