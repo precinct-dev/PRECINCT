@@ -20,6 +20,7 @@ const (
 	reasonWSAuthInvalid      ReasonCode = "WS_AUTH_INVALID"
 	reasonWSMethodForbidden  ReasonCode = "WS_METHOD_FORBIDDEN"
 	reasonWSPayloadMalformed ReasonCode = "WS_PAYLOAD_MALFORMED"
+	reasonWSDeviceRequired   ReasonCode = "WS_DEVICE_REQUIRED"
 )
 
 type openClawWSRequestFrame struct {
@@ -242,6 +243,21 @@ func (g *Gateway) handleOpenClawWSConnect(
 		g.writeOpenClawWSFailure(conn, frame.ID, http.StatusUnauthorized, reasonWSAuthInvalid, "missing SPIFFE identity in request context", decisionID, traceID)
 		g.logOpenClawWSDecision(req, *session, frame.Method, DecisionDeny, reasonWSAuthInvalid, decisionID, traceID, http.StatusUnauthorized)
 		return nil
+	}
+
+	// Enforce device-identity requirement for node role (upstream contract: ddcb2d79b).
+	// Only operator role with shared-secret auth may omit device identity.
+	if role == "node" {
+		device, hasDevice := frame.Params["device"].(map[string]any)
+		nodeDeviceID := ""
+		if hasDevice {
+			nodeDeviceID = strings.TrimSpace(getStringAttr(device, "id", ""))
+		}
+		if nodeDeviceID == "" {
+			g.writeOpenClawWSFailure(conn, frame.ID, http.StatusForbidden, reasonWSDeviceRequired, "node role requires device identity", decisionID, traceID)
+			g.logOpenClawWSDecision(req, *session, frame.Method, DecisionDeny, reasonWSDeviceRequired, decisionID, traceID, http.StatusForbidden)
+			return nil
+		}
 	}
 
 	scopes := parseOpenClawWSScopes(frame.Params["scopes"])

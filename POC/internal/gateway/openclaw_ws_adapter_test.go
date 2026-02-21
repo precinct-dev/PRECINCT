@@ -159,6 +159,36 @@ func TestOpenClawWSGatewayProtocol_AuthzAndMalformedDenied(t *testing.T) {
 		}
 	})
 
+	t.Run("node role without device identity denied", func(t *testing.T) {
+		gw, _ := newPhase3TestGateway(t)
+		server := httptest.NewServer(gw.Handler())
+		defer server.Close()
+
+		headers := http.Header{}
+		headers.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		conn, _, err := websocket.DefaultDialer.Dial(openClawWSURL(server.URL), headers)
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
+		}
+		defer conn.Close()
+
+		_ = conn.WriteJSON(openClawWSRequestFrame{
+			Type:   "req",
+			ID:     "connect-node-no-device",
+			Method: "connect",
+			Params: map[string]any{
+				"role": "node",
+			},
+		})
+		denyResp := readWSResponse(t, conn)
+		if denyResp.OK {
+			t.Fatal("expected node connect without device identity to be denied")
+		}
+		if denyResp.Error == nil || denyResp.Error.ReasonCode != reasonWSDeviceRequired {
+			t.Fatalf("expected reason %s, got %+v", reasonWSDeviceRequired, denyResp.Error)
+		}
+	})
+
 	t.Run("forbidden method", func(t *testing.T) {
 		gw, _ := newPhase3TestGateway(t)
 		server := httptest.NewServer(gw.Handler())
@@ -178,11 +208,17 @@ func TestOpenClawWSGatewayProtocol_AuthzAndMalformedDenied(t *testing.T) {
 			Method: "connect",
 			Params: map[string]any{
 				"role": "node",
+				"device": map[string]any{
+					"id": "device-unit-test",
+				},
+				"auth": map[string]any{
+					"token": "tok-unit-test",
+				},
 			},
 		})
 		connectResp := readWSResponse(t, conn)
 		if !connectResp.OK {
-			t.Fatalf("expected connect success for node role, got error=%+v", connectResp.Error)
+			t.Fatalf("expected connect success for node role with device identity, got error=%+v", connectResp.Error)
 		}
 
 		_ = conn.WriteJSON(openClawWSRequestFrame{
