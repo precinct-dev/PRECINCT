@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -299,6 +300,16 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		ctx = WithOPADecisionID(ctx, opaDecisionID)
 
 		if !allowed {
+			// Record OPA denial metric
+			if gwMetrics != nil {
+				gwMetrics.DenialTotal.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("middleware", "opa"),
+						attribute.String("reason", reason),
+						attribute.String("spiffe_id", GetSPIFFEID(ctx)),
+					),
+				)
+			}
 			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
 				Code:           ErrAuthzPolicyDenied,
 				Message:        fmt.Sprintf("Policy denied: %s", reason),

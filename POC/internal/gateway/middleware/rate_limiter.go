@@ -12,6 +12,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -456,8 +457,35 @@ func RateLimitMiddleware(next http.Handler, limiter *RateLimiter) http.Handler {
 		w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
 		w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(resetTime.Unix(), 10))
 
+		// Record rate limiter utilization metric
+		if gwMetrics != nil {
+			utilization := 1.0 - float64(remaining)/float64(limiter.burst)
+			if utilization < 0 {
+				utilization = 0
+			}
+			if utilization > 1 {
+				utilization = 1
+			}
+			gwMetrics.RateLimiterUtilization.Record(ctx, utilization,
+				metric.WithAttributes(
+					attribute.String("spiffe_id", spiffeID),
+					attribute.String("limiter_name", "default"),
+				),
+			)
+		}
+
 		// If rate limit exceeded, return HTTP 429
 		if !allowed {
+			// Record rate limit denial metric
+			if gwMetrics != nil {
+				gwMetrics.DenialTotal.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("middleware", "rate_limit"),
+						attribute.String("reason", "rate_limit_exceeded"),
+						attribute.String("spiffe_id", spiffeID),
+					),
+				)
+			}
 			span.SetAttributes(
 				attribute.String("mcp.result", "denied"),
 				attribute.String("mcp.reason", "rate limit exceeded"),

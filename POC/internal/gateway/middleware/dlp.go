@@ -10,6 +10,7 @@ import (
 	"unicode"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -351,8 +352,27 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 
 		// Credentials check
 		if result.HasCredentials {
+			// Record DLP finding metric
+			if gwMetrics != nil {
+				gwMetrics.DLPFindingsTotal.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("pattern_name", "credentials"),
+						attribute.String("action", p.Credentials),
+					),
+				)
+			}
 			ctx = WithSecurityFlags(ctx, result.Flags)
 			if p.Credentials == "block" {
+				// Record DLP denial metric
+				if gwMetrics != nil {
+					gwMetrics.DenialTotal.Add(ctx, 1,
+						metric.WithAttributes(
+							attribute.String("middleware", "dlp"),
+							attribute.String("reason", "credentials_detected"),
+							attribute.String("spiffe_id", GetSPIFFEID(ctx)),
+						),
+					)
+				}
 				span.SetAttributes(
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "credentials detected"),
@@ -375,8 +395,27 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 
 		// Injection check (suspicious patterns: SQL injection, prompt injection)
 		if result.HasSuspicious {
+			// Record DLP finding metric
+			if gwMetrics != nil {
+				gwMetrics.DLPFindingsTotal.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("pattern_name", "injection"),
+						attribute.String("action", p.Injection),
+					),
+				)
+			}
 			if p.Injection == "block" {
 				ctx = WithSecurityFlags(ctx, result.Flags)
+				// Record DLP denial metric
+				if gwMetrics != nil {
+					gwMetrics.DenialTotal.Add(ctx, 1,
+						metric.WithAttributes(
+							attribute.String("middleware", "dlp"),
+							attribute.String("reason", "injection_detected"),
+							attribute.String("spiffe_id", GetSPIFFEID(ctx)),
+						),
+					)
+				}
 				span.SetAttributes(
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "injection pattern detected"),
@@ -399,8 +438,27 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 
 		// PII check
 		if result.HasPII {
+			// Record DLP finding metric
+			if gwMetrics != nil {
+				gwMetrics.DLPFindingsTotal.Add(ctx, 1,
+					metric.WithAttributes(
+						attribute.String("pattern_name", "pii"),
+						attribute.String("action", p.PII),
+					),
+				)
+			}
 			if p.PII == "block" {
 				ctx = WithSecurityFlags(ctx, result.Flags)
+				// Record DLP denial metric
+				if gwMetrics != nil {
+					gwMetrics.DenialTotal.Add(ctx, 1,
+						metric.WithAttributes(
+							attribute.String("middleware", "dlp"),
+							attribute.String("reason", "pii_detected"),
+							attribute.String("spiffe_id", GetSPIFFEID(ctx)),
+						),
+					)
+				}
 				span.SetAttributes(
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "PII detected"),

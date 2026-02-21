@@ -451,6 +451,7 @@ func (g *Gateway) Handler() http.Handler {
 	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                // 3
 	handler = middleware.BodyCapture(handler)                                    // 2
 	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
+	handler = middleware.RequestMetrics(handler)                                 // 0 - outermost: record request_total with status code
 
 	// Add endpoints
 	mux := http.NewServeMux()

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -593,6 +594,25 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner, riskConfig *Ris
 			attribute.Bool("async", false),
 		)
 		result := scanner.Scan(ctx, string(body), traceID)
+
+		// Record deep scan latency metric
+		if gwMetrics != nil {
+			outcome := "allowed"
+			if result.Error != nil {
+				outcome = "error"
+			} else {
+				injThresholdCheck, jbThresholdCheck := deepScanThresholds(riskConfig)
+				if result.InjectionScore > injThresholdCheck || result.JailbreakScore > jbThresholdCheck {
+					outcome = "blocked"
+				}
+			}
+			gwMetrics.DeepScanLatencyMs.Record(ctx, float64(result.LatencyMs),
+				metric.WithAttributes(
+					attribute.String("model", result.ModelUsed),
+					attribute.String("outcome", outcome),
+				),
+			)
+		}
 
 		// Handle scan errors with fallback logic (AC5, AC6)
 		if result.Error != nil {
