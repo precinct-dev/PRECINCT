@@ -49,9 +49,9 @@ default allow = false
 
 	// OPA engine reads from a directory -- write policy to opaDir
 	_ = os.WriteFile(filepath.Join(opaDir, "mcp_policy.rego"), []byte(`package mcp
-default allow = false
-allow { input.tool == "file_read" }
-allow { input.tool == "tools/list" }
+default allow := false
+allow if { input.tool == "file_read" }
+allow if { input.tool == "tools/list" }
 `), 0644)
 
 	_ = os.WriteFile(registryPath, []byte(`tools:
@@ -456,8 +456,8 @@ func TestBenchmarkSanity(t *testing.T) {
 default allow = false
 `), 0644)
 	_ = os.WriteFile(filepath.Join(opaDir, "mcp_policy.rego"), []byte(`package mcp
-default allow = false
-allow { input.tool == "file_read" }
+default allow := false
+allow if { input.tool == "file_read" }
 `), 0644)
 	_ = os.WriteFile(registryPath, []byte(`tools:
   - name: "file_read"
@@ -689,8 +689,8 @@ func TestPrintBenchmarkReport(t *testing.T) {
 default allow = false
 `), 0644)
 	_ = os.WriteFile(filepath.Join(opaDir, "mcp_policy.rego"), []byte(`package mcp
-default allow = false
-allow { input.tool == "file_read" }
+default allow := false
+allow if { input.tool == "file_read" }
 `), 0644)
 	_ = os.WriteFile(registryPath, []byte(`tools:
   - name: "file_read"

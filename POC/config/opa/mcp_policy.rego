@@ -5,8 +5,7 @@
 
 package mcp
 
-import future.keywords.if
-import future.keywords.in
+import rego.v1
 
 # Load tool grants and tool registry from data files
 tool_grants := data.tool_grants

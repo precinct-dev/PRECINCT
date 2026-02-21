@@ -210,7 +210,7 @@ func TestAuditChain_RealWorldWorkflow(t *testing.T) {
 
 	// Create mock config files that simulate real gateway configs
 	bundleContent := `package mcp
-import future.keywords.if
+import rego.v1
 default allow := false
 allow if {
     input.spiffe_id == "spiffe://poc.local/agents/test"
