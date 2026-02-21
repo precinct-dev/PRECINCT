@@ -30,4 +30,4 @@ metadata:
     # IRSA annotation: tells EKS to inject AWS credentials for this IAM role
     # Replace <ACCOUNT_ID> and <CLUSTER_NAME> after Terraform apply
     # or use Kustomize/Helm to template this value.
-    eks.amazonaws.com/role-arn: "arn:aws:iam:::<ACCOUNT_ID>:role/agentic-ref-arch-poc-audit-s3-sink"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::<ACCOUNT_ID>:role/agentic-ref-arch-poc-audit-s3-sink"

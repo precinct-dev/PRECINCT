@@ -25,5 +25,5 @@ metadata:
     app.kubernetes.io/part-of: mcp-tools
     app.kubernetes.io/component: tool-server
   annotations:
-    # IRSA: Replace with the actual IAM role ARN from iam.tf output
-    eks.amazonaws.com/role-arn: "arn:aws:iam::role/s3-mcp-tool-role"
+    # IRSA: Replace <ACCOUNT_ID> with the actual IAM role ARN from iam.tf output
+    eks.amazonaws.com/role-arn: "arn:aws:iam::<ACCOUNT_ID>:role/s3-mcp-tool-role"
