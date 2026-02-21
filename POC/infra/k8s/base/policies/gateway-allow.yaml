@@ -1,0 +1,125 @@
+# ------------------------------------------------------------------------------
+# Gateway Allow NetworkPolicies
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# Explicit allow rules for the MCP Security Gateway namespace.
+# These rules layer on top of the default-deny policy to permit only the
+# traffic flows required for the gateway to function:
+#
+#   INGRESS:
+#     - Only namespaces explicitly labeled for gateway ingress on port 9090
+#       (networking.agentic.io/gateway-ingress-allowed=true).
+#
+#   EGRESS:
+#     - To mcp-server in tools namespace on port 8081 (upstream tool calls)
+#     - To otel-collector in observability namespace on 4317/4318 (OTLP traces)
+#     - To SPIRE agent on the host (SPIFFE SVID retrieval via Unix socket)
+#     - To kube-dns on port 53 (DNS resolution)
+#     - To SPIKE Nexus in spike-system on port 8443 (token operations)
+#     - To KeyDB in data namespace on port 6379 (rate limiting + sessions)
+#     - No direct external internet egress from the gateway pod.
+# ------------------------------------------------------------------------------
+
+# Allow inbound MCP requests to the gateway from approved namespaces only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-allow-ingress
+  namespace: gateway
+  labels:
+    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-security-gateway
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              networking.agentic.io/gateway-ingress-allowed: "true"
+      ports:
+        - protocol: TCP
+          port: 9090
+---
+# Allow gateway egress to required destinations
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-allow-egress
+  namespace: gateway
+  labels:
+    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-security-gateway
+  policyTypes:
+    - Egress
+  egress:
+    # Allow egress to MCP tool server in tools namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: tools
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mcp-server
+      ports:
+        - protocol: TCP
+          port: 8081
+        - protocol: TCP
+          port: 8082
+
+    # Allow egress to OTEL Collector in observability namespace (OTLP traces)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: otel-collector
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+
+    # Allow egress to SPIKE Nexus in spike-system on port 8443
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: spike
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-nexus
+      ports:
+        - protocol: TCP
+          port: 8443
+
+    # Allow egress to KeyDB in data namespace on port 6379 (rate limiting + sessions)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: data
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: keydb
+      ports:
+        - protocol: TCP
+          port: 6379
+
+    # Allow egress to kube-dns for DNS resolution (UDP and TCP port 53)
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

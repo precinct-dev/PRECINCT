@@ -1,0 +1,71 @@
+# ------------------------------------------------------------------------------
+# Kustomize Dev Overlay (Cloud-Agnostic)
+# Story: oc-ko5 (GAP-7)
+#
+# Development environment configuration:
+#   - 1 replica for gateway, 1 for MCP server
+#   - Debug logging enabled
+#   - Lower resource limits
+#
+# This overlay works on ANY conformant Kubernetes cluster.
+# For EKS-specific dev overlay (with admission control, IRSA, etc.),
+# see infra/eks/overlays/dev/.
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+images:
+  - name: mcp-security-gateway
+    newTag: dev
+  - name: python  # placeholder MCP server image
+    newName: python
+    newTag: "3.12-slim"
+
+patches:
+  # Gateway: 1 replica, debug logging
+  - target:
+      kind: Deployment
+      name: mcp-security-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-security-gateway
+        namespace: gateway
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: mcp-security-gateway
+                env:
+                  - name: LOG_LEVEL
+                    value: "debug"
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 200m
+                    memory: 128Mi
+
+  # MCP Server: 1 replica
+  - target:
+      kind: Deployment
+      name: mcp-server
+      namespace: tools
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-server
+        namespace: tools
+      spec:
+        replicas: 1
+
+commonAnnotations:
+  app.kubernetes.io/environment: dev

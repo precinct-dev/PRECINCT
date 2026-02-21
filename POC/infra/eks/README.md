@@ -1,5 +1,10 @@
 # EKS Cluster Baseline -- Agentic Reference Architecture POC
 
+**NOTE: This is an AWS/EKS-specific optional overlay.** For cloud-agnostic
+Kubernetes manifests that work on any conformant cluster (EKS, GKE, AKS, kind,
+k3s, etc.), see `infra/k8s/`. The EKS-specific resources here (Terraform,
+IRSA, VPC CNI, S3 audit sink) layer on top of the generic k8s base.
+
 IaC scripts for provisioning an EKS cluster in AWS us-west-2 using OpenTofu and the `terraform-aws-modules/eks` community module.
 
 Story: RFA-9fv.2 | Spike: RFA-9fv.1 (see `POC/docs/eks-iac.md`)
