@@ -169,6 +169,14 @@ func (a *Auditor) Flush() {
 	<-flushDone
 }
 
+// LastHash returns the current hash chain head under the mutex.
+// This is the only safe way to read lastHash from concurrent goroutines.
+func (a *Auditor) LastHash() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.lastHash
+}
+
 // Log emits a structured audit event with hash chain integrity.
 //
 // RFA-lz1: The hot path (JSON marshal + hash computation) remains synchronous
@@ -394,7 +402,7 @@ func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 		span.SetAttributes(
 			attribute.String("mcp.session_id", sessionID),
 			attribute.String("mcp.decision_id", decisionID),
-			attribute.String("prev_hash", auditor.lastHash),
+			attribute.String("prev_hash", auditor.LastHash()),
 			attribute.String("mcp.result", "allowed"),
 			attribute.String("mcp.reason", "audit logged"),
 		)

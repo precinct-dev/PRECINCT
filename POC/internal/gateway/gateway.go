@@ -786,7 +786,7 @@ func (g *Gateway) handleMCPRequest(
 		return g.ensureMCPTransportInitialized(retryCtx)
 	}
 
-	rpcResp, err := mcpclient.SendWithRetry(sendCtx, g.mcpTransport, rpcReq, retryCfg, reinitFn)
+	rpcResp, err := mcpclient.SendWithRetry(sendCtx, g.getMCPTransport(), rpcReq, retryCfg, reinitFn)
 	if err != nil {
 		middleware.WriteGatewayError(w, r, http.StatusBadGateway, middleware.GatewayError{
 			Code:        middleware.ErrMCPTransportFailed,
@@ -1015,7 +1015,7 @@ func (g *Gateway) refreshObservedToolHashes(ctx context.Context, server string) 
 		return g.ensureMCPTransportInitialized(retryCtx)
 	}
 
-	rpcResp, err := mcpclient.SendWithRetry(ctx, g.mcpTransport, rpcReq, retryCfg, reinitFn)
+	rpcResp, err := mcpclient.SendWithRetry(ctx, g.getMCPTransport(), rpcReq, retryCfg, reinitFn)
 	if err != nil {
 		return nil, err
 	}
@@ -1046,6 +1046,14 @@ func (g *Gateway) refreshObservedToolHashes(ctx context.Context, server string) 
 	return hashes, nil
 }
 
+// getMCPTransport returns the current MCP transport under the mutex.
+// This is the only safe way to read g.mcpTransport from concurrent goroutines.
+func (g *Gateway) getMCPTransport() mcpclient.Transport {
+	g.mcpTransportMu.Lock()
+	defer g.mcpTransportMu.Unlock()
+	return g.mcpTransport
+}
+
 // ensureMCPTransportInitialized performs lazy initialization of the MCP transport.
 // Thread-safe: only the first caller initializes; subsequent callers wait.
 //
@@ -1057,15 +1065,14 @@ func (g *Gateway) ensureMCPTransportInitialized(ctx context.Context) error {
 		return fmt.Errorf("MCP transport not configured (MCPTransportMode=%q)", g.config.MCPTransportMode)
 	}
 
-	// Fast path: already initialized
-	if g.mcpTransport != nil {
-		return nil
-	}
-
+	// Single-check under the mutex. The previous double-checked locking
+	// pattern had an unsynchronized fast-path read that caused data races
+	// under -race when concurrent goroutines called ensureMCPTransportInitialized.
+	// Since contention is negligible (lazy init, checked once per request at most),
+	// we simply acquire the mutex and check once.
 	g.mcpTransportMu.Lock()
 	defer g.mcpTransportMu.Unlock()
 
-	// Double-check after acquiring lock
 	if g.mcpTransport != nil {
 		return nil
 	}
@@ -1747,9 +1754,9 @@ func (g *Gateway) dlpPolicy() middleware.DLPPolicy {
 
 // Close cleans up gateway resources
 func (g *Gateway) Close() error {
-	// RFA-9ol: Close MCP transport session
-	if g.mcpTransport != nil {
-		_ = g.mcpTransport.Close(context.Background())
+	// RFA-9ol: Close MCP transport session (read under mutex to avoid races)
+	if t := g.getMCPTransport(); t != nil {
+		_ = t.Close(context.Background())
 	}
 	// RFA-dh9: Stop the registry file watcher
 	if g.registryStop != nil {
