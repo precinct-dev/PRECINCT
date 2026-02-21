@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the SPIKE token substitution feature implemented in the MCP Security Gateway. SPIKE (Secure Programmatic Interface for Key Exchange) enables agents to reference secrets without ever seeing the actual values.
+This document describes the SPIKE token substitution feature implemented in the PRECINCT Gateway. SPIKE (Secure Programmatic Interface for Key Exchange) enables agents to reference secrets without ever seeing the actual values.
 
 ## Token Format
 

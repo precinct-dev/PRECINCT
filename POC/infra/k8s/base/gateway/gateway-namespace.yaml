@@ -2,7 +2,7 @@
 # Gateway Namespace
 # Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
 #
-# Dedicated namespace for the MCP Security Gateway.
+# Dedicated namespace for the PRECINCT Gateway.
 # Pod security standards enforce restricted profile (non-root, no privilege
 # escalation, read-only root filesystem, etc.).
 # ------------------------------------------------------------------------------

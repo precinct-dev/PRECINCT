@@ -1,5 +1,7 @@
-# Agentic AI Security Reference Architecture
+# PRECINCT
 ## Executive Narrative for Decision Makers
+
+PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools
 
 Date: 2026-02-15  
 Audience: CIO, CISO, CTO, Risk, Legal, Privacy, Platform Leadership
@@ -20,7 +22,7 @@ This reference architecture is built for option 3.
 
 ## What Changed With the Phase 3 Direction
 
-The architecture has now moved from a tool-centric gateway mindset to a full **Unified Agentic Security Gateway System (UASGS)** model.
+The architecture has now moved from a tool-centric gateway mindset to a full **PRECINCT Gateway** model.
 
 It governs the five planes that define modern agentic systems:
 
@@ -91,7 +93,7 @@ These objections are not edge cases. They are now central to the architecture's 
 
 ### 1) Centralized control, decentralized innovation
 
-UASGS centralizes policy, identity, and evidence, while development teams keep framework freedom.
+PRECINCT Gateway centralizes policy, identity, and evidence, while development teams keep framework freedom.
 
 The model is simple:
 
@@ -136,7 +138,7 @@ No.
 The architecture uses connector patterns:
 
 - Protocol-specific connectors normalize events.
-- UASGS enforces one admission contract.
+- PRECINCT Gateway enforces one admission contract.
 - The core stays protocol-agnostic.
 
 This scales to webhooks, Kafka-class brokers, and queue services without turning the gateway into a monolith.
@@ -256,7 +258,7 @@ Adopt this architecture as the enterprise baseline for agentic systems, then exe
 
 The governance strategy should be:
 
-1. Keep controls centralized in UASGS.
+1. Keep controls centralized in PRECINCT Gateway.
 2. Keep developer experience flexible at the framework layer.
 3. Keep compliance evidence continuously generated and reviewable.
 4. Keep the 3 Rs as a mandatory operating discipline.

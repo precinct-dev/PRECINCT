@@ -28,7 +28,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Gateway represents the MCP security gateway
+// Gateway represents the PRECINCT Gateway
 type Gateway struct {
 	config                     *Config
 	proxy                      *httputil.ReverseProxy
@@ -486,7 +486,7 @@ func (g *Gateway) Handler() http.Handler {
 // If not set, "default" is used for both (fail-closed: no grant match = deny mode).
 func (g *Gateway) proxyHandler() http.Handler {
 	// RFA-m6j.2: Create tracer for proxy span (gateway package)
-	proxyTracer := otel.Tracer("mcp-security-gateway", trace.WithInstrumentationVersion("2.0.0"))
+	proxyTracer := otel.Tracer("precinct-gateway", trace.WithInstrumentationVersion("2.0.0"))
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// RFA-m6j.2: Create OTel span for proxy
@@ -618,7 +618,7 @@ func (g *Gateway) proxyHandler() http.Handler {
 			return
 		}
 		// OpenAI-compatible model egress path. This route keeps external model calls
-		// inside UASGS policy controls while remaining SDK/framework friendly.
+		// inside PRECINCT Gateway policy controls while remaining SDK/framework friendly.
 		if g.handleModelCompatEntry(proxyRW, r.WithContext(ctx)) {
 			result := "allowed"
 			if proxyRW.statusCode >= 400 {

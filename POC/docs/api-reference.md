@@ -1,6 +1,6 @@
-# MCP Security Gateway -- API Reference
+# PRECINCT Gateway -- API Reference
 
-This document is the authoritative reference for the MCP Security Gateway's HTTP API surface.
+This document is the authoritative reference for the PRECINCT Gateway's HTTP API surface.
 The gateway implements the Model Context Protocol (MCP) over HTTP with JSON-RPC 2.0,
 passing all tool calls through a 13-layer security middleware chain before forwarding
 to the upstream MCP server.

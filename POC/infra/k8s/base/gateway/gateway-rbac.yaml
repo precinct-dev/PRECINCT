@@ -2,7 +2,7 @@
 # Gateway RBAC
 # Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
 #
-# ServiceAccount for the MCP Security Gateway. Used for SPIFFE identity via
+# ServiceAccount for the PRECINCT Gateway. Used for SPIFFE identity via
 # the SPIRE Agent k8s workload attestor (matches namespace + service account
 # to issue the correct SVID).
 #

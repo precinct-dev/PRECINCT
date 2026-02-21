@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://example.local/uasgs/contracts/v2.4/schemas/plane_decision_v2.schema.json",
-  "title": "UASGS Plane Decision V2",
+  "$id": "https://example.local/precinct/contracts/v2.4/schemas/plane_decision_v2.schema.json",
+  "title": "PRECINCT Gateway Plane Decision V2",
   "type": "object",
   "required": [
     "decision",

@@ -30,7 +30,7 @@ spec:
     - Egress
 ---
 # Allow ingress to KeyDB from the gateway namespace only.
-# Only the MCP Security Gateway pod needs access to KeyDB for rate limiting
+# Only the PRECINCT Gateway pod needs access to KeyDB for rate limiting
 # and session storage.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

@@ -52,7 +52,7 @@ Claim reconciliation summary:
 
 ## 1. Project Summary
 
-The Agentic AI Security Reference Architecture implements a **Model Context Protocol (MCP) Security Gateway** that interposes between AI agents and their tools, enforcing a 13-layer security middleware chain. The project validates that the security controls described in the 200+ page reference architecture document are implementable, composable, and operationally viable.
+PRECINCT implements a **Model Context Protocol (MCP) Security Gateway** that interposes between AI agents and their tools, enforcing a 13-layer security middleware chain. The project validates that the security controls described in the 200+ page reference architecture document are implementable, composable, and operationally viable.
 
 Two deployment targets exist: a Docker Compose stack for local development and validation, and Kubernetes manifests (EKS-targeted) for production-grade deployment.
 

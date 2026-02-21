@@ -2,7 +2,7 @@
 # Gateway Allow NetworkPolicies
 # Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
 #
-# Explicit allow rules for the MCP Security Gateway namespace.
+# Explicit allow rules for the PRECINCT Gateway namespace.
 # These rules layer on top of the default-deny policy to permit only the
 # traffic flows required for the gateway to function:
 #

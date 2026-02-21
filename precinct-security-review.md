@@ -1,10 +1,12 @@
-# Security Review Report — Agentic AI Security Reference Architecture (v2.0)
+# Security Review Report — PRECINCT (v2.0)
 
-Scope: `agentic-ai-security-reference-architecture.md` (dated February 2026). This review focuses on threat coverage, trust boundaries, residual risks, and practicality (developer/user experience) for real-world deployments of MCP-based agent systems.
+PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools
+
+Scope: `precinct-reference-architecture.md` (dated February 2026). This review focuses on threat coverage, trust boundaries, residual risks, and practicality (developer/user experience) for real-world deployments of MCP-based agent systems.
 
 ## Executive Summary
 
-This reference architecture is already strong on **identity**, **authorization**, and **secret non-exfiltration** under an “LLM-as-adversary” assumption, primarily via SPIFFE/SPIRE workload identity, OPA policy enforcement, and SPIKE late-binding secrets. The **MCP Security Gateway** as a single enforcement point is a good convergence layer, and the **tool registry with hash verification** directly targets MCP-specific attacks (poisoning, rug-pull).
+This reference architecture is already strong on **identity**, **authorization**, and **secret non-exfiltration** under an “LLM-as-adversary” assumption, primarily via SPIFFE/SPIRE workload identity, OPA policy enforcement, and SPIKE late-binding secrets. The **PRECINCT Gateway** as a single enforcement point is a good convergence layer, and the **tool registry with hash verification** directly targets MCP-specific attacks (poisoning, rug-pull).
 
 The main gaps are:
 
@@ -20,7 +22,7 @@ The rest of this report lists prioritized findings and concrete mitigation patte
 - **Agent workload** (untrusted application plane; may be prompt-injected or malicious).
 - **SPIRE** (identity issuance/attestation for workloads).
 - **SPIKE** (secrets store issuing *opaque* tokens; gateway redeems).
-- **MCP Security Gateway** (inline enforcement: authn/z, tool verification, DLP, scanning, substitution, audit).
+- **PRECINCT Gateway** (inline enforcement: authn/z, tool verification, DLP, scanning, substitution, audit).
 - **MCP servers / tools** (resource servers; can be compromised; may attempt tool poisoning or data exfil).
 
 ### Critical trust boundaries
@@ -256,7 +258,7 @@ To keep this powerful architecture from becoming “security theatre that devs h
 
 ## Suggested Next Step
 
-If you want, I can propose a concrete “v2.1” patch to `agentic-ai-security-reference-architecture.md` that adds:
+If you want, I can propose a concrete “v2.1” patch to `precinct-reference-architecture.md` that adds:
 - a dedicated “Model Supply Chain / Weight Integrity” subsection,
 - a “sync step-up gating” pattern for high-risk tools,
 - explicit schema hash verification in the Tool Registry section,

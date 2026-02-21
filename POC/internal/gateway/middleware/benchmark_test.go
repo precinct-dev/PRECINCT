@@ -786,7 +786,7 @@ allow if { input.tool == "file_read" }
 	mp50, mp95, mp99, mmean := computePercentiles(minimalDurations)
 
 	fmt.Println("================================================================================")
-	fmt.Println("  MCP Security Gateway -- 13-Middleware Chain Performance Benchmark")
+	fmt.Println("  PRECINCT Gateway -- 13-Middleware Chain Performance Benchmark")
 	fmt.Printf("  Iterations: %d\n", iterations)
 	fmt.Println("================================================================================")
 	fmt.Println()

@@ -1,5 +1,7 @@
-# Agentic AI Security Reference Architecture
+# PRECINCT
 ## STRIDE + PASTA Assurance Mapping (Production Profile)
+
+PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools
 
 Document version: 1.2  
 Date: 2026-02-11  
@@ -14,7 +16,7 @@ This document maps the reference architecture to:
 - STRIDE (threat-class coverage)
 - PASTA (risk lifecycle coverage)
 
-It incorporates the approved **Phase 3 architectural direction** centered on the **Unified Agentic Security Gateway System (UASGS)** and this document now reflects the latest hardening pass intended to close architecture-level (non-operational) gaps.
+It incorporates the approved **Phase 3 architectural direction** centered on the **PRECINCT Gateway** and this document now reflects the latest hardening pass intended to close architecture-level (non-operational) gaps.
 
 Deployment scope assumed:
 
@@ -30,7 +32,7 @@ This is an assurance mapping, not legal advice or an attestation.
 Defensibility statements in this document assume:
 
 1. Workload identity is SPIFFE/SPIRE based and mTLS is enforced.
-2. UASGS is the mandatory policy boundary for ingress admission, model egress, tool execution, and governed memory I/O.
+2. PRECINCT Gateway is the mandatory policy boundary for ingress admission, model egress, tool execution, and governed memory I/O.
 3. Loop governance is enforced externally via immutable run envelopes (boundary-only baseline), without requiring framework loop-engine replacement.
 4. Model-provider credentials are reference-based (not embedded in agent services).
 5. Policy, registry, image, and runtime artifact promotion is signed and reviewed.
@@ -51,7 +53,7 @@ Defensibility statements in this document assume:
 
 Primary references:
 
-- `agentic-ai-security-reference-architecture.md`
+- `precinct-reference-architecture.md`
 - `agentic-ai-security-phase3-proposal.md`
 - `POC/docs/ARCHITECTURE.md`
 
@@ -76,7 +78,7 @@ This section captures the impact of the Phase 3 proposal itself (design-level up
 
 | Control Plane | Pre-Phase 3 Posture | Phase 3 Design Posture | Net Effect |
 |---|---|---|---|
-| LLM egress | Fragmented, app-specific provider handling | UASGS-mediated provider governance, trust checks, residency + budget policy | Major uplift in disclosure, supplier, and audit defensibility |
+| LLM egress | Fragmented, app-specific provider handling | PRECINCT Gateway-mediated provider governance, trust checks, residency + budget policy | Major uplift in disclosure, supplier, and audit defensibility |
 | Loop control | Inconsistent per framework | External immutable envelopes and reason-coded halts (boundary-only baseline) | Stronger DoS/EoP resilience without framework lock-in |
 | Ingress | Not first-class across webhook/queue/schedule | Connector-based normalized ingress admission (non-MITM default) | Better spoofing/tampering coverage for event-driven agents |
 | Context engineering | Detection-oriented, uneven enforcement | Mandatory admission model: no-scan-no-send / no-verification-no-load | Large uplift in prompt-injection and data handling consistency |
@@ -100,7 +102,7 @@ Controls:
 
 - SPIFFE/SPIRE SVID + mTLS
 - Ingress source authentication (mTLS/JWT/HMAC/signature)
-- UASGS endpoint trust policy for model egress
+- PRECINCT Gateway endpoint trust policy for model egress
 - Production default for mediated model egress (policy + identity + network gates)
 
 Coverage rating:
@@ -148,7 +150,7 @@ Controls:
 
 - Structured JSON audits with trace/session/decision ids
 - Hash-chained audit continuity
-- UASGS unified audit taxonomy v2 across ingress/model/tool/memory/loop/RLM/context-admission
+- PRECINCT Gateway unified audit taxonomy v2 across ingress/model/tool/memory/loop/RLM/context-admission
 
 Coverage rating:
 
@@ -269,7 +271,7 @@ Assessment: Strong
 
 Phase 3 effect:
 
-- Scope now explicitly covers five agentic planes plus policy/audit/identity/secrets planes under one UASGS contract.
+- Scope now explicitly covers five agentic planes plus policy/audit/identity/secrets planes under one PRECINCT Gateway contract.
 
 ### Stage 3: Application Decomposition
 

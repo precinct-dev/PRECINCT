@@ -589,11 +589,11 @@ func writeProviderResponse(w http.ResponseWriter, result *modelEgressResult, dec
 	copyHeaderIfPresent(w.Header(), result.responseHeaders, "Content-Type")
 	copyHeaderIfPresent(w.Header(), result.responseHeaders, "OpenAI-Processing-Ms")
 	copyHeaderIfPresent(w.Header(), result.responseHeaders, "X-Request-Id")
-	w.Header().Set("X-UASGS-Decision-ID", decisionID)
-	w.Header().Set("X-UASGS-Trace-ID", traceID)
-	w.Header().Set("X-UASGS-Reason-Code", string(reason))
-	w.Header().Set("X-UASGS-Provider-Used", result.providerUsed)
-	w.Header().Set("X-UASGS-Policy-Intent-Projection", projectionHeaderValue(projectionEnabled, projectionApplied))
+	w.Header().Set("X-Precinct-Decision-ID", decisionID)
+	w.Header().Set("X-Precinct-Trace-ID", traceID)
+	w.Header().Set("X-Precinct-Reason-Code", string(reason))
+	w.Header().Set("X-Precinct-Provider-Used", result.providerUsed)
+	w.Header().Set("X-Precinct-Policy-Intent-Projection", projectionHeaderValue(projectionEnabled, projectionApplied))
 	w.WriteHeader(result.statusCode)
 	_, _ = w.Write(result.responseBody)
 }
@@ -677,7 +677,7 @@ func prependSystemPolicyIntentMessage(payload map[string]any, projection string)
 	}
 	systemMsg := map[string]any{
 		"role":    "system",
-		"name":    "uasgs_policy_intent",
+		"name":    "precinct_policy_intent",
 		"content": projection,
 	}
 	rawMessages, ok := payload["messages"]

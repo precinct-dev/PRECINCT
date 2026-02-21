@@ -7,7 +7,7 @@
 # digest-pinned references -- floating tags like :latest are rejected.
 #
 # Enforcement namespaces (non-local runtime overlays):
-#   - gateway: MCP Security Gateway
+#   - gateway: PRECINCT Gateway
 #   - tools:   MCP Tool Servers
 #
 # Examples of valid vs invalid image references:

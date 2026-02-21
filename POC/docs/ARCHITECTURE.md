@@ -1,4 +1,4 @@
-# ARCHITECTURE.md -- Agentic AI Security Reference Architecture
+# ARCHITECTURE.md -- PRECINCT (Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools)
 
 **Version:** 1.0
 **Date:** 2026-02-06
@@ -25,7 +25,7 @@ The system remains a **reverse-proxy gateway** written in Go that interposes bet
                                           |
                                           v
 +-------------------------------------------------------------------------------------+
-|                           MCP SECURITY GATEWAY (Go)                                  |
+|                           PRECINCT GATEWAY (Go)                                      |
 |                                                                                      |
 |  +------+  +------+  +------+  +------+  +------+  +------+  +------+               |
 |  | 1.Sz | >| 2.BC | >| 3.SP | >| 4.AU | >| 5.TR | >| 6.OP | >| 7.DL |              |
@@ -1025,7 +1025,7 @@ These are NOT Phase 2 scope but are architecturally preserved:
 - [DESIGN.md](DESIGN.md) -- User personas, journeys, interface designs
 - [current-state-and-roadmap.md](current-state-and-roadmap.md) -- Phase 1 state and gaps
 - [e2e-validation-report.md](e2e-validation-report.md) -- Phase 1 E2E results
-- Reference Architecture: `../agentic-ai-security-reference-architecture.md` (v2.2)
+- Reference Architecture: `../precinct-reference-architecture.md` (v2.2)
 - EKS IaC spike recommendation: `docs/eks-iac-spike-recommendation.md`
 
 ---
@@ -1047,4 +1047,4 @@ These are NOT Phase 2 scope but are architecturally preserved:
 
 ---
 
-*This document is the technical architecture reference for the Agentic AI Security Reference Architecture. It describes the as-built system as implemented across 194 stories. Originally authored during D&F phase and updated to reflect the final implementation.*
+*This document is the technical architecture reference for PRECINCT. It describes the as-built system as implemented across 194 stories. Originally authored during D&F phase and updated to reflect the final implementation.*

@@ -1,4 +1,4 @@
-# UASGS Reason-Code Catalog v2.4
+# PRECINCT Gateway Reason-Code Catalog v2.4
 
 This file defines the reason-code governance policy for contract set `2.4.0`.
 Machine-readable entries are stored in `reason-code-catalog.v2.4.json`.

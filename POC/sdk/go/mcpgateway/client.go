@@ -80,7 +80,7 @@ type GatewayClient struct {
 }
 
 // ModelChatRequest captures gateway-model-plane call options for OpenAI-compatible
-// chat completions routing through UASGS model egress.
+// chat completions routing through PRECINCT Gateway model egress.
 type ModelChatRequest struct {
 	Model         string
 	Messages      []map[string]any

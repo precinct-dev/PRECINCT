@@ -1,4 +1,4 @@
-# SPIKE Nexus Deployment on EKS -- Agentic Reference Architecture POC
+# SPIKE Nexus Deployment on EKS -- PRECINCT POC
 
 Kubernetes manifests for deploying SPIKE Nexus in token mode on the EKS cluster.
 

@@ -2,14 +2,14 @@
 # Based on Reference Architecture Section 6.4
 #
 # This file defines which SPIFFE IDs are authorized to use which MCP tools.
-# The MCP Security Gateway queries OPA with these policy data to make
+# The PRECINCT Gateway queries OPA with these policy data to make
 # authorization decisions.
 
 # Tool grants map SPIFFE ID patterns to allowed tools and data classification limits
 tool_grants:
   # Gateway - should have full access for its enforcement role
   - spiffe_pattern: "spiffe://poc.local/gateways/mcp-security-gateway/dev"
-    description: "MCP Security Gateway - enforcement point with full access"
+    description: "PRECINCT Gateway - enforcement point with full access"
     allowed_tools:
       - "*"  # Gateway needs access to all tools for inspection/forwarding
     max_data_classification: confidential

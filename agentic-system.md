@@ -13,7 +13,7 @@ We studied four AI assistant platforms and identified what each does well:
 
 Rather than forking any of these, Axiom is a new platform built native to our existing ecosystem:
 
-- **Agentic Security Reference Architecture** (Go, 13-layer middleware gateway with SPIFFE/SPIKE/OPA/KeyDB/OTel)
+- **PRECINCT** (Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools) (Go, 13-layer middleware gateway with SPIFFE/SPIKE/OPA/KeyDB/OTel)
 - **Beads** (Go, distributed git-backed issue tracker with Go library API and swarm primitives)
 - **RLM** (Python, Recursive Language Models for near-infinite context via recursive self-calls)
 - **RustReason** (Rust + PyO3, high-performance temporal graph reasoning -- our PyReason port)
@@ -1138,7 +1138,7 @@ volumes:
 
 Adds to the personal stack:
 - **Apache AGE** (PostgreSQL + AGE extension) replacing SurrealDB
-- **MCP Security Gateway** (13-layer middleware chain from reference architecture)
+- **PRECINCT Gateway** (13-layer middleware chain from reference architecture)
 - **SPIFFE/SPIRE** (cryptographic identity for all services)
 - **SPIKE Nexus** (encrypted secrets with late-binding token substitution)
 - **OPA** (fine-grained policy enforcement)

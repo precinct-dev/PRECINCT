@@ -14,9 +14,9 @@ environment: dev
 
 # SPIFFE IDs for POC workloads
 workloads:
-  # Gateway component - the MCP security gateway that enforces all security controls
+  # Gateway component - the PRECINCT Gateway that enforces all security controls
   - spiffe_id: spiffe://poc.local/gateways/mcp-security-gateway/dev
-    description: MCP Security Gateway
+    description: PRECINCT Gateway
     purpose: >
       Enforces identity verification, authorization, content inspection,
       tool verification, secret substitution, and audit logging for all

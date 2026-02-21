@@ -1,4 +1,4 @@
-# MCP Security Gateway -- Performance Benchmarks
+# PRECINCT Gateway -- Performance Benchmarks
 
 ## Overview
 

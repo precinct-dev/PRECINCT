@@ -1,7 +1,7 @@
 # Configuration Reference
 
 This document is the single reference for all environment variables, configuration files,
-and policy customization options for the MCP Security Gateway and its supporting infrastructure.
+and policy customization options for the PRECINCT Gateway and its supporting infrastructure.
 
 All defaults listed here are verified against source code in `internal/gateway/config.go`
 and runtime values in `docker-compose.yml`.

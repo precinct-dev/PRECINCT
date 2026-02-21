@@ -1,4 +1,4 @@
-# BUSINESS.md -- Agentic AI Security Reference Architecture
+# BUSINESS.md -- PRECINCT (Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools)
 
 **Version:** 1.0
 **Date:** 2026-02-06
@@ -9,7 +9,7 @@
 
 ## 1. Business Context
 
-Phase 1 delivered a Docker Compose stack with a 13-middleware MCP Security Gateway (70 stories, all closed). It proved that the security controls described in the 200+ page reference architecture are implementable, composable, and operationally viable.
+Phase 1 delivered a Docker Compose stack with a 13-middleware PRECINCT Gateway (70 stories, all closed). It proved that the security controls described in the 200+ page reference architecture are implementable, composable, and operationally viable.
 
 Phase 2 addresses gaps found during Phase 1, hardens the architecture for production evaluation, and expands to meet the needs of three distinct audiences. The core thesis remains: **agents must never see raw credentials, all tool interactions must be inspected, and the audit trail must be tamper-evident and compliance-ready.**
 
@@ -282,4 +282,4 @@ The following table maps Phase 2 deliverables to compliance framework requiremen
 
 ---
 
-*This document captures the business requirements and outcomes for the Agentic AI Security Reference Architecture. It is referenced by the Designer (DESIGN.md), Architect (ARCHITECTURE.md), and Sr. PM (backlog creation). Changes require Business Owner approval.*
+*This document captures the business requirements and outcomes for PRECINCT. It is referenced by the Designer (DESIGN.md), Architect (ARCHITECTURE.md), and Sr. PM (backlog creation). Changes require Business Owner approval.*

@@ -1,8 +1,8 @@
 # ------------------------------------------------------------------------------
-# MCP Security Gateway Deployment
+# PRECINCT Gateway Deployment
 # Story: RFA-9fv.4
 #
-# Deploys the MCP Security Gateway into the "gateway" namespace.
+# Deploys the PRECINCT Gateway into the "gateway" namespace.
 # The gateway enforces a 13-middleware security chain on all MCP JSON-RPC
 # requests before proxying to tool servers in the "tools" namespace.
 #

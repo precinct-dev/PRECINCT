@@ -76,7 +76,7 @@ main() {
 
   local overlays=(dev staging prod)
   for overlay in "${overlays[@]}"; do
-    local rendered="/tmp/uasgs-admission-${overlay}.yaml"
+    local rendered="/tmp/precinct-admission-${overlay}.yaml"
     info "Building overlay: ${overlay}"
     kustomize build "infra/eks/overlays/${overlay}" >"${rendered}"
 
@@ -103,7 +103,7 @@ main() {
     check_keyless_identity_scope "$cip_doc"
   done
 
-  local local_rendered="/tmp/uasgs-admission-local.yaml"
+  local local_rendered="/tmp/precinct-admission-local.yaml"
   info "Building overlay: local"
   kustomize build "infra/eks/overlays/local" >"${local_rendered}"
 

@@ -10,7 +10,7 @@ The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit and 
 
 ```
 ┌─────────────────────────────────────┐
-│  MCP Security Gateway                │
+│  PRECINCT Gateway                │
 │  (docker-compose)                   │
 │  http://localhost:9090              │
 └────────────┬────────────────────────┘
@@ -246,7 +246,7 @@ cd $POC_DIR
 
 # Ensure both gateways are running:
 # 1. Docker MCP Gateway at http://localhost:8081/mcp
-# 2. MCP Security Gateway at http://localhost:9090
+# 2. PRECINCT Gateway at http://localhost:9090
 
 # Run Docker MCP integration tests
 go test -tags=integration ./tests/integration -v -run TestDockerMCP

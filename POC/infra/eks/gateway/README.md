@@ -1,10 +1,10 @@
-# MCP Security Gateway - EKS Deployment
+# PRECINCT Gateway - EKS Deployment
 
 Story: RFA-9fv.4
 
 ## Architecture
 
-The MCP Security Gateway is the security enforcement point for all MCP JSON-RPC
+The PRECINCT Gateway is the security enforcement point for all MCP JSON-RPC
 requests. It runs a 13-middleware chain (authentication, authorization, DLP,
 audit, etc.) before proxying requests to tool servers.
 
@@ -17,7 +17,7 @@ audit, etc.) before proxying requests to tool servers.
                              | port 9090
                              v
                   +----------+----------+
-   gateway ns --> | MCP Security Gateway|
+   gateway ns --> | PRECINCT Gateway|
                   | (13-middleware chain)|
                   +----------+----------+
                              |
@@ -33,7 +33,7 @@ audit, etc.) before proxying requests to tool servers.
 
 | Namespace | Purpose | SPIFFE ID |
 |-----------|---------|-----------|
-| `gateway` | MCP Security Gateway | `spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway` |
+| `gateway` | PRECINCT Gateway | `spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway` |
 | `tools`   | MCP tool servers | `spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool` |
 
 ### NetworkPolicy Enforcement
@@ -77,7 +77,7 @@ make -C ../spike deploy
 # 3. MCP Tool Server (upstream target)
 make -C ../mcp-server deploy
 
-# 4. MCP Security Gateway
+# 4. PRECINCT Gateway
 make -C ../gateway deploy
 
 # 5. NetworkPolicies (enforce after services are running)

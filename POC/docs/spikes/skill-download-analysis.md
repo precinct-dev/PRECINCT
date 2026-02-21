@@ -10,7 +10,7 @@
 ## 1. Executive Summary
 
 This spike investigates how downloaded agent skills should be security-scanned before
-they are permitted to interact with the MCP Security Gateway, and whether skulto
+they are permitted to interact with the PRECINCT Gateway, and whether skulto
 (an open-source skill management tool) is a viable integration point.
 
 **Recommendation: GO for Phase 2 design work, with a phased approach.**

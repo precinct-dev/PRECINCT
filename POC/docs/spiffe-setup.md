@@ -18,7 +18,7 @@ spiffe://<trust-domain>/<agent-class>/<agent-purpose>/<environment>
 
 - **trust-domain**: `poc.local` (development trust domain)
 - **agent-class**: Workload category
-  - `gateways` - MCP security gateway enforcement points
+  - `gateways` - PRECINCT Gateway enforcement points
   - `agents/mcp-client` - MCP client agents using external LLMs
   - `agents/autonomous` - Autonomous agents with embedded models
   - `tools` - MCP tool servers
@@ -32,7 +32,7 @@ The system includes these workload identities:
 
 | SPIFFE ID | Component | Purpose |
 |-----------|-----------|---------|
-| `spiffe://poc.local/gateways/mcp-security-gateway/dev` | MCP Security Gateway | Enforces all security controls (auth, authz, content inspection) |
+| `spiffe://poc.local/gateways/mcp-security-gateway/dev` | PRECINCT Gateway | Enforces all security controls (auth, authz, content inspection) |
 | `spiffe://poc.local/agents/mcp-client/dspy-researcher/dev` | DSPy Agent | Research agent using DSPy framework |
 | `spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev` | PydanticAI Agent | Research agent using PydanticAI framework |
 | `spiffe://poc.local/tools/docker-mcp-server/dev` | Docker MCP Server | Containerized tool execution service |
@@ -125,7 +125,7 @@ tool_grants:
     max_data_classification: internal
 ```
 
-The MCP Security Gateway queries OPA with:
+The PRECINCT Gateway queries OPA with:
 - The agent's SPIFFE ID (from mTLS certificate)
 - The requested tool name
 - The data classification level

@@ -1,6 +1,6 @@
 # Cloud-Agnostic Kubernetes Manifests
 
-Generic Kubernetes manifests for the Agentic Reference Architecture POC. These
+Generic Kubernetes manifests for the PRECINCT POC. These
 manifests work on **any conformant Kubernetes cluster**: EKS, GKE, AKS, kind,
 k3s, minikube, Docker Desktop Kubernetes, etc.
 
@@ -11,7 +11,7 @@ Story: oc-ko5 (GAP-7)
 ```
 infra/k8s/
   base/                          # Cloud-agnostic base manifests
-    gateway/                     # MCP Security Gateway
+    gateway/                     # PRECINCT Gateway
       gateway-namespace.yaml
       gateway-rbac.yaml
       gateway-configmap.yaml

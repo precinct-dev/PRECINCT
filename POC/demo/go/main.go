@@ -43,7 +43,7 @@ func main() {
 	flag.Parse()
 
 	fmt.Println("========================================")
-	fmt.Println("  MCP Security Gateway -- Go SDK Demo")
+	fmt.Println("  PRECINCT Gateway -- Go SDK Demo")
 	fmt.Printf("  Gateway: %s\n", *gatewayURL)
 	fmt.Println("========================================")
 	fmt.Println()

@@ -481,25 +481,25 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 	overlays="local dev staging prod"; \
 	for o in $$overlays; do \
 		echo "Building overlay: $$o"; \
-		kustomize build "infra/eks/overlays/$$o" >"/tmp/uasgs-k8s-$$o.yaml"; \
+		kustomize build "infra/eks/overlays/$$o" >"/tmp/precinct-k8s-$$o.yaml"; \
 	done; \
 	if command -v kubeconform >/dev/null 2>&1; then \
 		for o in $$overlays; do \
 			echo "Schema validation (kubeconform): $$o"; \
-			kubeconform -summary -strict -ignore-missing-schemas "/tmp/uasgs-k8s-$$o.yaml"; \
+			kubeconform -summary -strict -ignore-missing-schemas "/tmp/precinct-k8s-$$o.yaml"; \
 		done; \
 	else \
 		echo "WARNING: kubeconform not installed, skipping schema validation"; \
 	fi; \
 	echo "Validating Phase 3 capability registry wiring..."; \
 	for o in $$overlays; do \
-		file="/tmp/uasgs-k8s-$$o.yaml"; \
+		file="/tmp/precinct-k8s-$$o.yaml"; \
 		grep -q 'CAPABILITY_REGISTRY_V2_PATH' "$$file" || { echo "Missing CAPABILITY_REGISTRY_V2_PATH in $$o overlay"; exit 1; }; \
 		grep -q 'capability-registry-v2.yaml' "$$file" || { echo "Missing capability-registry-v2.yaml mount/data in $$o overlay"; exit 1; }; \
 	done; \
 	echo "Validating non-local gateway prod transport wiring..."; \
 	for o in dev staging prod; do \
-		file="/tmp/uasgs-k8s-$$o.yaml"; \
+		file="/tmp/precinct-k8s-$$o.yaml"; \
 		awk ' \
 			BEGIN { RS="---"; dep=""; svc="" } \
 			$$0 ~ /kind:[[:space:]]*Deployment([[:space:]]|$$)/ && $$0 ~ /name:[[:space:]]*mcp-security-gateway([[:space:]]|$$)/ { dep=$$0 } \
@@ -732,7 +732,7 @@ test-opa:
 	fi
 
 build:
-	@echo "Building MCP Security Gateway..."
+	@echo "Building PRECINCT Gateway..."
 	docker compose build mcp-security-gateway
 
 build-images:

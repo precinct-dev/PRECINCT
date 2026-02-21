@@ -1,10 +1,12 @@
-# Agentic AI Security Reference Architecture -- Reference Implementation
+# PRECINCT (Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools) -- Reference Implementation
+
+> Website: [https://precinct.dev](https://precinct.dev)
 
 ## What Is This?
 
-This is a **reference implementation of an MCP Security Gateway** that implements a 13-layer
+This is a **reference implementation of a PRECINCT Gateway** that implements a 13-layer
 middleware chain for securing AI agent tool calls. It validates the
-[Agentic AI Security Reference Architecture v2.2](../agentic-ai-security-reference-architecture.md),
+[PRECINCT v2.2](../precinct-reference-architecture.md),
 a 200+ page document defining security patterns for production agentic AI systems.
 
 The gateway interposes between AI agents and MCP tool servers, enforcing
@@ -173,8 +175,8 @@ scripts/                  Setup and operational scripts
 
 ## Status
 
-This is a **reference implementation** validating the
-[Agentic AI Security Reference Architecture v2.2](../agentic-ai-security-reference-architecture.md).
+This is a **reference implementation** validating
+[PRECINCT v2.2](../precinct-reference-architecture.md).
 It demonstrates that a 13-layer security middleware chain can be implemented,
 deployed, and tested end-to-end with real infrastructure (SPIRE, SPIKE, KeyDB,
 OPA, Phoenix) in both Docker Compose and Kubernetes environments.

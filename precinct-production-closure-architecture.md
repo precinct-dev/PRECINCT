@@ -1,9 +1,11 @@
-# Agentic AI Security Production Closure Architecture (v2.4 Design)
+# PRECINCT Production Closure Architecture (v2.4 Design)
+
+PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools
 
 **Status:** Proposed architecture extension for implementation  
 **Date:** 2026-02-13  
-**Baseline:** `agentic-ai-security-reference-architecture.md` (v2.3)  
-**Companion gap register:** `agentic-ai-security-production-readiness-gaps.md`
+**Baseline:** `precinct-reference-architecture.md` (v2.3)  
+**Companion gap register:** `precinct-production-readiness-gaps.md`
 
 ---
 

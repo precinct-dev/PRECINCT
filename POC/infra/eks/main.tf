@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Agentic Reference Architecture POC -- EKS Cluster Baseline
+# PRECINCT POC -- EKS Cluster Baseline
 # Story: RFA-9fv.2
 #
 # Creates a VPC and EKS cluster in us-west-2 with:

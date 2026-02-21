@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Load test for the MCP Security Gateway 13-middleware chain (RFA-lo1.2).
+# Load test for the PRECINCT Gateway 13-middleware chain (RFA-lo1.2).
 #
 # Tests the full Docker Compose stack under concurrent load.
 # Requires: hey (https://github.com/rakyll/hey) and a running Docker Compose stack.
@@ -23,7 +23,7 @@ SPIFFE_ID="spiffe://poc.local/agents/benchmark/dev"
 REQUEST_BODY='{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}'
 
 echo "================================================================================"
-echo "  MCP Security Gateway -- Load Test"
+echo "  PRECINCT Gateway -- Load Test"
 echo "================================================================================"
 echo ""
 echo "  Target:        ${GATEWAY_URL}"

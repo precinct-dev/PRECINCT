@@ -2,12 +2,12 @@
 
 A PydanticAI-based Q&A agent that demonstrates security gateway integration with
 structured output. The agent answers questions by searching with Tavily and reading
-local files via the MCP security gateway, then produces a structured Pydantic model
+local files via the PRECINCT gateway, then produces a structured Pydantic model
 answer with citations and confidence scores.
 
 ## Architecture
 
-All tool calls are routed through the MCP Security Gateway -- no direct tool access.
+All tool calls are routed through the PRECINCT Gateway -- no direct tool access.
 
 ```
 Agent -> Gateway (9090) -> [13-step middleware chain] -> Docker MCP Server (8081)
@@ -86,7 +86,7 @@ python agent.py "What are the key differences between SPIFFE and traditional OAu
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GATEWAY_URL` | `http://localhost:9090` | MCP Security Gateway URL |
+| `GATEWAY_URL` | `http://localhost:9090` | PRECINCT Gateway URL |
 | `SPIFFE_ID` | `spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev` | Agent SPIFFE identity |
 | `OTEL_ENDPOINT` | `http://localhost:4317` | OpenTelemetry collector gRPC endpoint |
 | `LLM_MODEL` | `groq:llama-3.3-70b-versatile` | PydanticAI model identifier |
