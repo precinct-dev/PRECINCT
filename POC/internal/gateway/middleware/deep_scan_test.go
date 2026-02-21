@@ -2043,6 +2043,176 @@ func TestDeepScan_Integration_RealGroqAPI(t *testing.T) {
 	})
 }
 
+// TestResultProcessor_EmitsAuditEvent verifies that ResultProcessor calls
+// emitAuditEvent (via Auditor.Log) when a high-score result arrives on the
+// result channel, replacing the old fmt.Printf placeholder.
+func TestResultProcessor_EmitsAuditEvent(t *testing.T) {
+	// Create auditor that writes to a temp JSONL file
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+	bundlePath := filepath.Join(tmpDir, "policy.rego")
+	registryPath := filepath.Join(tmpDir, "registry.yaml")
+	if err := os.WriteFile(bundlePath, []byte("package test\ndefault allow = true"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle file: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry file: %v", err)
+	}
+	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create auditor: %v", err)
+	}
+	defer func() {
+		_ = auditor.Close()
+	}()
+
+	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+		APIKey:       "test-key",
+		Timeout:      5 * time.Second,
+		FallbackMode: "fail_closed",
+		Auditor:      auditor,
+	})
+
+	// Start ResultProcessor in background
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		scanner.ResultProcessor(ctx)
+	}()
+
+	// Send a high-score result through the channel
+	scanner.resultChan <- DeepScanResult{
+		RequestID:      "test-async-req-001",
+		TraceID:        "test-async-trace-001",
+		Timestamp:      time.Now(),
+		InjectionScore: 0.95,
+		JailbreakScore: 0.85,
+		ModelUsed:      "meta-llama/llama-prompt-guard-2-86m",
+		LatencyMs:      120,
+	}
+
+	// Give ResultProcessor time to process, then flush
+	time.Sleep(100 * time.Millisecond)
+	auditor.Flush()
+
+	// Read the audit log
+	auditData, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("Failed to read audit file: %v", err)
+	}
+
+	auditStr := string(auditData)
+	if auditStr == "" {
+		t.Fatal("Audit file is empty -- ResultProcessor did not emit audit event for high-score result")
+	}
+
+	// Verify event_type / action contains deep_scan
+	if !strings.Contains(auditStr, "deep_scan") {
+		t.Errorf("Audit log does not contain 'deep_scan' action. Got: %s", auditStr)
+	}
+
+	// Verify reason is async_alert_high_score
+	if !strings.Contains(auditStr, "async_alert_high_score") {
+		t.Errorf("Audit log does not contain 'async_alert_high_score' reason. Got: %s", auditStr)
+	}
+
+	// Verify blocked=false (async path does not block)
+	if !strings.Contains(auditStr, "blocked=false") {
+		t.Errorf("Audit log does not contain 'blocked=false'. Got: %s", auditStr)
+	}
+
+	// Verify injection and jailbreak scores are recorded
+	if !strings.Contains(auditStr, "injection_probability=0.9500") {
+		t.Errorf("Audit log does not contain expected injection probability. Got: %s", auditStr)
+	}
+	if !strings.Contains(auditStr, "jailbreak_probability=0.8500") {
+		t.Errorf("Audit log does not contain expected jailbreak probability. Got: %s", auditStr)
+	}
+
+	// Verify thresholds are recorded (default 0.30)
+	if !strings.Contains(auditStr, "injection_threshold=0.3000") {
+		t.Errorf("Audit log does not contain expected injection threshold. Got: %s", auditStr)
+	}
+
+	// Verify prev_hash is present (hash chain linking)
+	if !strings.Contains(auditStr, "prev_hash") {
+		t.Errorf("Audit log does not contain 'prev_hash' field. Got: %s", auditStr)
+	}
+
+	// Stop ResultProcessor
+	cancel()
+	wg.Wait()
+}
+
+// TestResultProcessor_NoAuditForLowScore verifies that ResultProcessor does NOT
+// emit an audit event for results with scores below the alert threshold (0.8).
+func TestResultProcessor_NoAuditForLowScore(t *testing.T) {
+	tmpDir := t.TempDir()
+	auditPath := filepath.Join(tmpDir, "audit.jsonl")
+	bundlePath := filepath.Join(tmpDir, "policy.rego")
+	registryPath := filepath.Join(tmpDir, "registry.yaml")
+	if err := os.WriteFile(bundlePath, []byte("package test\ndefault allow = true"), 0644); err != nil {
+		t.Fatalf("Failed to write bundle file: %v", err)
+	}
+	if err := os.WriteFile(registryPath, []byte("tools: []"), 0644); err != nil {
+		t.Fatalf("Failed to write registry file: %v", err)
+	}
+	auditor, err := NewAuditor(auditPath, bundlePath, registryPath)
+	if err != nil {
+		t.Fatalf("Failed to create auditor: %v", err)
+	}
+	defer func() {
+		_ = auditor.Close()
+	}()
+
+	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+		APIKey:       "test-key",
+		Timeout:      5 * time.Second,
+		FallbackMode: "fail_closed",
+		Auditor:      auditor,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		scanner.ResultProcessor(ctx)
+	}()
+
+	// Send a LOW-score result (below 0.8 alert threshold)
+	scanner.resultChan <- DeepScanResult{
+		RequestID:      "test-async-low-001",
+		TraceID:        "test-async-trace-low",
+		Timestamp:      time.Now(),
+		InjectionScore: 0.40,
+		JailbreakScore: 0.30,
+		ModelUsed:      "meta-llama/llama-prompt-guard-2-86m",
+		LatencyMs:      80,
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	auditor.Flush()
+
+	auditData, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("Failed to read audit file: %v", err)
+	}
+
+	if len(auditData) > 0 {
+		t.Errorf("Expected empty audit file for low-score result, but got: %s", string(auditData))
+	}
+
+	cancel()
+	wg.Wait()
+}
+
 // TestChunk_Integration_RealGroqAPI_LargePayload sends a >1024-token payload
 // with injection hidden in the middle to verify chunked detection works with
 // the real Groq Prompt Guard 2 API.

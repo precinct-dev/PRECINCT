@@ -30,14 +30,16 @@ const (
 // When DLP flags a request as potential_injection, the deep scanner calls the
 // Groq API synchronously to classify the payload and block confirmed injections.
 type DeepScanner struct {
-	groqAPIKey   string
-	groqBaseURL  string
-	modelName    string
-	timeout      time.Duration
-	fallbackMode DeepScanFallbackMode
-	resultChan   chan DeepScanResult
-	httpClient   *http.Client
-	auditor      *Auditor
+	groqAPIKey         string
+	groqBaseURL        string
+	modelName          string
+	timeout            time.Duration
+	fallbackMode       DeepScanFallbackMode
+	resultChan         chan DeepScanResult
+	httpClient         *http.Client
+	auditor            *Auditor
+	injectionThreshold float64
+	jailbreakThreshold float64
 }
 
 // Chunking constants for Prompt Guard 2 model constraints.
@@ -107,12 +109,14 @@ type PromptGuardResponse struct {
 
 // DeepScannerConfig holds configuration for creating a DeepScanner
 type DeepScannerConfig struct {
-	APIKey       string
-	Timeout      time.Duration
-	FallbackMode string // "fail_closed" or "fail_open"
-	Auditor      *Auditor
-	Endpoint     string // base URL for guard model API (empty = Groq default)
-	ModelName    string // model identifier (empty = Groq Prompt Guard 2 default)
+	APIKey             string
+	Timeout            time.Duration
+	FallbackMode       string // "fail_closed" or "fail_open"
+	Auditor            *Auditor
+	Endpoint           string  // base URL for guard model API (empty = Groq default)
+	ModelName          string  // model identifier (empty = Groq Prompt Guard 2 default)
+	InjectionThreshold float64 // threshold for injection alerts (0 = default 0.30)
+	JailbreakThreshold float64 // threshold for jailbreak alerts (0 = default 0.30)
 }
 
 // NewDeepScanner creates a new deep scanner with Groq API
@@ -141,17 +145,30 @@ func NewDeepScannerWithConfig(cfg DeepScannerConfig) *DeepScanner {
 		modelName = "meta-llama/llama-prompt-guard-2-86m"
 	}
 
+	// Default thresholds to 0.30 when not configured (matches DefaultRiskConfig)
+	const defaultThreshold = 0.30
+	injThreshold := cfg.InjectionThreshold
+	if injThreshold == 0 {
+		injThreshold = defaultThreshold
+	}
+	jbThreshold := cfg.JailbreakThreshold
+	if jbThreshold == 0 {
+		jbThreshold = defaultThreshold
+	}
+
 	return &DeepScanner{
-		groqAPIKey:   cfg.APIKey,
-		groqBaseURL:  endpoint,
-		modelName:    modelName,
-		timeout:      cfg.Timeout,
-		fallbackMode: fallback,
-		resultChan:   make(chan DeepScanResult, 100),
+		groqAPIKey:         cfg.APIKey,
+		groqBaseURL:        endpoint,
+		modelName:          modelName,
+		timeout:            cfg.Timeout,
+		fallbackMode:       fallback,
+		resultChan:         make(chan DeepScanResult, 100),
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
 		},
-		auditor: cfg.Auditor,
+		auditor:            cfg.Auditor,
+		injectionThreshold: injThreshold,
+		jailbreakThreshold: jbThreshold,
 	}
 }
 
@@ -163,6 +180,13 @@ func (d *DeepScanner) HasAPIKey() bool {
 // FallbackMode returns the configured fallback mode
 func (d *DeepScanner) FallbackMode() DeepScanFallbackMode {
 	return d.fallbackMode
+}
+
+// SendResult sends a pre-built DeepScanResult into the result channel for
+// processing by ResultProcessor. This is used in integration tests to exercise
+// the async alert path without requiring a live Groq API call.
+func (d *DeepScanner) SendResult(result DeepScanResult) {
+	d.resultChan <- result
 }
 
 // DispatchAsync dispatches a deep scan asynchronously
@@ -769,14 +793,8 @@ func (d *DeepScanner) ResultProcessor(ctx context.Context) {
 
 			// Check for high scores and trigger alerts
 			if shouldTriggerAlert(result.InjectionScore, result.JailbreakScore) {
-				// In production: send to alert system
-				// For POC: log to stdout
-				fmt.Printf("ALERT: High injection/jailbreak scores detected - RequestID: %s, InjectionScore: %.2f, JailbreakScore: %.2f\n",
-					result.RequestID, result.InjectionScore, result.JailbreakScore)
+				d.emitAuditEvent(context.Background(), result, "async_alert_high_score", false, d.injectionThreshold, d.jailbreakThreshold)
 			}
-
-			// Store result for audit (in production: write to audit log)
-			// For POC: this is a placeholder
 		}
 	}
 }
