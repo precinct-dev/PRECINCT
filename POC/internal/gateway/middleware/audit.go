@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -189,7 +190,7 @@ func (a *Auditor) Log(event AuditEvent) {
 	// Marshal to JSON (fast: ~1-2us)
 	jsonBytes, err := json.Marshal(event)
 	if err != nil {
-		log.Printf("ERROR: Failed to marshal audit event: %v", err)
+		slog.Error("failed to marshal audit event", "error", err)
 		return
 	}
 
@@ -223,11 +224,11 @@ func (a *Auditor) syncWrite(jsonBytes []byte) {
 	// Write to JSONL file if configured
 	if a.jsonlFile != nil {
 		if _, err := a.jsonlFile.Write(append(jsonBytes, '\n')); err != nil {
-			log.Printf("ERROR: Failed to write audit event to file: %v", err)
+			slog.Error("failed to write audit event to file", "error", err)
 		} else {
 			// Sync to disk immediately for durability
 			if err := a.jsonlFile.Sync(); err != nil {
-				log.Printf("ERROR: Failed to sync audit file: %v", err)
+				slog.Error("failed to sync audit file", "error", err)
 			}
 		}
 	}

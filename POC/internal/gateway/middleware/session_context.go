@@ -2,7 +2,7 @@ package middleware
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -59,7 +59,7 @@ func (sc *SessionContext) GetOrCreateSession(spiffeID, sessionID string) *AgentS
 
 	session, err := sc.store.GetSession(ctx, spiffeID, sessionID)
 	if err != nil {
-		log.Printf("session store get error: %v (falling back to new session)", err)
+		slog.Error("session store get error, falling back to new session", "error", err)
 	}
 	if session != nil {
 		return session
@@ -77,7 +77,7 @@ func (sc *SessionContext) GetOrCreateSession(spiffeID, sessionID string) *AgentS
 	}
 
 	if err := sc.store.SaveSession(ctx, spiffeID, sessionID, session); err != nil {
-		log.Printf("session store save error: %v", err)
+		slog.Error("session store save error", "error", err)
 	}
 
 	return session
@@ -100,7 +100,7 @@ func (sc *SessionContext) RecordAction(session *AgentSession, action ToolAction)
 	// Persist action to store. For InMemoryStore, this modifies session.Actions
 	// directly via the stored pointer. For KeyDB, this writes to a Redis LIST.
 	if err := sc.store.AppendAction(ctx, session.SPIFFEID, session.ID, action); err != nil {
-		log.Printf("session store append action error: %v", err)
+		slog.Error("session store append action error", "error", err)
 	}
 
 	// For KeyDB: also update the local session.Actions so that exfiltration
@@ -112,7 +112,7 @@ func (sc *SessionContext) RecordAction(session *AgentSession, action ToolAction)
 
 	// Persist updated session metadata (risk score, classifications, flags)
 	if err := sc.store.SaveSession(ctx, session.SPIFFEID, session.ID, session); err != nil {
-		log.Printf("session store save session error: %v", err)
+		slog.Error("session store save session error", "error", err)
 	}
 }
 

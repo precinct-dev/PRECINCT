@@ -14,7 +14,7 @@ package mcpclient
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -45,8 +45,7 @@ func DetectTransport(ctx context.Context, baseURL string, httpClient *http.Clien
 	// Attempt 2: Legacy SSE
 	sseTransport, sseErr := tryLegacySSE(ctx, baseURL, httpClient)
 	if sseErr == nil {
-		log.Printf("WARNING: MCP server at %s uses deprecated SSE transport. "+
-			"Consider upgrading to Streamable HTTP (MCP spec 2025-03-26+).", baseURL)
+		slog.Warn("MCP server uses deprecated SSE transport, consider upgrading to Streamable HTTP (MCP spec 2025-03-26+)", "url", baseURL)
 		return sseTransport, nil
 	}
 
@@ -102,8 +101,7 @@ func DetectTransportWithConfig(ctx context.Context, baseURL string, httpClient *
 		// Do NOT cancel overallCtx -- the SSE stream's HTTP request is tied
 		// to it, and cancelling would close the response body.
 		cancelOnExit = false
-		log.Printf("WARNING: MCP server at %s uses deprecated SSE transport. "+
-			"Consider upgrading to Streamable HTTP (MCP spec 2025-03-26+).", baseURL)
+		slog.Warn("MCP server uses deprecated SSE transport, consider upgrading to Streamable HTTP (MCP spec 2025-03-26+)", "url", baseURL)
 		return sseTransport, nil
 	}
 

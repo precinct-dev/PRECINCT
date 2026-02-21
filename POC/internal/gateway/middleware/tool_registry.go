@@ -23,7 +23,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -370,10 +370,10 @@ func (tr *ToolRegistry) Watch() (stop func(), err error) {
 
 	// RFA-lo1.4: Log attestation mode at startup
 	if tr.publicKey != nil {
-		log.Printf("[tool-registry] watching %s for changes (attestation: ENABLED)", tr.configPath)
+		slog.Info("tool-registry watching for changes", "path", tr.configPath, "attestation", "ENABLED")
 	} else {
-		log.Printf("[tool-registry] WARNING: Registry hot-reload is enabled WITHOUT attestation. Unsigned updates will be accepted.")
-		log.Printf("[tool-registry] watching %s for changes (attestation: DISABLED)", tr.configPath)
+		slog.Warn("tool-registry hot-reload enabled WITHOUT attestation, unsigned updates will be accepted")
+		slog.Info("tool-registry watching for changes", "path", tr.configPath, "attestation", "DISABLED")
 	}
 
 	done := make(chan struct{})
@@ -399,14 +399,14 @@ func (tr *ToolRegistry) Watch() (stop func(), err error) {
 					debounceTimer.Stop()
 				}
 				debounceTimer = time.AfterFunc(100*time.Millisecond, func() {
-					log.Printf("[tool-registry] file change detected: %s (op=%s), reloading", event.Name, event.Op)
+					slog.Info("tool-registry file change detected, reloading", "file", event.Name, "op", event.Op)
 					tr.reloadWithAttestation()
 				})
 			case watchErr, ok := <-watcher.Errors:
 				if !ok {
 					return
 				}
-				log.Printf("[tool-registry] watcher error: %v", watchErr)
+				slog.Error("tool-registry watcher error", "error", watchErr)
 			}
 		}
 	}()
@@ -473,24 +473,24 @@ func (tr *ToolRegistry) Reload() (ToolRegistryReloadResult, error) {
 func (tr *ToolRegistry) reloadWithAttestation() {
 	if tr.publicKey == nil {
 		// Dev mode: accept without verification but warn.
-		log.Printf("[tool-registry] WARNING: accepting unsigned registry update (no public key configured)")
+		slog.Warn("tool-registry accepting unsigned registry update, no public key configured")
 	}
 
 	result, err := tr.Reload()
 	if err != nil {
 		if tr.publicKey != nil && (strings.Contains(err.Error(), "signature") || strings.Contains(err.Error(), ".sig")) {
-			log.Printf("[CRITICAL] [tool-registry] signature verification failed, keeping old registry: %v", err)
-			log.Printf("[AUDIT] registry_reload_rejected: signature_verification_failed path=%s", tr.configPath)
+			slog.Error("tool-registry signature verification failed, keeping old registry", "error", err)
+			slog.Error("registry reload rejected: signature verification failed", "path", tr.configPath)
 			return
 		}
-		log.Printf("[tool-registry] reload failed, keeping old registry: %v", err)
+		slog.Error("tool-registry reload failed, keeping old registry", "error", err)
 		return
 	}
 
 	if result.CosignVerified {
-		log.Printf("[tool-registry] signature verification passed for %s", tr.configPath)
+		slog.Info("tool-registry signature verification passed", "path", tr.configPath)
 	}
-	log.Printf("[tool-registry] reload successful: %d tools, %d ui_resources", result.ToolCount, result.UIResourceCount)
+	slog.Info("tool-registry reload successful", "tools", result.ToolCount, "ui_resources", result.UIResourceCount)
 }
 
 // VerifyTool checks if a tool is allowed and matches expected hash

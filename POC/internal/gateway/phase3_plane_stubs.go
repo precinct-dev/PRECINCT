@@ -1,7 +1,7 @@
 package gateway
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -455,7 +455,7 @@ func newToolPlanePolicyEngine(capabilityRegistryV2Path string) *toolPlanePolicyE
 		rules:                    defaultToolCapabilityRules(),
 	}
 	if err := engine.loadRulesFromFile(); err != nil {
-		log.Printf("phase3 tool plane: using built-in defaults (registry load failed: %v)", err)
+		slog.Warn("phase3 tool plane: using built-in defaults, registry load failed", "error", err)
 	}
 	return engine
 }
@@ -779,4 +779,3 @@ func sortStrings(values []string) {
 		}
 	}
 }
-

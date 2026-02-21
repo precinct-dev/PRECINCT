@@ -3,7 +3,7 @@ package middleware
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -89,8 +89,7 @@ func GDPRDeleteAllData(ctx context.Context, client *redis.Client, spiffeID strin
 	result.RateLimitPurged = true
 
 	// 4. Log the deletion event for compliance evidence
-	log.Printf("GDPR_DELETION: spiffe_id=%s sessions_found=%d keys_deleted=%d session_ids=%v",
-		spiffeID, result.SessionsFound, result.KeysDeleted, result.SessionIDs)
+	slog.Info("GDPR deletion completed", "spiffe_id", spiffeID, "sessions_found", result.SessionsFound, "keys_deleted", result.KeysDeleted, "session_ids", result.SessionIDs)
 
 	return result, nil
 }

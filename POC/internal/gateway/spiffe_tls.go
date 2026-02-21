@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
@@ -54,8 +54,7 @@ func NewSPIFFETLSConfig(ctx context.Context, upstreamAuthzAllowedSPIFFEIDs []str
 		_ = x509Source.Close()
 		return nil, fmt.Errorf("failed to get X509 SVID: %w", err)
 	}
-	log.Printf("SPIFFE mTLS: obtained SVID %s (cert expires: %s)",
-		svid.ID, svid.Certificates[0].NotAfter.Format("2006-01-02T15:04:05Z"))
+	slog.Info("SPIFFE mTLS: obtained SVID", "svid_id", svid.ID, "cert_expires", svid.Certificates[0].NotAfter.Format("2006-01-02T15:04:05Z"))
 
 	// Server TLS: present our SVID, require and verify client certificates
 	// against the SPIRE trust bundle. This enforces mTLS -- only clients
@@ -80,9 +79,9 @@ func NewSPIFFETLSConfig(ctx context.Context, upstreamAuthzAllowedSPIFFEIDs []str
 		TLSClientConfig: upstreamTLS,
 	}
 	if peerAuthz.mode == spiffePeerAuthorizationModeAllowlist {
-		log.Printf("SPIFFE mTLS: upstream identity pinning enabled (allowed IDs: %v)", peerAuthz.allowedIDs)
+		slog.Info("SPIFFE mTLS: upstream identity pinning enabled", "allowed_ids", peerAuthz.allowedIDs)
 	} else {
-		log.Printf("SPIFFE mTLS: upstream identity pinning is permissive (no explicit IDs configured)")
+		slog.Info("SPIFFE mTLS: upstream identity pinning is permissive, no explicit IDs configured")
 	}
 
 	return &SPIFFETLSConfig{
