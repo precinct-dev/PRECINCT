@@ -40,13 +40,13 @@ packs/
       k8s/
 ```
 
-## OpenClaw Reference Pack
+## Reference Case-Study Pack
 
-OpenClaw is the current hostile-app reference candidate. Its pack metadata is published at:
+The current hostile-app case study pack metadata is published at:
 
-- `packs/openclaw/pack.v1.json`
+- `packs/<reference-app>/pack.v1.json`
 
-This pack defines app-specific routes and required security control expectations without changing upstream OpenClaw source.
+This pack defines app-specific routes and required security control expectations without changing upstream source.
 
 ## Migration Guidance (from core-specific handlers)
 

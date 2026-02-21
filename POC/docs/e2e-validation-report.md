@@ -16,11 +16,11 @@ For current status:
 
 - `current-state-and-roadmap.md` (as-built summary + residual risks)
 - active closure stories in epic `RFA-l6h6.6`
-- latest-source OpenClaw rerun evidence:
+- latest-source external-app rerun evidence:
   - `POC/tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log`
-  - `POC/tests/e2e/artifacts/rfa-t1hb-openclaw-campaign-20260216T185105Z.log`
+  - latest targeted case-study campaign artifact under `POC/tests/e2e/artifacts/`
 - latest-source final decision + follow-up closure:
-  - `POC/docs/security/openclaw-latest-source-final-decision-2026-02-16.md` (`RFA-655e` accepted/closed)
+  - latest external-app final decision artifact under `POC/docs/security/` (`RFA-655e` accepted/closed)
 
 Claim reconciliation (historical -> current):
 
@@ -34,7 +34,7 @@ Known residual risks (current, not from 2026-02-06 snapshot):
 
 1. Hosted CI run links are not embedded in this repository snapshot.
 2. EKS remains offline-validated unless separately deployed in cloud.
-3. OpenClaw latest-source promotion decisions must stay tied to upstream baseline commit `5d40d47501c19465761f503ebb12667b83eea84f` while preserving the separation model (`~/workspace/openclaw` upstream source vs `POC` security wrapper).
+3. External-app latest-source promotion decisions must stay tied to the recorded upstream baseline commit while preserving the separation model (upstream source vs `POC` security wrapper).
 
 ## Executive Summary
 

@@ -57,7 +57,7 @@ managed-cloud-bootstrap-prereqs-validate: ## Validate managed-cloud bootstrap pr
 framework-taxonomy-mappings-validate: ## Validate MITRE ATLAS + OWASP taxonomy mapping coverage for framework_refs signal keys
 	@bash tests/e2e/validate_framework_taxonomy_mappings.sh
 
-app-pack-model-validate: ## Validate app integration pack model docs and OpenClaw reference pack manifest
+app-pack-model-validate: ## Validate app integration pack model docs and reference pack manifest
 	@bash tests/e2e/validate_app_integration_pack_model.sh
 
 app-integration-strategy-docs-validate: ## Validate no-upstream-mod integration strategy docs and cross-links

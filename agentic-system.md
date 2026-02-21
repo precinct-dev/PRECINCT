@@ -6,9 +6,9 @@ We studied four AI assistant platforms and identified what each does well:
 
 | Platform | Language | Strength | Weakness |
 |----------|----------|----------|----------|
-| **OpenClaw** | TypeScript | Channel breadth (15+ integrations), plugin ecosystem | No tool sandboxing, LLM has raw credential access |
-| **IronClaw** | Rust | Security model (WASM sandboxing, credential injection, leak detection) | Complexity, NEAR AI coupling |
-| **PicoClaw** | Go | Simplicity (message bus, thin orchestration, <10MB) | No database, no graph, minimal security |
+| **Platform A** | TypeScript | Channel breadth (15+ integrations), plugin ecosystem | No tool sandboxing, LLM has raw credential access |
+| **Platform B** | Rust | Security model (WASM sandboxing, credential injection, leak detection) | Complexity, ecosystem coupling |
+| **Platform C** | Go | Simplicity (message bus, thin orchestration, <10MB) | No database, no graph, minimal security |
 | **Nanobot** | Python | Minimalism (4K LOC, LiteLLM leverage, fast to understand) | No sandboxing, single-threaded, fragile at scale |
 
 Rather than forking any of these, Axiom is a new platform built native to our existing ecosystem:
@@ -122,7 +122,7 @@ axiom/
       telegram/telegram.go
       discord/discord.go
       slack/slack.go
-      whatsapp/whatsapp.go        # Via Node.js bridge (ported from OpenClaw/Nanobot)
+      whatsapp/whatsapp.go        # Via Node.js bridge (ported from prior reference implementations)
       signal/signal.go
       teams/teams.go
       webchat/webchat.go          # HTTP/SSE for browser UI
@@ -1232,7 +1232,7 @@ Uses Kustomize with `base/` + `overlays/enterprise/`:
 
 | Component | Why New |
 |-----------|---------|
-| Channel adapters | Each platform API is unique; port channel list from OpenClaw but implement fresh in Go |
+| Channel adapters | Each platform API is unique; port channel list from case-study sources but implement fresh in Go |
 | GraphStore interface + AGE/SurrealDB backends | New abstraction needed; AGE and SurrealDB have very different query languages |
 | RLM-based agent loop | Novel combination of RLM recursion with beads work queue and knowledge graph context |
 | Swarm dispatcher | New routing logic: channels -> beads -> agents -> responses |

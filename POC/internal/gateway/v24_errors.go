@@ -18,9 +18,9 @@ const (
 	v24MiddlewareCircuitBreakerAdmin = "v24_circuit_breaker_admin"
 	v24MiddlewarePolicyReloadAdmin   = "v24_policy_reload_admin"
 	v24MiddlewareAdminAuthz          = "v24_admin_authz"
-	v24MiddlewareOpenClawWS          = "v24_openclaw_ws"
+	v24MiddlewareAppWrapperWS        = "v24_app_wrapper_ws"
 	v24MiddlewareModelCompat         = "v24_model_compat"
-	v24MiddlewareOpenClawHTTP        = "v24_openclaw_http"
+	v24MiddlewareAppWrapperHTTP      = "v24_app_wrapper_http"
 	v24ReasonPolicyHookRejected      = ReasonContractInvalid
 )
 

@@ -106,7 +106,7 @@ func (g *Gateway) wsMethodSuccessPayload(session openClawWSSession, frame openCl
 	}
 }
 
-func (g *Gateway) handleOpenClawWSEntry(w http.ResponseWriter, r *http.Request) bool {
+func (g *Gateway) handleAppWSEntry(w http.ResponseWriter, r *http.Request) bool {
 	if r == nil || r.URL == nil || r.URL.Path != openClawWSPath {
 		return false
 	}
@@ -117,7 +117,7 @@ func (g *Gateway) handleOpenClawWSEntry(w http.ResponseWriter, r *http.Request) 
 			http.StatusUpgradeRequired,
 			middleware.ErrMCPInvalidRequest,
 			"websocket upgrade required",
-			v24MiddlewareOpenClawWS,
+			v24MiddlewareAppWrapperWS,
 			reasonWSAuthInvalid,
 			map[string]any{
 				"route": openClawWSPath,
@@ -133,6 +133,10 @@ func (g *Gateway) handleOpenClawWSEntry(w http.ResponseWriter, r *http.Request) 
 
 	go g.serveOpenClawWSConnection(conn, r)
 	return true
+}
+
+func (g *Gateway) handleOpenClawWSEntry(w http.ResponseWriter, r *http.Request) bool {
+	return g.handleAppWSEntry(w, r)
 }
 
 func (g *Gateway) serveOpenClawWSConnection(conn *websocket.Conn, req *http.Request) {

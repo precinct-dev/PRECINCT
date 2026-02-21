@@ -4,7 +4,7 @@
 
 Provide a claim-ready implementation guide for onboarding insecure agent applications into this reference architecture without changing upstream source code.
 
-This playbook is app-agnostic. OpenClaw is the hostile reference app used to prove the pattern, not a special-case exception in core.
+This playbook is app-agnostic. The hostile reference app is a case study used to prove the pattern, not a special-case exception in core.
 
 ## Zero-Upstream-Modification Model
 
@@ -24,7 +24,7 @@ Security outcomes are enforced in core. Packs and SDKs can shape requests but ca
 - No app-specific route logic in core middleware.
 - No app-specific allowlist/denylist policy branching in core.
 - No direct model/tool bypass path around gateway mediation.
-- Upstream source remains independent (for OpenClaw: `~/workspace/openclaw`).
+- Upstream source remains independent (for the reference case study: `<upstream-workspace>/<reference-app>`).
 - Compose and Kubernetes validations are both required for promotion-eligible integration packs.
 
 ## Tradeoff Matrix
