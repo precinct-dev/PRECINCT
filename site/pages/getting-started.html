@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Getting Started with PRECINCT</title>
+  <meta name="description" content="Get from zero to a running PRECINCT stack in minutes. Prerequisites, Docker Compose quickstart, Kubernetes deployment, first request walkthrough, and security verification.">
+  <meta name="keywords" content="PRECINCT getting started, quickstart, Docker Compose, Kubernetes, MCP gateway, agentic AI security setup">
+  <meta name="author" content="PRECINCT Contributors">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Getting Started with PRECINCT">
+  <meta property="og:description" content="Get from zero to a running PRECINCT stack in minutes. Prerequisites, quickstart guides, and security verification walkthroughs.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://precinct.dev/pages/getting-started.html">
+  <meta property="og:site_name" content="PRECINCT">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- HEADER / NAV                                                  -->
+  <!-- ============================================================ -->
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+          </ul>
+        </li>
+        <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li><a href="getting-started.html" class="nav-link active">Getting Started</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ============================================================ -->
+  <!-- PAGE CONTENT                                                  -->
+  <!-- ============================================================ -->
+  <main class="page-content">
+    <div class="container">
+      <div class="layout-with-sidebar">
+
+        <!-- ============================================================ -->
+        <!-- SIDEBAR NAVIGATION                                            -->
+        <!-- ============================================================ -->
+        <aside class="sidebar" aria-label="Page sections">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#prerequisites">Prerequisites</a></li>
+                <li><a href="#docker-compose">Option 1: Docker Compose</a></li>
+                <li><a href="#kubernetes">Option 2: Kubernetes</a></li>
+                <li><a href="#first-request">Your First Request</a></li>
+                <li><a href="#verify-security">Verify Security Controls</a></li>
+                <li><a href="#compliance-evidence">Generate Compliance Evidence</a></li>
+                <li><a href="#benchmarks">Run Benchmarks</a></li>
+                <li><a href="#explore-codebase">Explore the Codebase</a></li>
+                <li><a href="#next-steps">Next Steps</a></li>
+                <li><a href="#get-help">Get Help</a></li>
+              </ul>
+            </div>
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">Related</div>
+              <ul>
+                <li><a href="docker-compose.html">Docker Compose Guide</a></li>
+                <li><a href="kubernetes.html">Kubernetes Guide</a></li>
+                <li><a href="architecture.html">Architecture</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <!-- Mobile sidebar toggle -->
+        <button class="sidebar-toggle" aria-label="Toggle page navigation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          Page Navigation
+        </button>
+
+        <!-- Mobile sidebar panel -->
+        <div class="sidebar-mobile" aria-label="Page sections (mobile)">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#prerequisites">Prerequisites</a></li>
+                <li><a href="#docker-compose">Option 1: Docker Compose</a></li>
+                <li><a href="#kubernetes">Option 2: Kubernetes</a></li>
+                <li><a href="#first-request">Your First Request</a></li>
+                <li><a href="#verify-security">Verify Security Controls</a></li>
+                <li><a href="#compliance-evidence">Generate Compliance Evidence</a></li>
+                <li><a href="#benchmarks">Run Benchmarks</a></li>
+                <li><a href="#explore-codebase">Explore the Codebase</a></li>
+                <li><a href="#next-steps">Next Steps</a></li>
+                <li><a href="#get-help">Get Help</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="sidebar-overlay"></div>
+
+        <!-- ============================================================ -->
+        <!-- MAIN CONTENT                                                  -->
+        <!-- ============================================================ -->
+        <article class="layout-main content">
+
+          <h1>Getting Started with PRECINCT</h1>
+          <p class="lead">
+            Get from zero to a running PRECINCT stack in minutes. This guide walks you through
+            prerequisites, deployment options, your first secured request, and verification of
+            every security layer.
+          </p>
+
+          <!-- ========== Prerequisites ========== -->
+          <section id="prerequisites">
+            <h2>Prerequisites</h2>
+            <p>
+              The following tools are needed to build and run the PRECINCT stack. Only the first
+              three are required for the Docker Compose quickstart; the rest are needed only for
+              Kubernetes deployment, policy testing, or manifest validation.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Required and optional tools for running PRECINCT</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Tool</th>
+                    <th scope="col">Required Version</th>
+                    <th scope="col">Purpose</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Docker + Docker Compose</strong></td>
+                    <td><code>v24+</code> / <code>v2.20+</code></td>
+                    <td>Container runtime</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Go</strong></td>
+                    <td><code>1.22+</code></td>
+                    <td>Gateway build</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Make</strong></td>
+                    <td>any</td>
+                    <td>Build automation</td>
+                  </tr>
+                  <tr>
+                    <td><strong>kubectl</strong></td>
+                    <td><code>1.28+</code></td>
+                    <td>K8s deployment (optional)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>kustomize</strong></td>
+                    <td><code>5.0+</code></td>
+                    <td>K8s overlay management (optional)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>opa</strong></td>
+                    <td><code>0.60+</code></td>
+                    <td>Policy testing (optional)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>kubeconform</strong></td>
+                    <td>latest</td>
+                    <td>Manifest validation (optional)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ========== Option 1: Docker Compose ========== -->
+          <section id="docker-compose">
+            <h2>Option 1: Docker Compose (Recommended for First Run)</h2>
+            <p>
+              Docker Compose is the fastest way to get PRECINCT running. The entire stack &mdash;
+              gateway, SPIRE, OPA, mock MCP servers, and observability &mdash; comes up with a
+              few <code>make</code> commands.
+            </p>
+
+            <h3>Step 1: Clone the repository</h3>
+            <pre data-lang="bash"><code>git clone https://github.com/RamXX/agentic_reference_architecture.git
+cd agentic_reference_architecture/POC</code></pre>
+
+            <h3>Step 2: Start the observability stack</h3>
+            <pre data-lang="bash"><code>make phoenix-up
+# Phoenix UI available at http://localhost:6006</code></pre>
+
+            <h3>Step 3: Start the full PRECINCT stack</h3>
+            <pre data-lang="bash"><code>make up
+# Gateway available at http://localhost:9090</code></pre>
+
+            <h3>Step 4: Run the E2E demo (28 test scenarios)</h3>
+            <pre data-lang="bash"><code>make demo-compose</code></pre>
+
+            <h3>Step 5: Explore</h3>
+            <pre data-lang="bash"><code>curl -s http://localhost:9090/health | jq .</code></pre>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                What Happens Under the Hood
+              </div>
+              <p>
+                <code>make up</code> starts SPIRE (server + agent), the PRECINCT gateway, OPA with
+                policy bundles, KeyDB for rate limiting, mock MCP servers (Tavily, Brave, Fetch),
+                and a DSPy researcher agent. All workloads receive SPIFFE identities automatically.
+              </p>
+            </div>
+          </section>
+
+          <!-- ========== Option 2: Kubernetes ========== -->
+          <section id="kubernetes">
+            <h2>Option 2: Kubernetes (Docker Desktop)</h2>
+            <p>
+              For a production-representative deployment, run PRECINCT on Kubernetes. Docker Desktop's
+              built-in Kubernetes works out of the box.
+            </p>
+
+            <h3>Step 1: Enable Kubernetes in Docker Desktop</h3>
+            <p>
+              Open Docker Desktop, navigate to <strong>Settings &rarr; Kubernetes &rarr; Enable Kubernetes</strong>,
+              and wait for the cluster to become ready.
+            </p>
+
+            <h3>Step 2: Deploy</h3>
+            <pre data-lang="bash"><code>cd POC
+make k8s-up
+# Gateway available at http://localhost:30090</code></pre>
+
+            <h3>Step 3: Run E2E demo</h3>
+            <pre data-lang="bash"><code>make demo-k8s</code></pre>
+
+            <h3>Step 4: Tear down</h3>
+            <pre data-lang="bash"><code>make k8s-down</code></pre>
+          </section>
+
+          <!-- ========== Your First Request ========== -->
+          <section id="first-request">
+            <h2>Your First Request</h2>
+            <p>
+              Once the stack is running, interact with the PRECINCT gateway directly. These examples
+              use the Docker Compose endpoint (<code>localhost:9090</code>); substitute
+              <code>localhost:30090</code> if running on Kubernetes.
+            </p>
+
+            <h3>List available tools (authenticated)</h3>
+            <pre data-lang="bash"><code>curl -s http://localhost:9090/ \
+  -H "Content-Type: application/json" \
+  -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' | jq .</code></pre>
+
+            <h3>Call a tool</h3>
+            <pre data-lang="bash"><code>curl -s http://localhost:9090/ \
+  -H "Content-Type: application/json" \
+  -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
+  -d '{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"AI security"}},"id":2}' | jq .</code></pre>
+
+            <h3>Try without identity (should fail)</h3>
+            <pre data-lang="bash"><code>curl -s http://localhost:9090/ \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","method":"tools/list","id":1}' | jq .code</code></pre>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Expected Behavior
+              </div>
+              <p>
+                The third request &mdash; without an <code>X-SPIFFE-ID</code> header &mdash; will
+                return <code>spiffe_auth_required</code>. This is by design. Every request to the
+                PRECINCT gateway must carry a verifiable workload identity.
+              </p>
+            </div>
+          </section>
+
+          <!-- ========== Verify Security Controls ========== -->
+          <section id="verify-security">
+            <h2>Verify Security Controls</h2>
+            <p>
+              Walk through each layer of the PRECINCT security model to confirm that all controls
+              are active and enforcing correctly.
+            </p>
+
+            <ol>
+              <li>
+                <strong>Identity</strong> &mdash; Send a request without a SPIFFE ID. The gateway
+                returns <code>spiffe_auth_required</code>, confirming that unauthenticated requests
+                are rejected at layer 3.
+              </li>
+              <li>
+                <strong>Authorization</strong> &mdash; Send a request with a valid but unauthorized
+                SPIFFE ID. The gateway returns <code>authz_policy_denied</code>, confirming that
+                OPA policy evaluation at layer 6 blocks the request.
+              </li>
+              <li>
+                <strong>DLP</strong> &mdash; Send a request body containing an AWS access key
+                (e.g., <code>AKIAIOSFODNN7EXAMPLE</code>). The gateway returns
+                <code>dlp_credentials_detected</code>, confirming that the DLP scanner at layer 7
+                blocks credential exfiltration.
+              </li>
+              <li>
+                <strong>Tool Registry</strong> &mdash; Request an unknown tool name. The gateway
+                returns <code>tool_not_in_registry</code>, confirming that only registered and
+                hash-verified tools may be invoked.
+              </li>
+              <li>
+                <strong>Rate Limiting</strong> &mdash; Send a burst of rapid requests. The gateway
+                returns HTTP <code>429 Too Many Requests</code>, confirming that per-identity
+                token-bucket enforcement at layer 11 is active.
+              </li>
+              <li>
+                <strong>Audit</strong> &mdash; Check gateway logs for hash-chained JSONL audit
+                events. Each event contains a unique decision ID and a cryptographic hash linking
+                it to the previous event, providing tamper-evident audit trails.
+              </li>
+            </ol>
+
+            <div class="callout callout-success">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                All Six Checks Pass
+              </div>
+              <p>
+                If all six verifications return the expected deny codes and audit events, every
+                layer of the PRECINCT security model is operational. The E2E demo
+                (<code>make demo-compose</code>) automates all 28 test scenarios covering these
+                and additional edge cases.
+              </p>
+            </div>
+          </section>
+
+          <!-- ========== Generate Compliance Evidence ========== -->
+          <section id="compliance-evidence">
+            <h2>Generate Compliance Evidence</h2>
+            <p>
+              PRECINCT includes built-in tooling for generating compliance artifacts, running
+              security scans, and validating production readiness.
+            </p>
+
+            <h3>Full compliance report</h3>
+            <pre data-lang="bash"><code>make compliance-report</code></pre>
+
+            <h3>Security scans</h3>
+            <pre data-lang="bash"><code>make security-scan</code></pre>
+
+            <h3>Production readiness validation</h3>
+            <pre data-lang="bash"><code>make production-readiness-validate</code></pre>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                For Auditors
+              </div>
+              <p>
+                The compliance report maps PRECINCT controls to SOC 2, NIST 800-53, and ISO 27001
+                frameworks. See the <a href="for-auditors.html">For Auditors</a> page for the
+                complete compliance framework mapping.
+              </p>
+            </div>
+          </section>
+
+          <!-- ========== Run Benchmarks ========== -->
+          <section id="benchmarks">
+            <h2>Run Benchmarks</h2>
+            <p>
+              Measure the performance impact of the 13-layer middleware chain with the built-in
+              benchmark suite.
+            </p>
+
+            <pre data-lang="bash"><code>make benchmark
+# Shows: Go benchmarks, latency percentiles, per-middleware breakdown, load test</code></pre>
+
+            <p>
+              The benchmark output includes Go micro-benchmarks for each middleware layer,
+              end-to-end latency percentiles (p50, p95, p99), per-middleware breakdown showing
+              exactly where time is spent, and a load test that exercises the full stack under
+              sustained throughput.
+            </p>
+          </section>
+
+          <!-- ========== Explore the Codebase ========== -->
+          <section id="explore-codebase">
+            <h2>Explore the Codebase</h2>
+            <p>
+              The PRECINCT proof-of-concept lives in the <code>POC/</code> directory. Here is a
+              guide to the key paths.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Directory guide for the PRECINCT codebase</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Path</th>
+                    <th scope="col">Contents</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>cmd/gateway/</code></td>
+                    <td>Gateway binary entry point</td>
+                  </tr>
+                  <tr>
+                    <td><code>cmd/agw/</code></td>
+                    <td>CLI tool for operations and compliance</td>
+                  </tr>
+                  <tr>
+                    <td><code>internal/gateway/</code></td>
+                    <td>Gateway core (middleware chain, handlers)</td>
+                  </tr>
+                  <tr>
+                    <td><code>internal/gateway/middleware/</code></td>
+                    <td>All 13 middleware implementations</td>
+                  </tr>
+                  <tr>
+                    <td><code>config/opa/</code></td>
+                    <td>Rego policy files + tests</td>
+                  </tr>
+                  <tr>
+                    <td><code>config/spire/</code></td>
+                    <td>SPIRE server and agent configuration</td>
+                  </tr>
+                  <tr>
+                    <td><code>config/capability-registry-v2.yaml</code></td>
+                    <td>Tool and model registration</td>
+                  </tr>
+                  <tr>
+                    <td><code>infra/eks/</code></td>
+                    <td>Kubernetes manifests and Kustomize overlays</td>
+                  </tr>
+                  <tr>
+                    <td><code>tests/</code></td>
+                    <td>Unit, integration, E2E, conformance tests</td>
+                  </tr>
+                  <tr>
+                    <td><code>tools/compliance/</code></td>
+                    <td>Compliance report generator</td>
+                  </tr>
+                  <tr>
+                    <td><code>demo/</code></td>
+                    <td>E2E demo scripts and mock servers</td>
+                  </tr>
+                  <tr>
+                    <td><code>docs/</code></td>
+                    <td>Architecture, API reference, deployment guides</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ========== Next Steps ========== -->
+          <section id="next-steps">
+            <h2>Next Steps</h2>
+            <p>
+              Now that you have a running stack, dive deeper into the architecture, compliance
+              mappings, and production deployment guides.
+            </p>
+
+            <div class="card-grid card-grid-3">
+              <div class="card">
+                <h3 class="mt-0">Architecture</h3>
+                <p>
+                  Understand the full security model: five governed planes, 13-layer middleware
+                  chain, threat model, and key design decisions.
+                </p>
+                <p><a href="architecture.html">Read the Architecture guide &rarr;</a></p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">For Auditors</h3>
+                <p>
+                  Compliance framework mappings for SOC 2, NIST 800-53, and ISO 27001. Evidence
+                  collection and control documentation.
+                </p>
+                <p><a href="for-auditors.html">Read the Auditors guide &rarr;</a></p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Case Study</h3>
+                <p>
+                  See how OpenClaw &mdash; a real agentic AI application &mdash; was secured by
+                  PRECINCT without any code changes.
+                </p>
+                <p><a href="case-study.html">Read the Case Study &rarr;</a></p>
+              </div>
+            </div>
+
+            <div class="card-grid card-grid-2">
+              <div class="card">
+                <h3 class="mt-0">Docker Compose Deployment</h3>
+                <p>
+                  Detailed guide to the Docker Compose stack: service configuration, networking,
+                  volume mounts, health checks, and troubleshooting.
+                </p>
+                <p><a href="docker-compose.html">Docker Compose guide &rarr;</a></p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Kubernetes Deployment</h3>
+                <p>
+                  Production Kubernetes deployment: Kustomize overlays, namespace isolation,
+                  SPIRE DaemonSet, and EKS-specific configuration.
+                </p>
+                <p><a href="kubernetes.html">Kubernetes guide &rarr;</a></p>
+              </div>
+            </div>
+          </section>
+
+          <!-- ========== Get Help ========== -->
+          <section id="get-help">
+            <h2>Get Help</h2>
+            <ul>
+              <li>
+                <strong>GitHub Issues</strong> &mdash;
+                <a href="https://github.com/RamXX/agentic_reference_architecture/issues" target="_blank" rel="noopener noreferrer">github.com/RamXX/agentic_reference_architecture/issues</a>
+              </li>
+              <li>
+                <strong>Full documentation</strong> &mdash; available in the repository
+                <code>docs/</code> directory.
+              </li>
+              <li>
+                <strong>Architecture specification</strong> &mdash;
+                <code>precinct-reference-architecture.md</code> in the repository root.
+              </li>
+            </ul>
+          </section>
+
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="for-auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by Cibertrend, Inc. and Hextropian Systems, Inc.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
