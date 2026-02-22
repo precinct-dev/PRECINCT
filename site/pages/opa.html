@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>OPA -- Policy Engine | PRECINCT</title>
+  <meta name="description" content="How PRECINCT uses Open Policy Agent (OPA) for fine-grained, context-aware authorization of AI agent actions -- policy-as-code with Rego, capability registry, and full audit trails.">
+  <meta name="keywords" content="OPA, Open Policy Agent, Rego, policy-as-code, authorization, capability registry, audit trail, agentic AI, PRECINCT">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- HEADER / NAV                                                  -->
+  <!-- ============================================================ -->
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem" class="active">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+          </ul>
+        </li>
+        <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ============================================================ -->
+  <!-- PAGE CONTENT                                                  -->
+  <!-- ============================================================ -->
+  <div class="page-content">
+    <div class="container">
+      <div class="layout-with-sidebar">
+
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" aria-label="Page sections">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#why-opa">Why OPA for Agent Authorization</a></li>
+                <li><a href="#how-opa-works">How OPA Works in PRECINCT</a></li>
+                <li><a href="#policy-examples">Policy Examples</a></li>
+                <li><a href="#capability-registry">Capability Registry V2</a></li>
+                <li><a href="#bundle-management">Policy Bundle Management</a></li>
+                <li><a href="#decision-audit">Decision Audit Trail</a></li>
+              </ul>
+            </div>
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">Related</div>
+              <ul>
+                <li><a href="spiffe-spire.html">SPIFFE/SPIRE -- Identity</a></li>
+                <li><a href="spike.html">SPIKE -- Secrets</a></li>
+                <li><a href="gateway.html">Gateway</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <!-- Mobile Sidebar Toggle -->
+        <button class="sidebar-toggle" aria-label="Toggle section navigation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          On This Page
+        </button>
+
+        <!-- Mobile Sidebar -->
+        <div class="sidebar-mobile" aria-label="Page sections (mobile)">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#why-opa">Why OPA for Agent Authorization</a></li>
+                <li><a href="#how-opa-works">How OPA Works in PRECINCT</a></li>
+                <li><a href="#policy-examples">Policy Examples</a></li>
+                <li><a href="#capability-registry">Capability Registry V2</a></li>
+                <li><a href="#bundle-management">Policy Bundle Management</a></li>
+                <li><a href="#decision-audit">Decision Audit Trail</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="sidebar-overlay"></div>
+
+        <!-- Main Content -->
+        <main class="layout-main content">
+
+          <h1>OPA &mdash; Policy Engine</h1>
+          <p class="lead">
+            Every agent request in PRECINCT is evaluated against declarative, version-controlled
+            policies written in Rego. OPA (Open Policy Agent) provides fine-grained, context-aware
+            authorization decisions with a complete audit trail &mdash; without coupling policy
+            logic to application code.
+          </p>
+
+          <!-- ======================================================== -->
+          <!-- WHY OPA                                                   -->
+          <!-- ======================================================== -->
+          <section id="why-opa">
+            <h2>Why OPA for Agent Authorization</h2>
+            <p>
+              AI agents make runtime decisions about which tools to invoke, what data to access,
+              and which models to call. Hardcoding authorization rules into the gateway or agent
+              code creates a rigid, unauditable system. OPA separates policy from mechanism,
+              enabling organizations to express security intent as inspectable, testable code.
+            </p>
+
+            <ul>
+              <li>
+                <strong>Policy-as-code (Rego language).</strong>
+                Authorization rules are written in Rego, a purpose-built language for policy
+                decisions. Policies are version-controlled, peer-reviewed, and testable &mdash;
+                the same lifecycle as application code.
+              </li>
+              <li>
+                <strong>Decoupled from application code.</strong>
+                The gateway queries OPA as an external decision point. Policy changes do not
+                require gateway redeployment, code changes, or service restarts.
+              </li>
+              <li>
+                <strong>Fine-grained, context-aware decisions.</strong>
+                OPA evaluates the full request context: caller SPIFFE ID, target tool, action
+                type, session history, time of day, risk score, and any external data source.
+              </li>
+              <li>
+                <strong>Audit trail for every decision.</strong>
+                Every policy evaluation produces a decision record with a unique ID, the input
+                data, the policy bundle digest, and the result. Every decision is forensically
+                reconstructible.
+              </li>
+              <li>
+                <strong>Hot-reload without gateway restart.</strong>
+                Policy bundles are loaded and reloaded at runtime. New policies take effect
+                within seconds without disrupting active connections or requiring gateway
+                restarts.
+              </li>
+            </ul>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- HOW OPA WORKS IN PRECINCT                                 -->
+          <!-- ======================================================== -->
+          <section id="how-opa-works">
+            <h2>How OPA Works in PRECINCT</h2>
+            <p>
+              At step 6 of the 13-layer middleware chain, the gateway sends the full request
+              context to OPA for evaluation. OPA returns an allow/deny decision with an
+              optional reason code and metadata.
+            </p>
+
+            <div class="mermaid-wrapper">
+              <div class="mermaid">
+flowchart LR
+    A["Incoming<br/>Request"] --> B["SPIFFE<br/>Identity<br/>Extraction"]
+    B --> C["OPA Policy<br/>Evaluation"]
+    C --> D{Decision}
+    D -->|"allow"| E["Continue to<br/>Step 7+"]
+    D -->|"deny"| F["403 Forbidden<br/>+ Reason Code"]
+    D -->|"step_up"| G["Require<br/>Elevated Auth"]
+
+    style A fill:#1e293b,stroke:#334155,color:#f1f5f9
+    style B fill:#1e293b,stroke:#334155,color:#f1f5f9
+    style C fill:#1e3a5f,stroke:#3b82f6,color:#f1f5f9
+    style D fill:#1e293b,stroke:#f59e0b,color:#f1f5f9
+    style E fill:#064e3b,stroke:#10b981,color:#f1f5f9
+    style F fill:#7f1d1d,stroke:#ef4444,color:#f1f5f9
+    style G fill:#78350f,stroke:#f59e0b,color:#f1f5f9
+              </div>
+            </div>
+
+            <p>
+              The gateway sends the following context to OPA with every evaluation request:
+            </p>
+            <ul>
+              <li>Caller SPIFFE ID (extracted from the mTLS SVID at step 3)</li>
+              <li>Requested tool name and registered capability ID</li>
+              <li>Action type (e.g., <code>tools/call</code>, <code>resources/read</code>)</li>
+              <li>Destination host and port</li>
+              <li>Session context: cumulative request count, risk score, prior tools invoked</li>
+              <li>Timestamp and request metadata</li>
+            </ul>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- POLICY EXAMPLES                                           -->
+          <!-- ======================================================== -->
+          <section id="policy-examples">
+            <h2>Policy Examples</h2>
+            <p>
+              The following Rego examples illustrate the kinds of policies PRECINCT supports.
+              Each example addresses a different authorization concern.
+            </p>
+
+            <h3>1. Tool Allowlist by SPIFFE ID Pattern</h3>
+            <p>
+              Restrict which tools a given agent class can invoke based on its SPIFFE ID.
+            </p>
+            <pre data-lang="rego"><code>package precinct.authz
+
+import rego.v1
+
+# Allow researcher agents to use search and retrieval tools only
+default allow := false
+
+allow if {
+    glob.match("spiffe://poc.local/agents/mcp-client/*/dev", [], input.caller_spiffe_id)
+    input.tool_name in {"web_search", "arxiv_search", "document_retrieve"}
+}
+
+# Allow gateway-admin to use any tool
+allow if {
+    input.caller_spiffe_id == "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+}</code></pre>
+
+            <h3>2. Destination Restrictions</h3>
+            <p>
+              Prevent agents from contacting unauthorized external services.
+            </p>
+            <pre data-lang="rego"><code>package precinct.authz.destination
+
+import rego.v1
+
+# Approved external destinations
+approved_destinations := {
+    "api.groq.com",
+    "api.openai.com",
+    "api.anthropic.com",
+}
+
+default allow := false
+
+allow if {
+    input.destination_host in approved_destinations
+}
+
+deny_reason := "destination_not_approved" if {
+    not input.destination_host in approved_destinations
+}</code></pre>
+
+            <h3>3. Step-Up Requirements for High-Risk Tools</h3>
+            <p>
+              Require elevated authorization for tools classified as high-risk.
+            </p>
+            <pre data-lang="rego"><code>package precinct.authz.stepup
+
+import rego.v1
+
+high_risk_tools := {
+    "execute_shell",
+    "database_write",
+    "file_delete",
+    "send_email",
+}
+
+decision := "step_up" if {
+    input.tool_name in high_risk_tools
+    not input.step_up_verified
+}
+
+decision := "allow" if {
+    input.tool_name in high_risk_tools
+    input.step_up_verified
+}
+
+decision := "allow" if {
+    not input.tool_name in high_risk_tools
+}</code></pre>
+
+            <h3>4. Rate Limit Budget Allocation</h3>
+            <p>
+              Enforce per-agent request budgets within a session.
+            </p>
+            <pre data-lang="rego"><code>package precinct.authz.ratelimit
+
+import rego.v1
+
+# Maximum requests per session, by agent class
+budget := {
+    "researcher": 100,
+    "analyst": 50,
+    "monitor": 200,
+}
+
+default allow := false
+
+allow if {
+    agent_class := extract_class(input.caller_spiffe_id)
+    max_requests := budget[agent_class]
+    input.session_request_count < max_requests
+}
+
+deny_reason := "session_budget_exhausted" if {
+    agent_class := extract_class(input.caller_spiffe_id)
+    max_requests := budget[agent_class]
+    input.session_request_count >= max_requests
+}
+
+extract_class(spiffe_id) := class if {
+    parts := split(spiffe_id, "/")
+    class := parts[4]
+}</code></pre>
+
+            <h3>5. Model Provider Restrictions</h3>
+            <p>
+              Control which model providers each agent class is allowed to use.
+            </p>
+            <pre data-lang="rego"><code>package precinct.authz.models
+
+import rego.v1
+
+# Map agent classes to allowed model providers
+allowed_providers := {
+    "researcher": {"groq", "openai"},
+    "analyst": {"anthropic", "openai"},
+    "monitor": {"groq"},
+}
+
+default allow := false
+
+allow if {
+    agent_class := extract_class(input.caller_spiffe_id)
+    providers := allowed_providers[agent_class]
+    input.model_provider in providers
+}
+
+deny_reason := sprintf("agent class '%s' not authorized for provider '%s'",
+    [extract_class(input.caller_spiffe_id), input.model_provider]) if {
+    agent_class := extract_class(input.caller_spiffe_id)
+    providers := allowed_providers[agent_class]
+    not input.model_provider in providers
+}
+
+extract_class(spiffe_id) := class if {
+    parts := split(spiffe_id, "/")
+    class := parts[4]
+}</code></pre>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- CAPABILITY REGISTRY V2                                    -->
+          <!-- ======================================================== -->
+          <section id="capability-registry">
+            <h2>Capability Registry V2</h2>
+            <p>
+              The Capability Registry is a YAML-based configuration that maps capability IDs to
+              their adapter protocol, tool allowlists, authorization requirements, and step-up
+              policies. OPA policies reference capability IDs rather than raw tool names,
+              providing an abstraction layer that decouples policy from tool implementation details.
+            </p>
+
+            <pre data-lang="yaml"><code>capabilities:
+  - id: tool.default.mcp
+    description: "Standard MCP tool invocation"
+    adapter: mcp
+    protocol: stdio
+    tools:
+      allow:
+        - web_search
+        - arxiv_search
+        - document_retrieve
+        - calculator
+    authorization:
+      action: "tools/call"
+      resource: "mcp/*"
+    step_up: false
+
+  - id: tool.highrisk.cli
+    description: "High-risk CLI tool execution"
+    adapter: cli
+    protocol: exec
+    tools:
+      allow:
+        - execute_shell
+        - file_write
+        - database_query
+    authorization:
+      action: "tools/call"
+      resource: "cli/*"
+    step_up: true
+    step_up_method: "human_approval"
+
+  - id: model.groq.openai_compat
+    description: "Groq inference via OpenAI-compatible API"
+    adapter: openai_compat
+    protocol: https
+    endpoint: "https://api.groq.com/openai/v1"
+    authorization:
+      action: "model/inference"
+      resource: "groq/*"
+    step_up: false
+    rate_limit:
+      requests_per_minute: 30
+      tokens_per_minute: 100000</code></pre>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                Abstraction Layer
+              </div>
+              <p>
+                Capability IDs (<code>tool.default.mcp</code>, <code>model.groq.openai_compat</code>)
+                decouple policy from implementation. When a tool migrates from MCP to a different
+                adapter, only the registry entry changes &mdash; policies referencing the
+                capability ID remain unchanged.
+              </p>
+            </div>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- POLICY BUNDLE MANAGEMENT                                  -->
+          <!-- ======================================================== -->
+          <section id="bundle-management">
+            <h2>Policy Bundle Management</h2>
+            <p>
+              OPA policies are packaged as bundles and managed through a GitOps-driven lifecycle.
+              Changes to policies follow the same rigor as changes to application code.
+            </p>
+
+            <ul>
+              <li>
+                <strong>GitOps-driven policy updates.</strong>
+                Policy files live in a Git repository. Merges to the main branch trigger
+                bundle rebuilds and deployment to OPA instances. No manual policy editing
+                in production.
+              </li>
+              <li>
+                <strong>Bundle digest logging.</strong>
+                Every audit event includes the SHA-256 digest of the active policy bundle.
+                This ensures forensic traceability: given any decision, you can reconstruct
+                exactly which policies were in effect at the time.
+              </li>
+              <li>
+                <strong>Signed policy artifacts.</strong>
+                Bundles are cryptographically signed before deployment. OPA verifies the
+                signature on load, rejecting tampered or unsigned bundles.
+              </li>
+              <li>
+                <strong>Controlled change lifecycle.</strong>
+                Policy changes go through pull request review, automated Rego unit tests
+                (via <code>opa test</code>), staging deployment, and production rollout.
+                Rollback is a Git revert.
+              </li>
+            </ul>
+
+            <pre data-lang="bash"><code># Build and sign a policy bundle
+opa build -b policies/ -o bundle.tar.gz
+cosign sign-blob --key cosign.key bundle.tar.gz
+
+# Run Rego unit tests
+opa test policies/ -v
+
+# Deploy bundle to OPA (via bundle server or direct push)
+opa run --server \
+  --bundle bundle.tar.gz \
+  --verification-key cosign.pub</code></pre>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- DECISION AUDIT TRAIL                                      -->
+          <!-- ======================================================== -->
+          <section id="decision-audit">
+            <h2>Decision Audit Trail</h2>
+            <p>
+              Every OPA evaluation produces a structured decision record that enables
+              full forensic reconstruction of any authorization decision. This is critical
+              for compliance frameworks that require evidence of access control enforcement.
+            </p>
+
+            <p>
+              Each decision record includes:
+            </p>
+            <ul>
+              <li>
+                <strong>Decision ID:</strong> A unique identifier for the evaluation
+                (e.g., <code>dec-4f8a2b1c-9d3e-4a7f-b5c6-1e2f3a4b5c6d</code>).
+              </li>
+              <li>
+                <strong>Bundle digest:</strong> The SHA-256 hash of the policy bundle
+                that was active at evaluation time.
+              </li>
+              <li>
+                <strong>SPIFFE identity:</strong> The full SPIFFE ID of the requesting
+                workload.
+              </li>
+              <li>
+                <strong>Full input/output:</strong> The complete input context sent to OPA
+                and the complete result, enabling forensic reconstruction of the decision
+                logic.
+              </li>
+            </ul>
+
+            <h3>Example Decision Record</h3>
+            <pre data-lang="json"><code>{
+  "decision_id": "dec-4f8a2b1c-9d3e-4a7f-b5c6-1e2f3a4b5c6d",
+  "timestamp": "2026-02-21T14:32:07.842Z",
+  "bundle_digest": "sha256:a1b2c3d4e5f6...",
+  "result": "deny",
+  "reason": "destination_not_approved",
+  "input": {
+    "caller_spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+    "tool_name": "http_request",
+    "destination_host": "evil-exfiltration.example.com",
+    "action": "tools/call",
+    "session_id": "sess-abc123",
+    "session_request_count": 14,
+    "session_risk_score": 0.32
+  },
+  "metrics": {
+    "evaluation_duration_ns": 142580,
+    "policy_rules_evaluated": 7
+  }
+}</code></pre>
+
+            <div class="callout callout-success">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Compliance Alignment
+              </div>
+              <p>
+                The decision audit trail directly satisfies control requirements in SOC 2
+                (CC6.1 -- Logical Access), ISO 27001 (A.9.4 -- System and Application Access
+                Control), and HIPAA (164.312(a) -- Access Control). Auditors can query the
+                decision log by SPIFFE ID, time range, decision result, or bundle version
+                to produce compliance evidence.
+              </p>
+            </div>
+          </section>
+
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="for-auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by Cibertrend, Inc. and Hextropian Systems, Inc.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

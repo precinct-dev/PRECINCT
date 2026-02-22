@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kubernetes Deployment -- PRECINCT</title>
+  <meta name="description" content="Production-grade PRECINCT deployment on any conformant Kubernetes cluster. Namespace architecture, security hardening, Kustomize overlays, and production checklist.">
+  <meta name="keywords" content="PRECINCT, Kubernetes, deployment, production, EKS, GKE, AKS, zero-trust, SPIFFE, Kustomize">
+  <meta name="author" content="PRECINCT Contributors">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Kubernetes Deployment -- PRECINCT">
+  <meta property="og:description" content="Production-grade PRECINCT deployment on any conformant Kubernetes cluster with full zero-trust networking and default-deny NetworkPolicies.">
+  <meta property="og:type" content="article">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- HEADER / NAV                                                  -->
+  <!-- ============================================================ -->
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+          </ul>
+        </li>
+        <li><a href="auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ============================================================ -->
+  <!-- MAIN CONTENT WITH SIDEBAR                                     -->
+  <!-- ============================================================ -->
+  <div class="page-content">
+    <div class="container">
+
+      <!-- Mobile sidebar toggle -->
+      <button class="sidebar-toggle" aria-label="Toggle section navigation">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+        On this page
+      </button>
+
+      <!-- Sidebar overlay (mobile) -->
+      <div class="sidebar-overlay" aria-hidden="true"></div>
+
+      <!-- Mobile sidebar -->
+      <nav class="sidebar-mobile" aria-label="Page sections (mobile)">
+        <div class="sidebar-nav-group">
+          <div class="sidebar-nav-title">On This Page</div>
+          <ul class="sidebar-nav">
+            <li><a href="#overview">Overview</a></li>
+            <li><a href="#quick-start">Quick Start</a></li>
+            <li><a href="#namespace-architecture">Namespace Architecture</a></li>
+            <li><a href="#security-hardening">Security Hardening</a></li>
+            <li><a href="#kustomize-overlays">Kustomize Overlays</a></li>
+            <li><a href="#admission-control">Admission Control</a></li>
+            <li><a href="#immutable-audit">Immutable Audit Storage</a></li>
+            <li><a href="#cloud-adaptation">Cloud Adaptation</a></li>
+            <li><a href="#production-checklist">Production Checklist</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <div class="layout-with-sidebar">
+
+        <!-- Desktop sidebar -->
+        <aside class="sidebar" aria-label="Page sections">
+          <div class="sidebar-nav-group">
+            <div class="sidebar-nav-title">On This Page</div>
+            <ul class="sidebar-nav">
+              <li><a href="#overview">Overview</a></li>
+              <li><a href="#quick-start">Quick Start</a></li>
+              <li><a href="#namespace-architecture">Namespace Architecture</a></li>
+              <li><a href="#security-hardening">Security Hardening</a></li>
+              <li><a href="#kustomize-overlays">Kustomize Overlays</a></li>
+              <li><a href="#admission-control">Admission Control</a></li>
+              <li><a href="#immutable-audit">Immutable Audit Storage</a></li>
+              <li><a href="#cloud-adaptation">Cloud Adaptation</a></li>
+              <li><a href="#production-checklist">Production Checklist</a></li>
+            </ul>
+          </div>
+        </aside>
+
+        <!-- Main content area -->
+        <main class="layout-main">
+          <article class="content">
+
+            <h1>Kubernetes Deployment</h1>
+
+            <!-- ======================================================== -->
+            <!-- OVERVIEW                                                  -->
+            <!-- ======================================================== -->
+            <section id="overview">
+              <h2>Overview</h2>
+              <p>
+                Kubernetes is the production-grade deployment target for PRECINCT. It runs on
+                any conformant Kubernetes cluster and provides the full set of security boundaries
+                that Compose cannot replicate.
+              </p>
+              <ul>
+                <li><strong>Works on:</strong> EKS, GKE, AKS, kind, k3s, Docker Desktop</li>
+                <li><strong>Configuration:</strong> Kustomize overlays for environment-specific tuning</li>
+                <li><strong>Networking:</strong> Full zero-trust with default-deny NetworkPolicies in every namespace</li>
+              </ul>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- QUICK START                                               -->
+            <!-- ======================================================== -->
+            <section id="quick-start">
+              <h2>Quick Start</h2>
+              <p>
+                Deploy the full stack to a local Kubernetes cluster (Docker Desktop) and validate
+                it with the E2E demo.
+              </p>
+              <pre data-lang="bash"><code>cd POC
+make k8s-up        # Deploy to local K8s (Docker Desktop)
+make demo-k8s      # Run E2E demo
+make k8s-down      # Tear down</code></pre>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- NAMESPACE ARCHITECTURE                                    -->
+            <!-- ======================================================== -->
+            <section id="namespace-architecture">
+              <h2>Namespace Architecture</h2>
+              <p>
+                PRECINCT uses dedicated Kubernetes namespaces to isolate each functional domain.
+                Each namespace has its own NetworkPolicies, resource quotas, and RBAC bindings.
+              </p>
+
+              <div class="mermaid-wrapper">
+                <div class="mermaid">
+graph TB
+  subgraph cluster["Kubernetes Cluster"]
+    subgraph spire-ns["spire-system"]
+      spire-srv["SPIRE Server<br/>(StatefulSet)"]
+      spire-agt["SPIRE Agent<br/>(DaemonSet)"]
+    end
+
+    subgraph spike-ns["spike-system"]
+      spike-nx["SPIKE Nexus"]
+      spike-kp["SPIKE Keeper"]
+      spike-bt["Bootstrap"]
+      spike-sd["Secret Seeder"]
+    end
+
+    subgraph gw-ns["gateway"]
+      gw["PRECINCT Gateway"]
+    end
+
+    subgraph tools-ns["tools"]
+      mcp["MCP Server"]
+    end
+
+    subgraph data-ns["data"]
+      keydb-pod["KeyDB"]
+    end
+
+    subgraph obs-ns["observability"]
+      otel["OTel Collector"]
+      phoenix-ui["Phoenix UI"]
+    end
+
+    subgraph gk-ns["gatekeeper-system"]
+      gk["OPA Gatekeeper"]
+    end
+
+    subgraph cosign-ns["cosign-system"]
+      cosign["Sigstore Policy Controller"]
+    end
+  end
+
+  spire-agt --> spire-srv
+  spike-nx --> spire-agt
+  gw --> spire-agt
+  gw --> spike-nx
+  gw --> keydb-pod
+  gw --> mcp
+  gw --> otel
+  gk -.->|admission| gw-ns
+  cosign -.->|admission| gw-ns
+                </div>
+              </div>
+
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Namespace</th>
+                      <th scope="col">Components</th>
+                      <th scope="col">Purpose</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>spire-system</code></td>
+                      <td>SPIRE Server (StatefulSet), SPIRE Agent (DaemonSet)</td>
+                      <td>Workload identity</td>
+                    </tr>
+                    <tr>
+                      <td><code>spike-system</code></td>
+                      <td>SPIKE Nexus, Keeper, Bootstrap, Secret Seeder</td>
+                      <td>Secrets management</td>
+                    </tr>
+                    <tr>
+                      <td><code>gateway</code></td>
+                      <td>PRECINCT Gateway</td>
+                      <td>Enforcement point</td>
+                    </tr>
+                    <tr>
+                      <td><code>tools</code></td>
+                      <td>MCP Server</td>
+                      <td>Tool hosting</td>
+                    </tr>
+                    <tr>
+                      <td><code>data</code></td>
+                      <td>KeyDB</td>
+                      <td>Session/rate-limit state</td>
+                    </tr>
+                    <tr>
+                      <td><code>observability</code></td>
+                      <td>OTel Collector, Phoenix UI</td>
+                      <td>Tracing and monitoring</td>
+                    </tr>
+                    <tr>
+                      <td><code>gatekeeper-system</code></td>
+                      <td>OPA Gatekeeper</td>
+                      <td>Admission control</td>
+                    </tr>
+                    <tr>
+                      <td><code>cosign-system</code></td>
+                      <td>Sigstore Policy Controller</td>
+                      <td>Image verification</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- SECURITY HARDENING                                        -->
+            <!-- ======================================================== -->
+            <section id="security-hardening">
+              <h2>Security Hardening</h2>
+              <p>
+                The Kubernetes deployment enforces defense-in-depth at every layer of the stack,
+                from the network to the container runtime.
+              </p>
+              <ul>
+                <li>
+                  <strong>Default-deny NetworkPolicies</strong> in every namespace. Traffic is
+                  explicitly allowed only for required inter-service communication paths.
+                </li>
+                <li>
+                  <strong>Gateway pod security:</strong> non-root execution (UID 65532),
+                  read-only root filesystem, all Linux capabilities dropped, RuntimeDefault
+                  seccomp profile.
+                </li>
+                <li>
+                  <strong>SPIFFE mTLS</strong> for all inter-service communication. No service
+                  can communicate without a valid, attested SPIFFE identity.
+                </li>
+                <li>
+                  <strong>Pod Security Standards</strong> enforced per namespace using the
+                  Kubernetes built-in admission controller.
+                </li>
+                <li>
+                  <strong>OPA Gatekeeper</strong> for runtime admission control, enforcing
+                  organizational policies on every API server request.
+                </li>
+                <li>
+                  <strong>Sigstore policy-controller</strong> for image signature verification,
+                  ensuring only signed and verified images are admitted to the cluster.
+                </li>
+              </ul>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- KUSTOMIZE OVERLAYS                                        -->
+            <!-- ======================================================== -->
+            <section id="kustomize-overlays">
+              <h2>Kustomize Overlays</h2>
+              <p>
+                PRECINCT uses four Kustomize overlays to adapt the base manifests for different
+                environments. Each overlay progressively increases security requirements.
+              </p>
+
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Overlay</th>
+                      <th scope="col">Target</th>
+                      <th scope="col">Key Characteristics</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>local</code></td>
+                      <td>Docker Desktop</td>
+                      <td>join_token attestation, NodePort services</td>
+                    </tr>
+                    <tr>
+                      <td><code>dev</code></td>
+                      <td>Development cluster</td>
+                      <td>Relaxed policies, header-based identity allowed</td>
+                    </tr>
+                    <tr>
+                      <td><code>staging</code></td>
+                      <td>Pre-production</td>
+                      <td>Production-like, SPIFFE mTLS required</td>
+                    </tr>
+                    <tr>
+                      <td><code>prod</code></td>
+                      <td>Production</td>
+                      <td>Full hardening, mandatory model mediation, signed images required</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <p>
+                Preview and validate overlays before applying them to the cluster.
+              </p>
+              <pre data-lang="bash"><code>kustomize build infra/eks/overlays/local/   # Preview local
+kustomize build infra/eks/overlays/prod/    # Preview prod
+make k8s-validate                            # Validate all overlays</code></pre>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- ADMISSION CONTROL                                         -->
+            <!-- ======================================================== -->
+            <section id="admission-control">
+              <h2>Admission Control</h2>
+              <p>
+                Two independent admission controllers operate on the Kubernetes API server
+                admission chain, each enforcing a different class of policy.
+              </p>
+
+              <h3>OPA Gatekeeper v3.16.0</h3>
+              <p>
+                Enforces runtime policy on all Kubernetes resources. Gatekeeper operates as a
+                validating admission webhook, evaluating every create, update, and delete request
+                against Rego constraint templates. It uses namespace exclusion lists to scope
+                enforcement.
+              </p>
+
+              <h3>Sigstore Policy Controller</h3>
+              <p>
+                Enforces image signature admission. Every container image must be signed by a
+                trusted key before it can be scheduled. The controller uses opt-in namespace
+                labels to determine which namespaces require signature verification.
+              </p>
+
+              <p>
+                Both controllers operate independently. Gatekeeper and Sigstore are installed in
+                separate namespaces and evaluate admission requests through distinct webhook
+                configurations.
+              </p>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- IMMUTABLE AUDIT STORAGE                                   -->
+            <!-- ======================================================== -->
+            <section id="immutable-audit">
+              <h2>Immutable Audit Storage</h2>
+              <p>
+                Production deployments use S3 Object Lock in COMPLIANCE mode for tamper-proof
+                audit event retention. Once written, audit records cannot be modified or deleted
+                by any principal, including root, until the retention period expires.
+              </p>
+              <ul>
+                <li>
+                  <strong>IRSA (IAM Roles for Service Accounts):</strong> The gateway pod
+                  authenticates to S3 using a Kubernetes service account bound to an IAM role.
+                  No static credentials are stored.
+                </li>
+                <li>
+                  <strong>Hash-chain verification:</strong> Each audit event includes a hash of
+                  the previous event, forming a tamper-evident chain. Gaps or modifications are
+                  detectable by any verifier.
+                </li>
+                <li>
+                  <strong>Machine-readable proof artifacts:</strong> Validation scripts generate
+                  structured proof artifacts that auditors can independently verify.
+                </li>
+              </ul>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- CLOUD ADAPTATION                                          -->
+            <!-- ======================================================== -->
+            <section id="cloud-adaptation">
+              <h2>Cloud Adaptation</h2>
+              <p>
+                PRECINCT adapts to each cloud provider through Kustomize patches. No changes to
+                the base manifests are required. Each cloud provider has its own identity, storage,
+                and audit integration.
+              </p>
+
+              <h3>AWS EKS</h3>
+              <p>
+                IRSA for pod identity, EBS for persistent volumes, S3 with Object Lock for
+                immutable audit storage. Use the <code>prod</code> overlay with EKS-specific
+                patches.
+              </p>
+
+              <h3>GCP GKE</h3>
+              <p>
+                Workload Identity for pod-level IAM binding, GCS for audit storage with
+                retention policies. GKE-specific patches handle node attestation for SPIRE.
+              </p>
+
+              <h3>Azure AKS</h3>
+              <p>
+                Pod Identity (or Workload Identity Federation) for Azure AD integration,
+                Azure Blob Storage with immutability policies for audit retention. AKS patches
+                adapt the storage classes and identity bindings.
+              </p>
+
+              <p>
+                In every case, the adaptation is handled through Kustomize patches layered on
+                top of the base manifests. The core PRECINCT architecture remains identical
+                across providers.
+              </p>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- PRODUCTION CHECKLIST                                      -->
+            <!-- ======================================================== -->
+            <section id="production-checklist">
+              <h2>Production Checklist</h2>
+              <p>
+                Complete the following before running PRECINCT in a production environment.
+              </p>
+
+              <div class="callout callout-warning">
+                <div class="callout-title">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                  Do not skip these steps
+                </div>
+                <p>
+                  Each item represents a security boundary that is required for production-grade
+                  operation. Skipping any item leaves a gap in the defense-in-depth posture.
+                </p>
+              </div>
+
+              <ol>
+                <li>Enable SPIFFE mTLS (<code>SPIFFE_MODE=prod</code>)</li>
+                <li>Deploy SPIKE with multiple Keepers (Shamir HA)</li>
+                <li>Configure S3 Object Lock for audit retention</li>
+                <li>Enable image signature verification (Sigstore policy-controller)</li>
+                <li>Set default-deny NetworkPolicies in all namespaces</li>
+                <li>Configure Pod Security Standards per namespace</li>
+                <li>Set up monitoring and alerting (OTel Collector, Phoenix, or your preferred observability stack)</li>
+                <li>Run <code>make k8s-validate</code> to verify all wiring</li>
+                <li>Run <code>make k8s-runtime-campaign</code> for the full validation report</li>
+              </ol>
+            </section>
+
+          </article>
+        </main>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by Cibertrend, Inc. and Hextropian Systems, Inc.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

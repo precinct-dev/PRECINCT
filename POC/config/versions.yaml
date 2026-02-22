@@ -22,9 +22,9 @@ components:
     pinned: true
   otel-collector:
     image: otel/opentelemetry-collector-contrib
-    version: "latest"
+    version: "0.146.1"
     pinned: false
   phoenix:
     image: arizephoenix/phoenix
-    version: "latest"
+    version: "13.3.0"
     pinned: false

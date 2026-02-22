@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Docker Compose Deployment -- PRECINCT</title>
+  <meta name="description" content="Deploy the full PRECINCT security stack locally with Docker Compose. Quick start guide, service topology, network segmentation, and available Make targets.">
+  <meta name="keywords" content="PRECINCT, Docker Compose, deployment, local development, agentic AI, security, zero-trust">
+  <meta name="author" content="PRECINCT Contributors">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="Docker Compose Deployment -- PRECINCT">
+  <meta property="og:description" content="Deploy the full PRECINCT security stack locally with Docker Compose. Ideal for development, evaluation, demos, and CI testing.">
+  <meta property="og:type" content="article">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- HEADER / NAV                                                  -->
+  <!-- ============================================================ -->
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+          </ul>
+        </li>
+        <li><a href="auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ============================================================ -->
+  <!-- MAIN CONTENT WITH SIDEBAR                                     -->
+  <!-- ============================================================ -->
+  <div class="page-content">
+    <div class="container">
+
+      <!-- Mobile sidebar toggle -->
+      <button class="sidebar-toggle" aria-label="Toggle section navigation">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <line x1="3" y1="12" x2="21" y2="12"/>
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+        On this page
+      </button>
+
+      <!-- Sidebar overlay (mobile) -->
+      <div class="sidebar-overlay" aria-hidden="true"></div>
+
+      <!-- Mobile sidebar -->
+      <nav class="sidebar-mobile" aria-label="Page sections (mobile)">
+        <div class="sidebar-nav-group">
+          <div class="sidebar-nav-title">On This Page</div>
+          <ul class="sidebar-nav">
+            <li><a href="#overview">Overview</a></li>
+            <li><a href="#quick-start">Quick Start</a></li>
+            <li><a href="#what-gets-deployed">What Gets Deployed</a></li>
+            <li><a href="#architecture-diagram">Architecture Diagram</a></li>
+            <li><a href="#network-topology">Network Topology</a></li>
+            <li><a href="#image-pinning">Image Pinning</a></li>
+            <li><a href="#security-boundaries">Security Boundaries</a></li>
+            <li><a href="#make-targets">Available Make Targets</a></li>
+            <li><a href="#teardown">Teardown</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <div class="layout-with-sidebar">
+
+        <!-- Desktop sidebar -->
+        <aside class="sidebar" aria-label="Page sections">
+          <div class="sidebar-nav-group">
+            <div class="sidebar-nav-title">On This Page</div>
+            <ul class="sidebar-nav">
+              <li><a href="#overview">Overview</a></li>
+              <li><a href="#quick-start">Quick Start</a></li>
+              <li><a href="#what-gets-deployed">What Gets Deployed</a></li>
+              <li><a href="#architecture-diagram">Architecture Diagram</a></li>
+              <li><a href="#network-topology">Network Topology</a></li>
+              <li><a href="#image-pinning">Image Pinning</a></li>
+              <li><a href="#security-boundaries">Security Boundaries</a></li>
+              <li><a href="#make-targets">Available Make Targets</a></li>
+              <li><a href="#teardown">Teardown</a></li>
+            </ul>
+          </div>
+        </aside>
+
+        <!-- Main content area -->
+        <main class="layout-main">
+          <article class="content">
+
+            <h1>Docker Compose Deployment</h1>
+
+            <!-- ======================================================== -->
+            <!-- OVERVIEW                                                  -->
+            <!-- ======================================================== -->
+            <section id="overview">
+              <h2>Overview</h2>
+              <p>
+                Docker Compose is the fastest way to evaluate PRECINCT. It brings the full security
+                stack up on your local machine in minutes, giving you a complete environment for
+                hands-on exploration.
+              </p>
+              <ul>
+                <li><strong>Ideal for:</strong> development, evaluation, demos, CI testing</li>
+                <li><strong>NOT recommended for:</strong> production workloads (use <a href="kubernetes.html">Kubernetes</a> instead)</li>
+              </ul>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- QUICK START                                               -->
+            <!-- ======================================================== -->
+            <section id="quick-start">
+              <h2>Quick Start</h2>
+              <p>
+                Three commands are all it takes to go from zero to a fully running PRECINCT stack
+                with end-to-end validation.
+              </p>
+              <pre data-lang="bash"><code>cd POC
+make phoenix-up    # Start observability stack (Phoenix + OTel)
+make up            # Start the full PRECINCT stack
+make demo-compose  # Run 28 E2E test scenarios</code></pre>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- WHAT GETS DEPLOYED                                        -->
+            <!-- ======================================================== -->
+            <section id="what-gets-deployed">
+              <h2>What Gets Deployed</h2>
+              <p>
+                The Compose stack deploys 11 services that together form the complete PRECINCT
+                security architecture.
+              </p>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Service</th>
+                      <th scope="col">Image</th>
+                      <th scope="col">Role</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>spire-server</code></td>
+                      <td>ghcr.io/spiffe/spire-server:1.10.0</td>
+                      <td>Identity control plane</td>
+                    </tr>
+                    <tr>
+                      <td><code>spire-agent</code></td>
+                      <td>ghcr.io/spiffe/spire-agent:1.10.0</td>
+                      <td>Per-node workload attestation</td>
+                    </tr>
+                    <tr>
+                      <td><code>spire-token-generator</code></td>
+                      <td>custom</td>
+                      <td>One-shot join token generation</td>
+                    </tr>
+                    <tr>
+                      <td><code>spike-nexus</code></td>
+                      <td>SPIKE Nexus</td>
+                      <td>Secret vault (SQLite + AES-256-GCM)</td>
+                    </tr>
+                    <tr>
+                      <td><code>spike-keeper-1</code></td>
+                      <td>SPIKE Keeper</td>
+                      <td>HA key shard holder (Shamir)</td>
+                    </tr>
+                    <tr>
+                      <td><code>spike-bootstrap</code></td>
+                      <td>custom</td>
+                      <td>One-shot SPIKE initialization</td>
+                    </tr>
+                    <tr>
+                      <td><code>spike-secret-seeder</code></td>
+                      <td>custom</td>
+                      <td>Initial secret provisioning</td>
+                    </tr>
+                    <tr>
+                      <td><code>keydb</code></td>
+                      <td>eqalpha/keydb</td>
+                      <td>Session store + rate limit state</td>
+                    </tr>
+                    <tr>
+                      <td><code>mock-mcp-server</code></td>
+                      <td>custom</td>
+                      <td>Upstream MCP tool server</td>
+                    </tr>
+                    <tr>
+                      <td><code>mock-guard-model</code></td>
+                      <td>custom</td>
+                      <td>Prompt injection detection</td>
+                    </tr>
+                    <tr>
+                      <td><code>mcp-security-gateway</code></td>
+                      <td>custom</td>
+                      <td>The 13-layer enforcement gateway</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- ARCHITECTURE DIAGRAM                                      -->
+            <!-- ======================================================== -->
+            <section id="architecture-diagram">
+              <h2>Architecture Diagram</h2>
+              <p>
+                The following diagram shows the service topology and network boundaries
+                for the Docker Compose deployment.
+              </p>
+              <div class="mermaid-wrapper">
+                <div class="mermaid">
+graph TB
+  subgraph control-plane["Control Plane Network"]
+    spire-server["spire-server<br/>Identity Control Plane"]
+    spire-agent["spire-agent<br/>Workload Attestation"]
+    spire-token-gen["spire-token-generator<br/>Join Token Init"]
+  end
+
+  subgraph secrets["Secrets Network"]
+    spike-nexus["spike-nexus<br/>Secret Vault"]
+    spike-keeper["spike-keeper-1<br/>Key Shard Holder"]
+    spike-bootstrap["spike-bootstrap<br/>SPIKE Init"]
+    spike-seeder["spike-secret-seeder<br/>Secret Provisioning"]
+  end
+
+  subgraph data["Data Network"]
+    keydb["keydb<br/>Session + Rate Limit Store"]
+  end
+
+  subgraph gateway-net["Gateway Network"]
+    gateway["mcp-security-gateway<br/>13-Layer Enforcement"]
+    mock-mcp["mock-mcp-server<br/>Upstream Tools"]
+    mock-guard["mock-guard-model<br/>Injection Detection"]
+  end
+
+  subgraph phoenix-net["Phoenix Observability Network"]
+    otel["OTel Collector"]
+    phoenix["Phoenix UI"]
+  end
+
+  spire-agent --> spire-server
+  spire-token-gen --> spire-server
+  spike-nexus --> spire-agent
+  spike-keeper --> spire-agent
+  spike-bootstrap --> spike-nexus
+  spike-seeder --> spike-nexus
+  gateway --> spire-agent
+  gateway --> spike-nexus
+  gateway --> keydb
+  gateway --> mock-mcp
+  gateway --> mock-guard
+  gateway --> otel
+                </div>
+              </div>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- NETWORK TOPOLOGY                                          -->
+            <!-- ======================================================== -->
+            <section id="network-topology">
+              <h2>Network Topology</h2>
+              <p>
+                PRECINCT uses four Docker networks for service segmentation. Each service only
+                joins the networks it needs, enforcing least-privilege at the network layer.
+              </p>
+              <ul>
+                <li><strong>control-plane:</strong> SPIRE Server, SPIRE Agent, token generator</li>
+                <li><strong>secrets:</strong> SPIKE Nexus, SPIKE Keeper, bootstrap, secret seeder</li>
+                <li><strong>data:</strong> KeyDB for session state and rate limiting</li>
+                <li><strong>gateway:</strong> MCP Security Gateway, mock MCP server, mock guard model</li>
+              </ul>
+              <p>
+                An external network, <code>phoenix-observability-network</code>, connects the
+                gateway to the OpenTelemetry collector and Phoenix UI for distributed tracing
+                and monitoring. This network is created by the <code>make phoenix-up</code> command
+                and shared across stacks.
+              </p>
+              <p>
+                Services only join the networks they require. The gateway bridges multiple networks
+                because it must reach the identity plane (SPIRE), the secrets plane (SPIKE), the
+                data plane (KeyDB), and the tool plane (mock MCP server) to enforce the full
+                13-layer middleware chain.
+              </p>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- IMAGE PINNING                                             -->
+            <!-- ======================================================== -->
+            <section id="image-pinning">
+              <h2>Image Pinning</h2>
+              <p>
+                All third-party images in the PRECINCT Compose stack are digest-pinned. No image
+                uses the <code>:latest</code> tag. This ensures reproducible builds and protects
+                against supply chain attacks where a tag is re-pointed to a different image.
+              </p>
+              <pre data-lang="bash"><code>make compose-verify   # Validates digest pinning for all images</code></pre>
+              <p>
+                Supply chain verification runs automatically before the stack starts, confirming
+                that every image digest matches the pinned value in the Compose file.
+              </p>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- SECURITY BOUNDARIES                                       -->
+            <!-- ======================================================== -->
+            <section id="security-boundaries">
+              <h2>Security Boundaries: Compose vs. Kubernetes</h2>
+
+              <div class="callout callout-warning">
+                <div class="callout-title">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/>
+                    <line x1="12" y1="17" x2="12.01" y2="17"/>
+                  </svg>
+                  Important: Compose is not production-equivalent
+                </div>
+                <p>
+                  Docker Compose provides a faithful functional replica of the PRECINCT stack, but
+                  it cannot replicate all the security boundaries available in Kubernetes. Understand
+                  these differences before making deployment decisions.
+                </p>
+              </div>
+
+              <h3>What Compose Does NOT Provide</h3>
+              <ul>
+                <li>Default-deny NetworkPolicies (Compose networks are allow-all within a network)</li>
+                <li>Immutable audit storage (S3 Object Lock in COMPLIANCE mode)</li>
+                <li>Pod Security Standards enforcement</li>
+                <li>Admission control (OPA Gatekeeper, Sigstore policy-controller)</li>
+              </ul>
+
+              <h3>What Compose DOES Provide</h3>
+              <ul>
+                <li>SPIFFE workload identity via SPIRE</li>
+                <li>OPA policy evaluation on every request</li>
+                <li>DLP scanning for data exfiltration prevention</li>
+                <li>Hash-chained, tamper-evident audit logging</li>
+                <li>Late-binding secret substitution via SPIKE</li>
+                <li>Session tracking with cumulative risk scoring</li>
+              </ul>
+
+              <p>
+                Compensating controls are documented for every Compose limitation.
+                For production deployments requiring the full security boundary, use the
+                <a href="kubernetes.html">Kubernetes deployment</a>.
+              </p>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- AVAILABLE MAKE TARGETS                                    -->
+            <!-- ======================================================== -->
+            <section id="make-targets">
+              <h2>Available Make Targets</h2>
+              <div class="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th scope="col">Target</th>
+                      <th scope="col">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>make up</code></td>
+                      <td>Start full stack</td>
+                    </tr>
+                    <tr>
+                      <td><code>make down</code></td>
+                      <td>Stop stack</td>
+                    </tr>
+                    <tr>
+                      <td><code>make demo-compose</code></td>
+                      <td>Run 28 E2E tests</td>
+                    </tr>
+                    <tr>
+                      <td><code>make demo-compose-strict-observability</code></td>
+                      <td>E2E with strict deep scan enforcement</td>
+                    </tr>
+                    <tr>
+                      <td><code>make phoenix-up</code></td>
+                      <td>Start Phoenix observability</td>
+                    </tr>
+                    <tr>
+                      <td><code>make repave</code></td>
+                      <td>Rebuild containers (3 Rs doctrine)</td>
+                    </tr>
+                    <tr>
+                      <td><code>make upgrade-check</code></td>
+                      <td>Show version drift</td>
+                    </tr>
+                    <tr>
+                      <td><code>make compliance-report</code></td>
+                      <td>Generate compliance evidence</td>
+                    </tr>
+                    <tr>
+                      <td><code>make benchmark</code></td>
+                      <td>Run performance benchmarks</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- TEARDOWN                                                  -->
+            <!-- ======================================================== -->
+            <section id="teardown">
+              <h2>Teardown</h2>
+              <pre data-lang="bash"><code>make down          # Stop stack (preserve data)
+make clean         # Full cleanup (containers, volumes, build artifacts)</code></pre>
+              <p>
+                Use <code>make down</code> to stop the stack while preserving volumes and data.
+                Use <code>make clean</code> for a complete teardown that removes containers,
+                volumes, and build artifacts, returning your environment to a clean state.
+              </p>
+            </section>
+
+          </article>
+        </main>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by Cibertrend, Inc. and Hextropian Systems, Inc.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

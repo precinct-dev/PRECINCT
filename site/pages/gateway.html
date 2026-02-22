@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PRECINCT Gateway -- Centralized Enforcement for Agentic AI</title>
+  <meta name="description" content="The PRECINCT Gateway is the centralized enforcement point for agentic AI systems. 38,000 lines of Go implementing a 13-layer defense-in-depth middleware chain governing all five planes.">
+  <meta name="keywords" content="PRECINCT Gateway, MCP proxy, agentic AI enforcement, middleware chain, SPIFFE mTLS, OPA policy, DLP scanning, token substitution">
+  <meta name="author" content="PRECINCT Contributors">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph -->
+  <meta property="og:title" content="PRECINCT Gateway">
+  <meta property="og:description" content="Centralized enforcement point for agentic AI: 13-layer defense-in-depth middleware, SPIFFE identity, OPA policy, DLP scanning, and late-binding secrets.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://precinct.dev/pages/gateway.html">
+  <meta property="og:site_name" content="PRECINCT">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- HEADER / NAV                                                  -->
+  <!-- ============================================================ -->
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+          </ul>
+        </li>
+        <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="page-content">
+    <div class="container">
+      <div class="layout-with-sidebar">
+
+        <!-- ============================================================ -->
+        <!-- SIDEBAR NAVIGATION                                            -->
+        <!-- ============================================================ -->
+        <aside class="sidebar" aria-label="Page sections">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#how-it-works">How It Works</a></li>
+                <li><a href="#api-surface">API Surface</a></li>
+                <li><a href="#request-processing">Request Processing</a></li>
+                <li><a href="#error-codes">Error Codes</a></li>
+                <li><a href="#response-firewall">Response Firewall</a></li>
+                <li><a href="#configuration">Configuration</a></li>
+                <li><a href="#performance">Performance</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <!-- Mobile sidebar toggle -->
+        <button class="sidebar-toggle" aria-label="Toggle page navigation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          Page Navigation
+        </button>
+
+        <!-- Mobile sidebar panel -->
+        <div class="sidebar-mobile" aria-label="Page sections (mobile)">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#how-it-works">How It Works</a></li>
+                <li><a href="#api-surface">API Surface</a></li>
+                <li><a href="#request-processing">Request Processing</a></li>
+                <li><a href="#error-codes">Error Codes</a></li>
+                <li><a href="#response-firewall">Response Firewall</a></li>
+                <li><a href="#configuration">Configuration</a></li>
+                <li><a href="#performance">Performance</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="sidebar-overlay"></div>
+
+        <!-- ============================================================ -->
+        <!-- MAIN CONTENT                                                  -->
+        <!-- ============================================================ -->
+        <article class="layout-main content">
+
+          <h1>PRECINCT Gateway</h1>
+
+          <!-- ========== Overview ========== -->
+          <section id="overview">
+            <h2>Overview</h2>
+            <p>
+              The PRECINCT Gateway is the centralized enforcement point for all agent-to-tool
+              communication in the PRECINCT architecture. It functions as a reverse proxy that
+              sits between AI agents and upstream MCP servers, ensuring every request is evaluated
+              against security policy before reaching any tool.
+            </p>
+
+            <div class="card-grid card-grid-3">
+              <div class="card">
+                <h3 class="mt-0">38,000</h3>
+                <p>Lines of Go implementing the gateway core, middleware chain, and integration layers.</p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">62,000</h3>
+                <p>Lines of test code. The test surface exceeds the production surface by 1.6x, covering unit, integration, and end-to-end scenarios.</p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">13 Layers</h3>
+                <p>Defense-in-depth middleware chain. Every request traverses all 13 layers in strict order before reaching the upstream.</p>
+              </div>
+            </div>
+
+            <p>
+              The gateway implements the complete
+              <a href="architecture.html#13-layer-middleware">13-layer defense-in-depth middleware chain</a>
+              and governs all <a href="architecture.html#five-governed-planes">five planes</a> of the
+              PRECINCT architecture: LLM/Model Egress, Context/Memory, Tool, Control Loop, and
+              Ingress/Event.
+            </p>
+          </section>
+
+          <!-- ========== How It Works ========== -->
+          <section id="how-it-works">
+            <h2>How It Works</h2>
+            <p>
+              When an agent sends a tool call, the gateway intercepts the JSON-RPC request and
+              routes it through the middleware chain. Each layer makes an independent security
+              decision. If any layer denies the request, processing halts and a structured error
+              code is returned to the agent. If all layers approve, the request is forwarded to
+              the upstream MCP server with real credentials injected at the last possible moment.
+            </p>
+
+            <div class="mermaid-wrapper">
+              <div class="mermaid">
+sequenceDiagram
+    participant Agent as AI Agent
+    participant GW as PRECINCT Gateway
+    participant SPIFFE as SPIFFE/SPIRE
+    participant OPA as OPA Engine
+    participant DLP as DLP Scanner
+    participant SPIKE as SPIKE Secrets
+    participant MCP as Upstream MCP Server
+
+    Agent->>GW: POST / (JSON-RPC tool call)
+    Note over GW: Layer 0-2: Metrics, Size, Body Capture
+
+    GW->>SPIFFE: Verify mTLS SVID
+    SPIFFE-->>GW: Identity confirmed (spiffe://trust-domain/agent/xyz)
+    Note over GW: Layer 4: Write hash-chained audit record
+    Note over GW: Layer 5: Verify tool SHA-256 hash
+
+    GW->>OPA: Evaluate policy (identity + tool + params)
+    OPA-->>GW: ALLOW (decision ID: d-29fa...)
+
+    GW->>DLP: Scan request payload
+    DLP-->>GW: Clean (no credentials, no PII)
+    Note over GW: Layer 8: Update session risk score
+    Note over GW: Layer 9: Risk below threshold (no step-up needed)
+    Note over GW: Layer 10: Deep scan (async, clean)
+    Note over GW: Layer 11-12: Rate limit OK, circuit closed
+
+    GW->>SPIKE: Resolve token references
+    SPIKE-->>GW: Real credentials (scoped, short-lived)
+
+    GW->>MCP: Forward request (with real credentials)
+    MCP-->>GW: Tool response
+    Note over GW: Response firewall: redact sensitive data
+    GW-->>Agent: Filtered response (handles, not raw values)
+              </div>
+            </div>
+          </section>
+
+          <!-- ========== API Surface ========== -->
+          <section id="api-surface">
+            <h2>API Surface</h2>
+            <p>
+              The gateway exposes a minimal API surface. The primary endpoint handles all MCP
+              JSON-RPC traffic. Additional endpoints support health checking and response
+              firewall handle dereference.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">PRECINCT Gateway API endpoints</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Method</th>
+                    <th scope="col">Path</th>
+                    <th scope="col">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>POST</code></td>
+                    <td><code>/</code></td>
+                    <td>Main JSON-RPC endpoint. All MCP-over-HTTP traffic flows through this endpoint. Accepts standard JSON-RPC 2.0 payloads.</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST</code></td>
+                    <td><code>/data/dereference</code></td>
+                    <td>Response Firewall handle dereference. Resolves opaque data handles returned by the response firewall back to their original values, subject to identity-based access control.</td>
+                  </tr>
+                  <tr>
+                    <td><code>GET</code></td>
+                    <td><code>/health</code></td>
+                    <td>Health check endpoint. Returns the gateway's readiness status including upstream connectivity and middleware chain availability.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Listening Modes</h3>
+            <ul>
+              <li><strong>Dev mode:</strong> <code>http://localhost:9090</code> &mdash; Plain HTTP for local development and evaluation. No mTLS required. Suitable for <code>make up</code> workflows.</li>
+              <li><strong>SPIFFE mTLS mode:</strong> <code>https://localhost:9443</code> &mdash; Production mode with SPIFFE mTLS authentication. All clients must present a valid SVID. Required for production deployments.</li>
+            </ul>
+          </section>
+
+          <!-- ========== Request Processing ========== -->
+          <section id="request-processing">
+            <h2>Request Processing</h2>
+            <p>
+              The following is a detailed walkthrough of what happens when an agent sends a tool
+              call through the gateway. Each step corresponds to a layer in the
+              <a href="architecture.html#13-layer-middleware">13-layer middleware chain</a>.
+            </p>
+
+            <h3>1. SPIFFE Identity Verification (Layer 3)</h3>
+            <p>
+              The gateway extracts the caller's SPIFFE ID from the mTLS handshake. The SVID
+              (SPIFFE Verifiable Identity Document) is validated against the SPIRE trust bundle.
+              If the SVID is expired, revoked, or from an untrusted domain, the request is rejected
+              with <code>spiffe_auth_required</code>.
+            </p>
+
+            <h3>2. Audit Logging (Layer 4)</h3>
+            <p>
+              A structured JSONL audit record is written with a unique decision ID. Each record
+              includes a hash of the previous record, forming a tamper-evident chain. The audit
+              log captures: timestamp, SPIFFE ID, requested tool, parameters (redacted), and the
+              eventual decision (allow/deny with reason).
+            </p>
+
+            <h3>3. Tool Registry Check (Layer 5)</h3>
+            <p>
+              The requested tool is looked up in the Capability Registry. The gateway computes the
+              SHA-256 hash of the tool's current state and compares it to the registered hash. If
+              the hashes do not match, a rug-pull attack is assumed and the request is denied with
+              <code>tool_hash_mismatch</code>. If the tool is not registered at all, the request
+              is denied with <code>tool_not_in_registry</code>.
+            </p>
+
+            <h3>4. OPA Policy Evaluation (Layer 6)</h3>
+            <p>
+              The gateway constructs an OPA input document containing the caller's SPIFFE ID, the
+              requested tool, the request parameters, session context, and environmental metadata.
+              This document is evaluated against the loaded Rego policy bundle. Policies can express
+              fine-grained rules such as "agent X may call tool Y only with parameter Z during
+              business hours." Denied requests receive <code>authz_policy_denied</code>.
+            </p>
+
+            <h3>5. DLP Credential Blocking (Layer 7)</h3>
+            <p>
+              The DLP scanner inspects the request payload for sensitive data patterns. Detected
+              patterns include:
+            </p>
+            <ul>
+              <li>AWS access keys and secret keys</li>
+              <li>GitHub personal access tokens</li>
+              <li>PEM-encoded private keys and certificates</li>
+              <li>API keys matching common provider formats</li>
+              <li>Personally identifiable information (PII)</li>
+            </ul>
+            <p>
+              If credentials or sensitive data are detected, the request is denied with
+              <code>dlp_credentials_detected</code>. Prompt injection patterns trigger
+              <code>dlp_injection_detected</code>.
+            </p>
+
+            <h3>6. Session Risk Tracking (Layer 8)</h3>
+            <p>
+              The session context engine accumulates behavioral signals across requests within the
+              same session. It tracks tool invocation patterns, data access sequences, and
+              cumulative risk indicators. If an agent's behavior pattern resembles known
+              exfiltration or lateral movement patterns, the session risk score is elevated.
+            </p>
+
+            <h3>7. Step-Up Gating (Layer 9)</h3>
+            <p>
+              For high-risk operations (as defined by policy), the step-up gate dispatches a guard
+              model to evaluate whether the operation should proceed. The guard model receives the
+              full request context and returns an independent risk assessment. If the risk exceeds
+              the configured threshold, the request is denied with <code>stepup_required</code>.
+            </p>
+
+            <h3>8. Deep Scan (Layer 10)</h3>
+            <p>
+              An asynchronous prompt injection detection layer dispatches the request content to
+              a specialized guard model trained to identify injection attempts, jailbreak patterns,
+              and adversarial inputs. This layer runs asynchronously to minimize latency impact
+              on the fast path.
+            </p>
+
+            <h3>9. Rate Limit Check (Layer 11)</h3>
+            <p>
+              Per-identity token bucket rate limiting enforced via KeyDB. Each SPIFFE identity has
+              a configurable rate limit budget. When the budget is exhausted, subsequent requests
+              are denied with <code>rate_limit_exceeded</code> until tokens are replenished.
+            </p>
+
+            <h3>10. Circuit Breaker Check (Layer 12)</h3>
+            <p>
+              The circuit breaker monitors upstream MCP server health. If an upstream is
+              experiencing failures above the configured threshold, the circuit opens and subsequent
+              requests are immediately denied with <code>circuit_breaker_open</code> rather than
+              contributing to a cascade failure.
+            </p>
+
+            <h3>11. Token Substitution (Layer 13)</h3>
+            <p>
+              The final layer before egress. The gateway scans the outbound request for opaque
+              token references and resolves them to real credentials via SPIKE. The real credentials
+              are injected into the request immediately before it is forwarded to the upstream MCP
+              server. No middleware layer upstream of this point ever sees real credentials.
+            </p>
+          </section>
+
+          <!-- ========== Error Codes ========== -->
+          <section id="error-codes">
+            <h2>Error Codes</h2>
+            <p>
+              When the gateway denies a request, it returns a structured error code that enables
+              agents to understand the reason for denial and adapt their behavior. Each error code
+              maps to a specific middleware layer and denial reason.
+            </p>
+
+            <div class="table-wrapper">
+              <table id="error-codes-table">
+                <caption class="sr-only">PRECINCT Gateway structured deny codes</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Error Code</th>
+                    <th scope="col">Layer</th>
+                    <th scope="col">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>spiffe_auth_required</code></td>
+                    <td>3 (SPIFFE Auth)</td>
+                    <td>The request lacks a valid SPIFFE identity. The caller must present a valid SVID via mTLS.</td>
+                  </tr>
+                  <tr>
+                    <td><code>authz_policy_denied</code></td>
+                    <td>6 (OPA Policy)</td>
+                    <td>The OPA policy evaluation denied the request. The caller's identity does not have permission to perform the requested operation.</td>
+                  </tr>
+                  <tr>
+                    <td><code>dlp_credentials_detected</code></td>
+                    <td>7 (DLP Scanning)</td>
+                    <td>The request payload contains credentials or sensitive data that must not be transmitted.</td>
+                  </tr>
+                  <tr>
+                    <td><code>stepup_required</code></td>
+                    <td>9 (Step-Up Gating)</td>
+                    <td>The operation requires elevated authorization. The guard model determined the risk exceeds the threshold for automatic approval.</td>
+                  </tr>
+                  <tr>
+                    <td><code>dlp_injection_detected</code></td>
+                    <td>10 (Deep Scan)</td>
+                    <td>The request content contains patterns consistent with prompt injection or adversarial manipulation.</td>
+                  </tr>
+                  <tr>
+                    <td><code>rate_limit_exceeded</code></td>
+                    <td>11 (Rate Limiting)</td>
+                    <td>The caller's rate limit budget is exhausted. The request should be retried after the token bucket replenishes.</td>
+                  </tr>
+                  <tr>
+                    <td><code>circuit_breaker_open</code></td>
+                    <td>12 (Circuit Breaker)</td>
+                    <td>The upstream MCP server is experiencing failures. Requests are being short-circuited to prevent cascade failure.</td>
+                  </tr>
+                  <tr>
+                    <td><code>tool_not_in_registry</code></td>
+                    <td>5 (Tool Registry)</td>
+                    <td>The requested tool is not registered in the Capability Registry. Only registered tools may be invoked.</td>
+                  </tr>
+                  <tr>
+                    <td><code>tool_hash_mismatch</code></td>
+                    <td>5 (Tool Registry)</td>
+                    <td>The tool's current hash does not match its registered hash. A rug-pull attack is suspected. The tool must be re-verified and re-registered.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ========== Response Firewall ========== -->
+          <section id="response-firewall">
+            <h2>Response Firewall</h2>
+            <p>
+              The gateway does not only inspect inbound requests. Responses from upstream MCP servers
+              also pass through a response firewall before being returned to the agent.
+            </p>
+            <p>
+              When an upstream tool returns sensitive data (credentials, tokens, connection strings,
+              or other privileged information), the response firewall replaces the raw values with
+              <strong>opaque handles</strong>. The agent receives a handle that is meaningless
+              outside the gateway context.
+            </p>
+            <p>
+              If the agent (or a downstream consumer with appropriate identity) needs the original
+              value, it can call the <code>POST /data/dereference</code> endpoint with the handle.
+              The gateway verifies the caller's SPIFFE identity against the access control policy
+              for that handle before returning the original value.
+            </p>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Why Handles?
+              </div>
+              <p>
+                Handles prevent agents from inadvertently logging, caching, or transmitting sensitive
+                data. Even if an agent's conversation history or memory is compromised, the attacker
+                obtains only opaque references that cannot be resolved without the proper SPIFFE identity
+                and gateway access.
+              </p>
+            </div>
+          </section>
+
+          <!-- ========== Configuration ========== -->
+          <section id="configuration">
+            <h2>Configuration</h2>
+            <p>
+              The gateway is configured through a combination of YAML files, OPA policy bundles,
+              and environment variables. The key configuration surfaces are:
+            </p>
+
+            <h3>Capability Registry V2</h3>
+            <p>
+              A YAML-based registry that defines all tools and models the gateway is authorized to
+              mediate. Each entry includes the tool's name, upstream endpoint, expected SHA-256 hash,
+              allowed callers, rate limit budget, and any tool-specific policy overrides.
+            </p>
+
+            <h3>OPA Policy Bundles</h3>
+            <p>
+              Rego policy files organized into bundles. Policies are version-controlled and can be
+              updated at runtime via OPA's bundle API. The gateway reloads policy bundles
+              periodically without requiring a restart.
+            </p>
+
+            <h3>DLP Rule Configuration</h3>
+            <p>
+              Regular expression patterns and detection rules for the DLP scanning layer. Rules
+              define which patterns constitute credentials, PII, or injection attempts, along with
+              the action to take (block, flag, or log) when a pattern is matched.
+            </p>
+
+            <h3>Rate Limit Budgets</h3>
+            <p>
+              Per-identity and per-tool rate limit budgets defined as token bucket parameters:
+              bucket capacity, refill rate, and refill interval. Budgets can be overridden per
+              SPIFFE identity to accommodate different agent workloads.
+            </p>
+
+            <h3>SPIFFE Trust Domain Configuration</h3>
+            <p>
+              Trust domain settings for SPIFFE/SPIRE integration. Defines the trust domain name,
+              SPIRE server endpoint, trust bundle refresh interval, and SVID rotation parameters.
+            </p>
+          </section>
+
+          <!-- ========== Performance ========== -->
+          <section id="performance">
+            <h2>Performance</h2>
+            <p>
+              The gateway is designed around two processing paths with distinct latency profiles.
+              The fast path handles the majority of requests with minimal overhead. The deep path
+              adds guard model evaluation for high-risk requests.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">PRECINCT Gateway latency breakdown by processing path</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Path</th>
+                    <th scope="col">Layers</th>
+                    <th scope="col">Latency</th>
+                    <th scope="col">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Fast path</strong></td>
+                    <td>0&ndash;8, 11&ndash;13</td>
+                    <td>&lt;5ms</td>
+                    <td>Identity verification, authorization, pattern-based DLP detection, rate limiting, circuit breaking, and token substitution. Handles the majority of requests.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Deep path</strong></td>
+                    <td>9&ndash;10</td>
+                    <td>200&ndash;550ms</td>
+                    <td>Guard model dispatch for step-up gating and async prompt injection detection. Triggered conditionally by risk score or policy rules.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Per-Middleware Latency Breakdown</h3>
+            <p>
+              Individual middleware latency is observable via OpenTelemetry metrics exported from
+              layer 0 (Request Metrics). Each middleware emits timing spans that can be visualized
+              in any OTel-compatible backend (Jaeger, Grafana Tempo, Datadog).
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Per-middleware latency targets</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Layer</th>
+                    <th scope="col">P50 Latency</th>
+                    <th scope="col">P99 Latency</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>0. Request Metrics</td>
+                    <td>&lt;0.05ms</td>
+                    <td>&lt;0.1ms</td>
+                  </tr>
+                  <tr>
+                    <td>1. Request Size Limit</td>
+                    <td>&lt;0.05ms</td>
+                    <td>&lt;0.1ms</td>
+                  </tr>
+                  <tr>
+                    <td>2. Body Capture</td>
+                    <td>&lt;0.2ms</td>
+                    <td>&lt;0.5ms</td>
+                  </tr>
+                  <tr>
+                    <td>3. SPIFFE Auth</td>
+                    <td>&lt;0.5ms</td>
+                    <td>&lt;1ms</td>
+                  </tr>
+                  <tr>
+                    <td>4. Audit Log</td>
+                    <td>&lt;0.2ms</td>
+                    <td>&lt;0.5ms</td>
+                  </tr>
+                  <tr>
+                    <td>5. Tool Registry Verify</td>
+                    <td>&lt;0.3ms</td>
+                    <td>&lt;1ms</td>
+                  </tr>
+                  <tr>
+                    <td>6. OPA Policy</td>
+                    <td>&lt;1ms</td>
+                    <td>&lt;2ms</td>
+                  </tr>
+                  <tr>
+                    <td>7. DLP Scanning</td>
+                    <td>&lt;0.5ms</td>
+                    <td>&lt;1ms</td>
+                  </tr>
+                  <tr>
+                    <td>8. Session Context</td>
+                    <td>&lt;0.2ms</td>
+                    <td>&lt;0.5ms</td>
+                  </tr>
+                  <tr>
+                    <td>9. Step-Up Gating</td>
+                    <td>0ms (skip)</td>
+                    <td>200&ndash;500ms (dispatch)</td>
+                  </tr>
+                  <tr>
+                    <td>10. Deep Scan</td>
+                    <td>0ms (skip)</td>
+                    <td>200&ndash;550ms (dispatch)</td>
+                  </tr>
+                  <tr>
+                    <td>11. Rate Limiting</td>
+                    <td>&lt;0.2ms</td>
+                    <td>&lt;0.5ms</td>
+                  </tr>
+                  <tr>
+                    <td>12. Circuit Breaker</td>
+                    <td>&lt;0.05ms</td>
+                    <td>&lt;0.1ms</td>
+                  </tr>
+                  <tr>
+                    <td>13. Token Substitution</td>
+                    <td>&lt;0.5ms</td>
+                    <td>&lt;1ms</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Benchmark Availability
+              </div>
+              <p>
+                Complete per-middleware benchmark results are available by running
+                <code>make bench</code> in the gateway source tree. Benchmarks exercise each
+                middleware layer independently and in combination, measuring allocation counts
+                and bytes alongside wall-clock time.
+              </p>
+            </div>
+          </section>
+
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="for-auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by Cibertrend, Inc. and Hextropian Systems, Inc.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SPIFFE/SPIRE -- Workload Identity | PRECINCT</title>
+  <meta name="description" content="How PRECINCT uses SPIFFE and SPIRE to provide platform-agnostic, cryptographically verifiable workload identity for AI agents -- without static secrets or shared tokens.">
+  <meta name="keywords" content="SPIFFE, SPIRE, workload identity, SVID, zero trust, mTLS, attestation, agentic AI, PRECINCT">
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- HEADER / NAV                                                  -->
+  <!-- ============================================================ -->
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem" class="active">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+          </ul>
+        </li>
+        <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ============================================================ -->
+  <!-- PAGE CONTENT                                                  -->
+  <!-- ============================================================ -->
+  <div class="page-content">
+    <div class="container">
+      <div class="layout-with-sidebar">
+
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar" aria-label="Page sections">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#why-spiffe">Why SPIFFE for Agentic AI</a></li>
+                <li><a href="#how-it-works">How It Works in PRECINCT</a></li>
+                <li><a href="#id-schema">SPIFFE ID Schema</a></li>
+                <li><a href="#docker-compose-setup">Docker Compose Setup</a></li>
+                <li><a href="#kubernetes-setup">Kubernetes Setup</a></li>
+                <li><a href="#verification">Verification</a></li>
+                <li><a href="#why-not-oauth">Why Not OAuth/OIDC?</a></li>
+              </ul>
+            </div>
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">Related</div>
+              <ul>
+                <li><a href="spike.html">SPIKE -- Secrets</a></li>
+                <li><a href="opa.html">OPA -- Policy</a></li>
+                <li><a href="gateway.html">Gateway</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <!-- Mobile Sidebar Toggle -->
+        <button class="sidebar-toggle" aria-label="Toggle section navigation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          On This Page
+        </button>
+
+        <!-- Mobile Sidebar -->
+        <div class="sidebar-mobile" aria-label="Page sections (mobile)">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#why-spiffe">Why SPIFFE for Agentic AI</a></li>
+                <li><a href="#how-it-works">How It Works in PRECINCT</a></li>
+                <li><a href="#id-schema">SPIFFE ID Schema</a></li>
+                <li><a href="#docker-compose-setup">Docker Compose Setup</a></li>
+                <li><a href="#kubernetes-setup">Kubernetes Setup</a></li>
+                <li><a href="#verification">Verification</a></li>
+                <li><a href="#why-not-oauth">Why Not OAuth/OIDC?</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="sidebar-overlay"></div>
+
+        <!-- Main Content -->
+        <main class="layout-main content">
+
+          <h1>SPIFFE/SPIRE &mdash; Workload Identity</h1>
+          <p class="lead">
+            Every workload in PRECINCT &mdash; agents, gateways, sidecars, secret stores &mdash;
+            receives a cryptographically verifiable identity through SPIFFE and SPIRE.
+            No static secrets. No shared tokens. Identity is <em>attested</em>, not <em>asserted</em>.
+          </p>
+
+          <!-- ======================================================== -->
+          <!-- WHY SPIFFE FOR AGENTIC AI                                 -->
+          <!-- ======================================================== -->
+          <section id="why-spiffe">
+            <h2>Why SPIFFE for Agentic AI</h2>
+            <p>
+              AI agents are ephemeral, autonomous, and potentially adversarial. Traditional
+              credential management &mdash; static API keys, long-lived tokens, manually provisioned
+              certificates &mdash; cannot keep pace with workloads that spin up, execute, and
+              terminate in seconds. SPIFFE was designed for exactly this world.
+            </p>
+
+            <ul>
+              <li>
+                <strong>Platform-agnostic workload identity.</strong>
+                SPIFFE IDs work identically across Kubernetes, VMs, bare metal, and multi-cloud
+                environments. No vendor lock-in.
+              </li>
+              <li>
+                <strong>Runtime identity issuance via attestation.</strong>
+                Workloads prove who they are through platform-level evidence (kernel metadata,
+                container labels, Kubernetes service accounts), not through pre-shared secrets.
+              </li>
+              <li>
+                <strong>Short-lived credentials.</strong>
+                SVIDs (SPIFFE Verifiable Identity Documents) rotate continuously, typically every
+                hour. Compromise of a single credential has a bounded blast radius.
+              </li>
+              <li>
+                <strong>Zero trust foundation.</strong>
+                No workload is trusted by default. Every connection requires mutual authentication
+                via mTLS, with both sides presenting a valid SVID.
+              </li>
+              <li>
+                <strong>Multi-environment support.</strong>
+                The same trust domain spans Kubernetes clusters, Docker Compose stacks, VMs,
+                and bare-metal hosts. Agents running on a laptop and agents running in production
+                use the same identity framework.
+              </li>
+            </ul>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- HOW IT WORKS IN PRECINCT                                  -->
+          <!-- ======================================================== -->
+          <section id="how-it-works">
+            <h2>How It Works in PRECINCT</h2>
+            <p>
+              SPIRE operates as a two-tier system: a centralized <strong>SPIRE Server</strong> that
+              acts as the certificate authority and registration store, and per-node
+              <strong>SPIRE Agents</strong> that attest workloads and deliver SVIDs.
+            </p>
+
+            <div class="mermaid-wrapper">
+              <div class="mermaid">
+graph TB
+    subgraph SPIRE_Server["SPIRE Server"]
+        CA["CA Manager<br/>Issues and rotates SVIDs"]
+        REG["Registration Store<br/>Maps workloads to SPIFFE IDs"]
+        TB["Trust Bundle Manager<br/>Distributes root certificates"]
+    end
+
+    subgraph Node["Per-Node SPIRE Agent"]
+        NA["Node Attestor<br/>Proves node identity to server"]
+        WA["Workload Attestor<br/>Identifies local workloads via<br/>PID, container labels, K8s SA"]
+        SC["SVID Cache<br/>Caches and rotates<br/>workload SVIDs"]
+    end
+
+    subgraph Workloads["Agent Workloads"]
+        W1["MCP Client<br/>(DSPy Researcher)"]
+        W2["MCP Security Gateway"]
+        W3["SPIKE Nexus"]
+    end
+
+    CA --> |"Issues SVIDs"| SC
+    REG --> |"Registration entries"| NA
+    TB --> |"Trust bundles"| SC
+    NA --> |"Node attestation"| CA
+    WA --> |"Workload attestation"| SC
+    SC --> |"SVID via UDS"| W1
+    SC --> |"SVID via UDS"| W2
+    SC --> |"SVID via UDS"| W3
+              </div>
+            </div>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                Unix Domain Socket
+              </div>
+              <p>
+                Workloads consume SVIDs through a Unix Domain Socket (UDS) exposed by the
+                SPIRE Agent. No network call is required to obtain identity credentials &mdash;
+                the agent delivers them locally via the Workload API.
+              </p>
+            </div>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- SPIFFE ID SCHEMA                                          -->
+          <!-- ======================================================== -->
+          <section id="id-schema">
+            <h2>SPIFFE ID Schema</h2>
+            <p>
+              PRECINCT follows a structured naming convention for SPIFFE IDs that encodes
+              the workload type, framework, name, and environment into the URI path.
+            </p>
+
+            <h3>Naming Convention</h3>
+            <pre data-lang="uri"><code>spiffe://&lt;trust-domain&gt;/&lt;workload-type&gt;/&lt;framework&gt;/&lt;name&gt;/&lt;environment&gt;</code></pre>
+
+            <h3>Examples</h3>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Workload</th>
+                    <th scope="col">SPIFFE ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>DSPy Researcher Agent</td>
+                    <td><code>spiffe://poc.local/agents/mcp-client/dspy-researcher/dev</code></td>
+                  </tr>
+                  <tr>
+                    <td>MCP Security Gateway</td>
+                    <td><code>spiffe://poc.local/gateways/mcp-security-gateway/dev</code></td>
+                  </tr>
+                  <tr>
+                    <td>SPIKE Nexus</td>
+                    <td><code>spiffe://poc.local/services/spike/nexus/dev</code></td>
+                  </tr>
+                  <tr>
+                    <td>OPA Sidecar</td>
+                    <td><code>spiffe://poc.local/services/opa/sidecar/dev</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Trust Domain Boundaries
+              </div>
+              <p>
+                The trust domain (<code>poc.local</code> in development, <code>agentic-ref-arch.poc</code>
+                in Kubernetes) defines the boundary of trust. Workloads in different trust domains
+                require explicit federation to communicate.
+              </p>
+            </div>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- DOCKER COMPOSE SETUP                                      -->
+          <!-- ======================================================== -->
+          <section id="docker-compose-setup">
+            <h2>Docker Compose Setup</h2>
+            <p>
+              In the Docker Compose deployment, SPIRE runs as two containers: one for the
+              server and one for the agent. A third one-shot container handles join token
+              generation during initialization.
+            </p>
+
+            <ul>
+              <li>
+                <strong>SPIRE Server container</strong> &mdash; runs the registration API and
+                certificate authority. Stores registration entries in SQLite.
+              </li>
+              <li>
+                <strong>SPIRE Agent container</strong> &mdash; attests workloads on the Docker
+                host using <code>docker:label</code> selectors for workload attestation.
+              </li>
+              <li>
+                <strong>Token Generator (one-shot init)</strong> &mdash; creates a join token and
+                passes it to the agent at startup. Exits after token delivery.
+              </li>
+              <li>
+                <strong>Join token attestation</strong> &mdash; used for development environments
+                where node attestation via platform-specific attestors is not available.
+              </li>
+              <li>
+                <strong><code>docker:label</code> selectors</strong> &mdash; the workload attestor
+                matches running containers by their Docker labels to determine which SPIFFE ID
+                to issue.
+              </li>
+            </ul>
+
+            <pre data-lang="yaml"><code># Simplified excerpt from docker-compose.yaml
+services:
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:latest
+    volumes:
+      - ./config/spire/server.conf:/opt/spire/conf/server/server.conf
+    ports:
+      - "8081:8081"
+
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent:latest
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - spire-agent-socket:/tmp/spire-agent/public
+    depends_on:
+      spire-server:
+        condition: service_healthy
+
+  token-generator:
+    image: ghcr.io/spiffe/spire-server:latest
+    entrypoint: ["/opt/spire/bin/spire-server", "token", "generate"]
+    depends_on:
+      spire-server:
+        condition: service_healthy</code></pre>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- KUBERNETES SETUP                                          -->
+          <!-- ======================================================== -->
+          <section id="kubernetes-setup">
+            <h2>Kubernetes Setup</h2>
+            <p>
+              In Kubernetes, SPIRE deploys as production-grade infrastructure components within
+              the <code>spire-system</code> namespace.
+            </p>
+
+            <ul>
+              <li>
+                <strong>SPIRE Server as StatefulSet</strong> &mdash; deployed in the
+                <code>spire-system</code> namespace with persistent storage for the datastore
+                and generated keys.
+              </li>
+              <li>
+                <strong>SPIRE Agent as DaemonSet</strong> &mdash; runs on every node in the
+                cluster, ensuring that any pod on any node can obtain an SVID.
+              </li>
+              <li>
+                <strong><code>k8s_psat</code> attestation</strong> &mdash; for managed Kubernetes
+                (EKS, GKE, AKS), the agent uses projected service account tokens for node and
+                workload attestation. This is the recommended approach for production.
+              </li>
+              <li>
+                <strong><code>join_token</code> fallback</strong> &mdash; for Docker Desktop
+                Kubernetes or local clusters where <code>k8s_psat</code> is not available,
+                join token attestation provides a functional alternative.
+              </li>
+            </ul>
+
+            <h3>SPIFFE ID Format (Kubernetes)</h3>
+            <pre data-lang="uri"><code>spiffe://agentic-ref-arch.poc/ns/{namespace}/sa/{service-account}</code></pre>
+
+            <p>
+              This convention maps directly to Kubernetes namespaces and service accounts,
+              making policy decisions straightforward: the SPIFFE ID encodes <em>where</em>
+              the workload runs and <em>what</em> identity it claims.
+            </p>
+
+            <pre data-lang="bash"><code># Deploy SPIRE into the cluster
+kubectl apply -f k8s/spire/
+
+# Verify the SPIRE Server is running
+kubectl -n spire-system get statefulset spire-server
+
+# Verify agents are running on all nodes
+kubectl -n spire-system get daemonset spire-agent</code></pre>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- VERIFICATION                                              -->
+          <!-- ======================================================== -->
+          <section id="verification">
+            <h2>Verification</h2>
+            <p>
+              After deploying SPIRE in either environment, verify that workload identities
+              are being issued correctly.
+            </p>
+
+            <h3>Docker Compose</h3>
+            <pre data-lang="bash"><code># Fetch an X.509 SVID from the agent's Workload API
+docker compose exec spire-agent \
+  /opt/spire/bin/spire-agent api fetch x509 \
+  -socketPath /tmp/spire-agent/public/api.sock
+
+# List all registered entries on the server
+docker compose exec spire-server \
+  /opt/spire/bin/spire-server entry list</code></pre>
+
+            <h3>Kubernetes</h3>
+            <pre data-lang="bash"><code># List all registration entries
+kubectl -n spire-system exec -it statefulset/spire-server -- \
+  /opt/spire/bin/spire-server entry list
+
+# Verify an agent's identity
+kubectl -n spire-system exec -it daemonset/spire-agent -- \
+  /opt/spire/bin/spire-agent api fetch x509 \
+  -socketPath /tmp/spire-agent/public/api.sock
+
+# Check SPIRE Server health
+kubectl -n spire-system exec -it statefulset/spire-server -- \
+  /opt/spire/bin/spire-server healthcheck</code></pre>
+
+            <div class="callout callout-success">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Successful Output
+              </div>
+              <p>
+                A successful <code>fetch x509</code> command returns the SVID certificate,
+                private key, and trust bundle. If you see <code>SVID:</code> followed by
+                a SPIFFE ID and PEM-encoded certificate, identity issuance is working.
+              </p>
+            </div>
+          </section>
+
+          <!-- ======================================================== -->
+          <!-- WHY NOT OAUTH/OIDC?                                       -->
+          <!-- ======================================================== -->
+          <section id="why-not-oauth">
+            <h2>Why Not OAuth/OIDC?</h2>
+            <p>
+              OAuth 2.0 and OpenID Connect are excellent protocols for human-facing authentication
+              flows. However, they were designed for a fundamentally different trust model than
+              what autonomous AI agents require. The table below summarizes the key differences.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th scope="col">Dimension</th>
+                    <th scope="col">OAuth/OIDC</th>
+                    <th scope="col">SPIFFE</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Provisioning model</strong></td>
+                    <td>Manual client registration; client IDs and secrets provisioned ahead of time</td>
+                    <td>Automatic attestation; identity derived from platform evidence at runtime</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Credential lifetime</strong></td>
+                    <td>Access tokens valid for minutes to hours; refresh tokens can be long-lived</td>
+                    <td>SVIDs rotate continuously (typically hourly); no long-lived refresh mechanism</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Trust model</strong></td>
+                    <td>Centralized authorization server; trust anchored in client secret possession</td>
+                    <td>Decentralized attestation; trust anchored in platform-level evidence (kernel, hypervisor, K8s API)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Multi-hop delegation</strong></td>
+                    <td>Requires token exchange (RFC 8693) or on-behalf-of flows; complex, brittle</td>
+                    <td>Native via downstream SVIDs; each hop presents its own identity</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Ephemeral workload support</strong></td>
+                    <td>Poor; pre-registration required before workload can authenticate</td>
+                    <td>Native; workloads attest and receive identity within seconds of startup</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Human interaction required</strong></td>
+                    <td>Often requires consent screens, redirect flows, browser interaction</td>
+                    <td>Fully automated; no human in the loop</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Secret exposure risk</strong></td>
+                    <td>Client secrets and tokens are transmitted over the network and stored by clients</td>
+                    <td>Private keys never leave the workload; only certificates are transmitted</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                Not Mutually Exclusive
+              </div>
+              <p>
+                SPIFFE does not replace OAuth/OIDC for user-facing authentication. In PRECINCT,
+                human users may authenticate via OIDC at the ingress boundary, while agent-to-agent
+                and agent-to-tool communication uses SPIFFE/mTLS exclusively. The two protocols
+                complement each other.
+              </p>
+            </div>
+          </section>
+
+        </main>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="for-auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by Cibertrend, Inc. and Hextropian Systems, Inc.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
