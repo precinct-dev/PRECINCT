@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SDKs -- Python &amp; Go | PRECINCT</title>
+  <meta name="description" content="PRECINCT SDKs for Python (mcp_gateway_sdk) and Go (mcpgateway) provide zero-friction integration with the PRECINCT gateway, including automatic SPIFFE identity injection and structured error handling.">
+  <meta name="keywords" content="PRECINCT SDK, Python SDK, Go SDK, mcp_gateway_sdk, mcpgateway, SPIFFE, agentic AI, MCP gateway">
+  <meta name="author" content="PRECINCT Contributors">
+  <meta name="robots" content="index, follow">
+
+  <meta property="og:title" content="PRECINCT SDKs -- Python &amp; Go">
+  <meta property="og:description" content="First-class SDK support for integrating agents with the PRECINCT gateway in Python and Go.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://precinct.dev/pages/sdks.html">
+  <meta property="og:site_name" content="PRECINCT">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- HEADER / NAV                                                  -->
+  <!-- ============================================================ -->
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+          </ul>
+        </li>
+        <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem" class="active">SDKs</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="page-content">
+    <div class="container">
+      <div class="layout-with-sidebar">
+
+        <!-- ============================================================ -->
+        <!-- SIDEBAR NAVIGATION                                            -->
+        <!-- ============================================================ -->
+        <aside class="sidebar" aria-label="Page sections">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#python-sdk">Python SDK</a></li>
+                <li><a href="#go-sdk">Go SDK</a></li>
+                <li><a href="#error-handling">Error Handling</a></li>
+                <li><a href="#spiffe-identity">SPIFFE Identity</a></li>
+                <li><a href="#installation">Installation</a></li>
+              </ul>
+            </div>
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">Related</div>
+              <ul>
+                <li><a href="gateway.html">Gateway</a></li>
+                <li><a href="cli.html">CLI Reference</a></li>
+                <li><a href="getting-started.html">Getting Started</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <!-- Mobile sidebar toggle -->
+        <button class="sidebar-toggle" aria-label="Toggle page navigation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          Page Navigation
+        </button>
+
+        <!-- Mobile sidebar panel -->
+        <div class="sidebar-mobile" aria-label="Page sections (mobile)">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#python-sdk">Python SDK</a></li>
+                <li><a href="#go-sdk">Go SDK</a></li>
+                <li><a href="#error-handling">Error Handling</a></li>
+                <li><a href="#spiffe-identity">SPIFFE Identity</a></li>
+                <li><a href="#installation">Installation</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="sidebar-overlay"></div>
+
+        <!-- ============================================================ -->
+        <!-- MAIN CONTENT                                                  -->
+        <!-- ============================================================ -->
+        <article class="layout-main content">
+
+          <h1>PRECINCT SDKs</h1>
+          <p class="lead">
+            First-class SDK support in Python and Go for integrating agents with the
+            PRECINCT gateway. Both SDKs handle SPIFFE identity injection, structured error
+            mapping, and gateway communication automatically.
+          </p>
+
+          <div class="callout callout-info">
+            <div class="callout-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              First Time Integrating?
+            </div>
+            <p>
+              The <a href="integration-guide.html">Integration Guide</a> walks through
+              identity registration, tool setup, and policy configuration before you start
+              using the SDK.
+            </p>
+          </div>
+
+          <!-- ========== Overview ========== -->
+          <section id="overview">
+            <h2>Overview</h2>
+            <p>
+              PRECINCT provides two official SDKs that mirror each other's semantics across
+              languages. Both SDKs wrap the gateway's JSON-RPC API and provide idiomatic
+              interfaces for tool invocation, error handling, and identity management.
+            </p>
+
+            <div class="card-grid card-grid-2">
+              <div class="card">
+                <h3 class="mt-0">Python SDK</h3>
+                <p>
+                  <code>mcp_gateway_sdk</code>: an async-first Python client with
+                  Pydantic models, automatic retry, and structured error types.
+                </p>
+                <p>
+                  <a href="https://github.com/RamXX/agentic_reference_architecture/tree/main/POC/sdk/python" target="_blank" rel="noopener noreferrer">View on GitHub &rarr;</a>
+                </p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Go SDK</h3>
+                <p>
+                  <code>mcpgateway</code>: an idiomatic Go client with typed responses,
+                  context-based cancellation, and zero external dependencies beyond the
+                  standard library.
+                </p>
+                <p>
+                  <a href="https://github.com/RamXX/agentic_reference_architecture/tree/main/POC/sdk/go" target="_blank" rel="noopener noreferrer">View on GitHub &rarr;</a>
+                </p>
+              </div>
+            </div>
+
+            <div class="callout-note">
+              <strong>Roadmap:</strong> Rust, TypeScript, and Elixir SDKs are planned.
+              Follow the
+              <a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub repository</a>
+              for updates.
+            </div>
+          </section>
+
+          <!-- ========== Python SDK ========== -->
+          <section id="python-sdk">
+            <h2>Python SDK: <code>mcp_gateway_sdk</code></h2>
+            <p>
+              The Python SDK provides a <code>GatewayClient</code> class that handles all
+              communication with the PRECINCT gateway. It automatically injects the caller's
+              SPIFFE ID into every request and maps gateway error codes to typed Python exceptions.
+            </p>
+
+            <h3>Basic Usage</h3>
+            <pre data-lang="python"><code>from mcp_gateway_sdk import GatewayClient, GatewayError
+
+# Initialize the client with gateway URL and SPIFFE identity
+client = GatewayClient(
+    gateway_url="http://localhost:9090",
+    spiffe_id="spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+)
+
+# List available tools
+tools = await client.list_tools()
+for tool in tools:
+    print(f"  {tool.name}: {tool.description}")
+
+# Call a tool
+result = await client.call_tool(
+    name="tavily_search",
+    arguments={"query": "AI security best practices"}
+)
+print(result.content)</code></pre>
+
+            <h3>Error Handling</h3>
+            <pre data-lang="python"><code>from mcp_gateway_sdk import (
+    GatewayClient,
+    AuthzDeniedError,
+    DLPViolationError,
+    RateLimitError,
+    ToolNotFoundError,
+)
+
+try:
+    result = await client.call_tool("sensitive_tool", {"data": payload})
+except AuthzDeniedError as e:
+    # OPA policy denied the request (layer 6)
+    print(f"Policy denied: {e.decision_id}")
+except DLPViolationError as e:
+    # DLP scanner detected credentials (layer 7)
+    print(f"DLP blocked: {e.pattern_matched}")
+except RateLimitError as e:
+    # Rate limit exceeded (layer 11)
+    print(f"Rate limited, retry after: {e.retry_after}s")
+except ToolNotFoundError as e:
+    # Tool not registered (layer 5)
+    print(f"Unknown tool: {e.tool_name}")</code></pre>
+
+            <h3>Key Features</h3>
+            <ul>
+              <li><strong>Automatic SPIFFE ID injection:</strong> every request includes the <code>X-SPIFFE-ID</code> header.</li>
+              <li><strong>Typed error hierarchy:</strong> gateway deny codes map to specific Python exception classes.</li>
+              <li><strong>Pydantic models:</strong> request and response payloads are validated with Pydantic.</li>
+              <li><strong>Async-first:</strong> built on <code>httpx</code> with native <code>async/await</code> support.</li>
+              <li><strong>Structured logging:</strong> all gateway interactions are logged in structured JSON format.</li>
+            </ul>
+          </section>
+
+          <!-- ========== Go SDK ========== -->
+          <section id="go-sdk">
+            <h2>Go SDK: <code>mcpgateway</code></h2>
+            <p>
+              The Go SDK mirrors the Python SDK's semantics with idiomatic Go conventions.
+              It uses standard <code>context.Context</code> for cancellation, returns typed
+              errors, and has zero dependencies beyond the Go standard library.
+            </p>
+
+            <h3>Basic Usage</h3>
+            <pre data-lang="go"><code>package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+
+    "github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway"
+)
+
+func main() {
+    client, err := mcpgateway.NewClient(
+        "http://localhost:9090",
+        mcpgateway.WithSPIFFEID("spiffe://poc.local/agents/mcp-client/researcher/dev"),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    ctx := context.Background()
+
+    // List available tools
+    tools, err := client.ListTools(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+    for _, t := range tools {
+        fmt.Printf("  %s: %s\n", t.Name, t.Description)
+    }
+
+    // Call a tool
+    result, err := client.CallTool(ctx, "tavily_search", map[string]any{
+        "query": "AI security best practices",
+    })
+    if err != nil {
+        log.Fatal(err)
+    }
+    fmt.Println(result.Content)
+}</code></pre>
+
+            <h3>Error Handling</h3>
+            <pre data-lang="go"><code>result, err := client.CallTool(ctx, "sensitive_tool", args)
+if err != nil {
+    var authzErr *mcpgateway.AuthzDeniedError
+    var dlpErr   *mcpgateway.DLPViolationError
+    var rateErr  *mcpgateway.RateLimitError
+
+    switch {
+    case errors.As(err, &authzErr):
+        // OPA policy denied (layer 6)
+        log.Printf("Policy denied: decision=%s", authzErr.DecisionID)
+    case errors.As(err, &dlpErr):
+        // DLP blocked credentials (layer 7)
+        log.Printf("DLP violation: pattern=%s", dlpErr.Pattern)
+    case errors.As(err, &rateErr):
+        // Rate limit exceeded (layer 11)
+        log.Printf("Rate limited, retry after %v", rateErr.RetryAfter)
+    default:
+        log.Printf("Gateway error: %v", err)
+    }
+}</code></pre>
+
+            <h3>Key Features</h3>
+            <ul>
+              <li><strong>Zero external dependencies:</strong> uses only the Go standard library.</li>
+              <li><strong>Context-based cancellation:</strong> all methods accept <code>context.Context</code>.</li>
+              <li><strong>Typed error values:</strong> gateway deny codes map to Go error types compatible with <code>errors.As</code>.</li>
+              <li><strong>Functional options pattern:</strong> client configuration via <code>With*</code> option functions.</li>
+              <li><strong>Connection pooling:</strong> reuses HTTP connections via the default transport.</li>
+            </ul>
+          </section>
+
+          <!-- ========== Error Handling ========== -->
+          <section id="error-handling">
+            <h2>Error Code Mapping</h2>
+            <p>
+              Both SDKs map the gateway's structured deny codes to language-specific error types.
+              This table shows the correspondence.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">SDK error type mapping for gateway deny codes</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Gateway Code</th>
+                    <th scope="col">Layer</th>
+                    <th scope="col">Python Exception</th>
+                    <th scope="col">Go Error Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>spiffe_auth_required</code></td>
+                    <td>3</td>
+                    <td><code>AuthenticationError</code></td>
+                    <td><code>*AuthenticationError</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>tool_not_in_registry</code></td>
+                    <td>5</td>
+                    <td><code>ToolNotFoundError</code></td>
+                    <td><code>*ToolNotFoundError</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>tool_hash_mismatch</code></td>
+                    <td>5</td>
+                    <td><code>ToolIntegrityError</code></td>
+                    <td><code>*ToolIntegrityError</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>authz_policy_denied</code></td>
+                    <td>6</td>
+                    <td><code>AuthzDeniedError</code></td>
+                    <td><code>*AuthzDeniedError</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>dlp_credentials_detected</code></td>
+                    <td>7</td>
+                    <td><code>DLPViolationError</code></td>
+                    <td><code>*DLPViolationError</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>stepup_required</code></td>
+                    <td>9</td>
+                    <td><code>StepUpRequiredError</code></td>
+                    <td><code>*StepUpRequiredError</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>rate_limit_exceeded</code></td>
+                    <td>11</td>
+                    <td><code>RateLimitError</code></td>
+                    <td><code>*RateLimitError</code></td>
+                  </tr>
+                  <tr>
+                    <td><code>circuit_breaker_open</code></td>
+                    <td>12</td>
+                    <td><code>CircuitBreakerError</code></td>
+                    <td><code>*CircuitBreakerError</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <!-- ========== SPIFFE Identity ========== -->
+          <section id="spiffe-identity">
+            <h2>Automatic SPIFFE Identity</h2>
+            <p>
+              Both SDKs can automatically obtain SPIFFE identity from the local SPIRE agent
+              when running inside a PRECINCT-managed environment. This eliminates the need to
+              manually specify a SPIFFE ID.
+            </p>
+
+            <h3>Python Auto-discovery</h3>
+            <pre data-lang="python"><code># When running inside PRECINCT, the SDK discovers the SVID automatically
+# via the Workload API Unix Domain Socket
+client = GatewayClient(
+    gateway_url="http://localhost:9090",
+    # No spiffe_id needed -- discovered from SPIRE agent
+)</code></pre>
+
+            <h3>Go Auto-discovery</h3>
+            <pre data-lang="go"><code>// Auto-discover SPIFFE identity from local SPIRE agent
+client, err := mcpgateway.NewClient(
+    "http://localhost:9090",
+    mcpgateway.WithAutoSPIFFE(),  // Connects to SPIRE agent UDS
+)</code></pre>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Development Mode
+              </div>
+              <p>
+                In development (Docker Compose with <code>make up</code>), you can manually set the
+                SPIFFE ID via the constructor parameter. In production (Kubernetes), use auto-discovery
+                to obtain identity from the local SPIRE agent.
+              </p>
+            </div>
+          </section>
+
+          <!-- ========== Installation ========== -->
+          <section id="installation">
+            <h2>Installation</h2>
+
+            <h3>Python</h3>
+            <pre data-lang="bash"><code># From the repository
+cd POC/sdk/python
+pip install -e .
+
+# Or install directly
+pip install mcp-gateway-sdk</code></pre>
+
+            <h3>Go</h3>
+            <pre data-lang="bash"><code># Add to your Go module
+go get github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway</code></pre>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Version Note
+              </div>
+              <p>
+                Both SDKs are part of the PRECINCT proof-of-concept and are versioned alongside
+                the main repository. For production use, pin to a specific commit or tag.
+              </p>
+            </div>
+          </section>
+
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="cli.html">CLI Reference</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="for-auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by Cibertrend, Inc. and Hextropian Systems, Inc.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

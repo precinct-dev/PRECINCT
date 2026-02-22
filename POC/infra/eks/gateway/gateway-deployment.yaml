@@ -95,6 +95,9 @@ spec:
             # Audit log output path
             - name: AUDIT_LOG_PATH
               value: "/tmp/audit.jsonl"
+            # Extension registry for content-scanner sidecar (K8s variant)
+            - name: EXTENSION_REGISTRY_PATH
+              value: "/config/extensions-demo-k8s.yaml"
             # Log level
             - name: LOG_LEVEL
               value: "info"
@@ -171,6 +174,11 @@ spec:
               mountPath: /config/guard-artifact.bin.sig
               subPath: guard-artifact.bin.sig
               readOnly: true
+            # Extension registry for content-scanner sidecar (K8s variant)
+            - name: config-registry
+              mountPath: /config/extensions-demo-k8s.yaml
+              subPath: extensions-demo-k8s.yaml
+              readOnly: true
             # Writable tmp directory for audit logs and runtime data
             - name: gateway-tmp
               mountPath: /tmp
@@ -232,6 +240,8 @@ spec:
                 path: guard-artifact.bin
               - key: guard-artifact.bin.sig
                 path: guard-artifact.bin.sig
+              - key: extensions-demo-k8s.yaml
+                path: extensions-demo-k8s.yaml
             optional: false
         # Writable tmp for audit logs and runtime data
         - name: gateway-tmp

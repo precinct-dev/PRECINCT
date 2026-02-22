@@ -21,7 +21,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="../css/style.css">
-  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
   <script src="../js/main.js" defer></script>
 </head>
 <body>
@@ -69,7 +68,17 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
       </ul>
 
       <div class="nav-actions">
@@ -116,6 +125,7 @@
                 <li><a href="#request-processing">Request Processing</a></li>
                 <li><a href="#error-codes">Error Codes</a></li>
                 <li><a href="#response-firewall">Response Firewall</a></li>
+                <li><a href="#extension-slots">Extension Slots</a></li>
                 <li><a href="#configuration">Configuration</a></li>
                 <li><a href="#performance">Performance</a></li>
               </ul>
@@ -145,6 +155,7 @@
                 <li><a href="#request-processing">Request Processing</a></li>
                 <li><a href="#error-codes">Error Codes</a></li>
                 <li><a href="#response-firewall">Response Firewall</a></li>
+                <li><a href="#extension-slots">Extension Slots</a></li>
                 <li><a href="#configuration">Configuration</a></li>
                 <li><a href="#performance">Performance</a></li>
               </ul>
@@ -159,6 +170,12 @@
         <article class="layout-main content">
 
           <h1>PRECINCT Gateway</h1>
+            <p class="callout-note">
+              The PRECINCT Gateway is a PRECINCT-native component -- purpose-built for this
+              architecture. It is not a fork or wrapper of an existing proxy; it is original
+              software designed from the ground up to enforce the 13-layer middleware chain
+              across all five governed planes.
+            </p>
 
           <!-- ========== Overview ========== -->
           <section id="overview">
@@ -286,8 +303,8 @@ sequenceDiagram
 
             <h3>Listening Modes</h3>
             <ul>
-              <li><strong>Dev mode:</strong> <code>http://localhost:9090</code> &mdash; Plain HTTP for local development and evaluation. No mTLS required. Suitable for <code>make up</code> workflows.</li>
-              <li><strong>SPIFFE mTLS mode:</strong> <code>https://localhost:9443</code> &mdash; Production mode with SPIFFE mTLS authentication. All clients must present a valid SVID. Required for production deployments.</li>
+              <li><strong>Dev mode:</strong> <code>http://localhost:9090</code>. Plain HTTP for local development and evaluation. No mTLS required. Suitable for <code>make up</code> workflows.</li>
+              <li><strong>SPIFFE mTLS mode:</strong> <code>https://localhost:9443</code>. Production mode with SPIFFE mTLS authentication. All clients must present a valid SVID. Required for production deployments.</li>
             </ul>
           </section>
 
@@ -500,6 +517,178 @@ sequenceDiagram
                 data. Even if an agent's conversation history or memory is compromised, the attacker
                 obtains only opaque references that cannot be resolved without the proper SPIFFE identity
                 and gateway access.
+              </p>
+            </div>
+          </section>
+
+          <!-- ========== Pluggable Extension Slots ========== -->
+          <section id="extension-slots">
+            <h2>Pluggable Extension Slots</h2>
+            <p>
+              The gateway supports three named extension slots for integrating third-party
+              security services into the middleware chain. Extensions are external HTTP sidecar
+              services that receive a structured request payload, evaluate it, and return an
+              allow/block/flag decision. No gateway code changes are required to add, remove,
+              or reconfigure extensions.
+            </p>
+
+            <h3>Extension Slot Positions</h3>
+            <p>
+              Each slot is positioned at a carefully chosen point in the
+              <a href="architecture.html#13-layer-middleware">13-layer middleware chain</a>
+              where third-party inspection is both safe and useful. If no extensions are
+              configured for a slot, the middleware is a zero-cost pass-through.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Named extension slots in the PRECINCT middleware chain</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Slot Name</th>
+                    <th scope="col">Position</th>
+                    <th scope="col">Use Cases</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>post_authz</code></td>
+                    <td>After OPA Policy (step 6), before DLP Scanner (step 7)</td>
+                    <td>Custom RBAC enrichment, tool checkers, pre-scan authorization gates</td>
+                  </tr>
+                  <tr>
+                    <td><code>post_inspection</code></td>
+                    <td>After DLP Scanner (step 7), before Session Context (step 8)</td>
+                    <td>Content scanners, markdown validators, format checkers</td>
+                  </tr>
+                  <tr>
+                    <td><code>post_analysis</code></td>
+                    <td>After Deep Scan (step 10), before Rate Limiting (step 11)</td>
+                    <td>Final approval gates, aggregated risk decisions, custom blocking logic</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Extension Protocol</h3>
+            <p>
+              Extensions communicate with the gateway via HTTP POST. The gateway sends a
+              structured <code>ExtensionRequest</code> payload to each extension's endpoint
+              and expects a structured <code>ExtensionResponse</code> in return.
+            </p>
+
+            <h4>Request Payload (ExtensionRequest)</h4>
+            <pre><code>{
+  "version": "1",
+  "request_id": "d-29fa...",
+  "trace_id": "abc123...",
+  "timestamp": "2026-02-22T14:30:00Z",
+  "slot": "post_inspection",
+  "request": {
+    "method": "tools/call",
+    "tool_name": "file_read",
+    "body": "&lt;base64-encoded request body&gt;",
+    "spiffe_id": "spiffe://trust-domain/agent/xyz",
+    "security_flags": [],
+    "session_id": "sess-001"
+  }
+}</code></pre>
+            <p>
+              Which fields are included in the <code>request</code> object is controlled
+              per-extension via the <code>request_fields</code> configuration. Extensions
+              only receive the data they need.
+            </p>
+
+            <h4>Response Payload (ExtensionResponse)</h4>
+            <pre><code>{
+  "version": "1",
+  "decision": "allow",
+  "flags": [],
+  "reason": "",
+  "http_status": 0,
+  "error_code": ""
+}</code></pre>
+
+            <p>Extensions return one of three decisions:</p>
+            <ul>
+              <li><strong><code>allow</code></strong> -- The request passes through to the next layer.</li>
+              <li><strong><code>block</code></strong> -- The request is denied. The gateway returns a structured error to the agent using the extension's <code>error_code</code> and <code>http_status</code> if provided.</li>
+              <li><strong><code>flag</code></strong> -- The request continues, but the supplied <code>flags</code> are appended to the request's <code>SecurityFlagsCollector</code> for downstream layers to consider.</li>
+            </ul>
+
+            <h3>Configuration</h3>
+            <p>
+              Extensions are defined in a YAML registry file (<code>config/extensions.yaml</code>).
+              The registry is hot-reloaded via file-system watch (fsnotify) -- adding or modifying
+              extensions does not require a gateway restart.
+            </p>
+
+            <pre><code>version: "1"
+extensions:
+  - name: content-scanner
+    slot: post_inspection
+    enabled: true
+    endpoint: http://localhost:8090/scan
+    timeout_ms: 2000
+    fail_mode: fail_open
+    priority: 100
+    description: "Scans request content for policy violations"
+    filters:
+      methods: ["tools/call"]
+      tools: []
+    request_fields:
+      include_body: true
+      include_spiffe_id: true
+      include_tool_name: true
+      include_security_flags: false
+    circuit_breaker:
+      failure_threshold: 5
+      reset_timeout_ms: 30000</code></pre>
+
+            <p>
+              Within a slot, extensions execute in priority order (lower value runs first).
+              Filters control which requests are dispatched to each extension -- empty filter
+              lists match all requests.
+            </p>
+
+            <h3>Fail Modes</h3>
+            <p>
+              Each extension declares a fail mode that determines gateway behavior when the
+              extension sidecar is unreachable or returns an error:
+            </p>
+            <ul>
+              <li><strong><code>fail_open</code></strong> -- On error, skip this extension and continue processing. The request proceeds as if the extension were not configured. Appropriate for advisory or non-critical extensions.</li>
+              <li><strong><code>fail_closed</code></strong> -- On error, deny the request with <code>extension_unavailable_fail_closed</code>. No request passes through if the extension cannot evaluate it. Appropriate for mandatory compliance checks.</li>
+            </ul>
+
+            <h3>Per-Extension Circuit Breakers</h3>
+            <p>
+              Each extension can optionally configure a circuit breaker to prevent cascading
+              failures. When the number of consecutive failures reaches the
+              <code>failure_threshold</code>, the circuit opens and the extension is skipped
+              (or denied, depending on fail mode) until the <code>reset_timeout_ms</code> has
+              elapsed. After the timeout, the circuit enters half-open state and allows one
+              probe request through.
+            </p>
+
+            <h3>Reference Implementation</h3>
+            <p>
+              The PRECINCT repository includes a reference <strong>content-scanner</strong>
+              sidecar that demonstrates the extension protocol. It registers in the
+              <code>post_inspection</code> slot, receives base64-encoded request bodies,
+              applies configurable scanning rules, and returns allow/block/flag decisions.
+              It serves as a starting point for building custom extensions.
+            </p>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Zero-Cost When Unused
+              </div>
+              <p>
+                If no extensions are configured for a slot, the extension slot middleware is a
+                zero-cost pass-through. There is no performance penalty for having the extension
+                infrastructure in the chain when it is not in use.
               </p>
             </div>
           </section>

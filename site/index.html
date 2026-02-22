@@ -23,7 +23,6 @@
 
   <link rel="canonical" href="https://precinct.dev">
   <link rel="stylesheet" href="css/style.css">
-  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
   <script src="js/main.js" defer></script>
 </head>
 <body>
@@ -71,7 +70,17 @@
         </li>
         <li><a href="pages/for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="pages/case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="pages/getting-started.html" class="nav-link">Getting Started</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="pages/integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="pages/sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="pages/cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="pages/getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
       </ul>
 
       <div class="nav-actions">
@@ -111,12 +120,15 @@
         <p class="hero-subheadline">
           PRECINCT is the open-source security reference architecture that gives enterprises
           zero-trust identity, policy enforcement, and compliance-ready audit trails for
-          autonomous AI agents&mdash;without modifying a single line of agent code.
+          autonomous AI agents, all without modifying a single line of agent code.
         </p>
         <div class="hero-ctas">
           <a href="pages/getting-started.html" class="btn btn-primary">Get Started</a>
           <a href="https://github.com/RamXX/agentic_reference_architecture" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">View on GitHub</a>
         </div>
+        <p class="hero-sublink">
+          Already have an agent? <a href="pages/integration-guide.html">Connect it in 4 steps &rarr;</a>
+        </p>
         <div class="hero-stats">
           <div class="stat-item">
             <span class="stat-value">13-Layer</span>
@@ -147,10 +159,10 @@
     <section class="section section-problem" id="problem">
       <div class="container">
         <h2 class="section-title">The Authorization Crisis in Agentic AI</h2>
-        <div class="section-intro">
+        <div class="callout-box">
           <p>
             Non-human identities already outnumber humans <strong>50 to 1</strong>.
-            AI agents are not static service accounts&mdash;they are adaptive, goal-oriented,
+            AI agents are not static service accounts. They are adaptive, goal-oriented,
             ephemeral, and potentially adversarial. Traditional IAM frameworks (OAuth, OIDC, SAML)
             were designed for predictable, human-initiated workflows, not for autonomous reasoning
             agents that can decide, at runtime, which tools to invoke and what data to access.
@@ -252,7 +264,7 @@
     <!-- ============================================================ -->
     <section class="section section-innovations" id="innovations">
       <div class="container">
-        <h2 class="section-title">Five Key Innovations</h2>
+        <h2 class="section-title">Six Key Innovations</h2>
         <div class="innovations-grid">
 
           <div class="innovation-card">
@@ -277,7 +289,7 @@
             <h3>13-Layer Defense-in-Depth</h3>
             <p>
               An ordered middleware chain where every request passes through 13 distinct
-              enforcement layers&mdash;from size limits to token substitution&mdash;before
+              enforcement layers (from size limits to token substitution) before
               reaching any upstream service.
             </p>
           </div>
@@ -319,8 +331,22 @@
             </div>
             <h3>Five Governed Planes</h3>
             <p>
-              Model, Tool, Context, Loop, and Ingress&mdash;each with its own policy
-              domain. Fine-grained governance without monolithic, one-size-fits-all rules.
+              Model, Tool, Context, Loop, and Ingress, each with its own policy
+              domain. This enables fine-grained governance without monolithic, one-size-fits-all rules.
+            </p>
+          </div>
+
+          <div class="innovation-card">
+            <div class="innovation-icon" aria-hidden="true">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+              </svg>
+            </div>
+            <h3>Python &amp; Go SDKs</h3>
+            <p>
+              First-class SDK support in both Python and Go. Agents integrate with the
+              PRECINCT gateway using idiomatic libraries that handle SPIFFE identity,
+              error mapping, and structured logging automatically.
             </p>
           </div>
 
@@ -340,7 +366,7 @@
             <h3>SPIFFE / SPIRE</h3>
             <p>
               The CNCF standard for workload identity. Every agent, service, and sidecar
-              receives a cryptographically verifiable SPIFFE ID&mdash;no static secrets,
+              receives a cryptographically verifiable SPIFFE ID: no static secrets,
               no shared tokens. Identity is attested, not asserted.
             </p>
             <a href="pages/spiffe-spire.html" class="card-link">Learn more &rarr;</a>
@@ -610,6 +636,8 @@
             <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             <li><a href="pages/architecture.html">Architecture Spec</a></li>
             <li><a href="pages/getting-started.html">Getting Started</a></li>
+            <li><a href="pages/sdks.html">SDKs</a></li>
+            <li><a href="pages/cli.html">CLI Reference</a></li>
           </ul>
         </div>
 

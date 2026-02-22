@@ -68,6 +68,7 @@ configMapGenerator:
       - context_policy.rego=gateway-config/context_policy.rego
       - tool_grants.yaml=gateway-config/tool_grants.yaml
       - ui_capability_grants.yaml=gateway-config/ui_capability_grants.yaml
+      - extensions-demo-k8s.yaml=gateway-config/extensions-demo-k8s.yaml
 
 generatorOptions:
   disableNameSuffixHash: true
@@ -193,6 +194,8 @@ patches:
                     value: "agentic-ref-arch.poc"
                   - name: DESTINATIONS_CONFIG_PATH
                     value: "/config/destinations/destinations.yaml"
+                  - name: EXTENSION_REGISTRY_PATH
+                    value: "/config/extensions-demo-k8s.yaml"
                 volumeMounts:
                   - name: config-destinations
                     mountPath: /config/destinations

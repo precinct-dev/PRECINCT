@@ -21,7 +21,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="../css/style.css">
-  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
   <script src="../js/main.js" defer></script>
 </head>
 <body>
@@ -69,7 +68,17 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link active">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
       </ul>
 
       <div class="nav-actions">
@@ -119,6 +128,7 @@
                 <li><a href="#what-auditors-can-verify">What Auditors Can Verify</a></li>
                 <li><a href="#production-go-no-go">Production Go/No-Go</a></li>
                 <li><a href="#stride-pasta-coverage">STRIDE/PASTA Coverage</a></li>
+                <li><a href="#sample-output">Sample Audit Output</a></li>
                 <li><a href="#compose-vs-kubernetes">Compose vs Kubernetes</a></li>
               </ul>
             </div>
@@ -150,6 +160,7 @@
                 <li><a href="#what-auditors-can-verify">What Auditors Can Verify</a></li>
                 <li><a href="#production-go-no-go">Production Go/No-Go</a></li>
                 <li><a href="#stride-pasta-coverage">STRIDE/PASTA Coverage</a></li>
+                <li><a href="#sample-output">Sample Audit Output</a></li>
                 <li><a href="#compose-vs-kubernetes">Compose vs Kubernetes</a></li>
               </ul>
             </div>
@@ -180,17 +191,17 @@
               controls were never designed to address. Unlike conventional service accounts or
               API integrations, AI agents are <strong>autonomous, adaptive, and goal-oriented</strong>.
               They decide at runtime which tools to invoke, what data to access, and how to
-              sequence multi-step operations&mdash;all without human oversight of each individual action.
+              sequence multi-step operations, all without human oversight of each individual action.
             </p>
 
             <h3>The New Threat Surface</h3>
             <ul>
-              <li><strong>Prompt injection</strong> &mdash; Adversarial inputs that hijack agent reasoning to bypass intended controls and execute unauthorized actions.</li>
-              <li><strong>Credential exfiltration</strong> &mdash; Agents persuaded (via crafted prompts or malicious tool outputs) to leak secrets, API keys, or database credentials in their responses.</li>
-              <li><strong>Tool misuse</strong> &mdash; Agents invoking tools they should not have access to, or invoking permitted tools with parameters outside their authorized scope.</li>
-              <li><strong>Runaway loops</strong> &mdash; Unbounded recursive execution patterns that consume resources, amplify errors, or produce cascading failures across dependent systems.</li>
-              <li><strong>Data exfiltration</strong> &mdash; Agents accumulating sensitive data across multiple requests within a session and exfiltrating it through legitimate-looking tool calls.</li>
-              <li><strong>Tool poisoning</strong> &mdash; Compromised tool definitions (rug-pull attacks) where a previously safe tool is replaced with a malicious implementation.</li>
+              <li><strong>Prompt injection:</strong> Adversarial inputs that hijack agent reasoning to bypass intended controls and execute unauthorized actions.</li>
+              <li><strong>Credential exfiltration:</strong> Agents persuaded (via crafted prompts or malicious tool outputs) to leak secrets, API keys, or database credentials in their responses.</li>
+              <li><strong>Tool misuse:</strong> Agents invoking tools they should not have access to, or invoking permitted tools with parameters outside their authorized scope.</li>
+              <li><strong>Runaway loops:</strong> Unbounded recursive execution patterns that consume resources, amplify errors, or produce cascading failures across dependent systems.</li>
+              <li><strong>Data exfiltration:</strong> Agents accumulating sensitive data across multiple requests within a session and exfiltrating it through legitimate-looking tool calls.</li>
+              <li><strong>Tool poisoning:</strong> Compromised tool definitions (rug-pull attacks) where a previously safe tool is replaced with a malicious implementation.</li>
             </ul>
 
             <h3>What PRECINCT Provides</h3>
@@ -201,7 +212,7 @@
             </p>
             <ul>
               <li><strong>Pre-built control mappings</strong> to SOC 2, ISO 27001, GDPR, HIPAA, CCPA/CPRA, and PCI-DSS.</li>
-              <li><strong>Automated evidence generation</strong> in auditor-ready formats (XLSX, CSV, PDF)&mdash;not locked into any vendor-specific tool.</li>
+              <li><strong>Automated evidence generation</strong> in auditor-ready formats (XLSX, CSV, PDF), not locked into any vendor-specific tool.</li>
               <li><strong>Immutable audit trails</strong> with hash-chained events, trace correlation, and tamper-proof storage.</li>
               <li><strong>Verifiable controls</strong> that auditors can independently test and confirm using the procedures documented on this page.</li>
             </ul>
@@ -378,7 +389,7 @@
             <p>
               PRECINCT includes built-in tooling for generating compliance evidence in
               auditor-ready formats. All output is produced in standard, vendor-neutral
-              formats&mdash;XLSX, CSV, and PDF&mdash;that work with any compliance
+              formats (XLSX, CSV, and PDF) that work with any compliance
               management tool or can be reviewed directly by a human auditor.
             </p>
 
@@ -446,10 +457,10 @@ make production-readiness-validate</code></pre>
               following fields:
             </p>
             <ul>
-              <li><strong><code>decision_id</code></strong> &mdash; Unique identifier for this specific policy decision.</li>
-              <li><strong><code>trace_id</code></strong> &mdash; Distributed trace identifier for correlating across services.</li>
-              <li><strong><code>session_id</code></strong> &mdash; Agent session identifier for grouping related decisions.</li>
-              <li><strong><code>spiffe_id</code></strong> &mdash; The cryptographically verified SPIFFE identity of the calling workload.</li>
+              <li><strong><code>decision_id</code></strong>: Unique identifier for this specific policy decision.</li>
+              <li><strong><code>trace_id</code></strong>: Distributed trace identifier for correlating across services.</li>
+              <li><strong><code>session_id</code></strong>: Agent session identifier for grouping related decisions.</li>
+              <li><strong><code>spiffe_id</code></strong>: The cryptographically verified SPIFFE identity of the calling workload.</li>
             </ul>
 
             <h3>Hash Chain Integrity</h3>
@@ -460,8 +471,8 @@ make production-readiness-validate</code></pre>
               Additionally, each event records:
             </p>
             <ul>
-              <li><strong>Policy bundle digest</strong> &mdash; The hash of the OPA policy bundle that was active at decision time, establishing which rules governed the decision.</li>
-              <li><strong>Registry digest</strong> &mdash; The hash of the tool registry state, establishing which tool definitions were in effect.</li>
+              <li><strong>Policy bundle digest:</strong> The hash of the OPA policy bundle that was active at decision time, establishing which rules governed the decision.</li>
+              <li><strong>Registry digest:</strong> The hash of the tool registry state, establishing which tool definitions were in effect.</li>
             </ul>
 
             <h3>Storage and Retention</h3>
@@ -470,7 +481,7 @@ make production-readiness-validate</code></pre>
             <p>
               In Kubernetes, audit events are shipped to S3-compatible storage with
               <strong>Object Lock in COMPLIANCE mode</strong>. This provides hardware-enforced
-              immutability: once written, no principal&mdash;including root administrators&mdash;can
+              immutability: once written, no principal (including root administrators) can
               modify or delete the data until the retention period expires. This is the
               strongest available guarantee for tamper-proof audit retention.
             </p>
@@ -481,8 +492,8 @@ make production-readiness-validate</code></pre>
               controls are applied instead:
             </p>
             <ul>
-              <li><strong>Hash-chain verification</strong> &mdash; Integrity of the event chain can be verified at any time by recomputing the hash sequence.</li>
-              <li><strong>Off-host shipping</strong> &mdash; Events are shipped to an external log aggregator as soon as they are produced, reducing the window of local tampering opportunity.</li>
+              <li><strong>Hash-chain verification:</strong> Integrity of the event chain can be verified at any time by recomputing the hash sequence.</li>
+              <li><strong>Off-host shipping:</strong> Events are shipped to an external log aggregator as soon as they are produced, reducing the window of local tampering opportunity.</li>
             </ul>
 
             <div class="callout callout-warning">
@@ -697,50 +708,50 @@ make production-readiness-validate</code></pre>
             <p>
               The following conditions must all be satisfied before an organization may
               claim production defensibility for a PRECINCT deployment. These are not
-              aspirational&mdash;they are hard gates. If any condition is not met, the
+              aspirational; they are hard gates. If any condition is not met, the
               deployment is not production-ready from a compliance standpoint.
             </p>
 
             <ol>
               <li>
-                <strong>RACI ownership formally assigned</strong> &mdash; Every row in the
+                <strong>RACI ownership formally assigned.</strong> Every row in the
                 RACI matrix above has named, individual owners (not team names) documented
                 and acknowledged by the assigned individuals.
               </li>
               <li>
-                <strong>Evidence pipelines automated and immutable where required</strong> &mdash;
+                <strong>Evidence pipelines automated and immutable where required.</strong>
                 Compliance evidence generation runs on a defined cadence without manual
                 intervention, and storage is immutable in Kubernetes deployments.
               </li>
               <li>
-                <strong>Gateway mediation mandatory</strong> &mdash; All model egress and
+                <strong>Gateway mediation mandatory.</strong> All model egress and
                 ingress traffic flows through the PRECINCT gateway. No agent can reach
                 an LLM or tool without passing through the 13-layer middleware chain.
               </li>
               <li>
-                <strong>Context admission invariants enforced</strong> &mdash; The context
+                <strong>Context admission invariants enforced.</strong> The context
                 admission rules (session scoping, provenance tagging, retention limits) are
                 active and tested.
               </li>
               <li>
-                <strong>Legal/privacy prerequisites embedded in release gates</strong> &mdash;
+                <strong>Legal/privacy prerequisites embedded in release gates.</strong>
                 Privacy impact assessments and legal review are required checkpoints in the
                 release pipeline, not afterthoughts.
               </li>
               <li>
-                <strong>Break-glass approvals time-boxed, reason-coded, and reviewed</strong> &mdash;
+                <strong>Break-glass approvals time-boxed, reason-coded, and reviewed.</strong>
                 Any emergency override of policy controls is time-limited, requires a
                 structured reason code, and is reviewed in the next business day's audit.
               </li>
               <li>
-                <strong>Internal audit confirms control operation</strong> &mdash; An internal
+                <strong>Internal audit confirms control operation.</strong> An internal
                 audit team (or equivalent function) has independently verified that the
                 controls described in the
                 <a href="#what-auditors-can-verify">What Auditors Can Verify</a> section
                 operate as designed.
               </li>
               <li>
-                <strong><code>prod_standard</code> and <code>prod_regulated_hipaa</code> profiles validated</strong> &mdash;
+                <strong><code>prod_standard</code> and <code>prod_regulated_hipaa</code> profiles validated.</strong>
                 The deployment configuration profiles have been validated against their
                 respective test suites and all tests pass.
               </li>
@@ -803,10 +814,92 @@ make production-readiness-validate</code></pre>
               enhanced coverage across three PASTA dimensions:
             </p>
             <ul>
-              <li><strong>Decomposition quality</strong> &mdash; The five governed planes provide clear decomposition boundaries for threat analysis, ensuring no system surface is overlooked.</li>
-              <li><strong>Threat completeness</strong> &mdash; The 13-layer middleware chain ensures that each identified threat category has a concrete enforcement point, reducing gaps between threat identification and mitigation.</li>
-              <li><strong>Risk-treatment clarity</strong> &mdash; Each control maps explicitly to framework requirements (see the <a href="#control-family-crosswalk">crosswalk table</a>), providing clear traceability from risk to treatment to evidence.</li>
+              <li><strong>Decomposition quality:</strong> The five governed planes provide clear decomposition boundaries for threat analysis, ensuring no system surface is overlooked.</li>
+              <li><strong>Threat completeness:</strong> The 13-layer middleware chain ensures that each identified threat category has a concrete enforcement point, reducing gaps between threat identification and mitigation.</li>
+              <li><strong>Risk-treatment clarity:</strong> Each control maps explicitly to framework requirements (see the <a href="#control-family-crosswalk">crosswalk table</a>), providing clear traceability from risk to treatment to evidence.</li>
             </ul>
+          </section>
+
+          <!-- ========== Sample Audit Output ========== -->
+          <section id="sample-output">
+            <h2>Sample Audit Output</h2>
+            <p>
+              Every request through the PRECINCT gateway produces an immutable audit record in JSONL format.
+              Records are hash-chained -- each record's <code>prev_hash</code> field references the preceding record,
+              making tampering detectable. Below are representative examples.
+            </p>
+
+            <h3>Successful request (all 13 layers pass)</h3>
+            <pre><code class="language-json">{
+  "timestamp": "2025-11-15T09:23:41.003Z",
+  "request_id": "req-a7f3b291",
+  "spiffe_id": "spiffe://precinct.dev/agent/research-bot",
+  "tool": "web_search",
+  "layers_passed": 13,
+  "decision": "ALLOW",
+  "latency_ms": 47,
+  "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb924",
+  "prev_hash": "sha256:d7a8fbb307d7809469ca9abcb0082e4f"
+}</code></pre>
+
+            <h3>DLP violation (credentials detected, blocked at layer 7)</h3>
+            <pre><code class="language-json">{
+  "timestamp": "2025-11-15T09:24:02.117Z",
+  "request_id": "req-c8d4e512",
+  "spiffe_id": "spiffe://precinct.dev/agent/code-assistant",
+  "tool": "file_write",
+  "layers_passed": 6,
+  "blocked_at_layer": 7,
+  "layer_name": "DLP Scanner",
+  "decision": "DENY",
+  "reason": "Credential pattern detected in response payload",
+  "dlp_match": "AWS_ACCESS_KEY",
+  "hash": "sha256:9f86d081884c7d659a2feaa0c55ad015",
+  "prev_hash": "sha256:e3b0c44298fc1c149afbf4c8996fb924"
+}</code></pre>
+
+            <h3>Policy denial (unauthorized tool, blocked at layer 6)</h3>
+            <pre><code class="language-json">{
+  "timestamp": "2025-11-15T09:24:15.891Z",
+  "request_id": "req-f1a2b3c4",
+  "spiffe_id": "spiffe://precinct.dev/agent/intern-bot",
+  "tool": "shell_exec",
+  "layers_passed": 5,
+  "blocked_at_layer": 6,
+  "layer_name": "OPA Policy Engine",
+  "decision": "DENY",
+  "reason": "Agent 'intern-bot' is not authorized to use tool 'shell_exec'",
+  "policy": "precinct/tool_access/v1",
+  "hash": "sha256:4e07408562bedb8b60ce05c1decfe3ad",
+  "prev_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015"
+}</code></pre>
+
+            <h3>Rate limit exceeded (blocked at layer 11)</h3>
+            <pre><code class="language-json">{
+  "timestamp": "2025-11-15T09:24:31.445Z",
+  "request_id": "req-d5e6f7a8",
+  "spiffe_id": "spiffe://precinct.dev/agent/data-collector",
+  "tool": "api_call",
+  "layers_passed": 10,
+  "blocked_at_layer": 11,
+  "layer_name": "Rate Limiter",
+  "decision": "DENY",
+  "reason": "Token budget exceeded: 45,000/50,000 tokens consumed in current window",
+  "rate_limit": {"window": "1h", "limit": 50000, "consumed": 45000},
+  "hash": "sha256:ef2d127de37b942baad06145e54b0c61",
+  "prev_hash": "sha256:4e07408562bedb8b60ce05c1decfe3ad"
+}</code></pre>
+
+            <h3>CLI audit commands</h3>
+            <p>Use the <code>agw</code> CLI to query and verify audit trails:</p>
+            <pre><code class="language-bash"># Search audit records by agent identity
+agw audit search --spiffe-id "spiffe://precinct.dev/agent/research-bot" --last 24h
+
+# Explain a specific audit decision
+agw audit explain --request-id req-c8d4e512
+
+# Verify hash chain integrity
+agw audit verify --from "2025-11-15T00:00:00Z" --to "2025-11-15T23:59:59Z"</code></pre>
           </section>
 
           <!-- ========== Docker Compose vs Kubernetes for Audit ========== -->

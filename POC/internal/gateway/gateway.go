@@ -64,6 +64,8 @@ type Gateway struct {
 	dlpRuleOps                 *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
 	cca                        *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
 	ingressReplayGuard         *ingressReplayGuard               // RFA-l6h6.2.2: ingress replay/freshness guard
+	extensionRegistry          *middleware.ExtensionRegistry      // pluggable extension slots
+	extensionRegistryStop      func()                            // stop function for extension registry fsnotify watcher
 	adminAuthzAllowedSPIFFEIDs map[string]struct{}               // explicit SPIFFE allowlist for /admin/* authorization
 }
 
@@ -302,6 +304,22 @@ func New(cfg *Config) (*Gateway, error) {
 		return nil, fmt.Errorf("failed to start tool registry watcher: %w", err)
 	}
 
+	// Extension registry: load pluggable extension slot config if path is set.
+	var extensionRegistry *middleware.ExtensionRegistry
+	var extensionRegistryStop func()
+	if cfg.ExtensionRegistryPath != "" {
+		extReg, extErr := middleware.NewExtensionRegistry(cfg.ExtensionRegistryPath)
+		if extErr != nil {
+			return nil, fmt.Errorf("failed to create extension registry: %w", extErr)
+		}
+		extStop, extWatchErr := extReg.Watch()
+		if extWatchErr != nil {
+			return nil, fmt.Errorf("failed to start extension registry watcher: %w", extWatchErr)
+		}
+		extensionRegistry = extReg
+		extensionRegistryStop = extStop
+	}
+
 	// RFA-m6j.3: Wrap the reverse proxy transport with trace context propagation.
 	// This injects traceparent/tracestate headers into every outbound request
 	// to the MCP server, enabling cross-service distributed tracing.
@@ -383,6 +401,8 @@ func New(cfg *Config) (*Gateway, error) {
 		spikeRedeemer:              spikeRedeemer,
 		sessionStore:               sessionStore,
 		registryStop:               registryStop,
+		extensionRegistry:          extensionRegistry,
+		extensionRegistryStop:      extensionRegistryStop,
 		modelPlanePolicy:           modelPlanePolicy,
 		loopPolicy:                 newLoopPlanePolicyEngine(),
 		toolPolicy:                 newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
@@ -431,10 +451,19 @@ func (g *Gateway) Handler() http.Handler {
 	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                                           // 12
 	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                                                   // 11
 	handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig)                                                                      // 10
+	if g.extensionRegistry != nil {
+		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostAnalysis, g.auditor) // post_analysis: after DeepScan, before RateLimit
+	}
 	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor, g.approvalCapabilities) // 9
 	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                                           // 8
+	if g.extensionRegistry != nil {
+		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostInspection, g.auditor) // post_inspection: after DLP, before Session
+	}
 	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy())                                                                           // 7
 	handler = middleware.OPAPolicy(handler, g.opa)                                                                                                     // 6
+	if g.extensionRegistry != nil {
+		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostAuthz, g.auditor) // post_authz: after OPA, before DLP
+	}
 	var toolHashRefresher middleware.ObservedToolHashRefresher
 	if g.config.MCPTransportMode == "mcp" {
 		toolHashRefresher = g.refreshObservedToolHashes
@@ -1761,6 +1790,10 @@ func (g *Gateway) Close() error {
 	// RFA-dh9: Stop the registry file watcher
 	if g.registryStop != nil {
 		g.registryStop()
+	}
+	// Stop extension registry file watcher
+	if g.extensionRegistryStop != nil {
+		g.extensionRegistryStop()
 	}
 	if g.handleStore != nil {
 		g.handleStore.Close()

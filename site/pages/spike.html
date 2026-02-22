@@ -13,7 +13,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="../css/style.css">
-  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
   <script src="../js/main.js" defer></script>
 </head>
 <body>
@@ -61,7 +60,17 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
       </ul>
 
       <div class="nav-actions">
@@ -153,9 +162,16 @@
         <!-- Main Content -->
         <main class="layout-main content">
 
-          <h1>SPIKE &mdash; Secrets Management</h1>
+          <h1>SPIKE: Secrets Management</h1>
+            <p class="callout-note">
+              <a href="https://spike.ist/" target="_blank" rel="noopener noreferrer">SPIKE</a> is a SPIFFE-native secrets store
+              built for zero-trust environments. It is an open-source project maintained at
+              <a href="https://github.com/spiffe/spike" target="_blank" rel="noopener noreferrer">github.com/spiffe/spike</a>.
+              PRECINCT integrates SPIKE as its secrets management layer, providing automatic
+              secret rotation and SPIFFE-authenticated access.
+            </p>
           <p class="lead">
-            In agentic AI systems, the LLM is the credential consumer &mdash; and LLMs can be
+            In agentic AI systems, the LLM is the credential consumer, and LLMs can be
             manipulated. SPIKE ensures that agents never see, hold, or transmit real credentials,
             eliminating an entire class of exfiltration attacks through late-binding secret substitution.
           </p>
@@ -173,7 +189,7 @@
             </p>
             <p>
               Agentic AI fundamentally breaks this model. The consumer of the credential is now an
-              LLM &mdash; a probabilistic system that can be manipulated via prompt injection. If
+              LLM (a probabilistic system that can be manipulated via prompt injection). If
               the LLM sees a real credential, the credential can be exfiltrated through any of
               several attack vectors:
             </p>
@@ -193,7 +209,7 @@
               </li>
               <li>
                 <strong>Steganography:</strong> The credential can be hidden in the structure of
-                otherwise normal text &mdash; first letters of sentences, word spacing patterns,
+                otherwise normal text, such as first letters of sentences, word spacing patterns,
                 or Unicode homoglyphs.
               </li>
               <li>
@@ -224,7 +240,7 @@
               PRECINCT solves this through <strong>late-binding secret substitution</strong>.
               Instead of giving agents real credentials, agents operate with opaque, meaningless
               reference tokens. The gateway substitutes real credentials at the very last
-              middleware step &mdash; step 13 of the 13-layer enforcement chain &mdash;
+              middleware step (step 13 of the 13-layer enforcement chain),
               immediately before the request leaves the gateway for the upstream service.
             </p>
 
@@ -337,7 +353,7 @@ sequenceDiagram
                 All Components Use SPIFFE
               </div>
               <p>
-                Every SPIKE component &mdash; Nexus, Keepers, Bootstrap, and Seeder &mdash;
+                Every SPIKE component (Nexus, Keepers, Bootstrap, and Seeder)
                 authenticates using SPIFFE/mTLS. There are no static credentials anywhere in
                 the SPIKE infrastructure. Identity is attested, not configured.
               </p>
@@ -436,6 +452,12 @@ spike token create \
   --spiffe-id "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
   --ttl 1800 \
   --action "read"</code></pre>
+
+            <div class="callout-warning">
+              <strong>CLI distinction:</strong> The <code>spike</code> command is SPIKE's own CLI for direct secrets management.
+              PRECINCT provides a separate <code>agw</code> CLI that wraps gateway, audit, compliance,
+              and identity operations. See the <a href="cli.html">CLI Reference</a> for details on <code>agw</code>.
+            </div>
 
             <h3>Token Scope Binding</h3>
             <p>

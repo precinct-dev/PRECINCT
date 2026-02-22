@@ -329,6 +329,11 @@ k8s_wait_ready() {
         kubectl -n tools get pods -o wide || true
         return 1
     fi
+    if ! kubectl -n tools rollout status deployment/content-scanner --timeout=120s >/dev/null; then
+        err "Content scanner not ready"
+        kubectl -n tools get pods -o wide || true
+        return 1
+    fi
     if ! kubectl -n gateway rollout status deployment/mcp-security-gateway --timeout=240s >/dev/null; then
         err "Gateway not ready"
         kubectl -n gateway get pods -o wide || true
@@ -513,6 +518,47 @@ collect_spike_token_proof_k8s() {
         kubectl -n spike-system logs job/spike-secret-seeder --tail=80 2>/dev/null \
             || echo "  (no spike-secret-seeder log entries found)"
     fi
+    echo ""
+}
+
+collect_extension_proof_compose() {
+    log "Extension slot proof (Docker Compose logs)"
+    echo ""
+    # Look for extension blocked events (content scanner denied a request)
+    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+        | grep -E 'ext_content_scanner_blocked|extension_blocked|extension.*block' | tail -5 \
+        || echo "  (no extension block entries found in logs)"
+    echo ""
+    # Look for extension flagged events (content scanner flagged a request)
+    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+        | grep -E 'extension.*flag|extension_flagged' | tail -5 \
+        || echo "  (no extension flag entries found in logs)"
+    echo ""
+    # Look for extension allow events (content scanner allowed a request)
+    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+        | grep -E 'extension.*allow|extension_allow' | tail -5 \
+        || echo "  (no extension allow entries found in logs)"
+    echo ""
+    # Content scanner sidecar logs
+    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix content-scanner 2>/dev/null \
+        | tail -10 \
+        || echo "  (no content-scanner log entries found)"
+    echo ""
+}
+
+collect_extension_proof_k8s() {
+    log "Extension slot proof (K8s logs)"
+    echo ""
+    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 2>/dev/null \
+        | grep -E 'ext_content_scanner_blocked|extension_blocked|extension.*block' | tail -5 \
+        || echo "  (no extension block entries found in logs)"
+    echo ""
+    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 2>/dev/null \
+        | grep -E 'extension.*flag|extension_flagged' | tail -5 \
+        || echo "  (no extension flag entries found in logs)"
+    echo ""
+    kubectl -n tools logs deploy/content-scanner --tail=10 2>/dev/null \
+        || echo "  (no content-scanner log entries found)"
     echo ""
 }
 
@@ -891,6 +937,7 @@ run_demo_cycle() {
     local py_ok=0
     local phase3_ok=0
     local model_ref_ok=0
+    local extension_ok=0
     local observability_ok=0
 
     run_go_demo "$url" "$network" || go_ok=1
@@ -928,6 +975,8 @@ run_demo_cycle() {
         bash "$POC_DIR/tests/e2e/scenario_f_phase3_planes.sh" || phase3_ok=1
         log "Running model egress SPIKE-reference scenario"
         bash "$POC_DIR/tests/e2e/scenario_g_model_egress_ref.sh" || model_ref_ok=1
+        log "Running extension slot scenario"
+        bash "$POC_DIR/tests/e2e/scenario_h_extensions.sh" || extension_ok=1
         echo ""
     fi
 
@@ -941,6 +990,7 @@ run_demo_cycle() {
         collect_dlp_injection_proof_compose
         collect_dlp_credential_proof_compose
         collect_spike_token_proof_compose
+        collect_extension_proof_compose
         capture_observability_evidence_compose
     else
         collect_audit_proof_k8s
@@ -948,6 +998,7 @@ run_demo_cycle() {
         collect_dlp_injection_proof_k8s
         collect_dlp_credential_proof_k8s
         collect_spike_token_proof_k8s
+        collect_extension_proof_k8s
         capture_observability_evidence_k8s
     fi
     print_otel_proof
@@ -955,19 +1006,20 @@ run_demo_cycle() {
 
     # Summary
     echo -e "${BOLD}============================================${RESET}"
-    if [ "$go_ok" -eq 0 ] && [ "$py_ok" -eq 0 ] && [ "$phase3_ok" -eq 0 ] && [ "$model_ref_ok" -eq 0 ] && [ "$observability_ok" -eq 0 ]; then
+    if [ "$go_ok" -eq 0 ] && [ "$py_ok" -eq 0 ] && [ "$phase3_ok" -eq 0 ] && [ "$model_ref_ok" -eq 0 ] && [ "$extension_ok" -eq 0 ] && [ "$observability_ok" -eq 0 ]; then
         echo -e "  ${GREEN}ALL DEMOS PASSED ($mode)${RESET}"
     else
         [ "$go_ok" -ne 0 ] && echo -e "  ${RED}Go demo had failures${RESET}"
         [ "$py_ok" -ne 0 ] && echo -e "  ${RED}Python demo had failures${RESET}"
         [ "$phase3_ok" -ne 0 ] && echo -e "  ${RED}Phase 3 compose scenario had failures${RESET}"
         [ "$model_ref_ok" -ne 0 ] && echo -e "  ${RED}Model egress SPIKE-reference scenario had failures${RESET}"
+        [ "$extension_ok" -ne 0 ] && echo -e "  ${RED}Extension slot scenario had failures${RESET}"
         [ "$observability_ok" -ne 0 ] && echo -e "  ${RED}Observability evidence gate failed${RESET}"
     fi
     echo -e "${BOLD}============================================${RESET}"
     echo ""
 
-    return $((go_ok + py_ok + phase3_ok + model_ref_ok + observability_ok))
+    return $((go_ok + py_ok + phase3_ok + model_ref_ok + extension_ok + observability_ok))
 }
 
 # --------------------------------------------------------------------------

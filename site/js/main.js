@@ -135,13 +135,14 @@
   // =========================================================================
 
   function initMobileMenu() {
-    var btn = document.querySelector(".mobile-menu-btn");
-    var menu = document.querySelector(".mobile-menu");
+    var btn = document.querySelector(".nav-toggle");
+    var menu = document.querySelector(".nav-links");
 
     if (!btn || !menu) return;
 
     btn.addEventListener("click", function () {
-      var isOpen = menu.classList.toggle("open");
+      var isOpen = menu.classList.toggle("mobile-open");
+      btn.classList.toggle("active", isOpen);
       btn.setAttribute("aria-expanded", String(isOpen));
 
       // Prevent body scroll when menu is open
@@ -151,7 +152,8 @@
     // Close on link click
     menu.querySelectorAll("a").forEach(function (link) {
       link.addEventListener("click", function () {
-        menu.classList.remove("open");
+        menu.classList.remove("mobile-open");
+        btn.classList.remove("active");
         btn.setAttribute("aria-expanded", "false");
         document.body.style.overflow = "";
       });
@@ -159,8 +161,9 @@
 
     // Close on Escape
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape" && menu.classList.contains("open")) {
-        menu.classList.remove("open");
+      if (e.key === "Escape" && menu.classList.contains("mobile-open")) {
+        menu.classList.remove("mobile-open");
+        btn.classList.remove("active");
         btn.setAttribute("aria-expanded", "false");
         document.body.style.overflow = "";
       }
@@ -449,7 +452,7 @@
       }
     });
 
-    return import("https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs")
+    return import("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs")
       .then(function (mod) {
         _mermaidModule = mod.default || mod;
         return _mermaidModule;
