@@ -227,14 +227,14 @@ update_compose_image() {
   local file="$1"
   local image="$2"
   local newv="$3"
-  perl_inplace "s/(\\bimage:\\s*\\Q${image}\\E:)[^\\s#]+/\\${1}${newv}/g" "$file"
+  perl_inplace "s{(\\bimage:\\s*\\Q${image}\\E:)[^\\s#]+}{\\${1}${newv}}g" "$file"
 }
 
 update_dockerfile_from() {
   local file="$1"
   local image="$2"
   local newv="$3"
-  perl_inplace "s/(^FROM\\s+\\Q${image}\\E:)[^\\s]+/\\${1}${newv}/mg" "$file"
+  perl_inplace "s{(^FROM\\s+\\Q${image}\\E:)[^\\s]+}{\\${1}${newv}}mg" "$file"
 }
 
 pull_image_if_possible() {

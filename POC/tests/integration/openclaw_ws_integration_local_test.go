@@ -126,7 +126,7 @@ func TestOpenClawWS_AuthenticatedSuccess_Integration(t *testing.T) {
 		}
 		t.Fatalf("dial websocket failed (status=%d): %v", status, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := conn.WriteJSON(openClawWSRequestFrameIntegration{
 		Type:   "req",
@@ -189,7 +189,7 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
 			Type:   "req",
@@ -212,7 +212,7 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
 			Type:   "req",
@@ -250,7 +250,7 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
 			Type:   "req",
@@ -270,7 +270,7 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
 			Type:   "req",
@@ -298,7 +298,7 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
 			Type:   "req",
@@ -339,7 +339,7 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
 			Type:   "req",

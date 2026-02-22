@@ -261,12 +261,12 @@ func (m *MCPServer) handleListObjects(ctx context.Context, id interface{}, args 
 
 	// Build text listing
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("Objects in s3://%s/%s (count: %d):\n", bucket, prefix, len(output.Contents)))
+	fmt.Fprintf(&sb, "Objects in s3://%s/%s (count: %d):\n", bucket, prefix, len(output.Contents))
 	for _, obj := range output.Contents {
-		sb.WriteString(fmt.Sprintf("  %s  (size: %d, modified: %s)\n",
+		fmt.Fprintf(&sb, "  %s  (size: %d, modified: %s)\n",
 			aws.ToString(obj.Key),
 			aws.ToInt64(obj.Size),
-			obj.LastModified.Format(time.RFC3339)))
+			obj.LastModified.Format(time.RFC3339))
 	}
 
 	return JSONRPCResponse{

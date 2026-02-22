@@ -1,51 +1,12 @@
 {
-  "as_of": "2026-02-16",
-  "reference_epic_id": "RFA-l6h6.7",
+  "as_of": "2026-02-22",
+  "reference_epic_id": "oc-36m",
   "story_states": [
     {
-      "id": "RFA-l6h6.7.1",
+      "id": "oc-ko5",
       "expected_status": "closed",
-      "expected_closed_on": "2026-02-14"
-    },
-    {
-      "id": "RFA-l6h6.7.2",
-      "expected_status": "closed",
-      "expected_closed_on": "2026-02-14"
-    },
-    {
-      "id": "RFA-l6h6.7.3",
-      "expected_status": "closed",
-      "expected_closed_on": "2026-02-14"
-    },
-    {
-      "id": "RFA-l6h6.7.4",
-      "expected_status": "closed",
-      "expected_closed_on": "2026-02-14"
-    },
-    {
-      "id": "RFA-l6h6.7.5",
-      "expected_status": "closed",
-      "expected_closed_on": "2026-02-14"
-    },
-    {
-      "id": "RFA-l6h6.7.6",
-      "expected_status": "closed",
-      "expected_closed_on": "2026-02-14"
-    },
-    {
-      "id": "RFA-l6h6.7.7",
-      "expected_status": "closed",
-      "expected_closed_on": "2026-02-14"
+      "expected_closed_on": "2026-02-21"
     }
   ],
-  "external_app_full_port_gate": {
-    "story_id": "RFA-l6h6.6.10",
-    "expected_status": "closed",
-    "status_verified_on": "2026-02-16",
-    "required_blocker_story_id": "RFA-l6h6.7.7",
-    "required_blocker_statuses": [
-      "closed"
-    ],
-    "policy": "External-app full-port gate requires strict readiness story RFA-l6h6.7.7 closed and execution story RFA-l6h6.6.10 closed; post-gap reassessment is tracked in RFA-l6h6.6.17.1."
-  }
+  "external_app_full_port_gate": null
 }

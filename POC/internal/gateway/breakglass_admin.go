@@ -123,13 +123,7 @@ func (g *Gateway) handleBreakGlassRequest(w http.ResponseWriter, r *http.Request
 	if strings.TrimSpace(req.RequestedBy) == "" {
 		req.RequestedBy = middleware.GetSPIFFEID(r.Context())
 	}
-	record, err := g.breakGlass.request(breakGlassRequestInput{
-		IncidentID:  req.IncidentID,
-		Scope:       req.Scope,
-		RequestedBy: req.RequestedBy,
-		Reason:      req.Reason,
-		TTLSeconds:  req.TTLSeconds,
-	})
+	record, err := g.breakGlass.request(breakGlassRequestInput(req))
 	if err != nil {
 		writeBreakGlassError(w, r, "request", err)
 		return
@@ -165,11 +159,7 @@ func (g *Gateway) handleBreakGlassApprove(w http.ResponseWriter, r *http.Request
 	if strings.TrimSpace(req.ApprovedBy) == "" {
 		req.ApprovedBy = middleware.GetSPIFFEID(r.Context())
 	}
-	record, err := g.breakGlass.approve(breakGlassApprovalInput{
-		RequestID:  req.RequestID,
-		ApprovedBy: req.ApprovedBy,
-		Reason:     req.Reason,
-	})
+	record, err := g.breakGlass.approve(breakGlassApprovalInput(req))
 	if err != nil {
 		writeBreakGlassError(w, r, "approve", err)
 		return
@@ -205,11 +195,7 @@ func (g *Gateway) handleBreakGlassActivate(w http.ResponseWriter, r *http.Reques
 	if strings.TrimSpace(req.ActivatedBy) == "" {
 		req.ActivatedBy = middleware.GetSPIFFEID(r.Context())
 	}
-	record, err := g.breakGlass.activate(breakGlassActivateInput{
-		RequestID:   req.RequestID,
-		ActivatedBy: req.ActivatedBy,
-		Reason:      req.Reason,
-	})
+	record, err := g.breakGlass.activate(breakGlassActivateInput(req))
 	if err != nil {
 		writeBreakGlassError(w, r, "activate", err)
 		return
@@ -245,11 +231,7 @@ func (g *Gateway) handleBreakGlassRevert(w http.ResponseWriter, r *http.Request)
 	if strings.TrimSpace(req.RevertedBy) == "" {
 		req.RevertedBy = middleware.GetSPIFFEID(r.Context())
 	}
-	record, err := g.breakGlass.revert(breakGlassRevertInput{
-		RequestID:  req.RequestID,
-		RevertedBy: req.RevertedBy,
-		Reason:     req.Reason,
-	})
+	record, err := g.breakGlass.revert(breakGlassRevertInput(req))
 	if err != nil {
 		writeBreakGlassError(w, r, "revert", err)
 		return

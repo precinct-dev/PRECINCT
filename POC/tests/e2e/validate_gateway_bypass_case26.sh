@@ -35,14 +35,15 @@ count_case26_proof() {
     local log_file="$1"
     local sdk_marker="$2"
     local proof_marker="$3"
-    awk -v sdk="$sdk_marker" -v proof="$proof_marker" '
-        /PRECINCT Gateway -- Go SDK Demo/ {active = (sdk == "go"); in_case = 0}
-        /PRECINCT Gateway -- Python SDK Demo/ {active = (sdk == "python"); in_case = 0}
+    # Strip ANSI escape codes before matching (logs may contain terminal colours)
+    sed 's/\x1b\[[0-9;]*m//g' "$log_file" | awk -v sdk="$sdk_marker" -v proof="$proof_marker" '
+        /Gateway -- Go SDK Demo/ {active = (sdk == "go"); in_case = 0}
+        /Gateway -- Python SDK Demo/ {active = (sdk == "python"); in_case = 0}
         active && /\[26\/28\] Gateway-only path/ {in_case = 1; next}
         in_case && /\[27\/28\]/ {in_case = 0}
         in_case && $0 ~ proof {count++}
         END {print count + 0}
-    ' "$log_file"
+    '
 }
 
 require_file "$compose_log"

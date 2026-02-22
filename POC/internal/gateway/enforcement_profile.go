@@ -170,8 +170,8 @@ func resolveEnforcementProfile(cfg *Config) (*enforcementProfileRuntime, error) 
 		// Enforce HTTPS so the MCP path can only run over TLS transport.
 		if mcpMode == "mcp" {
 			upstream := strings.TrimSpace(cfg.UpstreamURL)
-			switch {
-			case upstream == "":
+			switch upstream {
+			case "":
 				violations = append(violations, "upstream_url must be set in strict profiles when mcp_transport_mode=mcp")
 			default:
 				parsed, err := url.Parse(upstream)

@@ -118,18 +118,21 @@ func newDLPRuleOpsManager() (*dlpRuleOpsManager, middleware.DLPScanner, error) {
 }
 
 func (m *dlpRuleOpsManager) ActiveRuleset() (version string, digest string) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	if m == nil {
 		return "", ""
 	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	return m.version, m.digest
 }
 
 func (m *dlpRuleOpsManager) ActiveRecord() (dlpRulesetRecord, bool) {
+	if m == nil {
+		return dlpRulesetRecord{}, false
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if m == nil || m.activeRulesetID == "" {
+	if m.activeRulesetID == "" {
 		return dlpRulesetRecord{}, false
 	}
 	rec, ok := m.rulesets[m.activeRulesetID]
@@ -140,9 +143,12 @@ func (m *dlpRuleOpsManager) ActiveRecord() (dlpRulesetRecord, bool) {
 }
 
 func (m *dlpRuleOpsManager) CanaryRecord() (dlpRulesetRecord, bool) {
+	if m == nil {
+		return dlpRulesetRecord{}, false
+	}
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	if m == nil || m.canaryRulesetID == "" {
+	if m.canaryRulesetID == "" {
 		return dlpRulesetRecord{}, false
 	}
 	rec, ok := m.rulesets[m.canaryRulesetID]
@@ -153,11 +159,11 @@ func (m *dlpRuleOpsManager) CanaryRecord() (dlpRulesetRecord, bool) {
 }
 
 func (m *dlpRuleOpsManager) Status(rulesetID string) (dlpRulesetRecord, bool) {
-	m.mu.RLock()
-	defer m.mu.RUnlock()
 	if m == nil {
 		return dlpRulesetRecord{}, false
 	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	rec, ok := m.rulesets[strings.TrimSpace(rulesetID)]
 	if !ok {
 		return dlpRulesetRecord{}, false
@@ -166,11 +172,11 @@ func (m *dlpRuleOpsManager) Status(rulesetID string) (dlpRulesetRecord, bool) {
 }
 
 func (m *dlpRuleOpsManager) Create(rulesetID string, content map[string]any, createdBy string) (dlpRulesetRecord, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m == nil {
 		return dlpRulesetRecord{}, fmt.Errorf("ruleops manager unavailable")
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	id := strings.TrimSpace(rulesetID)
 	if id == "" {
 		return dlpRulesetRecord{}, fmt.Errorf("ruleset_id is required")
@@ -263,11 +269,11 @@ func (m *dlpRuleOpsManager) Sign(rulesetID, signature string) (dlpRulesetRecord,
 }
 
 func (m *dlpRuleOpsManager) Promote(rulesetID, mode string) (dlpRulesetRecord, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m == nil {
 		return dlpRulesetRecord{}, fmt.Errorf("ruleops manager unavailable")
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	id := strings.TrimSpace(rulesetID)
 	rec, ok := m.rulesets[id]
 	if !ok {
@@ -324,11 +330,11 @@ func (m *dlpRuleOpsManager) Promote(rulesetID, mode string) (dlpRulesetRecord, e
 }
 
 func (m *dlpRuleOpsManager) Rollback(rulesetID string) (dlpRulesetRecord, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m == nil {
 		return dlpRulesetRecord{}, fmt.Errorf("ruleops manager unavailable")
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	now := time.Now().UTC()
 	targetID := strings.TrimSpace(rulesetID)
 

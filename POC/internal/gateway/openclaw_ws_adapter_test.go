@@ -38,7 +38,7 @@ func TestOpenClawWSGatewayProtocol_AuthenticatedFlow(t *testing.T) {
 		}
 		t.Fatalf("dial websocket failed (status=%d): %v", status, err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	if err := conn.WriteJSON(openClawWSRequestFrame{
 		Type:   "req",
@@ -113,7 +113,7 @@ func TestOpenClawWSGatewayProtocol_AuthzAndMalformedDenied(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrame{
 			Type:   "req",
@@ -140,7 +140,7 @@ func TestOpenClawWSGatewayProtocol_AuthzAndMalformedDenied(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrame{
 			Type:   "req",
@@ -170,7 +170,7 @@ func TestOpenClawWSGatewayProtocol_AuthzAndMalformedDenied(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrame{
 			Type:   "req",
@@ -200,7 +200,7 @@ func TestOpenClawWSGatewayProtocol_AuthzAndMalformedDenied(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrame{
 			Type:   "req",
@@ -246,7 +246,7 @@ func TestOpenClawWSGatewayProtocol_AuthzAndMalformedDenied(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial websocket failed: %v", err)
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 
 		_ = conn.WriteJSON(openClawWSRequestFrame{
 			Type:   "req",

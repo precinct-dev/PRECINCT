@@ -571,7 +571,7 @@ func (g *Gateway) invokeProvider(ctx context.Context, target *url.URL, payload m
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {

@@ -155,7 +155,7 @@ func ruleOpsPost(t *testing.T, url string, payload map[string]any) (int, map[str
 	if err != nil {
 		t.Fatalf("post %s failed: %v", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
@@ -174,7 +174,7 @@ func ruleOpsGet(t *testing.T, url string) (int, map[string]any) {
 	if err != nil {
 		t.Fatalf("get %s failed: %v", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
