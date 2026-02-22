@@ -3568,7 +3568,7 @@ func TestMCPTransport_ReusedCallerID_UsesUniqueWireIDs(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"tools":[{"name":"tavily_search","description":"Search","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string"}}}}]}}`, wireID)))
+			_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":{"tools":[{"name":"tavily_search","description":"Search","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string"}}}}]}}`, wireID)
 		default:
 			w.WriteHeader(http.StatusBadRequest)
 		}

@@ -35,10 +35,6 @@ func (g *Gateway) handleAppHTTPEntry(w http.ResponseWriter, r *http.Request) boo
 	}
 }
 
-func (g *Gateway) handleOpenClawHTTPEntry(w http.ResponseWriter, r *http.Request) bool {
-	return g.handleAppHTTPEntry(w, r)
-}
-
 func (g *Gateway) handleOpenClawResponses(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeV24GatewayError(

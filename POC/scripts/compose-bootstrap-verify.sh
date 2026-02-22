@@ -39,7 +39,7 @@ required=(
 cfg_json="$(docker compose -f "${COMPOSE_FILE}" config --format json)"
 present_services="$(echo "${cfg_json}" | jq -r '.services | keys[]' | sort -u)"
 
-max_wait_sec="${COMPOSE_BOOTSTRAP_VERIFY_TIMEOUT_SEC:-60}"
+max_wait_sec="${COMPOSE_BOOTSTRAP_VERIFY_TIMEOUT_SEC:-180}"
 interval_sec="${COMPOSE_BOOTSTRAP_VERIFY_INTERVAL_SEC:-2}"
 deadline="$(( $(date +%s) + max_wait_sec ))"
 

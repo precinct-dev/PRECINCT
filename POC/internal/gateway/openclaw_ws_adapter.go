@@ -136,12 +136,8 @@ func (g *Gateway) handleAppWSEntry(w http.ResponseWriter, r *http.Request) bool 
 	return true
 }
 
-func (g *Gateway) handleOpenClawWSEntry(w http.ResponseWriter, r *http.Request) bool {
-	return g.handleAppWSEntry(w, r)
-}
-
 func (g *Gateway) serveOpenClawWSConnection(conn *websocket.Conn, req *http.Request) {
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 	conn.SetReadLimit(1 << 20) // 1MB
 
 	spiffeID := strings.TrimSpace(middleware.GetSPIFFEID(req.Context()))

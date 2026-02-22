@@ -16,7 +16,7 @@ TMP_DIR="$(mktemp -d)"
 
 AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/agw}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
-KEYDB_URL="${KEYDB_URL:-redis://localhost:6379}"
+KEYDB_URL="${KEYDB_URL:-redis://127.0.0.1:6379}"
 SPIFFE_ID="${SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/dspy-researcher/dev}"
 IDENTITY_SPIFFE_ID="${IDENTITY_SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/dspy-researcher/dev}"
 

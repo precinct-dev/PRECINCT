@@ -215,7 +215,7 @@ func checkSpireServer(ctx context.Context, cfg Config, deps Deps) ComponentStatu
 }
 
 func checkDockerServiceHealth(ctx context.Context, deps Deps, service string, details map[string]any) ComponentStatus {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
 	containers, err := deps.Docker.PS(ctx)

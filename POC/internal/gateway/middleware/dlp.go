@@ -150,7 +150,7 @@ func computeBuiltInRulesetDigest(s *BuiltInScanner) string {
 	for _, re := range s.suspiciousPatterns {
 		_, _ = h.Write([]byte("suspicious:" + re.String() + "\n"))
 	}
-	_, _ = h.Write([]byte(fmt.Sprintf("custom_pii_checks:%d\n", len(s.customPIIChecks))))
+	_, _ = fmt.Fprintf(h, "custom_pii_checks:%d\n", len(s.customPIIChecks))
 	return "sha256:" + hex.EncodeToString(h.Sum(nil))
 }
 

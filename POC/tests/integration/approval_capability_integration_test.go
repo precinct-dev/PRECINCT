@@ -145,7 +145,7 @@ func approvalAdminPost(t *testing.T, url string, payload map[string]any) (int, m
 	if err != nil {
 		t.Fatalf("post %s failed: %v", url, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	return resp.StatusCode, out
@@ -175,7 +175,7 @@ func callOpenAICompat(t *testing.T, url, spiffeID, sessionID, token string, payl
 	if err != nil {
 		t.Fatalf("call openai compat failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
 	return resp.StatusCode, out

@@ -706,8 +706,6 @@ func (t *toolPlanePolicyEngine) evaluate(req PlaneRequestV2) toolPlaneEvalResult
 				continue
 			}
 		}
-		matchedActionAndResource = true
-
 		if actionRule.RequireStepUp {
 			resultMetadata["requires_step_up"] = true
 			return stepUp(resultMetadata)

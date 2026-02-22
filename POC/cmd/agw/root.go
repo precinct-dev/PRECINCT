@@ -28,7 +28,7 @@ func newRootCmd() *cobra.Command {
 	}
 
 	rootCmd.PersistentFlags().String("gateway-url", "http://localhost:9090", "Gateway base URL")
-	rootCmd.PersistentFlags().String("keydb-url", "redis://localhost:6379", "KeyDB URL (redis://...)")
+	rootCmd.PersistentFlags().String("keydb-url", "redis://127.0.0.1:6379", "KeyDB URL (redis://...)")
 	rootCmd.PersistentFlags().String("phoenix-url", "http://localhost:6006", "Phoenix base URL")
 	rootCmd.PersistentFlags().String("otel-health-url", "http://localhost:13133", "OpenTelemetry Collector health URL")
 	rootCmd.PersistentFlags().String("opa-policy-dir", "config/opa", "Path to OPA policy directory")

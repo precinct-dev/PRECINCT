@@ -85,10 +85,10 @@ func CheckPoisoning(description string) []string {
 func GenerateRegistryEntry(name, description, hash, riskLevel string, requiresStepUp bool, schema map[string]interface{}, allowedDestinations []string) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("  # %s - registered %s\n", name, time.Now().Format("2006-01-02")))
-	sb.WriteString(fmt.Sprintf("  - name: %q\n", name))
-	sb.WriteString(fmt.Sprintf("    description: %q\n", description))
-	sb.WriteString(fmt.Sprintf("    hash: %q  # SHA-256 (RFA-fu1)\n", hash))
+	fmt.Fprintf(&sb, "  # %s - registered %s\n", name, time.Now().Format("2006-01-02"))
+	fmt.Fprintf(&sb, "  - name: %q\n", name)
+	fmt.Fprintf(&sb, "    description: %q\n", description)
+	fmt.Fprintf(&sb, "    hash: %q  # SHA-256 (RFA-fu1)\n", hash)
 
 	// Write input_schema as nested YAML
 	sb.WriteString("    input_schema:\n")
@@ -98,12 +98,12 @@ func GenerateRegistryEntry(name, description, hash, riskLevel string, requiresSt
 	if len(allowedDestinations) > 0 {
 		sb.WriteString("    allowed_destinations:\n")
 		for _, dest := range allowedDestinations {
-			sb.WriteString(fmt.Sprintf("      - %q\n", dest))
+			fmt.Fprintf(&sb, "      - %q\n", dest)
 		}
 	}
 
-	sb.WriteString(fmt.Sprintf("    risk_level: %q\n", riskLevel))
-	sb.WriteString(fmt.Sprintf("    requires_step_up: %t\n", requiresStepUp))
+	fmt.Fprintf(&sb, "    risk_level: %q\n", riskLevel)
+	fmt.Fprintf(&sb, "    requires_step_up: %t\n", requiresStepUp)
 
 	return sb.String()
 }
@@ -195,12 +195,12 @@ func formatYAMLValue(v interface{}) string {
 func GenerateGrantsEntry(name, description string) string {
 	var sb strings.Builder
 
-	sb.WriteString(fmt.Sprintf("  # Grant template for %s - registered %s\n", name, time.Now().Format("2006-01-02")))
+	fmt.Fprintf(&sb, "  # Grant template for %s - registered %s\n", name, time.Now().Format("2006-01-02"))
 	sb.WriteString("  # TODO: Replace placeholder SPIFFE pattern with actual agent identity\n")
 	sb.WriteString("  - spiffe_pattern: \"spiffe://poc.local/agents/mcp-client/*/dev\"\n")
-	sb.WriteString(fmt.Sprintf("    description: \"Grant for %s - %s\"\n", name, description))
+	fmt.Fprintf(&sb, "    description: \"Grant for %s - %s\"\n", name, description)
 	sb.WriteString("    allowed_tools:\n")
-	sb.WriteString(fmt.Sprintf("      - %s\n", name))
+	fmt.Fprintf(&sb, "      - %s\n", name)
 	sb.WriteString("    max_data_classification: internal\n")
 	sb.WriteString("    requires_approval_for: []\n")
 

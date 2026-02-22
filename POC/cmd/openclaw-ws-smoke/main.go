@@ -139,7 +139,7 @@ func executeProbe(report *probeReport, timeout time.Duration) error {
 		}
 		return fmt.Errorf("websocket dial failed: %w", err)
 	}
-	defer conn.Close()
+	defer func() { _ = conn.Close() }()
 
 	connectReq := wsRequestFrame{
 		Type:   "req",
@@ -204,16 +204,13 @@ func executeProbe(report *probeReport, timeout time.Duration) error {
 func writeReport(report probeReport, outputPath string) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	target := os.Stdout
-
 	if strings.TrimSpace(outputPath) != "" {
 		file, err := os.Create(outputPath)
 		if err != nil {
 			return fmt.Errorf("create output file: %w", err)
 		}
-		defer file.Close()
-		target = file
-		encoder = json.NewEncoder(target)
+		defer func() { _ = file.Close() }()
+		encoder = json.NewEncoder(file)
 		encoder.SetIndent("", "  ")
 	}
 

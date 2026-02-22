@@ -32,17 +32,6 @@ func (m *mockGuardClient) ClassifyContent(ctx context.Context, content string) (
 	}, nil
 }
 
-type mockApprovalVerifier struct {
-	validate func(token string, expected ApprovalScope) (*ApprovalCapabilityClaims, error)
-}
-
-func (m *mockApprovalVerifier) ValidateAndConsume(token string, expected ApprovalScope) (*ApprovalCapabilityClaims, error) {
-	if m.validate != nil {
-		return m.validate(token, expected)
-	}
-	return nil, ErrApprovalTokenInvalid
-}
-
 // --- Helper functions ---
 
 func defaultRiskConfig() *RiskConfig {

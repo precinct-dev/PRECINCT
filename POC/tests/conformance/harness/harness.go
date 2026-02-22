@@ -750,7 +750,7 @@ func postJSON(baseURL, path, spiffeID string, payload map[string]any) (int, map[
 	if err != nil {
 		return 0, nil, fmt.Errorf("post request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)
@@ -837,7 +837,7 @@ func checkGatewayReachable(gatewayURL string) error {
 	if err != nil {
 		return fmt.Errorf("live gateway unreachable at %s: %w", gatewayURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 500 {
 		return fmt.Errorf("live gateway health check returned %d", resp.StatusCode)
 	}

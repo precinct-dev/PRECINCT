@@ -274,7 +274,7 @@ func TestTransport_Send_ReusedCallerID_UniqueWireIDs(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Mcp-Session-Id", "test-session-reused-id")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock","version":"1.0"}}}`, reqID)))
+			_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":{"protocolVersion":"2025-03-26","capabilities":{},"serverInfo":{"name":"mock","version":"1.0"}}}`, reqID)
 		case "notifications/initialized":
 			w.WriteHeader(http.StatusOK)
 		case "tools/call":
@@ -288,7 +288,7 @@ func TestTransport_Send_ReusedCallerID_UniqueWireIDs(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"result":{"ok":true}}`, reqID)))
+			_, _ = fmt.Fprintf(w, `{"jsonrpc":"2.0","id":%d,"result":{"ok":true}}`, reqID)
 		default:
 			w.WriteHeader(http.StatusBadRequest)
 		}
