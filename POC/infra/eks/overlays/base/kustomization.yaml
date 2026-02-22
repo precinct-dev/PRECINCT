@@ -15,6 +15,7 @@ kind: Kustomization
 resources:
   - ../../gateway
   - ../../mcp-server
+  - ../../content-scanner
 
 labels:
   - pairs:

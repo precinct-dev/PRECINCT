@@ -82,6 +82,9 @@ type Config struct {
 	// Explicit SPIFFE identity allowlist for /admin/* endpoints. Requests from
 	// principals outside this list are denied with 403.
 	AdminAuthzAllowedSPIFFEIDs []string
+	// Path to extension registry YAML for pluggable extension slots.
+	// When empty, no extension slots are activated (zero overhead).
+	ExtensionRegistryPath string
 	// Explicit SPIFFE identity allowlist for upstream mTLS peer pinning.
 	// When empty in strict profiles, secure defaults are applied.
 	UpstreamAuthzAllowedSPIFFEIDs []string
@@ -334,6 +337,7 @@ func ConfigFromEnv() *Config {
 		ModelPolicyIntentPrependEnabled: modelPolicyIntentPrependEnabled,
 		ProfileMetadataExportPath:       strings.TrimSpace(os.Getenv("PROFILE_METADATA_EXPORT_PATH")),
 		EnforcementControlOverrides:     true,
+		ExtensionRegistryPath:           getEnvOrDefault("EXTENSION_REGISTRY_PATH", ""),
 		DemoRugpullAdminEnabled:         demoRugpullAdminEnabled,
 		AdminAuthzAllowedSPIFFEIDs:      adminAuthzAllowedSPIFFEIDs,
 		UpstreamAuthzAllowedSPIFFEIDs:   upstreamAuthzAllowedSPIFFEIDs,

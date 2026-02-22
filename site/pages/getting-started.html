@@ -21,7 +21,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="../css/style.css">
-  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
   <script src="../js/main.js" defer></script>
 </head>
 <body>
@@ -69,7 +68,17 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="getting-started.html" class="nav-link active">Getting Started</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem" class="active">Getting Started</a></li>
+          </ul>
+        </li>
       </ul>
 
       <div class="nav-actions">
@@ -244,8 +253,8 @@
           <section id="docker-compose">
             <h2>Option 1: Docker Compose (Recommended for First Run)</h2>
             <p>
-              Docker Compose is the fastest way to get PRECINCT running. The entire stack &mdash;
-              gateway, SPIRE, OPA, mock MCP servers, and observability &mdash; comes up with a
+              Docker Compose is the fastest way to get PRECINCT running. The entire stack
+              (gateway, SPIRE, OPA, mock MCP servers, and observability) comes up with a
               few <code>make</code> commands.
             </p>
 
@@ -338,7 +347,7 @@ make k8s-up
                 Expected Behavior
               </div>
               <p>
-                The third request &mdash; without an <code>X-SPIFFE-ID</code> header &mdash; will
+                The third request (without an <code>X-SPIFFE-ID</code> header) will
                 return <code>spiffe_auth_required</code>. This is by design. Every request to the
                 PRECINCT gateway must carry a verifiable workload identity.
               </p>
@@ -355,33 +364,33 @@ make k8s-up
 
             <ol>
               <li>
-                <strong>Identity</strong> &mdash; Send a request without a SPIFFE ID. The gateway
+                <strong>Identity:</strong> Send a request without a SPIFFE ID. The gateway
                 returns <code>spiffe_auth_required</code>, confirming that unauthenticated requests
                 are rejected at layer 3.
               </li>
               <li>
-                <strong>Authorization</strong> &mdash; Send a request with a valid but unauthorized
+                <strong>Authorization:</strong> Send a request with a valid but unauthorized
                 SPIFFE ID. The gateway returns <code>authz_policy_denied</code>, confirming that
                 OPA policy evaluation at layer 6 blocks the request.
               </li>
               <li>
-                <strong>DLP</strong> &mdash; Send a request body containing an AWS access key
+                <strong>DLP:</strong> Send a request body containing an AWS access key
                 (e.g., <code>AKIAIOSFODNN7EXAMPLE</code>). The gateway returns
                 <code>dlp_credentials_detected</code>, confirming that the DLP scanner at layer 7
                 blocks credential exfiltration.
               </li>
               <li>
-                <strong>Tool Registry</strong> &mdash; Request an unknown tool name. The gateway
+                <strong>Tool Registry:</strong> Request an unknown tool name. The gateway
                 returns <code>tool_not_in_registry</code>, confirming that only registered and
                 hash-verified tools may be invoked.
               </li>
               <li>
-                <strong>Rate Limiting</strong> &mdash; Send a burst of rapid requests. The gateway
+                <strong>Rate Limiting:</strong> Send a burst of rapid requests. The gateway
                 returns HTTP <code>429 Too Many Requests</code>, confirming that per-identity
                 token-bucket enforcement at layer 11 is active.
               </li>
               <li>
-                <strong>Audit</strong> &mdash; Check gateway logs for hash-chained JSONL audit
+                <strong>Audit:</strong> Check gateway logs for hash-chained JSONL audit
                 events. Each event contains a unique decision ID and a cryptographic hash linking
                 it to the previous event, providing tamper-evident audit trails.
               </li>
@@ -524,6 +533,16 @@ make k8s-up
           <!-- ========== Next Steps ========== -->
           <section id="next-steps">
             <h2>Next Steps</h2>
+
+            <div class="callout-box">
+              <h3>PRECINCT is running. Now what?</h3>
+              <p>
+                Follow the <a href="integration-guide.html">Integration Guide</a> to connect
+                your existing agent to PRECINCT in 4 steps: register identity, register
+                tools, write a policy, and route traffic.
+              </p>
+            </div>
+
             <p>
               Now that you have a running stack, dive deeper into the architecture, compliance
               mappings, and production deployment guides.
@@ -549,7 +568,7 @@ make k8s-up
               <div class="card">
                 <h3 class="mt-0">Case Study</h3>
                 <p>
-                  See how OpenClaw &mdash; a real agentic AI application &mdash; was secured by
+                  See how OpenClaw, a real agentic AI application, was secured by
                   PRECINCT without any code changes.
                 </p>
                 <p><a href="case-study.html">Read the Case Study &rarr;</a></p>
@@ -581,15 +600,15 @@ make k8s-up
             <h2>Get Help</h2>
             <ul>
               <li>
-                <strong>GitHub Issues</strong> &mdash;
+                <strong>GitHub Issues:</strong>
                 <a href="https://github.com/RamXX/agentic_reference_architecture/issues" target="_blank" rel="noopener noreferrer">github.com/RamXX/agentic_reference_architecture/issues</a>
               </li>
               <li>
-                <strong>Full documentation</strong> &mdash; available in the repository
+                <strong>Full documentation:</strong> available in the repository
                 <code>docs/</code> directory.
               </li>
               <li>
-                <strong>Architecture specification</strong> &mdash;
+                <strong>Architecture specification:</strong>
                 <code>precinct-reference-architecture.md</code> in the repository root.
               </li>
             </ul>

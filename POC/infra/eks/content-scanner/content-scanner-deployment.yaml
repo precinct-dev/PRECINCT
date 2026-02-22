@@ -1,0 +1,69 @@
+# ------------------------------------------------------------------------------
+# Content Scanner Deployment
+# Story: RFA-hyk
+#
+# Deploys the content-scanner extension sidecar in the "tools" namespace.
+# The content scanner inspects MCP tool call payloads for prompt injection,
+# dangerous code patterns, and credential leaks. It runs as a post_inspection
+# extension called by the gateway via the extension registry.
+#
+# Key design decisions:
+#   - Single replica for POC
+#   - Uses the existing mcp-tool service account (shared with mcp-server)
+#   - Non-root, read-only root filesystem, restricted security context
+#   - Listens on port 8085 (matches docker-compose upstream)
+#   - Lightweight resource limits (scanner is a small Go binary)
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: content-scanner
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: content-scanner
+    app.kubernetes.io/component: extension-sidecar
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: content-scanner
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: content-scanner
+        app.kubernetes.io/component: extension-sidecar
+    spec:
+      serviceAccountName: mcp-tool
+      containers:
+        - name: content-scanner
+          image: registry:5000/poc-content-scanner:latest
+          ports:
+            - containerPort: 8085
+              name: http
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 10001
+            capabilities:
+              drop: ["ALL"]

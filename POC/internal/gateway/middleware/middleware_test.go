@@ -72,6 +72,69 @@ func TestMiddlewareChainOrder(t *testing.T) {
 	}
 }
 
+// TestMiddlewareChainOrderWithExtensions verifies that extension slots execute
+// at the correct positions relative to core middleware. The three slots are:
+//   - post_authz: after OPA (6), before DLP (7)
+//   - post_inspection: after DLP (7), before Session (8)
+//   - post_analysis: after DeepScan (10), before RateLimit (11)
+func TestMiddlewareChainOrderWithExtensions(t *testing.T) {
+	var executionOrder []string
+
+	track := func(name string) func(http.Handler) http.Handler {
+		return func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				executionOrder = append(executionOrder, name)
+				next.ServeHTTP(w, r)
+			})
+		}
+	}
+
+	var handler http.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		executionOrder = append(executionOrder, "handler")
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Apply in reverse order (innermost first) -- mirrors gateway.go Handler().
+	handler = track("token_sub")(handler)      // 13
+	handler = track("circuit_breaker")(handler) // 12
+	handler = track("rate_limit")(handler)      // 11
+	handler = track("deep_scan")(handler)       // 10
+	handler = track("post_analysis")(handler)   // extension slot
+	handler = track("step_up")(handler)         // 9
+	handler = track("session")(handler)         // 8
+	handler = track("post_inspection")(handler) // extension slot
+	handler = track("dlp")(handler)             // 7
+	handler = track("opa")(handler)             // 6
+	handler = track("post_authz")(handler)      // extension slot
+	handler = track("registry")(handler)        // 5
+	handler = track("audit")(handler)           // 4
+	handler = track("spiffe")(handler)          // 3
+	handler = track("body")(handler)            // 2
+	handler = track("size")(handler)            // 1
+	handler = track("metrics")(handler)         // 0
+
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString("test"))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	expected := []string{
+		"metrics", "size", "body", "spiffe", "audit", "registry",
+		"post_authz", "opa", "dlp", "post_inspection",
+		"session", "step_up", "post_analysis",
+		"deep_scan", "rate_limit", "circuit_breaker", "token_sub", "handler",
+	}
+
+	if len(executionOrder) != len(expected) {
+		t.Fatalf("Expected %d middleware, got %d: %v", len(expected), len(executionOrder), executionOrder)
+	}
+
+	for i, name := range expected {
+		if executionOrder[i] != name {
+			t.Errorf("Position %d: expected %s, got %s", i, name, executionOrder[i])
+		}
+	}
+}
+
 // TestRequestSizeLimit verifies size limit enforcement at step 1.
 // RFA-zxf: The size check must happen in this middleware (step 1), not in
 // body_capture (step 2). The middleware returns a GatewayError JSON response

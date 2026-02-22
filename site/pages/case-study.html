@@ -21,7 +21,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="../css/style.css">
-  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
   <script src="../js/main.js" defer></script>
 </head>
 <body>
@@ -69,7 +68,17 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link active">Case Study</a></li>
-        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
       </ul>
 
       <div class="nav-actions">
@@ -118,6 +127,7 @@
                 <li><a href="#policy-contrast">Policy Contrast</a></li>
                 <li><a href="#the-only-code-change">The Only Code Change</a></li>
                 <li><a href="#what-this-proves">What This Proves</a></li>
+                <li><a href="#agent-implementations">Agent Implementations</a></li>
                 <li><a href="#the-numbers">The Numbers</a></li>
               </ul>
             </div>
@@ -148,6 +158,7 @@
                 <li><a href="#policy-contrast">Policy Contrast</a></li>
                 <li><a href="#the-only-code-change">The Only Code Change</a></li>
                 <li><a href="#what-this-proves">What This Proves</a></li>
+                <li><a href="#agent-implementations">Agent Implementations</a></li>
                 <li><a href="#the-numbers">The Numbers</a></li>
               </ul>
             </div>
@@ -164,9 +175,17 @@
 
           <p class="lead">
             This is the story of how PRECINCT secured a real, production-capable AI assistant
-            framework &mdash; one with shell access, browser automation, and connections to 13+
-            messaging channels &mdash; without modifying a single line of its source code.
+            framework (one with shell access, browser automation, and connections to 13+
+            messaging channels) without modifying a single line of its source code.
           </p>
+
+            <p class="callout-note">
+              <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer">OpenClaw</a>
+              is a personal AI assistant that operates across multiple channels -- HTTP API, WebSocket,
+              and command-line interfaces. It was chosen as the PRECINCT case study because it represents
+              a complex, real-world agentic application: it has shell access, invokes potentially dangerous tools,
+              and manages multi-turn conversations -- exactly the kind of agent that needs governance.
+            </p>
 
           <!-- ========== The Challenge ========== -->
           <section id="the-challenge">
@@ -177,14 +196,14 @@
               local-first personal assistant with an impressive range of capabilities:
             </p>
             <ul>
-              <li>Connects to <strong>13+ messaging channels</strong> &mdash; WhatsApp, Telegram, Slack, Discord, Signal, iMessage, and more</li>
+              <li>Connects to <strong>13+ messaging channels</strong> including WhatsApp, Telegram, Slack, Discord, Signal, iMessage, and more</li>
               <li>Direct access to <strong>shell commands</strong> and <strong>file systems</strong></li>
               <li><strong>Browser automation</strong> for web interaction</li>
               <li><strong>Arbitrary tool execution</strong> with no built-in restrictions</li>
             </ul>
             <p>
               OpenClaw is a powerful tool for personal use. But it was designed as a local-first
-              personal assistant &mdash; <strong>not with enterprise security in mind</strong>. In a
+              personal assistant, <strong>not with enterprise security in mind</strong>. In a
               corporate environment, deploying it without governance would be a non-starter. An
               application that can execute arbitrary shell commands, read any file, and communicate
               across a dozen external channels represents an unacceptable risk surface without
@@ -196,8 +215,8 @@
                 The Core Problem
               </div>
               <p>
-                How do you bring enterprise-grade security to an application that was never designed for it
-                &mdash; without forking it, patching it, or adding security middleware inside its codebase?
+                How do you bring enterprise-grade security to an application that was never designed for it,
+                without forking it, patching it, or adding security middleware inside its codebase?
               </p>
             </div>
           </section>
@@ -213,7 +232,7 @@
               Instead of modifying OpenClaw to understand policies, identities, or audit requirements,
               we wrote a thin adapter layer that translates OpenClaw's application protocols into the
               gateway's enforcement model. From OpenClaw's perspective, it is talking to its normal
-              backend services. It does not know &mdash; and does not need to know &mdash; that every
+              backend services. It does not know (and does not need to know) that every
               request is being evaluated against 13 layers of security middleware before it reaches
               its destination.
             </p>
@@ -236,7 +255,7 @@
             </ul>
             <p>
               OpenClaw runs as its upstream maintainers ship it. We track their releases and pull
-              updates without merge conflicts because there is nothing to merge &mdash; we have
+              updates without merge conflicts because there is nothing to merge; we have
               changed nothing in their repository.
             </p>
           </section>
@@ -254,8 +273,8 @@
               Handles two HTTP endpoints that OpenClaw uses for its core operations:
             </p>
             <ul>
-              <li><code>/v1/responses</code> &mdash; Model inference requests, routed through the gateway's full policy mediation chain</li>
-              <li><code>/tools/invoke</code> &mdash; Tool execution requests, subject to admission decisions by the gateway's tool policy engine</li>
+              <li><code>/v1/responses</code>: Model inference requests, routed through the gateway's full policy mediation chain</li>
+              <li><code>/tools/invoke</code>: Tool execution requests, subject to admission decisions by the gateway's tool policy engine</li>
             </ul>
 
             <h3>WebSocket Adapter <code>openclaw_ws_adapter.go</code></h3>
@@ -263,7 +282,7 @@
               Manages persistent WebSocket connections for OpenClaw's real-time features:
             </p>
             <ul>
-              <li><code>/openclaw/ws</code> &mdash; Persistent connection for device management, health monitoring, and event streaming</li>
+              <li><code>/openclaw/ws</code>: Persistent connection for device management, health monitoring, and event streaming</li>
               <li>Role-based access control: <strong>operator</strong> role grants broad access; <strong>node</strong> role requires device identity presentation</li>
             </ul>
 
@@ -274,8 +293,8 @@
             </p>
             <ul>
               <li>Request parsing and validation against expected schemas</li>
-              <li>Policy target resolution &mdash; mapping OpenClaw's tool names to gateway policy identifiers</li>
-              <li>Dangerous tool blocking at admission &mdash; shell, exec, and session management tools are flagged before they reach the middleware chain</li>
+              <li>Policy target resolution, mapping OpenClaw's tool names to gateway policy identifiers</li>
+              <li>Dangerous tool blocking at admission: shell, exec, and session management tools are flagged before they reach the middleware chain</li>
             </ul>
           </section>
 
@@ -337,7 +356,7 @@ sequenceDiagram
 
             <div class="card-grid card-grid-2">
               <div class="card">
-                <h3 class="mt-0"><code>tavily_search</code> &mdash; Allowed</h3>
+                <h3 class="mt-0"><code>tavily_search</code> -- Allowed</h3>
                 <ul>
                   <li>Risk classification: <strong>medium</strong></li>
                   <li>Session risk score impact: +3</li>
@@ -350,7 +369,7 @@ sequenceDiagram
                 </p>
               </div>
               <div class="card">
-                <h3 class="mt-0"><code>bash</code> &mdash; Denied</h3>
+                <h3 class="mt-0"><code>bash</code> -- Denied</h3>
                 <ul>
                   <li>Risk classification: <strong>critical</strong></li>
                   <li>Session risk score impact: +8</li>
@@ -424,14 +443,14 @@ sequenceDiagram
             <ol>
               <li>
                 <strong>The adapter pattern is the key insight.</strong>
-                Each application integration is a thin translation layer &mdash; approximately 800
-                lines of Go &mdash; that maps the application's protocols to the gateway's
+                Each application integration is a thin translation layer (approximately 800
+                lines of Go) that maps the application's protocols to the gateway's
                 enforcement model. The application remains unmodified.
               </li>
               <li>
                 <strong>The gateway is shared infrastructure.</strong>
                 The 13-layer middleware chain, the policy engine, the audit system, the identity
-                verification &mdash; none of these change when you onboard a new application.
+                verification: none of these change when you onboard a new application.
                 They are shared infrastructure that every adapter reuses.
               </li>
               <li>
@@ -441,7 +460,7 @@ sequenceDiagram
               </li>
               <li>
                 <strong>Security controls evolve independently.</strong>
-                OpenTelemetry metrics, structured logging, OPA v1 policy support &mdash; all of
+                OpenTelemetry metrics, structured logging, OPA v1 policy support; all of
                 these were added to the gateway without any changes to OpenClaw or its adapter.
                 The application benefits from improved security without being aware of it.
               </li>
@@ -452,6 +471,57 @@ sequenceDiagram
                 compliance posture for organizations running multiple agentic AI applications.
               </li>
             </ol>
+          </section>
+
+          <!-- ========== Agent Implementations ========== -->
+          <section id="agent-implementations">
+            <h2>Agent Implementations</h2>
+            <p>
+              Beyond OpenClaw, PRECINCT supports any agent framework through its SDK. The following
+              examples show how popular Python agent frameworks integrate with PRECINCT's governance layer.
+            </p>
+
+            <h3 id="dspy-agent">DSPy Research Agent</h3>
+            <p>
+              The <a href="https://dspy.ai/" target="_blank" rel="noopener noreferrer">DSPy</a> research agent demonstrates
+              how a structured LLM programming framework integrates with PRECINCT's governance layer.
+              The agent uses DSPy's module system for prompt optimization while the PRECINCT SDK handles
+              identity and policy enforcement transparently.
+            </p>
+            <pre><code class="language-python"># agents/dspy_researcher/agent.py
+import dspy
+from mcp_gateway_sdk import GatewayClient
+
+# DSPy handles prompt optimization; PRECINCT handles governance
+client = GatewayClient()  # Auto-discovers SPIFFE identity
+
+class ResearchAgent(dspy.Module):
+    def forward(self, query: str):
+        # All tool calls routed through the governed gateway
+        result = client.call_tool("web_search", {"query": query})
+        return dspy.Prediction(answer=result)</code></pre>
+
+            <h3 id="pydanticai-agent">PydanticAI Research Agent</h3>
+            <p>
+              The <a href="https://ai.pydantic.dev/" target="_blank" rel="noopener noreferrer">PydanticAI</a> agent
+              showcases type-safe, structured-output integration with PRECINCT. PydanticAI's agent framework
+              provides schema validation while the PRECINCT gateway enforces runtime policy.
+            </p>
+            <pre><code class="language-python"># agents/pydantic_researcher/agent.py
+from pydantic_ai import Agent
+from mcp_gateway_sdk import GatewayClient
+
+client = GatewayClient()  # SPIFFE identity auto-injected
+
+agent = Agent(
+    "openai:gpt-4o",
+    system_prompt="You are a research assistant.",
+)
+
+@agent.tool
+async def search(ctx, query: str) -> str:
+    """Search via the governed gateway."""
+    return await client.call_tool_async("web_search", {"query": query})</code></pre>
           </section>
 
           <!-- ========== The Numbers ========== -->
@@ -507,9 +577,20 @@ sequenceDiagram
               </div>
               <p>
                 800 lines of adapter code. Zero lines of application modification. Full enterprise
-                security governance &mdash; identity, authorization, audit, DLP, step-up gating,
-                and compliance evidence &mdash; applied to an application that was never designed
+                security governance (identity, authorization, audit, DLP, step-up gating,
+                and compliance evidence) applied to an application that was never designed
                 for it.
+              </p>
+            </div>
+          </section>
+
+          <!-- ========== Connect Your Agent ========== -->
+          <section>
+            <div class="callout-box">
+              <h3>Want to do this with your agent?</h3>
+              <p>
+                The <a href="integration-guide.html">Integration Guide</a> distills this
+                pattern into 4 concrete steps you can follow for any agent.
               </p>
             </div>
           </section>

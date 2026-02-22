@@ -13,7 +13,6 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 
   <link rel="stylesheet" href="../css/style.css">
-  <script type="module" src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs"></script>
   <script src="../js/main.js" defer></script>
 </head>
 <body>
@@ -61,7 +60,17 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="getting-started.html" class="nav-link">Getting Started</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
       </ul>
 
       <div class="nav-actions">
@@ -155,9 +164,16 @@
         <!-- Main Content -->
         <main class="layout-main content">
 
-          <h1>SPIFFE/SPIRE &mdash; Workload Identity</h1>
+          <h1>SPIFFE/SPIRE: Workload Identity</h1>
+            <p class="callout-note">
+              <a href="https://spiffe.io/" target="_blank" rel="noopener noreferrer">SPIFFE</a> (Secure Production Identity Framework for Everyone)
+              is the <a href="https://www.cncf.io/" target="_blank" rel="noopener noreferrer">CNCF</a> standard for workload identity.
+              <a href="https://github.com/spiffe/spire" target="_blank" rel="noopener noreferrer">SPIRE</a> is its production-ready implementation.
+              Together, they provide the cryptographic identity foundation that PRECINCT uses
+              to authenticate every agent, tool, and service in the system.
+            </p>
           <p class="lead">
-            Every workload in PRECINCT &mdash; agents, gateways, sidecars, secret stores &mdash;
+            Every workload in PRECINCT (agents, gateways, sidecars, and secret stores)
             receives a cryptographically verifiable identity through SPIFFE and SPIRE.
             No static secrets. No shared tokens. Identity is <em>attested</em>, not <em>asserted</em>.
           </p>
@@ -169,8 +185,8 @@
             <h2>Why SPIFFE for Agentic AI</h2>
             <p>
               AI agents are ephemeral, autonomous, and potentially adversarial. Traditional
-              credential management &mdash; static API keys, long-lived tokens, manually provisioned
-              certificates &mdash; cannot keep pace with workloads that spin up, execute, and
+              credential management (static API keys, long-lived tokens, and manually provisioned
+              certificates) cannot keep pace with workloads that spin up, execute, and
               terminate in seconds. SPIFFE was designed for exactly this world.
             </p>
 
@@ -254,7 +270,7 @@ graph TB
               </div>
               <p>
                 Workloads consume SVIDs through a Unix Domain Socket (UDS) exposed by the
-                SPIRE Agent. No network call is required to obtain identity credentials &mdash;
+                SPIRE Agent. No network call is required to obtain identity credentials;
                 the agent delivers them locally via the Workload API.
               </p>
             </div>
@@ -329,23 +345,23 @@ graph TB
 
             <ul>
               <li>
-                <strong>SPIRE Server container</strong> &mdash; runs the registration API and
+                <strong>SPIRE Server container:</strong> runs the registration API and
                 certificate authority. Stores registration entries in SQLite.
               </li>
               <li>
-                <strong>SPIRE Agent container</strong> &mdash; attests workloads on the Docker
+                <strong>SPIRE Agent container:</strong> attests workloads on the Docker
                 host using <code>docker:label</code> selectors for workload attestation.
               </li>
               <li>
-                <strong>Token Generator (one-shot init)</strong> &mdash; creates a join token and
+                <strong>Token Generator (one-shot init):</strong> creates a join token and
                 passes it to the agent at startup. Exits after token delivery.
               </li>
               <li>
-                <strong>Join token attestation</strong> &mdash; used for development environments
+                <strong>Join token attestation:</strong> used for development environments
                 where node attestation via platform-specific attestors is not available.
               </li>
               <li>
-                <strong><code>docker:label</code> selectors</strong> &mdash; the workload attestor
+                <strong><code>docker:label</code> selectors:</strong> the workload attestor
                 matches running containers by their Docker labels to determine which SPIFFE ID
                 to issue.
               </li>
@@ -389,21 +405,21 @@ services:
 
             <ul>
               <li>
-                <strong>SPIRE Server as StatefulSet</strong> &mdash; deployed in the
+                <strong>SPIRE Server as StatefulSet:</strong> deployed in the
                 <code>spire-system</code> namespace with persistent storage for the datastore
                 and generated keys.
               </li>
               <li>
-                <strong>SPIRE Agent as DaemonSet</strong> &mdash; runs on every node in the
+                <strong>SPIRE Agent as DaemonSet:</strong> runs on every node in the
                 cluster, ensuring that any pod on any node can obtain an SVID.
               </li>
               <li>
-                <strong><code>k8s_psat</code> attestation</strong> &mdash; for managed Kubernetes
+                <strong><code>k8s_psat</code> attestation:</strong> for managed Kubernetes
                 (EKS, GKE, AKS), the agent uses projected service account tokens for node and
                 workload attestation. This is the recommended approach for production.
               </li>
               <li>
-                <strong><code>join_token</code> fallback</strong> &mdash; for Docker Desktop
+                <strong><code>join_token</code> fallback:</strong> for Docker Desktop
                 Kubernetes or local clusters where <code>k8s_psat</code> is not available,
                 join token attestation provides a functional alternative.
               </li>

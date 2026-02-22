@@ -200,7 +200,7 @@ phoenix-reset: ## Stop Phoenix stack and destroy trace data
 # Demos (E2E)
 # ---------------------------------------------------------------------------
 
-.PHONY: demo demo-compose demo-compose-strict-observability demo-k8s
+.PHONY: demo demo-compose demo-compose-strict-observability demo-k8s demo-extensions
 
 demo: ## Run E2E demo (Docker Compose + K8s)
 	@bash demo/run.sh compose
@@ -214,6 +214,10 @@ demo-compose-strict-observability: ## Run E2E demo (Docker Compose) with strict 
 
 demo-k8s: ## Run E2E demo (K8s)
 	@bash demo/run.sh k8s
+
+demo-extensions: ## Run E2E demo for gateway extension slots (assumes Compose stack is running)
+	@docker build -f demo/content-scanner/Dockerfile -t poc-content-scanner:latest demo/content-scanner/
+	@bash tests/e2e/scenario_h_extensions.sh
 
 # ---------------------------------------------------------------------------
 # Kubernetes (Docker Desktop K8s + local registry)
@@ -241,6 +245,9 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	docker build -f docker/Dockerfile.spike-keeper -t spike-keeper:latest .
 	docker tag spike-keeper:latest $(LOCAL_REGISTRY)/spike-keeper:latest
 	docker push $(LOCAL_REGISTRY)/spike-keeper:latest
+	docker build -f demo/content-scanner/Dockerfile -t poc-content-scanner:latest demo/content-scanner/
+	docker tag poc-content-scanner:latest $(LOCAL_REGISTRY)/poc-content-scanner:latest
+	docker push $(LOCAL_REGISTRY)/poc-content-scanner:latest
 	$(MAKE) k8s-prereqs
 	@echo "Cleaning up completed SPIKE jobs for re-apply..."
 	-kubectl -n spike-system delete job spike-bootstrap --ignore-not-found 2>/dev/null

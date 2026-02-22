@@ -1,0 +1,21 @@
+# PRECINCT Extension Registry -- Content Scanner Demo
+# Configures the content-scanner sidecar in the post_inspection slot.
+# Used by Docker Compose: EXTENSION_REGISTRY_PATH=/config/extensions-demo.yaml
+version: "1"
+extensions:
+  - name: "content_scanner"
+    slot: "post_inspection"
+    enabled: true
+    endpoint: "http://content-scanner:8085/scan"
+    timeout_ms: 2000
+    fail_mode: "fail_open"
+    priority: 100
+    description: "Content scanner sidecar for prompt injection, dangerous code, and credential leak detection"
+    filters:
+      methods: ["tools/call"]
+      tools: []
+    request_fields:
+      include_body: true
+      include_spiffe_id: true
+      include_tool_name: true
+      include_security_flags: true

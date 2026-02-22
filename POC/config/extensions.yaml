@@ -1,0 +1,6 @@
+# PRECINCT Extension Registry
+# Extensions are HTTP sidecar services called at named slots in the middleware chain.
+# Valid slots: post_authz, post_inspection, post_analysis
+# Hot-reloaded via fsnotify. Optional Ed25519 signature verification.
+version: "1"
+extensions: []

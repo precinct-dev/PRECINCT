@@ -435,6 +435,30 @@ services:
     tmpfs:
       - /tmp
 
+  # Content Scanner - Extension slot sidecar for post_inspection content analysis
+  # Pluggable pattern-based scanner detecting prompt injection, dangerous code,
+  # and credential leakage. Reference implementation of the extension protocol.
+  content-scanner:
+    build:
+      context: ./demo/content-scanner
+      dockerfile: Dockerfile
+    container_name: content-scanner
+    hostname: content-scanner
+    networks:
+      - tool-plane
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8085/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
   # PRECINCT Gateway - Security enforcement point for all MCP requests
   mcp-security-gateway:
     build:
@@ -459,6 +483,8 @@ services:
                                     # MCP transport auto-detection on first request.
       mock-guard-model:
         condition: service_healthy  # RFA-6fse.3: Deep scan uses mock guard model for deterministic demos.
+      content-scanner:
+        condition: service_healthy  # Extension slot: content scanner sidecar for post_inspection
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
       - ./config:/config:ro  # Mount config directory for OPA policies and tool registry
@@ -505,6 +531,7 @@ services:
       - DLP_INJECTION_POLICY=${DLP_INJECTION_POLICY:-}  # RFA-sd7: Override DLP injection policy ("block" or "flag", default: use YAML config)
       - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}    # RFA-8ak: Demo-friendly rate limit (code default 600 is too generous for burst test)
       - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}  # RFA-8ak: Small burst bucket so 200-call test triggers 429 quickly
+      - EXTENSION_REGISTRY_PATH=/config/extensions-demo.yaml  # Extension slot: content scanner sidecar
     networks:
       - agentic-net
       - tool-plane
