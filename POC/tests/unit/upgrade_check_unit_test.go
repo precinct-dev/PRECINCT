@@ -63,4 +63,3 @@ func TestUpgradeCheck_ExtractImages(t *testing.T) {
 		t.Fatalf("expected otel-collector image in phoenix compose extraction; got:\n%s", out2)
 	}
 }
-

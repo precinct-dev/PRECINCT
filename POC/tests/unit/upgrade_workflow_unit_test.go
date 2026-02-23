@@ -53,4 +53,3 @@ func TestUpgrade_SnapshotRoundtrip(t *testing.T) {
 	}
 	runUpgradeScript(t, "--_test_snapshot_roundtrip", f)
 }
-
