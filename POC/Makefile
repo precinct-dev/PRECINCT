@@ -613,6 +613,9 @@ test-spike-seeder-groq: ## Integration test: validate Groq API key seeding into 
 test-gateway-spike-key: ## Integration test: validate gateway fetches Groq API key from SPIKE at startup (requires running stack)
 	@bash tests/integration/test_gateway_spike_key.sh
 
+test-guard-model-e2e: ## E2E test: validate full Groq API key chain (.env -> seeder -> SPIKE -> gateway -> guard model -> real score)
+	@bash tests/e2e/test_guard_model_e2e.sh
+
 test-opa:
 	@if command -v opa >/dev/null 2>&1; then \
 		opa test config/opa/ -v; \
