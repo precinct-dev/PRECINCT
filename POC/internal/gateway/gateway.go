@@ -107,8 +107,91 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize DLP RuleOps manager: %w", err)
 	}
+
+	// RFA-a2y.1 + RFA-uln: Create secret redeemer (SPIKE Nexus for production, POC for dev/test).
+	// SPIKE Nexus requires mTLS for ALL endpoints (including secret get/put).
+	// When SPIFFE_ENDPOINT_SOCKET is set (Docker Compose), we create an X509Source
+	// from the SPIRE Workload API so the redeemer presents a valid client cert.
+	// NOTE: If SPIKE_NEXUS_URL is configured, we require SPIRE Workload API access.
+	// Falling back to InsecureSkipVerify breaks SPIKE's mTLS security model and
+	// will deterministically fail with 401 (no client cert presented).
+	var spikeRedeemer middleware.SecretRedeemer
+	if cfg.SPIKENexusURL != "" {
+		if os.Getenv("SPIFFE_ENDPOINT_SOCKET") == "" {
+			return nil, fmt.Errorf("SPIKE_NEXUS_URL is set but SPIFFE_ENDPOINT_SOCKET is empty; cannot perform SPIKE Nexus mTLS")
+		}
+
+		var spikeX509 *workloadapi.X509Source
+
+		// Obtain an X509Source for SPIKE Nexus mTLS. We keep the source for the
+		// gateway lifetime (closed via redeemer.Close()) so SVID rotation continues.
+		//
+		// NewX509Source can return before a workload SVID is available; wait up to
+		// a bounded timeout for the first SVID so startup failures are clear.
+		x509Src, err := workloadapi.NewX509Source(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create X509Source for SPIKE Nexus mTLS: %w", err)
+		}
+		start := time.Now()
+		for {
+			if svid, err := x509Src.GetX509SVID(); err == nil {
+				slog.Info("SPIKE Nexus mTLS: using client SVID", "svid_id", svid.ID)
+				break
+			}
+			if time.Since(start) > 30*time.Second {
+				_ = x509Src.Close()
+				return nil, fmt.Errorf("SPIKE Nexus mTLS: timed out waiting for SPIRE workload SVID (30s)")
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+		spikeX509 = x509Src
+		slog.Info("SPIKE Nexus: mTLS configured via SPIRE X509Source")
+
+		// devMode=true when x509Source is nil (no SPIRE agent) -- auto-populate OwnerID.
+		// Even with mTLS, SPIKE Nexus v0.8.0 may not return owner metadata,
+		// so devMode is always true in the Docker Compose POC.
+		spikeRedeemer = middleware.NewSPIKENexusRedeemer(cfg.SPIKENexusURL, spikeX509, true)
+	} else {
+		// Fallback to POC redeemer (Phase 1 behavior with deterministic mock secrets).
+		// NOTE (RFA-7ct): Without SPIKE Nexus, the POC redeemer does not populate
+		// OwnerID, so ValidateTokenOwnership will reject tokens with empty OwnerID.
+		// This is intentional - production deployments MUST configure SPIKE_NEXUS_URL.
+		spikeRedeemer = middleware.NewPOCSecretRedeemer()
+	}
+
+	// RFA-bci: Attempt to fetch the guard model API key from SPIKE at startup.
+	// This allows the gateway to load secrets from a centralized vault (SPIKE Nexus)
+	// rather than relying solely on environment variables.
+	guardAPIKey := cfg.GuardAPIKey // env var fallback
+	if nexusRedeemer, ok := spikeRedeemer.(*middleware.SPIKENexusRedeemer); ok {
+		fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		token := &middleware.SPIKEToken{Ref: "groq-api-key"}
+		secret, err := nexusRedeemer.RedeemSecret(fetchCtx, token)
+		fetchCancel() // immediately, NOT defer
+		if err == nil && secret.Value != "" {
+			guardAPIKey = secret.Value
+			slog.Info("guard model API key loaded from SPIKE", "path", "groq-api-key")
+		} else if err != nil {
+			slog.Warn("failed to load guard model API key from SPIKE, falling back to env", "error", err)
+		}
+	}
+
+	// RFA-bci: Dual-mode endpoint switching. When a real API key is available
+	// and the current endpoint points to the mock guard model, switch to the
+	// real Groq API endpoint so the guard model uses production inference.
+	if guardAPIKey != "" && strings.Contains(cfg.GuardModelEndpoint, "mock-guard-model") {
+		cfg.GuardModelEndpoint = "https://api.groq.com/openai/v1"
+		slog.Info("guard model endpoint switched to real Groq API")
+	}
+
+	// RFA-bci: Warn when no guard model API key is available from any source.
+	// The guard model will degrade to fail-open mode for step-up gating.
+	if guardAPIKey == "" {
+		slog.Warn("no guard model API key available from SPIKE or environment; step-up guard will degrade to fail-open")
+	}
+
 	deepScanner := middleware.NewDeepScannerWithConfig(middleware.DeepScannerConfig{
-		APIKey:       cfg.GuardAPIKey,
+		APIKey:       guardAPIKey,
 		Timeout:      time.Duration(cfg.DeepScanTimeout) * time.Second,
 		FallbackMode: cfg.DeepScanFallback,
 		Auditor:      auditor,
@@ -155,7 +238,8 @@ func New(cfg *Config) (*Gateway, error) {
 	handleStore := NewHandleStore(time.Duration(cfg.HandleTTL) * time.Second)
 
 	// RFA-qq0.17: Create step-up gating components
-	groqGuardClient := middleware.NewGroqGuardClient(cfg.GroqAPIKey, time.Duration(cfg.DeepScanTimeout)*time.Second)
+	// RFA-bci: Use resolved guardAPIKey (SPIKE -> env fallback) instead of cfg.GroqAPIKey
+	groqGuardClient := middleware.NewGroqGuardClient(guardAPIKey, time.Duration(cfg.DeepScanTimeout)*time.Second)
 
 	// Load destination allowlist (fall back to defaults if file not found)
 	var destinationAllowlist *middleware.DestinationAllowlist
@@ -218,57 +302,6 @@ func New(cfg *Config) (*Gateway, error) {
 		uiConfig,
 		auditor,
 	)
-
-	// RFA-a2y.1 + RFA-uln: Create secret redeemer (SPIKE Nexus for production, POC for dev/test).
-	// SPIKE Nexus requires mTLS for ALL endpoints (including secret get/put).
-	// When SPIFFE_ENDPOINT_SOCKET is set (Docker Compose), we create an X509Source
-	// from the SPIRE Workload API so the redeemer presents a valid client cert.
-	// NOTE: If SPIKE_NEXUS_URL is configured, we require SPIRE Workload API access.
-	// Falling back to InsecureSkipVerify breaks SPIKE's mTLS security model and
-	// will deterministically fail with 401 (no client cert presented).
-	var spikeRedeemer middleware.SecretRedeemer
-	if cfg.SPIKENexusURL != "" {
-		if os.Getenv("SPIFFE_ENDPOINT_SOCKET") == "" {
-			return nil, fmt.Errorf("SPIKE_NEXUS_URL is set but SPIFFE_ENDPOINT_SOCKET is empty; cannot perform SPIKE Nexus mTLS")
-		}
-
-		var spikeX509 *workloadapi.X509Source
-
-		// Obtain an X509Source for SPIKE Nexus mTLS. We keep the source for the
-		// gateway lifetime (closed via redeemer.Close()) so SVID rotation continues.
-		//
-		// NewX509Source can return before a workload SVID is available; wait up to
-		// a bounded timeout for the first SVID so startup failures are clear.
-		x509Src, err := workloadapi.NewX509Source(context.Background())
-		if err != nil {
-			return nil, fmt.Errorf("failed to create X509Source for SPIKE Nexus mTLS: %w", err)
-		}
-		start := time.Now()
-		for {
-			if svid, err := x509Src.GetX509SVID(); err == nil {
-				slog.Info("SPIKE Nexus mTLS: using client SVID", "svid_id", svid.ID)
-				break
-			}
-			if time.Since(start) > 30*time.Second {
-				_ = x509Src.Close()
-				return nil, fmt.Errorf("SPIKE Nexus mTLS: timed out waiting for SPIRE workload SVID (30s)")
-			}
-			time.Sleep(250 * time.Millisecond)
-		}
-		spikeX509 = x509Src
-		slog.Info("SPIKE Nexus: mTLS configured via SPIRE X509Source")
-
-		// devMode=true when x509Source is nil (no SPIRE agent) -- auto-populate OwnerID.
-		// Even with mTLS, SPIKE Nexus v0.8.0 may not return owner metadata,
-		// so devMode is always true in the Docker Compose POC.
-		spikeRedeemer = middleware.NewSPIKENexusRedeemer(cfg.SPIKENexusURL, spikeX509, true)
-	} else {
-		// Fallback to POC redeemer (Phase 1 behavior with deterministic mock secrets).
-		// NOTE (RFA-7ct): Without SPIKE Nexus, the POC redeemer does not populate
-		// OwnerID, so ValidateTokenOwnership will reject tokens with empty OwnerID.
-		// This is intentional - production deployments MUST configure SPIKE_NEXUS_URL.
-		spikeRedeemer = middleware.NewPOCSecretRedeemer()
-	}
 
 	// RFA-lo1.4: Configure cosign-blob attestation for registry hot-reload.
 	// When TOOL_REGISTRY_PUBLIC_KEY is set, it should be a path to a PEM file

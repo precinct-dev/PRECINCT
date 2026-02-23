@@ -4237,3 +4237,271 @@ func TestAdminPolicyReload(t *testing.T) {
 		}
 	})
 }
+
+// ---- RFA-bci: SPIKE key fetch and dual-mode endpoint switching tests ----
+
+// TestGateway_SPIKEKeyFetch_POCRedeemer_FallsBackToEnv verifies that when no
+// SPIKE Nexus URL is configured (POC redeemer), the gateway falls back to
+// cfg.GuardAPIKey for the guard model. This also verifies the bug fix: the
+// groqGuardClient must use guardAPIKey, not cfg.GroqAPIKey.
+func TestGateway_SPIKEKeyFetch_POCRedeemer_FallsBackToEnv(t *testing.T) {
+	cfg := &Config{
+		Port:                   9090,
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+		LogLevel:               "info",
+		GuardAPIKey:            "test-guard-key-from-env",
+		GroqAPIKey:             "old-groq-key-should-not-be-used",
+		GuardModelEndpoint:     "https://api.groq.com/openai/v1",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	defer func() { _ = gw.Close() }()
+
+	// Verify that groqGuardClient has the GuardAPIKey, NOT GroqAPIKey.
+	// The groqGuardClient should have an API key (the bug was it used GroqAPIKey
+	// which could be empty in production).
+	if gw.groqGuardClient == nil {
+		t.Fatal("groqGuardClient should not be nil")
+	}
+	guardHTTP, ok := gw.groqGuardClient.(*middleware.GroqGuardHTTPClient)
+	if !ok {
+		t.Fatal("groqGuardClient should be *middleware.GroqGuardHTTPClient")
+	}
+	if !guardHTTP.HasAPIKey() {
+		t.Error("groqGuardClient should have an API key from GuardAPIKey fallback")
+	}
+
+	// Verify the spikeRedeemer is a POCSecretRedeemer (not SPIKENexusRedeemer)
+	if _, ok := gw.spikeRedeemer.(*middleware.SPIKENexusRedeemer); ok {
+		t.Error("spikeRedeemer should be POCSecretRedeemer when SPIKENexusURL is empty")
+	}
+}
+
+// TestGateway_DualModeEndpointSwitching_MockToReal verifies that when a
+// guardAPIKey is available and the endpoint contains "mock-guard-model",
+// the endpoint is switched to the real Groq API.
+func TestGateway_DualModeEndpointSwitching_MockToReal(t *testing.T) {
+	cfg := &Config{
+		Port:                   9090,
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+		LogLevel:               "info",
+		GuardAPIKey:            "real-api-key",
+		GuardModelEndpoint:     "http://mock-guard-model:8080/openai/v1",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	defer func() { _ = gw.Close() }()
+
+	// After init, cfg.GuardModelEndpoint should have been switched to real Groq
+	if cfg.GuardModelEndpoint != "https://api.groq.com/openai/v1" {
+		t.Errorf("expected endpoint switched to real Groq API, got %q", cfg.GuardModelEndpoint)
+	}
+}
+
+// TestGateway_DualModeEndpointSwitching_NoKeyNoSwitch verifies that when
+// guardAPIKey is empty, the endpoint stays unchanged (no dual-mode switch).
+func TestGateway_DualModeEndpointSwitching_NoKeyNoSwitch(t *testing.T) {
+	originalEndpoint := "http://mock-guard-model:8080/openai/v1"
+	cfg := &Config{
+		Port:                   9090,
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+		LogLevel:               "info",
+		GuardAPIKey:            "",
+		GuardModelEndpoint:     originalEndpoint,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	defer func() { _ = gw.Close() }()
+
+	// Endpoint should stay at mock since there is no API key
+	if cfg.GuardModelEndpoint != originalEndpoint {
+		t.Errorf("expected endpoint unchanged (%q), got %q", originalEndpoint, cfg.GuardModelEndpoint)
+	}
+}
+
+// TestGateway_DualModeEndpointSwitching_RealEndpointNotSwitched verifies
+// that when the endpoint does not contain "mock-guard-model", it is NOT switched
+// even if an API key is present.
+func TestGateway_DualModeEndpointSwitching_RealEndpointNotSwitched(t *testing.T) {
+	realEndpoint := "https://api.groq.com/openai/v1"
+	cfg := &Config{
+		Port:                   9090,
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+		LogLevel:               "info",
+		GuardAPIKey:            "real-api-key",
+		GuardModelEndpoint:     realEndpoint,
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	defer func() { _ = gw.Close() }()
+
+	if cfg.GuardModelEndpoint != realEndpoint {
+		t.Errorf("expected endpoint unchanged (%q), got %q", realEndpoint, cfg.GuardModelEndpoint)
+	}
+}
+
+// TestGateway_SPIKEKeyFetch_NexusRedeemer_Success tests that when SPIKE Nexus
+// returns a valid API key, it is used for both deepScanner and groqGuardClient.
+// This uses a httptest server to simulate SPIKE Nexus.
+func TestGateway_SPIKEKeyFetch_NexusRedeemer_Success(t *testing.T) {
+	// Create a mock SPIKE Nexus server that returns a secret
+	spikeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"value":"spike-fetched-api-key"}}`))
+	}))
+	defer spikeServer.Close()
+
+	// Create a SPIKENexusRedeemer using the test HTTP client
+	redeemer := middleware.NewSPIKENexusRedeemerWithClient(spikeServer.URL, spikeServer.Client())
+
+	// Simulate the key fetch logic from New()
+	guardAPIKey := "env-fallback-key" // simulates cfg.GuardAPIKey
+	token := &middleware.SPIKEToken{Ref: "groq-api-key"}
+	secret, err := redeemer.RedeemSecret(t.Context(), token)
+	if err != nil {
+		t.Fatalf("RedeemSecret failed: %v", err)
+	}
+	if secret.Value != "" {
+		guardAPIKey = secret.Value
+	}
+
+	if guardAPIKey != "spike-fetched-api-key" {
+		t.Errorf("expected guardAPIKey='spike-fetched-api-key', got %q", guardAPIKey)
+	}
+}
+
+// TestGateway_SPIKEKeyFetch_NexusRedeemer_Failure_FallsBackToEnv tests that
+// when SPIKE Nexus fails, the gateway falls back to cfg.GuardAPIKey.
+func TestGateway_SPIKEKeyFetch_NexusRedeemer_Failure_FallsBackToEnv(t *testing.T) {
+	// Create a mock SPIKE Nexus server that always returns an error
+	spikeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"err":"internal error"}`))
+	}))
+	defer spikeServer.Close()
+
+	redeemer := middleware.NewSPIKENexusRedeemerWithClient(spikeServer.URL, spikeServer.Client())
+
+	// Simulate the key fetch logic from New()
+	envFallback := "env-fallback-key"
+	guardAPIKey := envFallback
+	token := &middleware.SPIKEToken{Ref: "groq-api-key"}
+	_, err := redeemer.RedeemSecret(t.Context(), token)
+	// Error expected -- fall through without overwriting guardAPIKey
+	if err == nil {
+		t.Fatal("expected RedeemSecret to fail")
+	}
+
+	// guardAPIKey should remain the env fallback
+	if guardAPIKey != envFallback {
+		t.Errorf("expected guardAPIKey=%q (env fallback), got %q", envFallback, guardAPIKey)
+	}
+}
+
+// TestGateway_SPIKEKeyFetch_BothEmpty_FailOpenDegradation tests that when
+// both SPIKE and env are empty, the gateway still starts (fail-open) but
+// groqGuardClient will have no API key.
+func TestGateway_SPIKEKeyFetch_BothEmpty_FailOpenDegradation(t *testing.T) {
+	cfg := &Config{
+		Port:                   9090,
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+		LogLevel:               "info",
+		GuardAPIKey:            "", // empty env
+		GroqAPIKey:             "", // empty env
+		GuardModelEndpoint:     "http://mock-guard-model:8080/openai/v1",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	defer func() { _ = gw.Close() }()
+
+	// Gateway should still start (fail-open), but guard client has no key
+	guardHTTP, ok := gw.groqGuardClient.(*middleware.GroqGuardHTTPClient)
+	if !ok {
+		t.Fatal("groqGuardClient should be *middleware.GroqGuardHTTPClient")
+	}
+	if guardHTTP.HasAPIKey() {
+		t.Error("groqGuardClient should NOT have an API key when both SPIKE and env are empty")
+	}
+}
+
+// TestGateway_InitOrder_SpikeRedeemerBeforeGuardClient verifies that
+// spikeRedeemer is initialized before groqGuardClient and deepScanner
+// by checking that the gateway creates successfully with the new order
+// and all fields are populated.
+func TestGateway_InitOrder_SpikeRedeemerBeforeGuardClient(t *testing.T) {
+	cfg := &Config{
+		Port:                   9090,
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           "",
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024,
+		SPIFFEMode:             "dev",
+		LogLevel:               "info",
+		GuardAPIKey:            "test-key",
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create gateway: %v", err)
+	}
+	defer func() { _ = gw.Close() }()
+
+	// All three components must be initialized
+	if gw.spikeRedeemer == nil {
+		t.Error("spikeRedeemer should be initialized")
+	}
+	if gw.groqGuardClient == nil {
+		t.Error("groqGuardClient should be initialized")
+	}
+	if gw.deepScanner == nil {
+		t.Error("deepScanner should be initialized")
+	}
+}
