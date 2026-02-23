@@ -549,9 +549,6 @@ services:
       - MCP_TRANSPORT_MODE=${MCP_TRANSPORT_MODE:-mcp}  # RFA-5u9: "mcp" (default) or "proxy" (backward compat reverse proxy)
       # Strict transport profile example (Compose): set SPIFFE_MODE=prod, ENFORCEMENT_PROFILE=prod_standard,
       # MCP_TRANSPORT_MODE=mcp, and UPSTREAM_URL=https://<spiffe-mtls-upstream>/mcp.
-      # Demo determinism: do NOT inherit host GROQ_API_KEY. Step-up gating should be unconfigured
-      # in demo-compose so we can deterministically demonstrate deep scan blocking at step 10.
-      - GROQ_API_KEY=
       - DEEP_SCAN_TIMEOUT=${DEEP_SCAN_TIMEOUT:-5}  # RFA-o9z: Deep scan API timeout in seconds
       - DEEP_SCAN_FALLBACK=${DEEP_SCAN_FALLBACK:-fail_closed}  # RFA-o9z: "fail_closed" (default) or "fail_open"
       # Demo determinism: always point the deep scan guard model to the local mock service.
