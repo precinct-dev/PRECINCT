@@ -493,7 +493,7 @@ production-readiness-validate: security-scan-strict security-scan-validate ## St
 # Hidden targets (functional but not shown in make help)
 # ---------------------------------------------------------------------------
 
-.PHONY: setup register-spire k8s-register-spire test-integration test-opa build build-images
+.PHONY: setup register-spire k8s-register-spire test-integration test-opa test-gateway-spike-key build build-images
 .PHONY: compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave
 .PHONY: k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry
 
@@ -609,6 +609,9 @@ test-integration:
 
 test-spike-seeder-groq: ## Integration test: validate Groq API key seeding into SPIKE (requires running stack)
 	@bash tests/integration/test_spike_seeder_groq.sh
+
+test-gateway-spike-key: ## Integration test: validate gateway fetches Groq API key from SPIKE at startup (requires running stack)
+	@bash tests/integration/test_gateway_spike_key.sh
 
 test-opa:
 	@if command -v opa >/dev/null 2>&1; then \
