@@ -1,0 +1,42 @@
+# Dockerfile for spike-bootstrap with idempotency guard (RFA-w78)
+#
+# The upstream spike-bootstrap image is distroless and has no idempotency:
+# re-running against an already-initialized Nexus causes an infinite verify
+# loop. This image layers a Go binary (bootstrap-guard) that runs /bootstrap
+# as a subprocess with a timeout.
+#
+# Fresh system: bootstrap completes in <10s, guard exits with bootstrap's code.
+# Already initialized: bootstrap hangs in verify loop, guard kills it after
+# BOOTSTRAP_TIMEOUT seconds and exits 0 (idempotent).
+
+# ============================================================================
+# Stage 1: Build the bootstrap-guard binary
+# ============================================================================
+FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS builder
+
+RUN apk add --no-cache ca-certificates git
+
+WORKDIR /build
+
+# Cache dependency download
+COPY go.mod go.sum ./
+ENV GOTOOLCHAIN=auto
+RUN go mod download && go mod verify
+
+COPY . .
+
+# Static binary -- spike-bootstrap image is distroless (no libc)
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/bootstrap-guard \
+    ./cmd/bootstrap-guard
+
+# ============================================================================
+# Stage 2: Runtime -- spike-bootstrap + idempotency guard
+# ============================================================================
+FROM ghcr.io/spiffe/spike-bootstrap:0.8.0@sha256:9a726930d6ae8ed67279d0cb19c219f14ebe3c84b30251774eb2b34ce5adc537
+
+COPY --from=builder /build/bootstrap-guard /usr/local/bin/bootstrap-guard
+
+ENTRYPOINT ["/usr/local/bin/bootstrap-guard"]
