@@ -246,6 +246,7 @@ services:
   # Uses the official SPIKE Pilot CLI ('spike secret put' / 'spike policy create') instead
   # of the custom Go binary. Seeds ref "deadbeef" with a test value so demo test 18 can
   # prove full SPIKE token redemption end-to-end.
+  # RFA-cjc: Also seeds 'groq-api-key' from .env for step-up guard model access.
   spike-secret-seeder:
     image: ghcr.io/spiffe/spike-pilot:0.8.0@sha256:86b26666c171c5284c522bfb42f16473c85be6f3e3e32b1e3deaa8cd5a18eaff
     container_name: spike-secret-seeder
@@ -256,6 +257,7 @@ services:
         condition: service_completed_successfully  # RFA-oyg: root key must be delivered before seeding secrets
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
+      - ./.env:/run/secrets/env:ro  # RFA-cjc: Mount .env as secret file (not env_file) so docker compose config cannot reveal key values
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - SPIKE_NEXUS_API_URL=https://spike-nexus:8443
@@ -266,6 +268,12 @@ services:
     command:
       - |
         set -eu
+        # RFA-cjc: Source .env from mounted secret file to keep keys out of docker compose config
+        if [ -f /run/secrets/env ]; then
+          set -a
+          . /run/secrets/env
+          set +a
+        fi
         echo 'spike-seeder: waiting for SPIKE Nexus readiness...'
         sleep 5
         echo 'spike-seeder: seeding ref=deadbeef'
@@ -291,6 +299,33 @@ services:
 
         if [ "$$seeded" -ne 1 ]; then
           echo 'spike-seeder: warning: failed to seed deadbeef after retries (continuing for POC compatibility)'
+        fi
+
+        # RFA-cjc: Seed Groq API key for step-up guard model (late-binding via SPIKE)
+        if [ -n "$${GROQ_API_KEY:-}" ]; then
+          echo 'spike-seeder: seeding groq-api-key'
+          groq_seeded=0
+          attempt=1
+          while [ "$$attempt" -le "$$max_attempts" ]; do
+            echo "spike-seeder: groq-api-key put attempt $$attempt/$$max_attempts"
+            GROQ_OUT="$$(spike secret put groq-api-key "value=$$GROQ_API_KEY" 2>&1 || true)"
+
+            if ! echo "$$GROQ_OUT" | grep -qi "Error:"; then
+              groq_seeded=1
+              break
+            fi
+
+            attempt=$$((attempt + 1))
+            sleep 2
+          done
+
+          if [ "$$groq_seeded" -eq 1 ]; then
+            echo 'spike-seeder: groq-api-key seeded successfully'
+          else
+            echo 'spike-seeder: warning: failed to seed groq-api-key after retries (step-up guard will degrade to fail-open)'
+          fi
+        else
+          echo 'spike-seeder: GROQ_API_KEY not set, skipping guard model key seeding (step-up guard will degrade to fail-open)'
         fi
 
         echo 'spike-seeder: creating gateway-read ACL policy'
