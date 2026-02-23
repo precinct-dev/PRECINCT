@@ -607,6 +607,9 @@ register-spire:
 test-integration:
 	go test -tags=integration ./tests/integration/... -v -timeout 60s
 
+test-spike-seeder-groq: ## Integration test: validate Groq API key seeding into SPIKE (requires running stack)
+	@bash tests/integration/test_spike_seeder_groq.sh
+
 test-opa:
 	@if command -v opa >/dev/null 2>&1; then \
 		opa test config/opa/ -v; \
