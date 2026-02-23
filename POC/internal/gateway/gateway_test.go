@@ -4377,11 +4377,14 @@ func TestGateway_DualModeEndpointSwitching_RealEndpointNotSwitched(t *testing.T)
 }
 
 // TestGateway_SPIKEKeyFetch_NexusRedeemer_Success tests that when SPIKE Nexus
-// returns a valid API key, it is used for both deepScanner and groqGuardClient.
-// This uses a httptest server to simulate SPIKE Nexus.
+// returns a valid API key on the first attempt, the retry loop breaks immediately
+// and the key is used. Exercises the RFA-cuh retry loop with immediate success.
 func TestGateway_SPIKEKeyFetch_NexusRedeemer_Success(t *testing.T) {
-	// Create a mock SPIKE Nexus server that returns a secret
+	var attempts atomic.Int32
+
+	// Create a mock SPIKE Nexus server that returns a secret on first attempt
 	spikeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"data":{"value":"spike-fetched-api-key"}}`))
@@ -4391,27 +4394,132 @@ func TestGateway_SPIKEKeyFetch_NexusRedeemer_Success(t *testing.T) {
 	// Create a SPIKENexusRedeemer using the test HTTP client
 	redeemer := middleware.NewSPIKENexusRedeemerWithClient(spikeServer.URL, spikeServer.Client())
 
-	// Simulate the key fetch logic from New()
-	guardAPIKey := "env-fallback-key" // simulates cfg.GuardAPIKey
+	// Simulate the RFA-cuh retry loop from New()
+	const maxAttempts = 15
+	envFallback := "env-fallback-key"
+	guardAPIKey := envFallback
 	token := &middleware.SPIKEToken{Ref: "groq-api-key"}
-	secret, err := redeemer.RedeemSecret(t.Context(), token)
-	if err != nil {
-		t.Fatalf("RedeemSecret failed: %v", err)
-	}
-	if secret.Value != "" {
-		guardAPIKey = secret.Value
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		secret, err := redeemer.RedeemSecret(t.Context(), token)
+		if err == nil && secret.Value != "" {
+			guardAPIKey = secret.Value
+			break
+		}
+		// Would sleep in production; skip in tests
 	}
 
 	if guardAPIKey != "spike-fetched-api-key" {
 		t.Errorf("expected guardAPIKey='spike-fetched-api-key', got %q", guardAPIKey)
 	}
+
+	// RFA-cuh: Verify only 1 attempt was needed (no unnecessary retries)
+	if got := attempts.Load(); got != 1 {
+		t.Errorf("expected 1 attempt for immediate success, got %d", got)
+	}
+}
+
+// TestGateway_SPIKEKeyFetch_NexusRedeemer_RetryThenSuccess tests the RFA-cuh
+// retry loop: first N attempts return empty values (seeder not ready), then
+// a subsequent attempt succeeds with a real key.
+func TestGateway_SPIKEKeyFetch_NexusRedeemer_RetryThenSuccess(t *testing.T) {
+	var attempts atomic.Int32
+	const emptyAttempts = 3 // first 3 attempts return empty (seeder not ready)
+
+	// Create a mock SPIKE Nexus server that returns empty for first N attempts,
+	// then returns a real key (simulates spike-secret-seeder finishing)
+	spikeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := int(attempts.Add(1))
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if n <= emptyAttempts {
+			// RFA-hgj: seeder not ready yet, SPIKE returns empty value
+			_, _ = w.Write([]byte(`{"data":{"value":""}}`))
+		} else {
+			_, _ = w.Write([]byte(`{"data":{"value":"spike-key-after-retry"}}`))
+		}
+	}))
+	defer spikeServer.Close()
+
+	redeemer := middleware.NewSPIKENexusRedeemerWithClient(spikeServer.URL, spikeServer.Client())
+
+	// Simulate the RFA-cuh retry loop from New()
+	const maxAttempts = 15
+	envFallback := "env-fallback-key"
+	guardAPIKey := envFallback
+	token := &middleware.SPIKEToken{Ref: "groq-api-key"}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		secret, err := redeemer.RedeemSecret(t.Context(), token)
+		if err == nil && secret.Value != "" {
+			guardAPIKey = secret.Value
+			break
+		}
+		// Would sleep in production; skip in tests
+	}
+
+	if guardAPIKey != "spike-key-after-retry" {
+		t.Errorf("expected guardAPIKey='spike-key-after-retry', got %q", guardAPIKey)
+	}
+
+	// Verify exactly emptyAttempts+1 attempts were made
+	if got := attempts.Load(); got != int32(emptyAttempts+1) {
+		t.Errorf("expected %d attempts (3 empty + 1 success), got %d", emptyAttempts+1, got)
+	}
+}
+
+// TestGateway_SPIKEKeyFetch_NexusRedeemer_AllAttemptsExhausted tests the RFA-cuh
+// retry loop when all attempts are exhausted: the gateway falls back to cfg.GuardAPIKey.
+func TestGateway_SPIKEKeyFetch_NexusRedeemer_AllAttemptsExhausted(t *testing.T) {
+	var attempts atomic.Int32
+
+	// Create a mock SPIKE Nexus server that always returns empty value
+	// (simulates spike-secret-seeder never finishing within the retry window)
+	spikeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"value":""}}`))
+	}))
+	defer spikeServer.Close()
+
+	redeemer := middleware.NewSPIKENexusRedeemerWithClient(spikeServer.URL, spikeServer.Client())
+
+	// Simulate the RFA-cuh retry loop from New() with a small maxAttempts for test speed
+	const maxAttempts = 5 // smaller than production 15 for test speed
+	envFallback := "env-fallback-key"
+	guardAPIKey := envFallback
+	token := &middleware.SPIKEToken{Ref: "groq-api-key"}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		secret, err := redeemer.RedeemSecret(t.Context(), token)
+		if err == nil && secret.Value != "" {
+			guardAPIKey = secret.Value
+			break
+		}
+		// Would sleep in production; skip in tests
+	}
+
+	// guardAPIKey should remain the env fallback since all attempts returned empty
+	if guardAPIKey != envFallback {
+		t.Errorf("expected guardAPIKey=%q (env fallback after exhausted attempts), got %q", envFallback, guardAPIKey)
+	}
+
+	// Verify all attempts were made
+	if got := attempts.Load(); got != int32(maxAttempts) {
+		t.Errorf("expected %d attempts (all exhausted), got %d", maxAttempts, got)
+	}
 }
 
 // TestGateway_SPIKEKeyFetch_NexusRedeemer_Failure_FallsBackToEnv tests that
-// when SPIKE Nexus fails, the gateway falls back to cfg.GuardAPIKey.
+// when SPIKE Nexus returns errors on all attempts, the gateway falls back to
+// cfg.GuardAPIKey. Exercises the RFA-cuh retry loop error path.
 func TestGateway_SPIKEKeyFetch_NexusRedeemer_Failure_FallsBackToEnv(t *testing.T) {
+	var attempts atomic.Int32
+
 	// Create a mock SPIKE Nexus server that always returns an error
 	spikeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
 		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = w.Write([]byte(`{"err":"internal error"}`))
 	}))
@@ -4419,19 +4527,83 @@ func TestGateway_SPIKEKeyFetch_NexusRedeemer_Failure_FallsBackToEnv(t *testing.T
 
 	redeemer := middleware.NewSPIKENexusRedeemerWithClient(spikeServer.URL, spikeServer.Client())
 
-	// Simulate the key fetch logic from New()
+	// Simulate the RFA-cuh retry loop from New()
+	const maxAttempts = 5 // smaller than production 15 for test speed
 	envFallback := "env-fallback-key"
 	guardAPIKey := envFallback
 	token := &middleware.SPIKEToken{Ref: "groq-api-key"}
-	_, err := redeemer.RedeemSecret(t.Context(), token)
-	// Error expected -- fall through without overwriting guardAPIKey
-	if err == nil {
-		t.Fatal("expected RedeemSecret to fail")
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		secret, err := redeemer.RedeemSecret(t.Context(), token)
+		if err == nil && secret.Value != "" {
+			guardAPIKey = secret.Value
+			break
+		}
+		// Would sleep in production; skip in tests
 	}
 
 	// guardAPIKey should remain the env fallback
 	if guardAPIKey != envFallback {
 		t.Errorf("expected guardAPIKey=%q (env fallback), got %q", envFallback, guardAPIKey)
+	}
+
+	// Verify all attempts were made (all errored)
+	if got := attempts.Load(); got != int32(maxAttempts) {
+		t.Errorf("expected %d attempts (all errored), got %d", maxAttempts, got)
+	}
+}
+
+// TestGateway_SPIKEKeyFetch_NexusRedeemer_MixedErrorsThenSuccess tests the
+// RFA-cuh retry loop with a mix of errors and empty values before success.
+func TestGateway_SPIKEKeyFetch_NexusRedeemer_MixedErrorsThenSuccess(t *testing.T) {
+	var attempts atomic.Int32
+
+	// Create a mock SPIKE Nexus server:
+	// attempt 1: 500 error
+	// attempt 2: empty value (seeder not ready)
+	// attempt 3: 500 error
+	// attempt 4: success with real key
+	spikeServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := int(attempts.Add(1))
+		w.Header().Set("Content-Type", "application/json")
+		switch n {
+		case 1, 3:
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"err":"internal error"}`))
+		case 2:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":{"value":""}}`))
+		default:
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"data":{"value":"spike-key-mixed-retry"}}`))
+		}
+	}))
+	defer spikeServer.Close()
+
+	redeemer := middleware.NewSPIKENexusRedeemerWithClient(spikeServer.URL, spikeServer.Client())
+
+	// Simulate the RFA-cuh retry loop from New()
+	const maxAttempts = 15
+	envFallback := "env-fallback-key"
+	guardAPIKey := envFallback
+	token := &middleware.SPIKEToken{Ref: "groq-api-key"}
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		secret, err := redeemer.RedeemSecret(t.Context(), token)
+		if err == nil && secret.Value != "" {
+			guardAPIKey = secret.Value
+			break
+		}
+		// Would sleep in production; skip in tests
+	}
+
+	if guardAPIKey != "spike-key-mixed-retry" {
+		t.Errorf("expected guardAPIKey='spike-key-mixed-retry', got %q", guardAPIKey)
+	}
+
+	// Verify exactly 4 attempts were made (2 errors + 1 empty + 1 success)
+	if got := attempts.Load(); got != 4 {
+		t.Errorf("expected 4 attempts (2 errors + 1 empty + 1 success), got %d", got)
 	}
 }
 

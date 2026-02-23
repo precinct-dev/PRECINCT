@@ -159,20 +159,47 @@ func New(cfg *Config) (*Gateway, error) {
 		spikeRedeemer = middleware.NewPOCSecretRedeemer()
 	}
 
-	// RFA-bci: Attempt to fetch the guard model API key from SPIKE at startup.
+	// RFA-bci + RFA-cuh: Attempt to fetch the guard model API key from SPIKE at startup.
 	// This allows the gateway to load secrets from a centralized vault (SPIKE Nexus)
 	// rather than relying solely on environment variables.
+	//
+	// RFA-cuh fix: Use a retry loop instead of a single attempt. The spike-secret-seeder
+	// may not have finished seeding when the gateway starts, so SPIKE can return empty
+	// values on early attempts. We retry up to 15 times with 2-second delays (~30s max).
+	//
+	// RFA-hgj fix: The retry loop explicitly logs when SPIKE returns an empty value
+	// (no error but empty secret.Value), which was previously silently ignored.
 	guardAPIKey := cfg.GuardAPIKey // env var fallback
 	if nexusRedeemer, ok := spikeRedeemer.(*middleware.SPIKENexusRedeemer); ok {
-		fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		const maxAttempts = 15
+		const retryDelay = 2 * time.Second
 		token := &middleware.SPIKEToken{Ref: "groq-api-key"}
-		secret, err := nexusRedeemer.RedeemSecret(fetchCtx, token)
-		fetchCancel() // immediately, NOT defer
-		if err == nil && secret.Value != "" {
-			guardAPIKey = secret.Value
-			slog.Info("guard model API key loaded from SPIKE", "path", "groq-api-key")
-		} else if err != nil {
-			slog.Warn("failed to load guard model API key from SPIKE, falling back to env", "error", err)
+
+		for attempt := 1; attempt <= maxAttempts; attempt++ {
+			fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			secret, err := nexusRedeemer.RedeemSecret(fetchCtx, token)
+			fetchCancel() // immediately, NOT defer
+
+			if err == nil && secret.Value != "" {
+				guardAPIKey = secret.Value
+				slog.Info("guard model API key loaded from SPIKE", "path", "groq-api-key", "attempt", attempt)
+				break
+			}
+
+			if err != nil {
+				slog.Warn("SPIKE key fetch attempt failed", "attempt", attempt, "max", maxAttempts, "error", err)
+			} else {
+				// RFA-hgj fix: log when SPIKE returns empty value (seeder not ready)
+				slog.Warn("SPIKE returned empty value for groq-api-key", "attempt", attempt, "max", maxAttempts, "path", "groq-api-key")
+			}
+
+			if attempt < maxAttempts {
+				time.Sleep(retryDelay)
+			}
+		}
+
+		if guardAPIKey == cfg.GuardAPIKey {
+			slog.Warn("failed to load guard model API key from SPIKE after all attempts, falling back to env", "attempts", maxAttempts)
 		}
 	}
 
