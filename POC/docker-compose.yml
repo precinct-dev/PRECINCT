@@ -207,7 +207,10 @@ services:
   # NOTE: Bootstrap depends on Keeper (not Nexus) because it sends shards TO Keepers.
   # Nexus runs in parallel, retrying until Keepers have shards.
   spike-bootstrap:
-    image: ghcr.io/spiffe/spike-bootstrap:0.8.0@sha256:9a726930d6ae8ed67279d0cb19c219f14ebe3c84b30251774eb2b34ce5adc537
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.spike-bootstrap
+    image: poc-spike-bootstrap:latest
     container_name: spike-bootstrap
     depends_on:
       spire-entry-registrar:
@@ -235,6 +238,7 @@ services:
       - SPIKE_TRUST_ROOT_KEEPER=poc.local
       - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
       - SPIKE_SYSTEM_LOG_LEVEL=DEBUG  # Verbose for bootstrap troubleshooting
+      - BOOTSTRAP_TIMEOUT=30  # RFA-w78: Guard kills hung verify loop after 30s (already-initialized case)
     command: ["-init"]
     networks:
       - secrets-plane
@@ -310,7 +314,8 @@ services:
             echo "spike-seeder: groq-api-key put attempt $$attempt/$$max_attempts"
             GROQ_OUT="$$(spike secret put groq-api-key "value=$$GROQ_API_KEY" 2>&1 || true)"
 
-            if ! echo "$$GROQ_OUT" | grep -qi "Error:"; then
+            GROQ_LIST="$$(spike secret list 2>&1 || true)"
+            if ! echo "$$GROQ_OUT" | grep -qi "Error:" || echo "$$GROQ_LIST" | grep -q "groq-api-key"; then
               groq_seeded=1
               break
             fi
@@ -339,7 +344,7 @@ services:
           --permissions=read 2>&1 || true)"
           echo "$$POLICY_OUT"
 
-          if ! echo "$$POLICY_OUT" | grep -qi "Error:"; then
+          if ! echo "$$POLICY_OUT" | grep -qi "Error:" || echo "$$POLICY_OUT" | grep -qi "already exists"; then
             policy_created=1
             break
           fi
