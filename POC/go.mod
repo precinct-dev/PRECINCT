@@ -9,8 +9,8 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.96.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/uuid v1.6.0
-	github.com/gorilla/websocket v1.5.3
-	github.com/open-policy-agent/opa v1.13.1
+	github.com/gorilla/websocket v1.5.4-0.20250319132907-e064f32e3674
+	github.com/open-policy-agent/opa v1.13.2
 	github.com/redis/go-redis/v9 v9.17.3
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
