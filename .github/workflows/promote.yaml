@@ -94,7 +94,7 @@ jobs:
     needs: [validate-promotion]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.ref }}
           # Fetch full history for committing overlay changes
