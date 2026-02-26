@@ -2,7 +2,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-POC_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+POC_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/../../../.." && pwd)}"
 ARTIFACT_DIR="${POC_DIR}/tests/e2e/artifacts"
 STAMP="${OPENCLAW_CAMPAIGN_DATE:-2026-02-21}"
 LOG_PATH="${ARTIFACT_DIR}/openclaw-port-campaign-${STAMP}.log"
@@ -39,20 +39,12 @@ run_check() {
 cd "${POC_DIR}"
 
 run_check \
-  "required_integration_suite" \
-  "go test ./tests/integration/... -run 'OpenClaw|Security|Adversarial' -count=1"
+  "openclaw_port_unit_suite" \
+  "go test ./ports/openclaw/... -count=1"
 
 run_check \
-  "openclaw_gateway_unit_suite" \
-  "go test ./internal/gateway/... -run 'OpenClaw' -count=1"
-
-run_check \
-  "openclaw_parser_unit_suite" \
-  "go test ./internal/integrations/openclaw/... -count=1"
-
-run_check \
-  "openclaw_integration_authz_audit_suite" \
-  "go test ./tests/integration/... -run 'GatewayAuthz_OpenClawWSDenyMatrix|AuditOpenClawWSCorrelation' -count=1"
+  "openclaw_e2e_walking_skeleton" \
+  "bash ports/openclaw/tests/e2e/scenario_j_openclaw_walking_skeleton.sh"
 
 jq -Rn \
   --arg campaign_id "openclaw-port-validation-${STAMP}" \

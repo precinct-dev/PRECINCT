@@ -570,11 +570,16 @@ build-tools:
 	go build -o build/bin/openclaw-ws-smoke ./ports/openclaw/cmd/openclaw-ws-smoke
 
 .PHONY: openclaw-demo
-openclaw-demo: ## Run OpenClaw walking skeleton and port campaign (leaves stack running)
-	@echo "=== OpenClaw Port Demo ==="
-	go test ./ports/openclaw/...
-	@echo "OpenClaw port tests passed."
-	@echo "To run E2E campaign against live stack: bash ports/openclaw/tests/e2e/validate_openclaw_port_campaign.sh"
+openclaw-demo: ## Run OpenClaw E2E against live Compose stack (brings stack up if needed)
+	@echo "=== OpenClaw Port Demo (E2E against live stack) ==="
+	@bash scripts/ensure-stack.sh --resilient
+	@echo "--- Unit tests (mock-backed) ---"
+	go test ./ports/openclaw/... -count=1
+	@echo "--- E2E: walking skeleton against live gateway ---"
+	@bash ports/openclaw/tests/e2e/scenario_j_openclaw_walking_skeleton.sh
+	@echo "--- E2E: port validation campaign ---"
+	@bash ports/openclaw/tests/e2e/validate_openclaw_port_campaign.sh
+	@echo "=== OpenClaw Port Demo PASSED ==="
 
 .PHONY: openclaw-drill
 openclaw-drill:
@@ -582,7 +587,7 @@ openclaw-drill:
 
 .PHONY: test-openclaw
 test-openclaw:
-	go test ./ports/openclaw/...
+	go test ./ports/openclaw/... -count=1
 
 build-images:
 	@echo "Building container images..."
