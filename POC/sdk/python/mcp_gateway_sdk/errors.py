@@ -16,6 +16,7 @@ class GatewayError(Exception):
     Attributes match the unified JSON error envelope defined in RFA-tj9.1:
         code:            Machine-readable error code (e.g. "authz_policy_denied").
         message:         Human-readable description.
+        reason_code:     Stable reason identifier for policy/UI handling.
         middleware:       Which middleware layer rejected the request.
         step:            Middleware step number in the chain.
         decision_id:     Audit decision ID for cross-referencing.
@@ -31,6 +32,7 @@ class GatewayError(Exception):
         *,
         code: str = "",
         message: str = "",
+        reason_code: str = "",
         middleware: str = "",
         step: int = 0,
         decision_id: str = "",
@@ -42,6 +44,7 @@ class GatewayError(Exception):
     ) -> None:
         self.code = code
         self.message = message
+        self.reason_code = reason_code
         self.middleware = middleware
         self.step = step
         self.decision_id = decision_id
@@ -60,6 +63,7 @@ class GatewayError(Exception):
         {
             "code": "...",
             "message": "...",
+            "reason_code": "...",
             "middleware": "...",
             "middleware_step": 0,
             "decision_id": "...",
@@ -74,6 +78,7 @@ class GatewayError(Exception):
         return cls(
             code=body.get("code", body.get("error", "")),
             message=body.get("message", body.get("reason", "")),
+            reason_code=body.get("reason_code", ""),
             middleware=body.get("middleware", ""),
             step=body.get("middleware_step", 0),
             decision_id=body.get("decision_id", ""),

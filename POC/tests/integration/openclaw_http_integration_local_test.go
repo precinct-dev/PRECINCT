@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/example/agentic-security-poc/internal/gateway"
-	"github.com/example/agentic-security-poc/internal/testutil"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
 )
 
 func newOpenClawHTTPTestServer(t *testing.T) *httptest.Server {

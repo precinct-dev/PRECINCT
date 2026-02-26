@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/example/agentic-security-poc/tests/conformance/harness"
+	"github.com/RamXX/agentic_reference_architecture/POC/tests/conformance/harness"
 )
 
 func main() {

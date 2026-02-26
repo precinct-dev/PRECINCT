@@ -224,7 +224,12 @@ repave_one_main() {
   if [[ "${svc}" == "mcp-security-gateway" ]]; then
     # Gateway depends on one-shot init jobs that may already have completed;
     # avoid re-triggering those dependencies during repave.
-    "${compose_main[@]}" up -d --no-deps --wait --wait-timeout 300 "${svc}"
+    # In practice, compose --wait can report unhealthy before the gateway's
+    # dependency graph fully settles; fall back to explicit /health polling.
+    if ! "${compose_main[@]}" up -d --no-deps --wait --wait-timeout 300 "${svc}"; then
+      echo "[repave] gateway compose wait reported unhealthy; retrying with readiness polling"
+      "${compose_main[@]}" up -d --no-deps "${svc}" >/dev/null 2>&1 || true
+    fi
   else
     "${compose_main[@]}" up -d --wait --wait-timeout 300 "${svc}"
   fi
@@ -236,7 +241,23 @@ repave_one_main() {
   fi
 
   health="$(inspect_health_status "${cid}")"
-  if [[ "${health}" != "healthy" ]]; then
+  if [[ "${svc}" == "mcp-security-gateway" ]]; then
+    local gateway_ready=0
+    local deadline=$((SECONDS + 120))
+    while (( SECONDS < deadline )); do
+      if verify_gateway_health; then
+        gateway_ready=1
+        break
+      fi
+      sleep 2
+    done
+    if [[ "${gateway_ready}" -ne 1 ]]; then
+      echo "ERROR: gateway /health check failed after repave (health=${health})" >&2
+      "${compose_main[@]}" ps "${svc}" >&2 || true
+      docker logs --tail 100 "${svc}" >&2 || true
+      return 1
+    fi
+  elif [[ "${health}" != "healthy" ]]; then
     echo "ERROR: health check failed after repave (health=${health})" >&2
     return 1
   fi

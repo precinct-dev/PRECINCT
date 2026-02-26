@@ -187,6 +187,9 @@ write_report() {
   local ci_status="$3"
   local demo_status="$4"
   local duration="$5"
+  local snapshot_rel="config/upgrade-snapshots/${ts}"
+  local ci_log_rel="${ci_log#${ROOT_DIR}/}"
+  local demo_log_rel="${demo_log#${ROOT_DIR}/}"
 
   cat >"$report_file" <<EOF
 # Upgrade Report: ${report_date}
@@ -208,11 +211,11 @@ ${changes_md}
 
 ## Rollback Info
 Snapshot: $(basename "$snapshot_file")
-Snapshot Dir: ${SNAPSHOT_DIR_BASE}/${ts}
+Snapshot Dir: ${snapshot_rel}
 
 ## Logs
-- make ci log: ${ci_log}
-- make demo-compose log: ${demo_log}
+- make ci log: ${ci_log_rel}
+- make demo-compose log: ${demo_log_rel}
 EOF
 }
 
@@ -227,14 +230,14 @@ update_compose_image() {
   local file="$1"
   local image="$2"
   local newv="$3"
-  perl_inplace "s{(\\bimage:\\s*\\Q${image}\\E:)[^\\s#]+}{\\${1}${newv}}g" "$file"
+  perl_inplace "s{(\\bimage:\\s*\\Q${image}\\E:)[^\\s#]+}{\\\$1${newv}}g" "$file"
 }
 
 update_dockerfile_from() {
   local file="$1"
   local image="$2"
   local newv="$3"
-  perl_inplace "s{(^FROM\\s+\\Q${image}\\E:)[^\\s]+}{\\${1}${newv}}mg" "$file"
+  perl_inplace "s{(^FROM\\s+\\Q${image}\\E:)[^\\s]+}{\\\$1${newv}}mg" "$file"
 }
 
 pull_image_if_possible() {
@@ -348,11 +351,11 @@ apply_component_update() {
   fi
 
   if [[ -z "$lat" || "$lat" == "unknown" || "$lat" == "--" ]]; then
-    changes_md+="| ${name} | ${cur} | ${lat:-unknown} | SKIP (no latest) |\n"
+    changes_md+="| ${name} | ${cur} | ${lat:-unknown} | SKIP (no latest) |"$'\n'
     return 0
   fi
   if [[ "$cur" == "$lat" ]]; then
-    changes_md+="| ${name} | ${cur} | ${lat} | UP TO DATE |\n"
+    changes_md+="| ${name} | ${cur} | ${lat} | UP TO DATE |"$'\n'
     return 0
   fi
 
@@ -405,7 +408,7 @@ apply_component_update() {
 
   verify_image_if_requested "$img" "$lat"
   upgraded_count=$((upgraded_count + 1))
-  changes_md+="| ${name} | ${cur} | ${lat} | OK |\n"
+  changes_md+="| ${name} | ${cur} | ${lat} | OK |"$'\n'
 }
 
 overall_status="SUCCESS"

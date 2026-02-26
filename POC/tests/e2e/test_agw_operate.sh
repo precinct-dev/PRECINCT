@@ -13,6 +13,8 @@ NC='\033[0m'
 PASS_COUNT=0
 FAIL_COUNT=0
 TMP_DIR="$(mktemp -d)"
+KEYDB_PROXY_CONTAINER=""
+KEYDB_PROXY_PORT=""
 
 AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/agw}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
@@ -24,6 +26,9 @@ RUNTIME_SESSION_ID="sid-agw-runtime-$(date +%s)"
 DENIED_DECISION_ID=""
 
 cleanup() {
+  if [ -n "$KEYDB_PROXY_CONTAINER" ]; then
+    docker rm -f "$KEYDB_PROXY_CONTAINER" >/dev/null 2>&1 || true
+  fi
   rm -rf "$TMP_DIR"
 }
 trap cleanup EXIT
@@ -159,6 +164,56 @@ gateway_call() {
   print_file "$body_file"
 }
 
+start_keydb_proxy() {
+  local keydb_network
+  local container_name
+  container_name="agw-keydb-proxy-$$"
+  keydb_network="$(docker inspect keydb --format '{{range $k, $_ := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')"
+  if [ -z "$keydb_network" ]; then
+    log_fail "keydb proxy setup" "unable to discover KeyDB container network"
+    exit 1
+  fi
+
+  docker rm -f "$container_name" >/dev/null 2>&1 || true
+  for port in 16379 26379 36379 46379; do
+    if docker run -d --rm \
+      --name "$container_name" \
+      -p "${port}:6379" \
+      alpine/socat \
+      TCP-LISTEN:6379,fork,reuseaddr TCP:keydb:6379 >/dev/null 2>&1; then
+      if ! docker network connect "$keydb_network" "$container_name" >/dev/null 2>&1; then
+        docker rm -f "$container_name" >/dev/null 2>&1 || true
+        continue
+      fi
+      KEYDB_PROXY_CONTAINER="$container_name"
+      KEYDB_PROXY_PORT="$port"
+      KEYDB_URL="redis://127.0.0.1:${port}"
+      for _ in $(seq 1 20); do
+        if redis-cli -u "$KEYDB_URL" PING >/dev/null 2>&1; then
+          log_info "KeyDB proxy active at ${KEYDB_URL} via ${KEYDB_PROXY_CONTAINER}"
+          return 0
+        fi
+        sleep 0.5
+      done
+      docker rm -f "$KEYDB_PROXY_CONTAINER" >/dev/null 2>&1 || true
+      KEYDB_PROXY_CONTAINER=""
+      KEYDB_PROXY_PORT=""
+    fi
+  done
+
+  log_fail "keydb proxy setup" "unable to start reachable KeyDB proxy container"
+  exit 1
+}
+
+ensure_keydb_access() {
+  if redis-cli -u "$KEYDB_URL" PING >/dev/null 2>&1; then
+    log_info "Using host KeyDB endpoint ${KEYDB_URL}"
+    return 0
+  fi
+  log_info "Host KeyDB endpoint ${KEYDB_URL} unreachable; using docker sidecar proxy"
+  start_keydb_proxy
+}
+
 redis_exec() {
   redis-cli -u "$KEYDB_URL" "$@"
 }
@@ -199,6 +254,7 @@ main() {
   fi
   log_pass "gateway healthy"
 
+  ensure_keydb_access
   if ! redis_exec PING >/dev/null 2>&1; then
     log_fail "keydb health" "unable to reach keydb at ${KEYDB_URL}"
     exit 1

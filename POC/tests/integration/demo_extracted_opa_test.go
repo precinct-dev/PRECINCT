@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
-	"github.com/example/agentic-security-poc/internal/testutil"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
 )
 
 // buildOPAChain constructs a middleware chain with real embedded OPA engine,

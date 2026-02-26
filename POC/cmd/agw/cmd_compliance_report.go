@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/example/agentic-security-poc/internal/agw/compliance"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/agw/compliance"
 	"github.com/spf13/cobra"
 )
 

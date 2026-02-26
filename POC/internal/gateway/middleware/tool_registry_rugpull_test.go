@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway/mcpclient"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/mcpclient"
 )
 
 func writeRegistryYAML(t *testing.T, dir, toolName, toolDesc string, inputSchema map[string]any) string {

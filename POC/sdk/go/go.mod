@@ -1,4 +1,4 @@
-module github.com/example/mcp-gateway-sdk-go
+module github.com/RamXX/agentic_reference_architecture/POC/sdk/go
 
 go 1.24.6
 

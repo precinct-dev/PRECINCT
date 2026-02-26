@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/example/agentic-security-poc/internal/agw/compliance"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/agw/compliance"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

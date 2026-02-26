@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
 // TestDeepScanGroqIntegration verifies deep scan with real Groq API

@@ -20,8 +20,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
-	"github.com/example/agentic-security-poc/internal/testutil"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
 )
 
 // TestNewGateway verifies gateway initialization

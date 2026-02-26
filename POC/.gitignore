@@ -8,13 +8,16 @@ data/
 /tool_register
 /s3-mcp-server
 /spike-cli
+/openclaw-ws-smoke
 /mtls-healthcheck
 /tcp-healthcheck
 /spike-seeder
+/bin/
 demo/go/demo
 demo/mock-mcp-server/mock-mcp-server
 *.exe
 *.out
+*.test
 
 # Build artifacts (entire directory is ephemeral)
 build/
@@ -34,6 +37,9 @@ __pycache__/
 .pytest_cache/
 *.egg-info/
 uv.lock
+.env
+.env.local
+.env.*.local
 
 # Repave workflow state (runtime artifact)
 .repave-state.json
@@ -48,6 +54,12 @@ uv.lock
 
 # E2E test artifacts (runtime only)
 tests/e2e/artifacts/
+tests/e2e/*.log
 
 # Relocated use-case-specific files (local reference only)
 use_case_specific/
+
+# Generated operational docs and snapshots
+docs/operations/artifacts/
+docs/upgrades/
+make-*.log

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway"
-	"github.com/example/agentic-security-poc/internal/testutil"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
 )
 
 func TestRuleOpsLifecycle_UnsignedPromotionFailsSignedPromotionSucceeds(t *testing.T) {

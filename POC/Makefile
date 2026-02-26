@@ -100,18 +100,27 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 		if ! bash scripts/compose-health-check.sh --verbose; then \
 			echo "Attempting gateway-only recovery after compose dependency timeout..."; \
 			docker compose up -d --no-deps mcp-security-gateway >/dev/null 2>&1 || true; \
-			sleep 5; \
-			if ! bash scripts/compose-health-check.sh --verbose; then \
-				echo "ERROR: Compose startup failed and required services are not ready."; \
-				docker compose ps; \
-				exit 1; \
+		fi; \
+		echo "Waiting up to 60s for core services to become healthy..."; \
+		ready=0; \
+		for _ in $$(seq 1 12); do \
+			if bash scripts/compose-health-check.sh; then \
+				ready=1; \
+				break; \
 			fi; \
+			sleep 5; \
+		done; \
+		if [ "$$ready" -ne 1 ]; then \
+			echo "ERROR: Compose startup failed and required services are not ready."; \
+			bash scripts/compose-health-check.sh --verbose || true; \
+			docker compose ps; \
+			exit 1; \
 		fi; \
 		echo "Core services are ready despite compose wait timeout; continuing."; \
-		fi
-		@$(MAKE) compose-bootstrap-verify
-		@echo "Running register-spire for any additional entries..."
-		$(MAKE) register-spire
+	fi
+	@$(MAKE) compose-bootstrap-verify
+	@echo "Running register-spire for any additional entries..."
+	$(MAKE) register-spire
 
 down: ## Stop Docker Compose stack
 	docker compose down
@@ -398,14 +407,16 @@ production-reality-closure-local-artifacts-validate: ## Validate local productio
 # CI / Quality
 # ---------------------------------------------------------------------------
 
-.PHONY: test lint clean logs ci conformance benchmark
+.PHONY: test lint clean logs ci conformance benchmark build-tools
 .PHONY: security-scan security-scan-strict security-scan-validate
 .PHONY: readiness-state-validate story-evidence-validate production-readiness-validate
 
-test: ## Run all tests (unit + OPA)
+test: ## Run all tests (Go packages + integration/unit suites + OPA)
 	@echo "Running unit tests..."
 	go test ./internal/gateway/... -v -cover
 	go test ./internal/gateway/middleware/... -v -cover
+	go test ./tests/unit/... -v
+	go test ./tests/integration/... -v
 	@echo ""
 	@echo "Running OPA policy tests..."
 	@if command -v opa >/dev/null 2>&1; then \
@@ -601,8 +612,9 @@ register-spire:
 		-parentID $$PARENT_ID \
 		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/keydb \
 		-selector docker:label:spiffe-id:keydb 2>/dev/null || true; \
-	echo "  Current entries:"; \
-	$(COMPOSE_SPIRE_EXEC) entry show -socketPath $(COMPOSE_SPIRE_SOCK)
+	echo "  Current entry count:"; \
+	ENTRY_COUNT=$$($(COMPOSE_SPIRE_EXEC) entry show -socketPath $(COMPOSE_SPIRE_SOCK) | grep -c '^Entry ID' || true); \
+	echo "    $$ENTRY_COUNT entries"
 
 test-integration:
 	go test -tags=integration ./tests/integration/... -v -timeout 60s
@@ -626,6 +638,11 @@ test-opa:
 build:
 	@echo "Building PRECINCT Gateway..."
 	docker compose build mcp-security-gateway
+
+build-tools: ## Build local helper binaries into build/bin (never project root)
+	@mkdir -p build/bin
+	go build -o build/bin/spike-cli ./cmd/spike-cli
+	go build -o build/bin/openclaw-ws-smoke ./cmd/openclaw-ws-smoke
 
 build-images:
 	@echo "Building container images..."

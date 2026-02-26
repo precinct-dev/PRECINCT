@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
-	"github.com/example/agentic-security-poc/internal/agw"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/agw"
 )
 
 func writePolicyTestCLIConfig(t *testing.T) (opaDir string, registryPath string) {

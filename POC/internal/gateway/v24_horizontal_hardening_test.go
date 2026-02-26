@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
