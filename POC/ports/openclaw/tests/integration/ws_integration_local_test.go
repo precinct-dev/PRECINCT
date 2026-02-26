@@ -13,6 +13,7 @@ import (
 
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
+	"github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw"
 	"github.com/gorilla/websocket"
 )
 
@@ -80,6 +81,7 @@ func newOpenClawWSTestEnv(t *testing.T) *openClawWSTestEnv {
 	if err != nil {
 		t.Fatalf("gateway.New failed: %v", err)
 	}
+	gw.RegisterPort(openclaw.NewAdapter(gw))
 
 	server := httptest.NewServer(gw.Handler())
 	t.Cleanup(func() {

@@ -1,4 +1,4 @@
-package openclaw
+package protocol
 
 import (
 	"encoding/json"

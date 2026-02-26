@@ -1,0 +1,37 @@
+{
+  "results": {
+    "context_allow": {
+      "decision_id": "",
+      "reason_code": "",
+      "status_code": ""
+    },
+    "ingress_allow": {
+      "decision_id": "",
+      "reason_code": "",
+      "status_code": ""
+    },
+    "model_allow": {
+      "decision_id": "",
+      "reason_code": "",
+      "status_code": ""
+    },
+    "model_deny": {
+      "decision_id": "",
+      "reason_code": "",
+      "status_code": ""
+    },
+    "tool_allow": {
+      "decision_id": "",
+      "reason_code": "",
+      "status_code": ""
+    },
+    "tool_deny": {
+      "decision_id": "",
+      "reason_code": "",
+      "status_code": ""
+    }
+  },
+  "run_id": "",
+  "schema_version": "openclaw.walking_skeleton.v1",
+  "session_id": ""
+}
