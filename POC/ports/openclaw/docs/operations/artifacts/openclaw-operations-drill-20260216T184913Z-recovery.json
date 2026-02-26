@@ -1,0 +1,1 @@
+{"error":{"decision_id":"8e4fc0fe-e3d9-40fb-b152-559603531ac1","message":"dangerous tool is blocked on HTTP wrapper","reason_code":"TOOL_CLI_COMMAND_DENIED","tool":"sessions_send","trace_id":"e048c54e-1ecb-46f1-94ae-10396514385a","type":"policy_denied"},"ok":false}

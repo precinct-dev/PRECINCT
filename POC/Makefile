@@ -1,3 +1,7 @@
+# ===========================================================================
+# 1. Variables and helpers
+# ===========================================================================
+
 # Container image config
 REGISTRY ?= ghcr.io
 IMAGE_PREFIX ?= $(REGISTRY)/$(shell git config --get remote.origin.url 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|' | tr '[:upper:]' '[:lower:]')/agentic-ref-arch
@@ -15,9 +19,8 @@ COMPLIANCE_VENV := tools/compliance/.venv
 COMPLIANCE_PYTHON := $(COMPLIANCE_VENV)/bin/python3
 CONFORMANCE_REPORT ?= build/conformance/conformance-report.json
 
-# ---------------------------------------------------------------------------
-# Shared helpers
-# ---------------------------------------------------------------------------
+# Validation suite filter (compose|k8s, default: all)
+SUITE ?=
 
 # run_demo_test -- Run a test script and report PASS/FAIL
 # Usage: $(call run_demo_test,<label>,<script>)
@@ -25,66 +28,23 @@ define run_demo_test
 	@if bash $(2); then echo "$(1): PASS"; else echo "$(1): FAIL"; exit 1; fi
 endef
 
-# ---------------------------------------------------------------------------
+# ===========================================================================
 # Default
-# ---------------------------------------------------------------------------
+# ===========================================================================
 
 .PHONY: help
 help: ## Show available targets
 	@echo "Usage: make <target>"
 	@echo ""
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-35s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
-# ---------------------------------------------------------------------------
-# Core
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 2. Core lifecycle (up, down, clean, repave, upgrade, logs)
+# ===========================================================================
 
-.PHONY: compose-verify compose-production-intent-preflight compose-production-intent-preflight-signature-prereqs compose-production-intent-validate compose-bootstrap-verify
-.PHONY: operations-backup-restore-drill operations-readiness-validate managed-cloud-bootstrap-prereqs-validate
-.PHONY: framework-taxonomy-mappings-validate app-pack-model-validate app-integration-strategy-docs-validate
-.PHONY: gateway-bypass-case26-validate observability-evidence-gate-validate
-.PHONY: up down repave upgrade-check upgrade upgrade-all
-
-compose-verify: ## Verify Compose third-party images are digest-pinned (no :latest)
-	@bash scripts/compose-verify.sh
-
-compose-production-intent-preflight: ## Validate compose production-intent image lock + provenance policy wiring
-	@bash scripts/compose-production-intent-preflight.sh
-
-compose-production-intent-preflight-signature-prereqs: ## Validate fail-closed compose live-signature prerequisite behavior
-	@bash tests/e2e/validate_compose_signature_prereqs.sh
-
-compose-production-intent-validate: ## Validate compose production-intent gate including deterministic negative-path failure
-	@bash tests/e2e/validate_compose_production_intent_supply_chain.sh
-	@bash tests/e2e/validate_compose_production_intent_egress.sh
-
-operations-backup-restore-drill: ## Execute operational backup/restore drill and write auditable artifacts
-	@bash scripts/operations/run_backup_restore_drill.sh
-
-operations-readiness-validate: ## Validate operational readiness pack (runbooks + drill artifacts + SLO ownership)
-	@bash tests/e2e/validate_operational_readiness_pack.sh
-
-managed-cloud-bootstrap-prereqs-validate: ## Validate managed-cloud bootstrap prerequisite contract and deterministic preflight behavior
-	@bash tests/e2e/validate_managed_cloud_bootstrap_prereqs.sh
-
-framework-taxonomy-mappings-validate: ## Validate MITRE ATLAS + OWASP taxonomy mapping coverage for framework_refs signal keys
-	@bash tests/e2e/validate_framework_taxonomy_mappings.sh
-
-app-pack-model-validate: ## Validate app integration pack model docs and reference pack manifest
-	@bash tests/e2e/validate_app_integration_pack_model.sh
-
-app-integration-strategy-docs-validate: ## Validate no-upstream-mod integration strategy docs and cross-links
-	@bash tests/e2e/validate_app_integration_strategy_docs.sh
-
-gateway-bypass-case26-validate: ## Validate SDK case-26 gateway-bypass timeout conformance across compose+k8s logs
-	@bash tests/e2e/validate_gateway_bypass_case26.sh
-
-observability-evidence-gate-validate: ## Validate strict/non-strict observability evidence gate behavior
-	@bash tests/e2e/validate_observability_evidence_gate.sh
-
-compose-bootstrap-verify: ## Verify one-shot bootstrap containers completed successfully
-	@bash scripts/compose-bootstrap-verify.sh
+.PHONY: up down clean repave upgrade-check upgrade upgrade-all logs
+.PHONY: compose-verify compose-bootstrap-verify
 
 up: compose-verify ## Start Docker Compose stack (waits for all services healthy)
 	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
@@ -125,19 +85,26 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 down: ## Stop Docker Compose stack
 	docker compose down
 
-repave: ## Repave containers. Default: full-stack in dependency order. Optional: single component (ex: make repave COMPONENT=keydb)
+clean: ## Full cleanup (containers, volumes, build artifacts, logs)
+	docker compose down -v
+	rm -rf build/sbom/ build/bin/
+	@if [ -f .beads/daemon.log ]; then \
+		: > .beads/daemon.log; \
+	fi
+
+repave: ## Repave containers (COMPONENT=<name> for single, default: all)
 	@if [ -n "$(COMPONENT)" ]; then \
 		bash scripts/repave.sh "$(COMPONENT)"; \
 	else \
 		bash scripts/repave.sh --all; \
 	fi
 
-upgrade-check: ## Show current vs latest versions (containers, Go modules, Python deps) in table + JSON
+upgrade-check: ## Show current vs latest versions (containers, Go modules, Python deps)
 	@bash scripts/upgrade-check.sh --format table
 	@echo ""
 	@bash scripts/upgrade-check.sh --format json
 
-upgrade: ## Upgrade a single component (ex: make upgrade COMPONENT=keydb VERIFY=1)
+upgrade: ## Upgrade a single component (COMPONENT=<name> VERIFY=1)
 	@if [ -z "$(COMPONENT)" ]; then \
 		echo "ERROR: COMPONENT is required (ex: make upgrade COMPONENT=keydb)"; \
 		exit 1; \
@@ -146,52 +113,24 @@ upgrade: ## Upgrade a single component (ex: make upgrade COMPONENT=keydb VERIFY=
 	if [ "$(VERIFY)" = "1" ]; then args="$$args --verify"; fi; \
 	bash scripts/upgrade.sh $$args
 
-upgrade-all: ## Upgrade all non-pinned components (ex: make upgrade-all VERIFY=1)
+upgrade-all: ## Upgrade all non-pinned components (VERIFY=1)
 	@args="--all"; \
 	if [ "$(VERIFY)" = "1" ]; then args="$$args --verify"; fi; \
 	bash scripts/upgrade.sh $$args
 
-# ---------------------------------------------------------------------------
-# Stakeholder demos
-# ---------------------------------------------------------------------------
+logs: ## Tail gateway logs
+	docker compose logs -f mcp-security-gateway
 
-.PHONY: upgrade-demo repave-demo agw-demo agw-operate-demo compliance-demo
+# Hidden: compose verification helpers (called by up)
+compose-verify:
+	@bash scripts/compose-verify.sh
 
-upgrade-demo: ## Stakeholder demo: upgrade check + upgrade + simulated test failure rollback
-	@if ! bash scripts/compose-health-check.sh; then \
-		echo "Core services not fully healthy. Running make up..."; \
-		$(MAKE) up; \
-	else \
-		echo "Core services already running and healthy. Skipping make up."; \
-	fi
-	$(call run_demo_test,upgrade-demo,tests/e2e/test_upgrade.sh)
+compose-bootstrap-verify:
+	@bash scripts/compose-bootstrap-verify.sh
 
-repave-demo: up ## Epic 5 demo: single repave + full repave + status + demo-compose validation
-	@mkdir -p build/bin
-	@go build -o build/bin/agw ./cmd/agw/
-	$(call run_demo_test,repave-demo,tests/e2e/test_repave.sh)
-
-agw-demo: ## Stakeholder demo: validate agw CLI against live Docker Compose stack
-	@bash scripts/ensure-stack.sh
-	@mkdir -p build/bin
-	@go build -o build/bin/agw ./cmd/agw/
-	$(call run_demo_test,agw-demo,tests/e2e/test_agw_cli.sh)
-
-agw-operate-demo: ## Epic 2 operate demo: ensure stack, build agw, run E2E operate script
-	@bash scripts/ensure-stack.sh --resilient
-	@mkdir -p build/bin
-	@go build -o build/bin/agw ./cmd/agw/
-	$(call run_demo_test,agw-operate-demo,tests/e2e/test_agw_operate.sh)
-
-compliance-demo: ## Epic 3 compliance demo: evidence collect + report + GDPR operations
-	@bash scripts/ensure-stack.sh --resilient
-	@mkdir -p build/bin
-	@go build -o build/bin/agw ./cmd/agw/
-	$(call run_demo_test,compliance-demo,tests/e2e/test_agw_compliance.sh)
-
-# ---------------------------------------------------------------------------
-# Phoenix Observability (standalone, persistent across demo runs)
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 3. Phoenix
+# ===========================================================================
 
 .PHONY: phoenix-up phoenix-down phoenix-reset
 
@@ -205,35 +144,81 @@ phoenix-down: ## Stop Phoenix stack (preserves trace data)
 phoenix-reset: ## Stop Phoenix stack and destroy trace data
 	docker compose -f docker-compose.phoenix.yml down -v
 
-# ---------------------------------------------------------------------------
-# Demos (E2E)
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 4. CI / Quality (ci, lint, test, production-readiness-validate)
+# ===========================================================================
 
-.PHONY: demo demo-compose demo-compose-strict-observability demo-k8s demo-extensions
+.PHONY: ci lint test production-readiness-validate story-evidence-validate
+
+ci: lint test conformance build-images ## Full CI pipeline (lint + test + conformance + build)
+	@echo "CI pipeline complete"
+
+lint: ## Run linters
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		golangci-lint run ./...; \
+	else \
+		go fmt ./...; \
+		go vet ./...; \
+	fi
+
+test: ## Run all tests (Go packages + integration/unit suites + OPA)
+	@echo "Running unit tests..."
+	go test ./internal/gateway/... -v -cover
+	go test ./internal/gateway/middleware/... -v -cover
+	go test ./tests/unit/... -v
+	go test ./tests/integration/... -v
+	@echo ""
+	@echo "Running OPA policy tests..."
+	@if command -v opa >/dev/null 2>&1; then \
+		opa test config/opa/ -v; \
+	else \
+		echo "WARNING: opa not installed, skipping OPA tests"; \
+	fi
+
+production-readiness-validate: security-scan-strict security-scan-validate ## Strict production-readiness security evidence gate
+	@echo "production-readiness-validate: PASS"
+
+story-evidence-validate: ## Validate evidence paths in a bd story (STORY_ID=<id>)
+	@if [ -z "$(STORY_ID)" ]; then \
+		echo "ERROR: STORY_ID is required (ex: make story-evidence-validate STORY_ID=RFA-l6h6.6.11)"; \
+		exit 1; \
+	fi
+	tests/e2e/validate_story_evidence_paths.sh "$(STORY_ID)"
+
+# ===========================================================================
+# 5. Demos (demo, demo-compose, demo-k8s, demo-cli)
+# ===========================================================================
+
+.PHONY: demo demo-compose demo-k8s demo-cli compose-down
 
 demo: ## Run E2E demo (Docker Compose + K8s)
 	@bash demo/run.sh compose
 	@bash demo/run.sh k8s
 
-demo-compose: ## Run E2E demo (Docker Compose)
-	@bash demo/run.sh compose
+demo-compose: ## Run E2E demo (Docker Compose; leaves stack running for inspection)
+	@bash demo/run.sh compose --no-teardown
 
-demo-compose-strict-observability: ## Run E2E demo (Docker Compose) with strict observability evidence enforcement
-	@DEMO_STRICT_OBSERVABILITY=1 bash demo/run.sh compose
+demo-k8s: ## Run E2E demo (K8s; leaves cluster running for inspection)
+	@bash demo/run.sh k8s --no-teardown
 
-demo-k8s: ## Run E2E demo (K8s)
-	@bash demo/run.sh k8s
+compose-down: ## Tear down Docker Compose stack and volumes
+	docker compose down -v
 
-demo-extensions: ## Run E2E demo for gateway extension slots (assumes Compose stack is running)
-	@docker build -f demo/content-scanner/Dockerfile -t poc-content-scanner:latest demo/content-scanner/
-	@bash tests/e2e/scenario_h_extensions.sh
+demo-cli: ## Run all CLI demos (agw CLI, operate, compliance, repave, upgrade)
+	@bash scripts/ensure-stack.sh --resilient
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	$(call run_demo_test,agw-cli,tests/e2e/test_agw_cli.sh)
+	$(call run_demo_test,agw-operate,tests/e2e/test_agw_operate.sh)
+	$(call run_demo_test,agw-compliance,tests/e2e/test_agw_compliance.sh)
+	$(call run_demo_test,repave,tests/e2e/test_repave.sh)
+	$(call run_demo_test,upgrade,tests/e2e/test_upgrade.sh)
 
-# ---------------------------------------------------------------------------
-# Kubernetes (Docker Desktop K8s + local registry)
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# 6. Kubernetes (k8s-up, k8s-down, k8s-validate)
+# ===========================================================================
 
-.PHONY: k8s-up k8s-down k8s-validate k8s-runtime-campaign local-k8s-runtime-campaign-artifacts-validate production-reality-closure-local-artifacts-validate
-.PHONY: strict-runtime-validate strict-overlay-operationalization-validate promotion-identity-validate ci-gate-parity-validate
+.PHONY: k8s-up k8s-down k8s-validate
 
 k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@if ! kubectl cluster-info 2>/dev/null | grep -q 'Kubernetes control plane'; then \
@@ -381,75 +366,176 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 	tests/e2e/validate_strict_overlay_operationalization.sh; \
 	echo "k8s-validate: PASS"
 
-strict-runtime-validate: ## Validate strict runtime wiring for K8s overlays and Compose override
+# ===========================================================================
+# 7. Validation (validate, story-evidence-validate)
+# ===========================================================================
+
+.PHONY: validate validate-compose validate-k8s
+
+validate: ## Run all offline validation suites (SUITE=compose|k8s to filter)
+	@if [ -z "$(SUITE)" ] || [ "$(SUITE)" = "compose" ]; then \
+		$(MAKE) validate-compose; \
+	fi
+	@if [ -z "$(SUITE)" ] || [ "$(SUITE)" = "k8s" ]; then \
+		$(MAKE) validate-k8s; \
+	fi
+	@echo "validate: PASS"
+
+# ===========================================================================
+# --- Hidden targets (callable by name, not in make help) ---
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# 8. Individual validates (validate-compose, validate-k8s, individual scripts)
+# ---------------------------------------------------------------------------
+
+validate-compose:
+	@echo "=== Compose / doc validation suite ==="
+	@bash scripts/compose-verify.sh
+	@bash scripts/compose-production-intent-preflight.sh
+	@bash tests/e2e/validate_compose_signature_prereqs.sh
+	@bash tests/e2e/validate_compose_production_intent_supply_chain.sh
+	@bash tests/e2e/validate_compose_production_intent_egress.sh
+	@bash tests/e2e/validate_framework_taxonomy_mappings.sh
+	@bash tests/e2e/validate_app_integration_pack_model.sh
+	@bash tests/e2e/validate_app_integration_strategy_docs.sh
+	@bash tests/e2e/validate_observability_evidence_gate.sh
+	@bash tests/e2e/validate_gateway_bypass_case26.sh
+	@bash tests/e2e/validate_managed_cloud_bootstrap_prereqs.sh
+	@bash tests/e2e/validate_operational_readiness_pack.sh
+	@bash tests/e2e/validate_immutable_audit_sink.sh
+	@bash ports/openclaw/tests/e2e/validate_openclaw_operations_runbook_pack.sh
+	@bash ports/openclaw/tests/e2e/validate_openclaw_port_campaign.sh
+	@bash tests/e2e/validate_non_k8s_adaptation_guide.sh
+	@echo "validate-compose: PASS"
+
+validate-k8s:
+	@echo "=== K8s validation suite ==="
+	$(MAKE) k8s-validate
+	@bash tests/e2e/validate_k8s_hardening_guide.sh
+	@bash tests/e2e/validate_promotion_identity_policy.sh
+	@bash tests/e2e/validate_ci_gate_parity.sh
+	@bash tests/e2e/validate_local_k8s_runtime_campaign_artifacts.sh
+	@bash tests/e2e/validate_production_reality_closure_local_artifacts.sh
+	@echo "validate-k8s: PASS"
+
+# Individual compose validation targets (demoted from visible)
+.PHONY: compose-production-intent-preflight compose-production-intent-preflight-signature-prereqs
+.PHONY: compose-production-intent-validate operations-readiness-validate
+.PHONY: managed-cloud-bootstrap-prereqs-validate framework-taxonomy-mappings-validate
+.PHONY: app-pack-model-validate app-integration-strategy-docs-validate
+.PHONY: gateway-bypass-case26-validate observability-evidence-gate-validate
+
+compose-production-intent-preflight:
+	@bash scripts/compose-production-intent-preflight.sh
+
+compose-production-intent-preflight-signature-prereqs:
+	@bash tests/e2e/validate_compose_signature_prereqs.sh
+
+compose-production-intent-validate:
+	@bash tests/e2e/validate_compose_production_intent_supply_chain.sh
+	@bash tests/e2e/validate_compose_production_intent_egress.sh
+
+operations-readiness-validate:
+	@bash tests/e2e/validate_operational_readiness_pack.sh
+
+managed-cloud-bootstrap-prereqs-validate:
+	@bash tests/e2e/validate_managed_cloud_bootstrap_prereqs.sh
+
+framework-taxonomy-mappings-validate:
+	@bash tests/e2e/validate_framework_taxonomy_mappings.sh
+
+app-pack-model-validate:
+	@bash tests/e2e/validate_app_integration_pack_model.sh
+
+app-integration-strategy-docs-validate:
+	@bash tests/e2e/validate_app_integration_strategy_docs.sh
+
+gateway-bypass-case26-validate:
+	@bash tests/e2e/validate_gateway_bypass_case26.sh
+
+observability-evidence-gate-validate:
+	@bash tests/e2e/validate_observability_evidence_gate.sh
+
+# Individual K8s validation targets (demoted from visible)
+.PHONY: strict-runtime-validate strict-overlay-operationalization-validate
+.PHONY: promotion-identity-validate ci-gate-parity-validate
+.PHONY: local-k8s-runtime-campaign-artifacts-validate production-reality-closure-local-artifacts-validate
+
+strict-runtime-validate:
 	tests/e2e/validate_strict_runtime_wiring.sh
 
-strict-overlay-operationalization-validate: ## Validate staging/prod overlays have no placeholder image refs or in-repo runtime secret defaults
+strict-overlay-operationalization-validate:
 	tests/e2e/validate_strict_overlay_operationalization.sh
 
-promotion-identity-validate: ## Validate promote workflow enforces constrained cosign signer identity checks
+promotion-identity-validate:
 	tests/e2e/validate_promotion_identity_policy.sh
 
-ci-gate-parity-validate: ## Validate CI workflow enforces strict readiness + demo parity + scheduled K8s policy gate
+ci-gate-parity-validate:
 	tests/e2e/validate_ci_gate_parity.sh
 
-k8s-runtime-campaign: ## Run K8s runtime allow/deny campaign and emit machine-readable report
-	python3 tests/e2e/k8s_runtime_validation_campaign.py \
-		--output build/validation/k8s-runtime-validation-report.v2.4.json
-
-local-k8s-runtime-campaign-artifacts-validate: ## Validate local K8s runtime campaign summary artifacts
+local-k8s-runtime-campaign-artifacts-validate:
 	tests/e2e/validate_local_k8s_runtime_campaign_artifacts.sh
 
-production-reality-closure-local-artifacts-validate: ## Validate local production-reality closure summary artifacts
+production-reality-closure-local-artifacts-validate:
 	tests/e2e/validate_production_reality_closure_local_artifacts.sh
 
 # ---------------------------------------------------------------------------
-# CI / Quality
+# 9. Individual demos (demoted from visible)
 # ---------------------------------------------------------------------------
 
-.PHONY: test lint clean logs ci conformance benchmark build-tools
-.PHONY: security-scan security-scan-strict security-scan-validate
-.PHONY: readiness-state-validate story-evidence-validate production-readiness-validate
+.PHONY: agw-demo agw-operate-demo compliance-demo repave-demo upgrade-demo
+.PHONY: demo-compose-strict-observability demo-extensions
 
-test: ## Run all tests (Go packages + integration/unit suites + OPA)
-	@echo "Running unit tests..."
-	go test ./internal/gateway/... -v -cover
-	go test ./internal/gateway/middleware/... -v -cover
-	go test ./tests/unit/... -v
-	go test ./tests/integration/... -v
-	@echo ""
-	@echo "Running OPA policy tests..."
-	@if command -v opa >/dev/null 2>&1; then \
-		opa test config/opa/ -v; \
+agw-demo:
+	@bash scripts/ensure-stack.sh
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	$(call run_demo_test,agw-demo,tests/e2e/test_agw_cli.sh)
+
+agw-operate-demo:
+	@bash scripts/ensure-stack.sh --resilient
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	$(call run_demo_test,agw-operate-demo,tests/e2e/test_agw_operate.sh)
+
+compliance-demo:
+	@bash scripts/ensure-stack.sh --resilient
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	$(call run_demo_test,compliance-demo,tests/e2e/test_agw_compliance.sh)
+
+repave-demo: up
+	@mkdir -p build/bin
+	@go build -o build/bin/agw ./cmd/agw/
+	$(call run_demo_test,repave-demo,tests/e2e/test_repave.sh)
+
+upgrade-demo:
+	@if ! bash scripts/compose-health-check.sh; then \
+		echo "Core services not fully healthy. Running make up..."; \
+		$(MAKE) up; \
 	else \
-		echo "WARNING: opa not installed, skipping OPA tests"; \
+		echo "Core services already running and healthy. Skipping make up."; \
 	fi
+	$(call run_demo_test,upgrade-demo,tests/e2e/test_upgrade.sh)
 
-lint: ## Run linters
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run ./...; \
-	else \
-		go fmt ./...; \
-		go vet ./...; \
-	fi
+demo-compose-strict-observability:
+	@DEMO_STRICT_OBSERVABILITY=1 bash demo/run.sh compose --no-teardown
 
-clean: ## Full cleanup (containers, volumes, build artifacts, logs)
-	docker compose down -v
-	rm -rf build/sbom/ build/bin/
-	@if [ -f .beads/daemon.log ]; then \
-		: > .beads/daemon.log; \
-	fi
+demo-extensions:
+	@docker build -f demo/content-scanner/Dockerfile -t poc-content-scanner:latest demo/content-scanner/
+	@bash tests/e2e/scenario_h_extensions.sh
 
-logs: ## Tail gateway logs
-	docker compose logs -f mcp-security-gateway
+# ---------------------------------------------------------------------------
+# 10. CI components (conformance, benchmark, build-images, build-tools)
+# ---------------------------------------------------------------------------
 
-ci: lint test conformance build-images ## Full CI pipeline (lint + test + conformance + build)
-	@echo "CI pipeline complete"
+.PHONY: conformance benchmark build-tools build-images build
 
-conformance: ## Run fixture-driven v2.4 conformance harness and emit JSON report
+conformance:
 	go run ./tests/conformance/cmd/harness --output $(CONFORMANCE_REPORT)
 
-benchmark: ## Run performance benchmarks
+benchmark:
 	@echo "Phase 1: Go Benchmarks (13-middleware chain)"
 	go test -bench=BenchmarkFullMiddlewareChain -benchmem -run=^$$ ./internal/gateway/middleware/ -count=3
 	@echo ""
@@ -478,35 +564,104 @@ benchmark: ## Run performance benchmarks
 		echo "Docker Compose stack not running, skipping load test"; \
 	fi
 
-security-scan: ## Run security scans and emit auditable artifacts (non-strict mode)
+build-tools:
+	@mkdir -p build/bin
+	go build -o build/bin/spike-cli ./cmd/spike-cli
+	go build -o build/bin/openclaw-ws-smoke ./ports/openclaw/cmd/openclaw-ws-smoke
+
+.PHONY: openclaw-demo
+openclaw-demo: ## Run OpenClaw walking skeleton and port campaign (leaves stack running)
+	@echo "=== OpenClaw Port Demo ==="
+	go test ./ports/openclaw/...
+	@echo "OpenClaw port tests passed."
+	@echo "To run E2E campaign against live stack: bash ports/openclaw/tests/e2e/validate_openclaw_port_campaign.sh"
+
+.PHONY: openclaw-drill
+openclaw-drill:
+	@bash ports/openclaw/scripts/run_openclaw_incident_rollback_drill.sh
+
+.PHONY: test-openclaw
+test-openclaw:
+	go test ./ports/openclaw/...
+
+build-images:
+	@echo "Building container images..."
+	docker build -f docker/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
+	docker tag $(GATEWAY_IMAGE):$(IMAGE_TAG) $(GATEWAY_IMAGE):dev
+	docker build -f docker/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
+	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
+	@echo "Built: $(GATEWAY_IMAGE):$(IMAGE_TAG), $(S3_MCP_IMAGE):$(IMAGE_TAG)"
+
+build:
+	@echo "Building PRECINCT Gateway..."
+	docker compose build mcp-security-gateway
+
+# ---------------------------------------------------------------------------
+# 11. Security scans
+# ---------------------------------------------------------------------------
+
+.PHONY: security-scan security-scan-strict security-scan-validate
+
+security-scan:
 	SECURITY_SCAN_STRICT=0 scripts/security/collect-security-scan-artifacts.sh
 
-security-scan-strict: ## Run security scans in strict mode (fail if any scanner is skipped/fails)
+security-scan-strict:
 	SECURITY_SCAN_STRICT=1 scripts/security/collect-security-scan-artifacts.sh
 
-security-scan-validate: ## Validate generated security scan artifact manifest and required files
+security-scan-validate:
 	tests/e2e/validate_security_scan_artifacts.sh
 
-readiness-state-validate: ## Validate readiness state docs against live bd story state
-	tests/e2e/validate_readiness_state_integrity.sh
+# ---------------------------------------------------------------------------
+# 12. Compliance tools
+# ---------------------------------------------------------------------------
 
-story-evidence-validate: ## Validate backticked POC evidence paths referenced in a bd story (usage: make story-evidence-validate STORY_ID=<id>)
-	@if [ -z "$(STORY_ID)" ]; then \
-		echo "ERROR: STORY_ID is required (ex: make story-evidence-validate STORY_ID=RFA-l6h6.6.11)"; \
+.PHONY: compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa
+
+$(COMPLIANCE_VENV): tools/compliance/requirements.txt
+	python3 -m venv $(COMPLIANCE_VENV)
+	$(COMPLIANCE_PYTHON) -m pip install --quiet -r tools/compliance/requirements.txt
+
+compliance-report: test-compliance
+	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
+		echo "Running E2E suite for fresh audit logs..."; \
+		bash tests/e2e/run_all.sh 2>&1 || true; \
+		docker compose logs --no-log-prefix mcp-security-gateway 2>/dev/null | grep '{' > $(AUDIT_LOG) || true; \
+	else \
+		echo "Docker stack not running, using existing audit log at $(AUDIT_LOG)"; \
+	fi
+	$(COMPLIANCE_PYTHON) tools/compliance/generate.py --audit-log $(AUDIT_LOG) --project-root .
+
+compliance-evidence:
+	@if [ -z "$(FRAMEWORK)" ]; then \
+		echo "Usage: make compliance-evidence FRAMEWORK=soc2 [SIGN=1] [COSIGN_KEY=.cosign/cosign.key]"; \
 		exit 1; \
 	fi
-	tests/e2e/validate_story_evidence_paths.sh "$(STORY_ID)"
+	@args=""; \
+	if [ "$(SIGN)" = "1" ]; then args="$$args --sign"; fi; \
+	if [ -n "$(COSIGN_KEY)" ]; then args="$$args --cosign-key $(COSIGN_KEY)"; fi; \
+	go run ./cmd/agw compliance collect --framework "$(FRAMEWORK)" $$args
 
-production-readiness-validate: security-scan-strict security-scan-validate ## Strict production-readiness security evidence gate
-	@echo "production-readiness-validate: PASS"
+test-compliance: $(COMPLIANCE_VENV)
+	cd tools/compliance && $(CURDIR)/$(COMPLIANCE_PYTHON) -m pytest test_generate.py -v
+
+gdpr-ropa:
+	@cat docs/compliance/gdpr-article-30-ropa.md
+
+gdpr-delete:
+	@if [ -z "$(SPIFFE_ID)" ]; then \
+		echo "Usage: make gdpr-delete SPIFFE_ID=spiffe://poc.local/agents/example"; \
+		exit 1; \
+	fi
+	go run ./cmd/agw gdpr delete "$(SPIFFE_ID)" --confirm
 
 # ---------------------------------------------------------------------------
-# Hidden targets (functional but not shown in make help)
+# 13. Internal helpers and operational targets
 # ---------------------------------------------------------------------------
 
-.PHONY: setup register-spire k8s-register-spire test-integration test-opa test-gateway-spike-key build build-images
-.PHONY: compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa validate-setup-time repave
-.PHONY: k8s-local-up k8s-local-down clean-logs k8s-prereqs k8s-registry
+.PHONY: setup register-spire k8s-register-spire k8s-prereqs k8s-registry
+.PHONY: k8s-runtime-campaign operations-backup-restore-drill
+.PHONY: readiness-state-validate validate-setup-time
+.PHONY: test-spike-seeder-groq test-gateway-spike-key test-guard-model-e2e
 
 GATEKEEPER_VERSION ?= v3.16.0
 GATEKEEPER_URL := https://raw.githubusercontent.com/open-policy-agent/gatekeeper/$(GATEKEEPER_VERSION)/deploy/gatekeeper.yaml
@@ -616,79 +771,6 @@ register-spire:
 	ENTRY_COUNT=$$($(COMPOSE_SPIRE_EXEC) entry show -socketPath $(COMPOSE_SPIRE_SOCK) | grep -c '^Entry ID' || true); \
 	echo "    $$ENTRY_COUNT entries"
 
-test-integration:
-	go test -tags=integration ./tests/integration/... -v -timeout 60s
-
-test-spike-seeder-groq: ## Integration test: validate Groq API key seeding into SPIKE (requires running stack)
-	@bash tests/integration/test_spike_seeder_groq.sh
-
-test-gateway-spike-key: ## Integration test: validate gateway fetches Groq API key from SPIKE at startup (requires running stack)
-	@bash tests/integration/test_gateway_spike_key.sh
-
-test-guard-model-e2e: ## E2E test: validate full Groq API key chain (.env -> seeder -> SPIKE -> gateway -> guard model -> real score)
-	@bash tests/e2e/test_guard_model_e2e.sh
-
-test-opa:
-	@if command -v opa >/dev/null 2>&1; then \
-		opa test config/opa/ -v; \
-	else \
-		echo "WARNING: opa not installed"; \
-	fi
-
-build:
-	@echo "Building PRECINCT Gateway..."
-	docker compose build mcp-security-gateway
-
-build-tools: ## Build local helper binaries into build/bin (never project root)
-	@mkdir -p build/bin
-	go build -o build/bin/spike-cli ./cmd/spike-cli
-	go build -o build/bin/openclaw-ws-smoke ./cmd/openclaw-ws-smoke
-
-build-images:
-	@echo "Building container images..."
-	docker build -f docker/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
-	docker tag $(GATEWAY_IMAGE):$(IMAGE_TAG) $(GATEWAY_IMAGE):dev
-	docker build -f docker/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
-	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
-	@echo "Built: $(GATEWAY_IMAGE):$(IMAGE_TAG), $(S3_MCP_IMAGE):$(IMAGE_TAG)"
-
-$(COMPLIANCE_VENV): tools/compliance/requirements.txt
-	python3 -m venv $(COMPLIANCE_VENV)
-	$(COMPLIANCE_PYTHON) -m pip install --quiet -r tools/compliance/requirements.txt
-
-compliance-report: test-compliance
-	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
-		echo "Running E2E suite for fresh audit logs..."; \
-		bash tests/e2e/run_all.sh 2>&1 || true; \
-		docker compose logs --no-log-prefix mcp-security-gateway 2>/dev/null | grep '{' > $(AUDIT_LOG) || true; \
-	else \
-		echo "Docker stack not running, using existing audit log at $(AUDIT_LOG)"; \
-	fi
-	$(COMPLIANCE_PYTHON) tools/compliance/generate.py --audit-log $(AUDIT_LOG) --project-root .
-
-compliance-evidence:
-	@if [ -z "$(FRAMEWORK)" ]; then \
-		echo "Usage: make compliance-evidence FRAMEWORK=soc2 [SIGN=1] [COSIGN_KEY=.cosign/cosign.key]"; \
-		exit 1; \
-	fi
-	@args=""; \
-	if [ "$(SIGN)" = "1" ]; then args="$$args --sign"; fi; \
-	if [ -n "$(COSIGN_KEY)" ]; then args="$$args --cosign-key $(COSIGN_KEY)"; fi; \
-	go run ./cmd/agw compliance collect --framework "$(FRAMEWORK)" $$args
-
-test-compliance: $(COMPLIANCE_VENV)
-	cd tools/compliance && $(CURDIR)/$(COMPLIANCE_PYTHON) -m pytest test_generate.py -v
-
-gdpr-ropa:
-	@cat docs/compliance/gdpr-article-30-ropa.md
-
-gdpr-delete:
-	@if [ -z "$(SPIFFE_ID)" ]; then \
-		echo "Usage: make gdpr-delete SPIFFE_ID=spiffe://poc.local/agents/example"; \
-		exit 1; \
-	fi
-	go run ./cmd/agw gdpr delete "$(SPIFFE_ID)" --confirm
-
 SPIRE_SOCK := /tmp/spire-server/private/api.sock
 SPIRE_EXEC := kubectl -n spire-system exec spire-server-0 -- /opt/spire/bin/spire-server
 
@@ -752,6 +834,16 @@ k8s-register-spire:
 	echo "  Current entries:"; \
 	$(SPIRE_EXEC) entry show -socketPath $(SPIRE_SOCK)
 
+k8s-runtime-campaign:
+	python3 tests/e2e/k8s_runtime_validation_campaign.py \
+		--output build/validation/k8s-runtime-validation-report.v2.4.json
+
+operations-backup-restore-drill:
+	@bash scripts/operations/run_backup_restore_drill.sh
+
+readiness-state-validate:
+	tests/e2e/validate_readiness_state_integrity.sh
+
 validate-setup-time:
 	@if [ -z "$(MODE)" ]; then \
 		echo "Usage: make validate-setup-time MODE=compose|k8s"; \
@@ -759,7 +851,19 @@ validate-setup-time:
 	fi
 	@bash tests/e2e/validate_setup_time.sh $(MODE)
 
-# Aliases (hidden, for backwards compatibility)
+test-spike-seeder-groq:
+	@bash tests/integration/test_spike_seeder_groq.sh
+
+test-gateway-spike-key:
+	@bash tests/integration/test_gateway_spike_key.sh
+
+test-guard-model-e2e:
+	@bash tests/e2e/test_guard_model_e2e.sh
+
+# ---------------------------------------------------------------------------
+# 14. Aliases (backwards compatibility)
+# ---------------------------------------------------------------------------
+
 k8s-local-up: k8s-up
 k8s-local-down: k8s-down
 clean-logs:

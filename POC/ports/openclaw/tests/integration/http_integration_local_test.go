@@ -11,6 +11,7 @@ import (
 
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
+	"github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw"
 )
 
 func newOpenClawHTTPTestServer(t *testing.T) *httptest.Server {
@@ -40,6 +41,7 @@ func newOpenClawHTTPTestServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatalf("gateway.New failed: %v", err)
 	}
+	gw.RegisterPort(openclaw.NewAdapter(gw))
 	t.Cleanup(func() { _ = gw.Close() })
 
 	return httptest.NewServer(gw.Handler())

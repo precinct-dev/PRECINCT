@@ -2,7 +2,7 @@
 # demo/run.sh -- Orchestrate E2E demos against Docker Compose or K8s.
 # Both demos run as containers -- no local Go/Python/httpx needed.
 #
-# Usage: ./demo/run.sh {compose|k8s|both} [--skip-setup]
+# Usage: ./demo/run.sh {compose|k8s|both} [--skip-setup] [--no-teardown]
 # Strict observability mode: DEMO_STRICT_OBSERVABILITY=1 ./demo/run.sh compose
 
 set -euo pipefail
@@ -11,11 +11,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 POC_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 MODE="${1:-compose}"
 SKIP_SETUP=false
+NO_TEARDOWN=false
 STRICT_OBSERVABILITY_MODE="${DEMO_STRICT_OBSERVABILITY:-0}"
 
 for arg in "$@"; do
     if [ "$arg" = "--skip-setup" ]; then
         SKIP_SETUP=true
+    elif [ "$arg" = "--no-teardown" ]; then
+        NO_TEARDOWN=true
     fi
 done
 
@@ -1184,8 +1187,12 @@ main() {
 
             total_failures=$((cycle1_failures + cycle2_failures))
 
-            # Auto-teardown (unconditional -- runs whether tests passed or failed)
-            teardown "$MODE"
+            # Auto-teardown (unless --no-teardown)
+            if [ "$NO_TEARDOWN" = "false" ]; then
+                teardown "$MODE"
+            else
+                log "Skipping teardown (--no-teardown). Environment left running for inspection."
+            fi
             ;;
         both)
             # Compose cycles
@@ -1197,7 +1204,11 @@ main() {
             log "=== Compose Cycle 2 (re-run) ==="
             run_demo_cycle compose || cycle2_failures=$?
             total_failures=$((cycle1_failures + cycle2_failures))
-            teardown compose
+            if [ "$NO_TEARDOWN" = "false" ]; then
+                teardown compose
+            else
+                log "Skipping compose teardown (--no-teardown)."
+            fi
 
             # K8s cycles
             cycle1_failures=0
@@ -1211,7 +1222,11 @@ main() {
             log "=== K8s Cycle 2 (re-run) ==="
             run_demo_cycle k8s || cycle2_failures=$?
             total_failures=$((total_failures + cycle1_failures + cycle2_failures))
-            teardown k8s
+            if [ "$NO_TEARDOWN" = "false" ]; then
+                teardown k8s
+            else
+                log "Skipping k8s teardown (--no-teardown)."
+            fi
             ;;
         *)
             echo "Usage: $0 {compose|k8s|both} [--skip-setup]"

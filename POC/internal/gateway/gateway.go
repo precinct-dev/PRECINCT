@@ -67,6 +67,7 @@ type Gateway struct {
 	extensionRegistry          *middleware.ExtensionRegistry      // pluggable extension slots
 	extensionRegistryStop      func()                            // stop function for extension registry fsnotify watcher
 	adminAuthzAllowedSPIFFEIDs map[string]struct{}               // explicit SPIFFE allowlist for /admin/* authorization
+	portAdapters               []PortAdapter                     // registered port adapters for third-party integrations
 }
 
 // New creates a new gateway instance
@@ -657,37 +658,28 @@ func (g *Gateway) proxyHandler() http.Handler {
 			return
 		}
 
-		if g.handleAppWSEntry(proxyRW, r.WithContext(ctx)) {
-			result := "allowed"
-			if proxyRW.statusCode >= 400 {
-				result = "denied"
+		// Port adapter dispatch: registered adapters get first crack at
+		// requests before the hardcoded fallback paths below.
+		for _, port := range g.portAdapters {
+			if port.TryServeHTTP(proxyRW, r.WithContext(ctx)) {
+				result := "allowed"
+				if proxyRW.statusCode >= 400 {
+					result = "denied"
+				}
+				span.SetAttributes(
+					attribute.Int("status_code", proxyRW.statusCode),
+					attribute.String("mcp.result", result),
+					attribute.String("mcp.reason", "port_adapter_"+port.Name()),
+					attribute.String("mcp.gateway.middleware", "port_"+port.Name()),
+					attribute.Int("mcp.gateway.step", v24MiddlewareStep),
+					attribute.String("mcp.v24.endpoint", r.URL.Path),
+				)
+				return
 			}
-			span.SetAttributes(
-				attribute.Int("status_code", proxyRW.statusCode),
-				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "app_ws_wrapper"),
-				attribute.String("mcp.gateway.middleware", v24MiddlewareAppWrapperWS),
-				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
-				attribute.String("mcp.v24.endpoint", r.URL.Path),
-			)
-			return
 		}
 
-		if g.handleAppHTTPEntry(proxyRW, r.WithContext(ctx)) {
-			result := "allowed"
-			if proxyRW.statusCode >= 400 {
-				result = "denied"
-			}
-			span.SetAttributes(
-				attribute.Int("status_code", proxyRW.statusCode),
-				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "app_http_wrapper"),
-				attribute.String("mcp.gateway.middleware", v24MiddlewareAppWrapperHTTP),
-				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
-				attribute.String("mcp.v24.endpoint", r.URL.Path),
-			)
-			return
-		}
+		// NOTE: handleAppWSEntry and handleAppHTTPEntry were removed.
+		// Third-party integrations are now dispatched via the port adapter loop above.
 
 		// Phase 3 walking skeleton: internal plane entry points are served
 		// from the gateway boundary under /v1/* and still pass the full middleware chain.

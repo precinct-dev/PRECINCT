@@ -1,0 +1,61 @@
+{
+  "schema_version": "openclaw_ws_smoke.v1",
+  "phase": "post-restart",
+  "status": "pass",
+  "url": "ws://localhost:9090/openclaw/ws",
+  "spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+  "started_at": "2026-02-16T07:37:30.409823Z",
+  "finished_at": "2026-02-16T07:37:30.425223Z",
+  "duration_ms": 15,
+  "connect_response": {
+    "type": "res",
+    "id": "connect-1",
+    "ok": true,
+    "payload": {
+      "auth": {
+        "device": "",
+        "role": "operator",
+        "scopes": [
+          "device:ping",
+          "gateway:read"
+        ],
+        "spiffe": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+      },
+      "decision_id": "717942e2-8428-4a57-a276-535f63e69444",
+      "features": {
+        "events": [
+          "presence",
+          "tick"
+        ],
+        "methods": [
+          "health",
+          "devices.list",
+          "devices.ping"
+        ]
+      },
+      "policy": {
+        "maxBufferedBytes": 1048576,
+        "maxPayload": 1048576,
+        "tickIntervalMs": 1000
+      },
+      "protocol": 1,
+      "server": {
+        "connId": "conn-717942e2-8428-4a57-a276-535f63e69444",
+        "version": "poc-openclaw-ws-wrapper"
+      },
+      "trace_id": "7f3f9982-1762-400d-bd1a-dfd7e22aa9fe",
+      "type": "hello-ok"
+    }
+  },
+  "health_response": {
+    "type": "res",
+    "id": "health-1",
+    "ok": true,
+    "payload": {
+      "decision_id": "717942e2-8428-4a57-a276-535f63e69444",
+      "status": "ok",
+      "trace_id": "7f3f9982-1762-400d-bd1a-dfd7e22aa9fe",
+      "ts": 1771227450423
+    }
+  }
+}
