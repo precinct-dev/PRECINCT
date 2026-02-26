@@ -13,7 +13,7 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
 const policyTestMaxRequestSizeBytes = 10 * 1024 * 1024 // 10 MiB (MAX_REQUEST_SIZE_BYTES default)

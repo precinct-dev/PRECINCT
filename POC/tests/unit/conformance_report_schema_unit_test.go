@@ -3,7 +3,7 @@ package unit
 import (
 	"testing"
 
-	"github.com/example/agentic-security-poc/tests/conformance/harness"
+	"github.com/RamXX/agentic_reference_architecture/POC/tests/conformance/harness"
 )
 
 func TestConformanceReportSchemaValidation(t *testing.T) {

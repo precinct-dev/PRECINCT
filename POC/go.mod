@@ -1,4 +1,4 @@
-module github.com/example/agentic-security-poc
+module github.com/RamXX/agentic_reference_architecture/POC
 
 go 1.24.6
 

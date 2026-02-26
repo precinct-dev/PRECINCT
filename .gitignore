@@ -15,6 +15,23 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+.envrc
+
+# Logs and runtime temp files
+*.log
+*.tmp
+*.cache
+*.pid
 
 # Runtime operations artifacts
 POC/docs/operations/artifacts/
+POC/docs/upgrades/
+POC/config/upgrade-snapshots/
+POC/make-*.log
+POC/tests/e2e/*.log
+
+# Local binaries/build outputs
+POC/bin/
+POC/build/
+POC/openclaw-ws-smoke
+POC/spike-cli

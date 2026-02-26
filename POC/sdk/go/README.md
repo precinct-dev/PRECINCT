@@ -4,7 +4,7 @@ A Go client for making MCP JSON-RPC tool calls through the PRECINCT Gateway.
 The SDK handles JSON-RPC envelope construction, required HTTP headers, structured
 error parsing, retry logic with exponential backoff, and session management.
 
-**Package:** `github.com/example/mcp-gateway-sdk-go/mcpgateway`
+**Package:** `github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway`
 
 ## Table of Contents
 
@@ -22,7 +22,7 @@ error parsing, retry logic with exponential backoff, and session management.
 ## Installation
 
 ```bash
-go get github.com/example/mcp-gateway-sdk-go/mcpgateway
+go get github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway
 ```
 
 **Minimum Go version:** 1.24.6
@@ -33,7 +33,7 @@ For local development with a `replace` directive:
 
 ```go
 // In your go.mod
-replace github.com/example/mcp-gateway-sdk-go => ../path/to/sdk/go
+replace github.com/RamXX/agentic_reference_architecture/POC/sdk/go => ../path/to/sdk/go
 ```
 
 ## Quick Start
@@ -47,7 +47,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/example/mcp-gateway-sdk-go/mcpgateway"
+	"github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway"
 )
 
 func main() {
@@ -421,7 +421,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/example/mcp-gateway-sdk-go/mcpgateway"
+	"github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 

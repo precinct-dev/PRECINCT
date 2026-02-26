@@ -5,7 +5,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/example/agentic-security-poc/internal/spike"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/spike"
 )
 
 const version = "0.1.0"

@@ -12,8 +12,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway"
-	gwmetrics "github.com/example/agentic-security-poc/internal/gateway/metrics"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
+	gwmetrics "github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/metrics"
 )
 
 func main() {

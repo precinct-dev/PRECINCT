@@ -22,7 +22,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
 // resolveToolRegistryConfig returns the absolute path to config/tool-registry.yaml.

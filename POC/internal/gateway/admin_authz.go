@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
 func isAdminPath(path string) bool {

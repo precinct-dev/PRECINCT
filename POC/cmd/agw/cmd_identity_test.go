@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/agentic-security-poc/internal/agw"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/agw"
 )
 
 type fakeSPIREManager struct {

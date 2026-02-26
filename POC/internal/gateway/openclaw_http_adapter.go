@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
-	adapter "github.com/example/agentic-security-poc/internal/integrations/openclaw"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	adapter "github.com/RamXX/agentic_reference_architecture/POC/internal/integrations/openclaw"
 )
 
 type openClawFunctionCall struct {

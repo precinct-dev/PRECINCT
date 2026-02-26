@@ -29,7 +29,7 @@ Go and Python SDKs are provided for agent integration.
 
 | # | Middleware Layer | Description |
 |---|-----------------|-------------|
-| 1 | Request Size Guard | Rejects oversized payloads (configurable, default 1 MB) |
+| 1 | Request Size Guard | Rejects oversized payloads (configurable, default 10 MB) |
 | 2 | Request Shape Validator | Validates JSON-RPC 2.0 envelope structure |
 | 3 | SPIFFE Authentication | Validates X-SPIFFE-ID header against trust domain |
 | 4 | Audit Logger | Decision journal with structured JSON logging + OTel spans |
@@ -54,7 +54,7 @@ Supporting infrastructure:
 
 ## Quick Start
 
-Prerequisites: Docker, Docker Compose, Go 1.23+, make.
+Prerequisites: Docker, Docker Compose, Go 1.24.6+, make.
 
 ```bash
 make phoenix-up      # Start observability stack (Phoenix + OTel collector)

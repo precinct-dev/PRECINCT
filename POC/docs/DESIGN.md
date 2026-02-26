@@ -741,7 +741,7 @@ curl -s -X POST http://localhost:9090 \
 For Go-based agents or tools:
 
 ```go
-import "github.com/example/agentic-security-poc/sdk/gateway"
+import "github.com/RamXX/agentic_reference_architecture/POC/sdk/gateway"
 
 client := gateway.NewClient(
     gateway.WithURL("http://localhost:9090"),

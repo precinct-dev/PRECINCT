@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
 const (

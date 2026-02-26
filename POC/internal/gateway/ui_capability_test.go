@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/example/agentic-security-poc/internal/testutil"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
 )
 
 func mustWriteTestFile(t *testing.T, path, content string) {

@@ -22,7 +22,7 @@ package gateway
 import (
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
 // CallOrigin represents whether a tool call is agent-driven or app-driven.

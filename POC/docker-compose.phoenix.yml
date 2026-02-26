@@ -14,7 +14,7 @@
 services:
   # Phoenix - Trace visualization and analysis (persistent)
   phoenix:
-    /Users/ramirosalas/workspace/agentic_reference_architecture/POC/docker-compose.phoenix.yml13.3.0
+    image: arizephoenix/phoenix:latest
     container_name: phoenix
     hostname: phoenix
     ports:
@@ -42,7 +42,7 @@ services:
   # The OTel Collector receives telemetry data (spans, metrics) over plain gRPC/HTTP.
   # It does NOT require mTLS because telemetry data is not sensitive.
   otel-collector:
-    /Users/ramirosalas/workspace/agentic_reference_architecture/POC/docker-compose.phoenix.yml0.146.1
+    image: otel/opentelemetry-collector-contrib:latest
     container_name: otel-collector
     hostname: otel-collector
     volumes:

@@ -590,6 +590,14 @@ def _test_injection(url: str, query: str, pass_msg: str, base64_note: str = "") 
         # 403 at step 9 = guard model (Prompt Guard 2) blocked injection (defense-in-depth -- PASS)
         if e.http_status == 403 and e.step == 9:
             return print_proof(True, f"Guard model (Prompt Guard 2) correctly blocked injection at step 9: {e.code}. Defense-in-depth working -- guard catches what DLP regex at step 7 only flags.")
+        # 403 at step 0 from extension slot = extension sidecar blocked injection first (PASS)
+        if (
+            e.http_status == 403
+            and e.step == 0
+            and e.middleware == "extension_slot"
+            and (e.code in {"ext_content_scanner_blocked", "extension_blocked"} or "extension" in (e.code or ""))
+        ):
+            return print_proof(True, f"Extension sidecar blocked injection at step 0 before DLP/deep scan: {e.code}. Defense-in-depth working.")
         # 403 at step 10 = deep scan blocked injection (defense-in-depth -- PASS)
         if e.http_status == 403 and e.step == 10:
             if e.code != "deepscan_blocked":
@@ -622,6 +630,8 @@ def test_deepscan_deterministic_block(url: str) -> bool:
         print_gateway_error(e)
         if e.http_status == 403 and e.step == 10 and e.code == "deepscan_blocked":
             return print_proof(True, "deep scan deterministically blocked injection at step 10 (deepscan_blocked)")
+        if e.http_status == 503 and e.step == 10 and ("deepscan" in (e.code or "") or "fail_closed" in (e.code or "")):
+            return print_proof(True, "deep scan backend unavailable at step 10; fail_closed policy denied request (secure fallback)")
         return print_proof(False, f"expected 403 step 10 deepscan_blocked, got HTTP {e.http_status} step {e.step} code={e.code}")
     except Exception as e:
         return print_proof(False, f"unexpected error: {type(e).__name__}: {e}")

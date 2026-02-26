@@ -6,7 +6,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
 
-	gwmetrics "github.com/example/agentic-security-poc/internal/gateway/metrics"
+	gwmetrics "github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/metrics"
 )
 
 // tracer is the package-level OTel tracer used by all middleware in the gateway.

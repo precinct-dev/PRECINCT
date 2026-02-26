@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
 // handlePhase3PlaneEntry is a placeholder for additional Phase 3 plane entry points

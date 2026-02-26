@@ -19,8 +19,8 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/metric/metricdata"
 
-	gwmetrics "github.com/example/agentic-security-poc/internal/gateway/metrics"
-	"github.com/example/agentic-security-poc/internal/gateway/middleware"
+	gwmetrics "github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/metrics"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
 // TestOTelMetrics_RequestTotalAndDenial verifies that request_total and

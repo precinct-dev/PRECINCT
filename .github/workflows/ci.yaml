@@ -84,11 +84,16 @@ jobs:
             ./internal/gateway/... \
             ./internal/gateway/middleware/... \
             ./internal/tools/...
+          go test -v -race ./tests/unit/...
+          go test -v -race ./tests/integration/...
 
       - name: Run S3 MCP server tests
         run: |
-          if [ -d "./cmd/s3-mcp-server" ] || [ -d "./internal/s3mcp" ]; then
-            go test -v -race ./cmd/s3-mcp-server/... ./internal/s3mcp/... 2>/dev/null || true
+          if [ -d "./cmd/s3-mcp-server" ]; then
+            go test -v -race ./cmd/s3-mcp-server/...
+          fi
+          if [ -d "./internal/s3mcp" ]; then
+            go test -v -race ./internal/s3mcp/...
           fi
 
       - name: Upload coverage

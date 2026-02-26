@@ -190,6 +190,8 @@ terraform/
 k8s/
 helm/
 deploy/
+infra/
+agents/
 
 # ============================================================================
 # Logs & Temporary Files
