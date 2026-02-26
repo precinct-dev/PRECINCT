@@ -2,7 +2,8 @@
 # Scenario J: OpenClaw secure port walking skeleton through PRECINCT Gateway v2.4
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-source "${SCRIPT_DIR}/common.sh"
+POC_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/../../../.." && pwd)}"
+source "${POC_DIR}/tests/e2e/common.sh"
 
 extract_reason_code() {
     local body="$1"
