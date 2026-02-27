@@ -333,6 +333,16 @@ services:
           echo 'spike-seeder: GROQ_API_KEY not set, skipping guard model key seeding (step-up guard will degrade to fail-open)'
         fi
 
+        # RFA-ajf6: Seed messaging platform API keys for per-message SPIKE token resolution.
+        # These are placeholder values for the POC. In production, real platform credentials
+        # would be pre-seeded by an operator or secrets pipeline. The messaging simulator
+        # accepts any non-empty Bearer token, so placeholder values work for E2E testing.
+        echo 'spike-seeder: seeding messaging platform secrets...'
+        spike secret put whatsapp-api-key value=whatsapp-api-key-placeholder || echo 'spike-seeder: whatsapp-api-key put failed (non-fatal)'
+        spike secret put telegram-bot-token value=telegram-bot-token-placeholder || echo 'spike-seeder: telegram-bot-token put failed (non-fatal)'
+        spike secret put slack-bot-token value=slack-bot-token-placeholder || echo 'spike-seeder: slack-bot-token put failed (non-fatal)'
+        echo 'spike-seeder: messaging secrets seeded'
+
         echo 'spike-seeder: creating gateway-read ACL policy'
         policy_created=0
         attempt=1
