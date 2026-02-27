@@ -579,6 +579,10 @@ openclaw-demo: ## Run OpenClaw E2E against live Compose stack (brings stack up i
 	@bash ports/openclaw/tests/e2e/scenario_j_openclaw_walking_skeleton.sh
 	@echo "--- E2E: port validation campaign ---"
 	@bash ports/openclaw/tests/e2e/validate_openclaw_port_campaign.sh
+	@echo "--- E2E: messaging send/receive ---"
+	@bash ports/openclaw/tests/e2e/scenario_k_messaging_send_receive.sh
+	@echo "--- E2E: exfiltration via messaging ---"
+	@bash ports/openclaw/tests/e2e/scenario_l_messaging_exfiltration.sh
 	@echo "=== OpenClaw Port Demo PASSED ==="
 
 .PHONY: openclaw-drill
