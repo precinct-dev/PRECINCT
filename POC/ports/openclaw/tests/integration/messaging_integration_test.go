@@ -345,26 +345,28 @@ func TestIntegration_OPAPolicyEvaluation(t *testing.T) {
 
 	t.Logf("OPA policy response status=%d body=%s", resp.StatusCode, string(respBody))
 
-	// Parse the PlaneDecisionV2 response to verify policy engine was consulted.
-	var decision map[string]any
-	if err := json.Unmarshal(respBody, &decision); err != nil {
-		// Non-JSON response: the endpoint may return an error page.
-		// Log it for diagnostic purposes.
-		t.Logf("response is not JSON (status %d): %s", resp.StatusCode, string(respBody))
-		// A non-200 still proves the policy engine (or gateway routing) is active.
-		if resp.StatusCode >= 400 {
-			t.Logf("policy engine rejected the request (status %d) -- proves OPA is in the path", resp.StatusCode)
-			return
-		}
-		t.Fatalf("unexpected non-JSON 2xx response: %s", string(respBody))
+	// Hard assertion: response status must be 200 or 403.
+	// Any other status means the gateway or policy engine is misconfigured.
+	if resp.StatusCode != 200 && resp.StatusCode != 403 {
+		t.Fatalf("expected HTTP 200 or 403 from policy engine, got %d: %s", resp.StatusCode, string(respBody))
 	}
 
-	// Check for step-up indicators in the response.
-	// The policy engine may signal step-up via:
-	// - decision != "allow"
-	// - require_step_up / step_up_state / step_up fields
-	// - reason_code containing step_up
-	decisionStr, _ := decision["decision"].(string)
+	// Parse the response as JSON. A valid policy engine response MUST be JSON.
+	var decision map[string]any
+	if err := json.Unmarshal(respBody, &decision); err != nil {
+		t.Fatalf("response is not valid JSON (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	// Hard assertion: response must contain a "decision" field proving the
+	// policy engine was consulted. Without this field, the response is not
+	// structurally valid policy engine output.
+	decisionStr, hasDecision := decision["decision"].(string)
+	if !hasDecision || decisionStr == "" {
+		t.Fatalf("response is not a valid policy engine response -- missing 'decision' field: %s", string(respBody))
+	}
+
+	// The "decision" field exists -- the OPA engine was consulted.
+	// Check for step-up indicators (secondary, informational).
 	reasonCode, _ := decision["reason_code"].(string)
 	decisionJSON, _ := json.Marshal(decision)
 	respStr := string(decisionJSON)
@@ -379,12 +381,10 @@ func TestIntegration_OPAPolicyEvaluation(t *testing.T) {
 		t.Logf("OPA policy requires step-up for messaging_send (decision=%q, reason_code=%q)", decisionStr, reasonCode)
 	} else {
 		// In dev/fail-open mode, step-up may degrade to allow.
-		// Log the full decision to prove the policy engine was consulted.
-		t.Logf("OPA policy allowed messaging_send in dev/fail-open mode (decision=%q). Full response: %s", decisionStr, string(respBody))
+		// The key assertion (decision field exists) already passed above.
+		t.Logf("OPA policy allowed messaging_send in dev/fail-open mode (decision=%q)", decisionStr)
 	}
 
-	// Log the full policy decision to prove the engine was consulted,
-	// regardless of the outcome.
 	t.Logf("PlaneDecisionV2: %s", string(respBody))
 }
 
@@ -537,7 +537,7 @@ func TestIntegration_WebhookWhatsApp(t *testing.T) {
 		// loopback to /v1/ingress/submit.
 		auditLog := readGatewayAuditLog(t)
 		if auditLog == "" {
-			t.Log("WARNING: could not read audit log via docker exec -- 200 response itself proves loopback succeeded")
+			t.Logf("WARNING: could not read audit log via docker exec -- 200 response itself is partial evidence of loopback")
 		} else {
 			hasIngressEntry := strings.Contains(auditLog, "/v1/ingress/submit") ||
 				strings.Contains(auditLog, "ingress") ||
@@ -545,7 +545,7 @@ func TestIntegration_WebhookWhatsApp(t *testing.T) {
 			if hasIngressEntry {
 				t.Logf("audit log confirms ingress pipeline traversal via internal loopback")
 			} else {
-				t.Logf("WARNING: audit log does not contain explicit ingress entries -- 200 response proves loopback, but audit entries may use different naming")
+				t.Errorf("audit log present but missing ingress pipeline entries: got %d bytes", len(auditLog))
 				t.Logf("audit log tail (last 500 chars): ...%s", tailString(auditLog, 500))
 			}
 		}
