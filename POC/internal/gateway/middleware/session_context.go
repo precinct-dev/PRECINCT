@@ -223,12 +223,13 @@ func containsSubstring(s, substr string) bool {
 func isExternalTarget(tool string, params map[string]interface{}) (bool, string) {
 	// Tools that typically access external services
 	externalTools := map[string]bool{
-		"email_send":     true,
-		"http_request":   true,
-		"file_upload":    true,
-		"webhook_call":   true,
-		"tavily_search":  true,
-		"messaging_send": true,
+		"email_send":      true,
+		"http_request":    true,
+		"file_upload":     true,
+		"webhook_call":    true,
+		"tavily_search":   true,
+		"messaging_send":  true,
+		"messaging_status": true,
 	}
 
 	if externalTools[tool] {

@@ -26,3 +26,10 @@ allowed_destinations:
 
   # Messaging simulator (RFA-1fui)
   - "messaging-sim"
+
+  # Production messaging domains (RFA-np7t)
+  - "graph.facebook.com"
+  - "*.facebook.com"
+  - "api.telegram.org"
+  - "slack.com"
+  - "*.slack.com"

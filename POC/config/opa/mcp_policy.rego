@@ -160,9 +160,14 @@ destination_allowed("messaging_send", params) if {
     not is_string(params)
 }
 
+destination_allowed("messaging_status", params) if {
+    # messaging_status - read-only status check, always allowed
+    true
+}
+
 destination_allowed(tool, params) if {
     # Other tools - default deny external egress unless explicitly allowed
-    not tool in ["tavily_search", "read", "grep", "bash", "messaging_send"]
+    not tool in ["tavily_search", "read", "grep", "bash", "messaging_send", "messaging_status"]
     # Would check against tool registry allowed_destinations
     false
 }
