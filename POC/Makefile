@@ -870,7 +870,19 @@ test-guard-model-e2e:
 	@bash tests/e2e/test_guard_model_e2e.sh
 
 # ---------------------------------------------------------------------------
-# 14. Aliases (backwards compatibility)
+# 14. Attestation re-signing
+# ---------------------------------------------------------------------------
+
+.PHONY: attestation-resign
+
+attestation-resign: ## Re-sign attestation artifacts (generates keypair if missing)
+	@echo "=== Attestation Re-signing ==="
+	go run ./cmd/attestation-sign
+	@echo ""
+	@echo "attestation-resign: DONE"
+
+# ---------------------------------------------------------------------------
+# 15. Aliases (backwards compatibility)
 # ---------------------------------------------------------------------------
 
 k8s-local-up: k8s-up

@@ -1,3 +1,4 @@
+# NOTE: Modifying this file requires running 'make attestation-resign' to update signature files.
 # Tool Registry Configuration - RFA-qq0.5, RFA-qq0.6
 # Defines MCP tools with SHA-256 hashes for poisoning detection
 # Each tool is identified by name and verified via SHA-256 hash
