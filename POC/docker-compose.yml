@@ -519,7 +519,7 @@ services:
     networks:
       - tool-plane
     healthcheck:
-      test: ["/messaging-sim", "-healthcheck"]
+      test: ["CMD", "/messaging-sim", "-healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 5
