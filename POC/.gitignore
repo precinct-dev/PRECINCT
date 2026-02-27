@@ -28,6 +28,9 @@ coverage.out
 # Generated reports
 reports/
 
+# Attestation signing key (NEVER commit private keys)
+config/attestation-ed25519.key
+
 # Upgrade workflow artifacts (runtime only, never commit)
 config/versions.yaml.snapshot.*
 config/upgrade-snapshots/
