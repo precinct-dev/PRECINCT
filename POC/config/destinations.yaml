@@ -23,3 +23,6 @@ allowed_destinations:
   # Example: GitHub API for code operations
   - "api.github.com"
   - "*.github.com"
+
+  # Messaging simulator (RFA-1fui)
+  - "messaging-sim"
