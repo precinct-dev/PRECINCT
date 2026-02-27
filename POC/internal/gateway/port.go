@@ -33,6 +33,7 @@ type PortGatewayServices interface {
 
 	// Messaging egress
 	ExecuteMessagingEgress(ctx context.Context, attrs map[string]string, payload []byte, authHeader string) (*MessagingEgressResult, error)
+	RedeemSPIKESecret(ctx context.Context, tokenStr string) (string, error)
 
 	// Audit / logging
 	LogPlaneDecision(r *http.Request, decision PlaneDecisionV2, httpStatus int)

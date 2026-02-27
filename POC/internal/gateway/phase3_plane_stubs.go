@@ -614,6 +614,30 @@ func defaultToolCapabilityRules() map[string]toolCapabilityRule {
 				},
 			},
 		},
+		"tool.messaging.http": {
+			CapabilityID: "tool.messaging.http",
+			Protocol:     "http",
+			Adapters: map[string]struct{}{
+				"http": {},
+			},
+			AllowTools: map[string]struct{}{
+				"messaging_send":   {},
+				"messaging_status": {},
+			},
+			Actions: []toolActionRule{
+				{
+					Action: "tool.invoke",
+					Resources: map[string]struct{}{
+						"messaging_send":   {},
+						"messaging_status": {},
+					},
+					AllowedTools: map[string]struct{}{
+						"messaging_send":   {},
+						"messaging_status": {},
+					},
+				},
+			},
+		},
 	}
 }
 
