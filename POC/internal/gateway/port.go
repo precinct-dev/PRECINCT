@@ -45,6 +45,9 @@ type PortGatewayServices interface {
 	// Approval capabilities
 	ValidateAndConsumeApproval(token string, scope middleware.ApprovalScope) (*middleware.ApprovalCapabilityClaims, error)
 	HasApprovalService() bool
+
+	// Connector conformance
+	ValidateConnector(connectorID, signature string) (bool, string)
 }
 
 // ModelEgressResult is the exported version of modelEgressResult for use by port adapters.

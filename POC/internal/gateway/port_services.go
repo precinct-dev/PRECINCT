@@ -109,6 +109,16 @@ func (g *Gateway) RedeemSPIKESecret(ctx context.Context, tokenStr string) (strin
 	return secret.Value, nil
 }
 
+// ValidateConnector checks connector conformance via the CCA runtime check.
+// Returns (allowed, reason). If no CCA is configured, all connectors are allowed.
+func (g *Gateway) ValidateConnector(connectorID, signature string) (bool, string) {
+	if g.cca == nil {
+		return true, "no_cca_configured"
+	}
+	allowed, reason, _ := g.cca.runtimeCheck(connectorID, signature)
+	return allowed, reason
+}
+
 // RegisterPort adds a PortAdapter to the gateway's dispatch chain.
 func (g *Gateway) RegisterPort(adapter PortAdapter) {
 	g.portAdapters = append(g.portAdapters, adapter)
