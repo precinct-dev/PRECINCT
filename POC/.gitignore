@@ -12,6 +12,8 @@ data/
 /mtls-healthcheck
 /tcp-healthcheck
 /spike-seeder
+/messaging-sim
+/ws-e2e-client
 /bin/
 demo/go/demo
 demo/mock-mcp-server/mock-mcp-server
