@@ -166,6 +166,20 @@ func (a *Adapter) serveWSConnection(conn *websocket.Conn, req *http.Request) {
 				continue
 			}
 			a.handleMessageSend(req.Context(), conn, frame, req, session)
+		case "message.status":
+			if !wsAllowed(session, frame.Method) {
+				a.writeWSFailure(conn, frame.ID, http.StatusForbidden, reasonWSMethodForbidden, "method forbidden for current role/scopes", decisionID, traceID)
+				a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSMethodForbidden, decisionID, traceID, http.StatusForbidden)
+				continue
+			}
+			a.handleMessageStatus(req.Context(), conn, frame, req, session)
+		case "connector.register":
+			if !wsAllowed(session, frame.Method) {
+				a.writeWSFailure(conn, frame.ID, http.StatusForbidden, reasonWSMethodForbidden, "method forbidden for current role/scopes", decisionID, traceID)
+				a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSMethodForbidden, decisionID, traceID, http.StatusForbidden)
+				continue
+			}
+			a.handleConnectorRegister(req.Context(), conn, frame, req, session)
 		default:
 			a.writeWSFailure(conn, frame.ID, http.StatusForbidden, reasonWSMethodForbidden, "unsupported control-plane method", decisionID, traceID)
 			a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSMethodForbidden, decisionID, traceID, http.StatusForbidden)
@@ -228,6 +242,12 @@ func (a *Adapter) handleWSConnect(req *http.Request, session *wsSession, frame w
 	}
 	if wsAllowed(*session, "message.send") {
 		methods = append(methods, "message.send")
+	}
+	if wsAllowed(*session, "message.status") {
+		methods = append(methods, "message.status")
+	}
+	if wsAllowed(*session, "connector.register") {
+		methods = append(methods, "connector.register")
 	}
 
 	_ = conn.WriteJSON(wsResponseFrame{
@@ -390,6 +410,14 @@ func wsAllowed(session wsSession, method string) bool {
 		}
 		_, ok := session.Scopes["tools.messaging.send"]
 		return ok
+	case "message.status":
+		if session.Role == "operator" {
+			return true
+		}
+		_, ok := session.Scopes["tools.messaging.status"]
+		return ok
+	case "connector.register":
+		return session.Role == "operator"
 	default:
 		return false
 	}

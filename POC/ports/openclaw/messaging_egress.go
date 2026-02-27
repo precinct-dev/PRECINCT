@@ -3,6 +3,7 @@ package openclaw
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -75,24 +76,15 @@ func (a *Adapter) handleMessageSend(_ context.Context, conn *websocket.Conn, fra
 
 	// Resolve auth header: prefer per-message auth_ref with SPIKE resolution,
 	// fallback to upgrade request header.
-	authHeader := strings.TrimSpace(req.Header.Get("Authorization"))
-	if authRef, ok := frame.Params["auth_ref"].(string); ok && strings.TrimSpace(authRef) != "" {
-		authRef = strings.TrimSpace(authRef)
-		if strings.HasPrefix(authRef, "$SPIKE{") {
-			// Resolve SPIKE token via the gateway's redeemer.
-			resolved, err := a.gw.RedeemSPIKESecret(ctx, authRef)
-			if err != nil {
-				a.writeWSFailure(conn, frame.ID, http.StatusUnauthorized, reasonWSMessagingFailed,
-					"SPIKE token resolution failed: "+err.Error(), decisionID, traceID)
-				a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSMessagingFailed,
-					decisionID, traceID, http.StatusUnauthorized)
-				return
-			}
-			authHeader = "Bearer " + resolved
-		} else {
-			// Plain token (non-SPIKE) -- use as-is.
-			authHeader = "Bearer " + authRef
-		}
+	authRef := getStringParam(frame.Params, "auth_ref")
+	fallbackAuth := strings.TrimSpace(req.Header.Get("Authorization"))
+	authHeader, err := a.resolveSPIKERef(ctx, authRef, fallbackAuth)
+	if err != nil {
+		a.writeWSFailure(conn, frame.ID, http.StatusUnauthorized, reasonWSMessagingFailed,
+			err.Error(), decisionID, traceID)
+		a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSMessagingFailed,
+			decisionID, traceID, http.StatusUnauthorized)
+		return
 	}
 
 	// Build WhatsApp Cloud API payload.
@@ -133,6 +125,87 @@ func (a *Adapter) handleMessageSend(_ context.Context, conn *websocket.Conn, fra
 			"status_code": result.StatusCode,
 			"decision_id": decisionID,
 			"trace_id":    traceID,
+		},
+	})
+	a.logWSDecision(req, session, frame.Method, gateway.DecisionAllow, reasonWSAllow,
+		decisionID, traceID, http.StatusOK)
+}
+
+// resolveSPIKERef resolves a SPIKE token reference for per-message egress.
+// If authRef is empty, returns fallbackAuth. If authRef is not a SPIKE ref ($SPIKE{...}),
+// returns "Bearer " + authRef. Otherwise resolves via the gateway redeemer.
+func (a *Adapter) resolveSPIKERef(ctx context.Context, authRef string, fallbackAuth string) (string, error) {
+	if strings.TrimSpace(authRef) == "" {
+		return fallbackAuth, nil
+	}
+	if strings.HasPrefix(authRef, "$SPIKE{") {
+		resolved, err := a.gw.RedeemSPIKESecret(ctx, authRef)
+		if err != nil {
+			return "", fmt.Errorf("SPIKE token resolution failed: %w", err)
+		}
+		return "Bearer " + resolved, nil
+	}
+	// Non-SPIKE value -- use as Bearer token directly.
+	return "Bearer " + authRef, nil
+}
+
+// handleMessageStatus processes a "message.status" WS frame.
+// For POC, returns a simulated "delivered" status.
+func (a *Adapter) handleMessageStatus(_ context.Context, conn *websocket.Conn, frame wsRequestFrame, req *http.Request, session wsSession) {
+	decisionID, traceID := wsCorrelationIDs(req)
+
+	platform := getStringParam(frame.Params, "platform")
+	messageID := getStringParam(frame.Params, "message_id")
+
+	if platform == "" || messageID == "" {
+		a.writeWSFailure(conn, frame.ID, http.StatusBadRequest, reasonWSPayloadMalformed,
+			"message.status requires params: platform, message_id", decisionID, traceID)
+		a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSPayloadMalformed,
+			decisionID, traceID, http.StatusBadRequest)
+		return
+	}
+
+	// POC: Return simulated delivered status.
+	_ = conn.WriteJSON(wsResponseFrame{
+		Type: "res", ID: frame.ID, OK: true,
+		Payload: map[string]any{
+			"platform":    platform,
+			"message_id":  messageID,
+			"status":      "delivered",
+			"timestamp":   time.Now().UTC().Format(time.RFC3339),
+			"decision_id": decisionID,
+			"trace_id":    traceID,
+		},
+	})
+	a.logWSDecision(req, session, frame.Method, gateway.DecisionAllow, reasonWSAllow,
+		decisionID, traceID, http.StatusOK)
+}
+
+// handleConnectorRegister processes a "connector.register" WS frame.
+// Operator-only. Does NOT use SPIKE resolution (no external egress).
+func (a *Adapter) handleConnectorRegister(_ context.Context, conn *websocket.Conn, frame wsRequestFrame, req *http.Request, session wsSession) {
+	decisionID, traceID := wsCorrelationIDs(req)
+
+	connectorID := getStringParam(frame.Params, "connector_id")
+	platform := getStringParam(frame.Params, "platform")
+
+	if connectorID == "" || platform == "" {
+		a.writeWSFailure(conn, frame.ID, http.StatusBadRequest, reasonWSPayloadMalformed,
+			"connector.register requires params: connector_id, platform", decisionID, traceID)
+		a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSPayloadMalformed,
+			decisionID, traceID, http.StatusBadRequest)
+		return
+	}
+
+	// POC: Return registration acknowledgment.
+	_ = conn.WriteJSON(wsResponseFrame{
+		Type: "res", ID: frame.ID, OK: true,
+		Payload: map[string]any{
+			"connector_id": connectorID,
+			"platform":     platform,
+			"status":       "registered",
+			"decision_id":  decisionID,
+			"trace_id":     traceID,
 		},
 	})
 	a.logWSDecision(req, session, frame.Method, gateway.DecisionAllow, reasonWSAllow,
