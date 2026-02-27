@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
@@ -88,6 +89,24 @@ func (g *Gateway) HasApprovalService() bool {
 // ExecuteMessagingEgress delegates to the private executeMessagingEgress.
 func (g *Gateway) ExecuteMessagingEgress(ctx context.Context, attrs map[string]string, payload []byte, authHeader string) (*MessagingEgressResult, error) {
 	return g.executeMessagingEgress(ctx, attrs, payload, authHeader)
+}
+
+// RedeemSPIKESecret parses and redeems a SPIKE token string, returning
+// the resolved secret value. Used by port adapters for per-message
+// token resolution (WS frames bypass the HTTP middleware chain).
+func (g *Gateway) RedeemSPIKESecret(ctx context.Context, tokenStr string) (string, error) {
+	token, err := middleware.ParseSPIKEToken(tokenStr)
+	if err != nil {
+		return "", err
+	}
+	if g.spikeRedeemer == nil {
+		return "", fmt.Errorf("no SPIKE redeemer configured")
+	}
+	secret, err := g.spikeRedeemer.RedeemSecret(ctx, token)
+	if err != nil {
+		return "", err
+	}
+	return secret.Value, nil
 }
 
 // RegisterPort adds a PortAdapter to the gateway's dispatch chain.

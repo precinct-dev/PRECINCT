@@ -17,7 +17,11 @@ const reasonWSMessagingFailed gateway.ReasonCode = "WS_MESSAGING_FAILED"
 
 // handleMessageSend processes a "message.send" WS frame by evaluating the
 // tool request against gateway policy, then executing the messaging egress.
-func (a *Adapter) handleMessageSend(ctx context.Context, conn *websocket.Conn, frame wsRequestFrame, req *http.Request, session wsSession) {
+func (a *Adapter) handleMessageSend(_ context.Context, conn *websocket.Conn, frame wsRequestFrame, req *http.Request, session wsSession) {
+	// Use a detached context for the egress HTTP call. The parent context
+	// (req.Context()) is tied to the HTTP upgrade request lifecycle, which
+	// may be canceled by the server while the WS connection is still active.
+	ctx := context.Background()
 	decisionID, traceID := wsCorrelationIDs(req)
 
 	platform := getStringParam(frame.Params, "platform")
@@ -52,9 +56,10 @@ func (a *Adapter) handleMessageSend(ctx context.Context, conn *websocket.Conn, f
 			Action:   "tool.invoke",
 			Resource: "messaging_send",
 			Attributes: map[string]any{
-				"tool_name": "messaging_send",
-				"platform":  platform,
-				"recipient": recipient,
+				"capability_id": "tool.messaging.http",
+				"tool_name":     "messaging_send",
+				"platform":      platform,
+				"recipient":     recipient,
 			},
 		},
 	}
@@ -68,10 +73,26 @@ func (a *Adapter) handleMessageSend(ctx context.Context, conn *websocket.Conn, f
 		return
 	}
 
-	// Resolve auth header: prefer per-message auth_ref, fallback to upgrade request header.
+	// Resolve auth header: prefer per-message auth_ref with SPIKE resolution,
+	// fallback to upgrade request header.
 	authHeader := strings.TrimSpace(req.Header.Get("Authorization"))
 	if authRef, ok := frame.Params["auth_ref"].(string); ok && strings.TrimSpace(authRef) != "" {
-		authHeader = "Bearer " + strings.TrimSpace(authRef)
+		authRef = strings.TrimSpace(authRef)
+		if strings.HasPrefix(authRef, "$SPIKE{") {
+			// Resolve SPIKE token via the gateway's redeemer.
+			resolved, err := a.gw.RedeemSPIKESecret(ctx, authRef)
+			if err != nil {
+				a.writeWSFailure(conn, frame.ID, http.StatusUnauthorized, reasonWSMessagingFailed,
+					"SPIKE token resolution failed: "+err.Error(), decisionID, traceID)
+				a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSMessagingFailed,
+					decisionID, traceID, http.StatusUnauthorized)
+				return
+			}
+			authHeader = "Bearer " + resolved
+		} else {
+			// Plain token (non-SPIKE) -- use as-is.
+			authHeader = "Bearer " + authRef
+		}
 	}
 
 	// Build WhatsApp Cloud API payload.

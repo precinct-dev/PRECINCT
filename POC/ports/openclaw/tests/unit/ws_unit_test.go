@@ -335,6 +335,44 @@ func TestGatewayAuthz_OpenClawWSDenyMatrix_Integration(t *testing.T) {
 		}
 	})
 
+	t.Run("message.send scope denied for node without scope", func(t *testing.T) {
+		env := newOpenClawWSTestEnv(t)
+		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+		if err != nil {
+			t.Fatalf("dial websocket failed: %v", err)
+		}
+		defer func() { _ = conn.Close() }()
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type: "req", ID: "connect-msg-deny", Method: "connect",
+			Params: map[string]any{
+				"role":   "node",
+				"device": map[string]any{"id": "device-msg-deny"},
+				"auth":   map[string]any{"token": "tok-msg-deny"},
+			},
+		})
+		connectResp := readOpenClawWSResponseIntegration(t, conn)
+		if !connectResp.OK {
+			t.Fatalf("connect failed: %+v", connectResp.Error)
+		}
+
+		_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+			Type: "req", ID: "msg-send-deny", Method: "message.send",
+			Params: map[string]any{
+				"platform":  "whatsapp",
+				"recipient": "+1234567890",
+				"message":   "test",
+			},
+		})
+		denyResp := readOpenClawWSResponseIntegration(t, conn)
+		if denyResp.OK {
+			t.Fatal("expected message.send deny for node without tools.messaging.send scope")
+		}
+		if denyResp.Error == nil || denyResp.Error.ReasonCode != "WS_METHOD_FORBIDDEN" {
+			t.Fatalf("expected WS_METHOD_FORBIDDEN, got error=%+v", denyResp.Error)
+		}
+	})
+
 	t.Run("malformed control payload denied", func(t *testing.T) {
 		env := newOpenClawWSTestEnv(t)
 		conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
@@ -521,4 +559,136 @@ func TestAuditOpenClawWSCorrelation_Integration(t *testing.T) {
 			t.Fatalf("expected openclaw ws device-required deny audit event in %s", env.auditLogPath)
 		}
 	})
+}
+
+// TestOpenClawWS_MessageSend_FullVerticalSlice exercises the complete path:
+// WS frame -> port adapter -> OPA evaluation -> ExecuteMessagingEgress -> HTTP POST to messaging sim -> WS response
+// This uses a real gateway, real OPA, and a real httptest messaging simulator. No mocks.
+func TestOpenClawWS_MessageSend_FullVerticalSlice(t *testing.T) {
+	// Start a real messaging simulator (httptest server with the same handler as cmd/messaging-sim).
+	simMux := http.NewServeMux()
+	simMux.HandleFunc("/v1/messages", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+			return
+		}
+		auth := strings.TrimSpace(r.Header.Get("Authorization"))
+		if auth == "" || !strings.HasPrefix(auth, "Bearer ") || strings.TrimSpace(strings.TrimPrefix(auth, "Bearer ")) == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			_, _ = w.Write([]byte(`{"error":"missing auth"}`))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"messaging_product":"whatsapp","contacts":[{"input":"+1234567890","wa_id":"+1234567890"}],"messages":[{"id":"wamid.test123"}]}`))
+	})
+	simServer := httptest.NewServer(simMux)
+	defer simServer.Close()
+
+	// Set the env var so the gateway resolves WhatsApp endpoint to the simulator.
+	t.Setenv("MESSAGING_PLATFORM_ENDPOINT_WHATSAPP", simServer.URL+"/v1/messages")
+
+	env := newOpenClawWSTestEnv(t)
+
+	conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	if err != nil {
+		t.Fatalf("dial websocket failed: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	// Connect as operator (has all permissions).
+	_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+		Type: "req", ID: "connect-msg-1", Method: "connect",
+		Params: map[string]any{"role": "operator"},
+	})
+	connectResp := readOpenClawWSResponseIntegration(t, conn)
+	if !connectResp.OK {
+		t.Fatalf("connect failed: %+v", connectResp.Error)
+	}
+
+	// Send message.send frame with a plain auth token.
+	_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+		Type: "req", ID: "msg-send-1", Method: "message.send",
+		Params: map[string]any{
+			"platform":  "whatsapp",
+			"recipient": "+1234567890",
+			"message":   "Hello from walking skeleton test",
+			"auth_ref":  "my-api-key-12345",
+		},
+	})
+	msgResp := readOpenClawWSResponseIntegration(t, conn)
+	if !msgResp.OK {
+		t.Fatalf("expected message.send success, got error=%+v", msgResp.Error)
+	}
+	messageID, _ := msgResp.Payload["message_id"].(string)
+	if !strings.HasPrefix(messageID, "wamid.") {
+		t.Fatalf("expected message_id starting with 'wamid.', got %q", messageID)
+	}
+	if got, _ := msgResp.Payload["platform"].(string); got != "whatsapp" {
+		t.Fatalf("expected platform=whatsapp, got %q", got)
+	}
+	if msgResp.Payload["decision_id"] == nil || msgResp.Payload["trace_id"] == nil {
+		t.Fatalf("expected correlation IDs, got payload=%+v", msgResp.Payload)
+	}
+}
+
+// TestOpenClawWS_MessageSend_SPIKETokenResolution verifies per-message SPIKE token
+// resolution: a $SPIKE{...} reference in auth_ref is resolved via the gateway's
+// redeemer before being used as the Authorization header for the messaging egress.
+func TestOpenClawWS_MessageSend_SPIKETokenResolution(t *testing.T) {
+	// The simulator verifies that the Authorization header contains the resolved secret,
+	// not the raw SPIKE token string.
+	var receivedAuth string
+	simMux := http.NewServeMux()
+	simMux.HandleFunc("/v1/messages", func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"messaging_product":"whatsapp","contacts":[{"input":"+1","wa_id":"+1"}],"messages":[{"id":"wamid.spike-test"}]}`))
+	})
+	simServer := httptest.NewServer(simMux)
+	defer simServer.Close()
+
+	t.Setenv("MESSAGING_PLATFORM_ENDPOINT_WHATSAPP", simServer.URL+"/v1/messages")
+
+	env := newOpenClawWSTestEnv(t)
+
+	conn, _, err := dialOpenClawWSIntegration(t, env.wsURL(), "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	if err != nil {
+		t.Fatalf("dial websocket failed: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+
+	_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+		Type: "req", ID: "connect-spike", Method: "connect",
+		Params: map[string]any{"role": "operator"},
+	})
+	connectResp := readOpenClawWSResponseIntegration(t, conn)
+	if !connectResp.OK {
+		t.Fatalf("connect failed: %+v", connectResp.Error)
+	}
+
+	// Send message.send with a SPIKE token reference.
+	// The POCSecretRedeemer returns "secret-value-for-<ref>" for any ref.
+	spikeToken := "$SPIKE{ref:7f3a9b2c,exp:3600,scope:tools.http.messaging}"
+	_ = conn.WriteJSON(openClawWSRequestFrameIntegration{
+		Type: "req", ID: "msg-spike-1", Method: "message.send",
+		Params: map[string]any{
+			"platform":  "whatsapp",
+			"recipient": "+1",
+			"message":   "SPIKE resolution test",
+			"auth_ref":  spikeToken,
+		},
+	})
+	msgResp := readOpenClawWSResponseIntegration(t, conn)
+	if !msgResp.OK {
+		t.Fatalf("expected message.send success with SPIKE token, got error=%+v", msgResp.Error)
+	}
+
+	// Verify the simulator received the RESOLVED secret, not the raw SPIKE token.
+	expectedAuth := "Bearer secret-value-for-7f3a9b2c"
+	if receivedAuth != expectedAuth {
+		t.Fatalf("expected messaging-sim to receive auth=%q, got %q", expectedAuth, receivedAuth)
+	}
 }
