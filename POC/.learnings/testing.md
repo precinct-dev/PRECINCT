@@ -187,3 +187,78 @@
 **Applies to:** All test stories
 
 **Source stories:** RFA-m6j.2
+
+
+---
+
+## [Added from Epic RFA-xynt retro - 2026-02-26]
+
+### t.Logf is not an assertion -- tests using only t.Logf always pass
+
+**Priority:** Critical
+
+**Context:** RFA-yt63 (integration tests for WS messaging pipeline) was rejected 3 consecutive times. In each attempt the developer used t.Logf where t.Errorf or t.Fatalf was required. t.Logf appends to the log buffer and does NOT mark the test as failed. A test body with only t.Logf passes unconditionally regardless of whether the asserted condition is true. This affected audit log verification (Test 8) and OPA policy verification (Test 4).
+
+**Recommendation:**
+1. For any test covering security-critical assertions (audit log present, connector rejected, OPA decision exists), PM-Acceptor must verify: "Does this test actually FAIL when the condition is not met?"
+2. Developer agents must understand: t.Logf = diagnostics only. t.Errorf = non-fatal assertion failure. t.Fatalf = fatal assertion failure (stops the test immediately). A test with no t.Error/t.Fatal call cannot fail.
+3. When the assertion is "check that X is present in a log/response", the negative path (X is absent) must call t.Errorf or t.Fatalf, not t.Logf with a warning message.
+4. A lint check (or code review gate) can flag test functions with no t.Error/t.Fatal/require.*/assert.* calls.
+
+**Applies to:** All integration and unit test stories, especially those asserting audit logs, policy engine responses, or external service interactions
+
+**Source stories:** RFA-yt63 (rejected 3 times before acceptance on 4th attempt)
+
+---
+
+### HTTP mux routing must be tested at the mux level, not via direct handler calls
+
+**Priority:** Important
+
+**Context:** RFA-ncf1 extended the messaging simulator with a Telegram endpoint registered at "/bot" in Go 1.22+ ServeMux. The actual Telegram path format is "/botMYTOKEN/sendMessage", which "/bot" does NOT match (Go 1.22 ServeMux requires trailing '/' for prefix matching). All 10 unit tests passed because they called the handler function directly, bypassing the mux entirely. The live HTTP server returned 404 for every real Telegram request.
+
+**Recommendation:**
+1. For any HTTP server using path-based routing, include at least one test that exercises the REAL mux via httptest.NewServer with the actual mux registration, not direct handler calls.
+2. Go 1.22+ ServeMux behavior: "/foo" matches ONLY the exact path "/foo". "/foo/" matches "/foo/" and all paths with that prefix. A path like "/bot<token>/sendMessage" cannot be expressed as a clean ServeMux pattern and requires a catch-all dispatcher.
+3. The mux-level regression test (httptest.NewServer + real mux + real HTTP request) should be mandatory whenever a new HTTP path is registered, especially with dynamic path segments.
+
+**Applies to:** All stories registering new HTTP routes with dynamic path segments or non-standard URL patterns
+
+**Source stories:** RFA-ncf1 (rejected once for routing bug invisible to direct handler tests)
+
+---
+
+### Service readiness patterns are mandatory for integration tests against Docker Compose
+
+**Priority:** Important
+
+**Context:** RFA-yt63's first delivery contained no service readiness patterns. Tests failed with connection refused on a cold Compose startup with no diagnostic information. The fix required adding waitForGatewayWS and waitForService helpers with exponential backoff.
+
+**Recommendation:**
+1. Integration tests MUST include a TestMain or per-test setup that polls service health endpoints before running assertions.
+2. Minimum readiness set for a standard Compose stack test: gateway WS endpoint, any external simulator health endpoints, gateway HTTPS health.
+3. The retry pattern should use exponential backoff (not fixed sleep) with a configurable timeout (60-120 seconds for cold Compose startup).
+4. If a service is not ready within the timeout, the test must fail with a clear diagnostic: "Service X not ready after Y seconds -- is the Compose stack running?"
+5. A simHealthURL or equivalent constant declared but never used is a gap -- service readiness checks must actually be called.
+
+**Applies to:** All integration test stories that run against Docker Compose stacks
+
+**Source stories:** RFA-yt63 (rejected for missing readiness patterns)
+
+---
+
+### Integration tests and E2E scripts have distinct non-interchangeable roles
+
+**Priority:** Important
+
+**Context:** RFA-xzj6 (E2E scenarios) must NOT call go test -tags=integration. It must use external tools (curl, CLI binaries) as an operator would. RFA-yt63 (integration tests) covers detailed behavioral assertions in Go test functions. The boundary is clear: integration tests = Go test functions, no mocks, build-tagged, assert detailed behavior. E2E scripts = bash + external tools, assert the system works from the outside.
+
+**Recommendation:**
+1. Integration tests: Go test functions with //go:build integration tag, no mocks, run via go test -tags=integration, assert detailed behavioral properties (audit log entries, policy engine responses, middleware chain traversal).
+2. E2E scripts: bash scripts using curl, compiled CLI tools, jq; verify system from the outside; exit non-zero on failure; must NOT wrap go test invocations.
+3. PM-Acceptor should reject any E2E script that contains go test invocations -- that is integration test scope, not E2E scope.
+4. WS-capable E2E clients must be standalone CLI binaries (package main, exit 0/1 on ok field), not Go test wrappers.
+
+**Applies to:** All milestone E2E stories and integration test stories
+
+**Source stories:** RFA-xzj6, RFA-yt63

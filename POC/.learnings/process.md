@@ -155,3 +155,24 @@ This table provides:
 **Applies to:** All stories when multiple developer agents run concurrently
 
 **Source stories:** RFA-8jl.1
+
+
+---
+
+## [Added from Epic RFA-xynt retro - 2026-02-26]
+
+### Verify prior story deliveries before writing new code
+
+**Priority:** Nice-to-have
+
+**Context:** RFA-ajf6 (SPIKE secret seeding for messaging) was accepted with zero new code because RFA-mbmr had already delivered the required capability (resolveSPIKERef, SecretRedeemer exposed via PortGatewayServices, SPIKE secrets seeded in docker-compose.yml as a side effect). The developer implemented unit tests against code that already existed correctly.
+
+**Recommendation:**
+1. Before writing any code for a story, read the delivery notes (Notes/History sections) of all blocked-by stories to understand what was already delivered.
+2. For "wiring" stories (secret seeding, config wiring, interface exposure), explicitly verify whether sibling stories already completed the wiring as a side effect of their own scope.
+3. Sr. PM should include in story descriptions where applicable: "Verify RFA-xxx delivery before implementing -- this story may be fully or partially satisfied by that delivery."
+4. Checking go build + reading delivery tables from sibling stories takes less time than re-implementing what already exists.
+
+**Applies to:** All stories with narrow scope that depend on sibling story deliveries, especially config wiring and secret seeding stories
+
+**Source stories:** RFA-ajf6
