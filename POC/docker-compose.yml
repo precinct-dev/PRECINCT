@@ -499,6 +499,28 @@ services:
     tmpfs:
       - /tmp
 
+  # Messaging Simulator - WhatsApp Cloud API stub for E2E demos (RFA-1fui)
+  messaging-sim:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.messaging-sim
+    container_name: messaging-sim
+    hostname: messaging-sim
+    networks:
+      - tool-plane
+    healthcheck:
+      test: ["/messaging-sim", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    environment:
+      - PORT=8090
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+
   # PRECINCT Gateway - Security enforcement point for all MCP requests
   mcp-security-gateway:
     build:
@@ -568,6 +590,7 @@ services:
       - DLP_INJECTION_POLICY=${DLP_INJECTION_POLICY:-}  # RFA-sd7: Override DLP injection policy ("block" or "flag", default: use YAML config)
       - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}    # RFA-8ak: Demo-friendly rate limit (code default 600 is too generous for burst test)
       - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}  # RFA-8ak: Small burst bucket so 200-call test triggers 429 quickly
+      - MESSAGING_PLATFORM_ENDPOINT_WHATSAPP=http://messaging-sim:8090/v1/messages
       - EXTENSION_REGISTRY_PATH=/config/extensions-demo.yaml  # Extension slot: content scanner sidecar
     networks:
       - agentic-net

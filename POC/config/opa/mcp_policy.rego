@@ -150,9 +150,19 @@ destination_allowed(tool, params) if {
     not contains(params.command, "http")
 }
 
+destination_allowed("messaging_send", dest) if {
+    # messaging_send - only allowed to messaging-sim (POC)
+    dest == "messaging-sim"
+}
+
+destination_allowed("messaging_send", params) if {
+    # messaging_send - allow when params is not a string (object/map form)
+    not is_string(params)
+}
+
 destination_allowed(tool, params) if {
     # Other tools - default deny external egress unless explicitly allowed
-    not tool in ["tavily_search", "read", "grep", "bash"]
+    not tool in ["tavily_search", "read", "grep", "bash", "messaging_send"]
     # Would check against tool registry allowed_destinations
     false
 }

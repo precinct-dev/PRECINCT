@@ -85,6 +85,11 @@ func (g *Gateway) HasApprovalService() bool {
 	return g.approvalCapabilities != nil
 }
 
+// ExecuteMessagingEgress delegates to the private executeMessagingEgress.
+func (g *Gateway) ExecuteMessagingEgress(ctx context.Context, attrs map[string]string, payload []byte, authHeader string) (*MessagingEgressResult, error) {
+	return g.executeMessagingEgress(ctx, attrs, payload, authHeader)
+}
+
 // RegisterPort adds a PortAdapter to the gateway's dispatch chain.
 func (g *Gateway) RegisterPort(adapter PortAdapter) {
 	g.portAdapters = append(g.portAdapters, adapter)

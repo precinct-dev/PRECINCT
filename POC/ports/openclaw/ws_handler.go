@@ -159,6 +159,13 @@ func (a *Adapter) serveWSConnection(conn *websocket.Conn, req *http.Request) {
 				Payload: a.wsMethodSuccessPayload(session, frame, spiffeID, decisionID, traceID),
 			})
 			a.logWSDecision(req, session, frame.Method, gateway.DecisionAllow, reasonWSAllow, decisionID, traceID, http.StatusOK)
+		case "message.send":
+			if !wsAllowed(session, frame.Method) {
+				a.writeWSFailure(conn, frame.ID, http.StatusForbidden, reasonWSMethodForbidden, "method forbidden for current role/scopes", decisionID, traceID)
+				a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSMethodForbidden, decisionID, traceID, http.StatusForbidden)
+				continue
+			}
+			a.handleMessageSend(req.Context(), conn, frame, req, session)
 		default:
 			a.writeWSFailure(conn, frame.ID, http.StatusForbidden, reasonWSMethodForbidden, "unsupported control-plane method", decisionID, traceID)
 			a.logWSDecision(req, session, frame.Method, gateway.DecisionDeny, reasonWSMethodForbidden, decisionID, traceID, http.StatusForbidden)
@@ -218,6 +225,9 @@ func (a *Adapter) handleWSConnect(req *http.Request, session *wsSession, frame w
 	}
 	if wsAllowed(*session, "devices.ping") {
 		methods = append(methods, "devices.ping")
+	}
+	if wsAllowed(*session, "message.send") {
+		methods = append(methods, "message.send")
 	}
 
 	_ = conn.WriteJSON(wsResponseFrame{
@@ -373,6 +383,12 @@ func wsAllowed(session wsSession, method string) bool {
 			return true
 		}
 		_, ok := session.Scopes["devices:write"]
+		return ok
+	case "message.send":
+		if session.Role == "operator" {
+			return true
+		}
+		_, ok := session.Scopes["tools.messaging.send"]
 		return ok
 	default:
 		return false
