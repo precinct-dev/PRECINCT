@@ -19,3 +19,4 @@ Individual retrospective reports are stored as `<epic-id>-retro.md`
 - [Epic RFA-m6j Retro](RFA-m6j-retro.md) - 2026-02-06 - Observability -- OTel Spans with Full Middleware Chain Visibility
 - [Epic RFA-8jl Retro](RFA-8jl-retro.md) - 2026-02-06 - Compliance Automation -- One-Button Report for 4 Frameworks
 - [Epic RFA-7bh Retro](RFA-7bh-retro.md) - 2026-02-06 - Local K8s -- Full Stack on Docker Desktop kubeadm
+- [Epic RFA-xynt Retro](RFA-xynt-retro.md) - 2026-02-26 - WS Mediation via HTTP-Only Egress -- Messaging Send/Receive Through Full Middleware Chain

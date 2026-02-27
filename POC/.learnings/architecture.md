@@ -208,3 +208,60 @@
 **Applies to:** K8s clusters with multiple admission controllers
 
 **Source stories:** RFA-7bh.2
+
+
+---
+
+## [Added from Epic RFA-xynt retro - 2026-02-26]
+
+### Per-message SPIKE resolution is architecturally distinct from upgrade-time token substitution
+
+**Priority:** Critical
+
+**Context:** The HTTP middleware chain (step 13: token substitution) runs ONCE on the WS upgrade request. Per-message credentials in WS frame params (auth_ref field) must be resolved by the adapter directly via resolveSPIKERef(), not by the middleware chain. RFA-1fui's first delivery passed auth_ref verbatim as the Bearer token header without calling the redeemer, which would have sent a raw spike:// URI to external messaging APIs.
+
+**Recommendation:**
+1. In all future WS handler stories, document explicitly: "Per-message SPIKE resolution happens in the adapter via resolveSPIKERef(), NOT via middleware token substitution."
+2. Any WS frame carrying credentials via auth_ref MUST route those credentials through resolveSPIKERef() before they reach external API calls.
+3. Integration tests for per-message SPIKE resolution must verify the resolved value (e.g., "secret-value-for-whatsapp-api-key") rather than just that the request succeeded.
+4. PM-Acceptor checklist for WS stories with auth_ref: "Verify the redeemer is called, not auth_ref passed verbatim."
+
+**Applies to:** All WS handler stories involving per-message credentials or SPIKE references
+
+**Source stories:** RFA-1fui (rejected once), RFA-mbmr, RFA-ajf6
+
+---
+
+### Internal loopback is the correct pattern for inbound paths requiring full middleware traversal
+
+**Priority:** Important
+
+**Context:** The webhook receiver (RFA-cweb) must ensure inbound webhook payloads traverse all 13 middleware steps (DLP, rate limiting, audit, etc.). The correct implementation is an internal HTTP POST to the gateway's own /v1/ingress/submit endpoint. Building a PlaneRequestV2 and calling evaluation directly bypasses DLP, rate limiting, and audit entirely.
+
+**Recommendation:**
+1. Document internal loopback as an explicit architectural pattern: any new inbound data path that must traverse the full middleware chain should POST to /v1/ingress/submit internally, not call evaluation functions directly.
+2. The loopback HTTP client requires InsecureSkipVerify for self-signed TLS in POC mode. Document this as a POC limitation with a note about production certificate trust.
+3. Two-layer defense is the correct design: (1) webhook handler checks connector conformance as a fast-path reject; (2) loopback POST traverses the full middleware chain including a second connector check in handleIngressAdmit.
+4. Integration tests for webhook stories must verify middleware chain traversal explicitly (e.g., audit log entries for /v1/ingress/submit path), not just that the endpoint returns 200.
+
+**Applies to:** All stories adding new inbound data paths to the gateway that must be policy-mediated
+
+**Source stories:** RFA-cweb, RFA-yt63
+
+---
+
+### Attestation artifact re-signing must be automated and documented
+
+**Priority:** Important
+
+**Context:** config/tool-registry.yaml changes invalidate the Ed25519 .sig attestation files for tool-registry, model-provider-catalog, and guard-artifact. This caused two pre-existing test failures traced to an undocumented key change (RFA-exak). The re-signing sequence is known but not automated. Any developer who touches tool-registry.yaml will encounter cryptic test failures before discovering the root cause.
+
+**Recommendation:**
+1. Create a Makefile target (e.g., make attestation-resign) that runs the full re-signing sequence for all three artifacts.
+2. Add a comment header to config/tool-registry.yaml: "Modifying this file requires running make attestation-resign to update signature files."
+3. Document the rotation procedure in ATTESTATION_ROTATION.md: which artifacts, which command, keypair format, and storage location.
+4. CI should run tests/integration after any change to config/*.yaml to catch key mismatches immediately.
+
+**Applies to:** All stories modifying config/tool-registry.yaml, config/opa/tool_registry.yaml, or any attested configuration artifact
+
+**Source stories:** RFA-1fui, RFA-np7t, RFA-exak (P3 issue)
