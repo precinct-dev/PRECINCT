@@ -96,11 +96,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/health", handleHealth)
-	mux.HandleFunc("/v1/messages", handleMessages)
-	mux.HandleFunc("/bot", handleTelegramRouter)
-	mux.HandleFunc("/api/chat.postMessage", handleSlack)
+	mux := newMux()
 
 	addr := ":" + port
 	slog.Info("messaging-sim starting", "addr", addr)
@@ -108,6 +104,25 @@ func main() {
 		slog.Error("server error", "error", err)
 		os.Exit(1)
 	}
+}
+
+// newMux builds the HTTP handler with all routes. Exported for testing.
+func newMux() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", handleHealth)
+	mux.HandleFunc("/v1/messages", handleMessages)
+	mux.HandleFunc("/api/chat.postMessage", handleSlack)
+	// Telegram Bot API: /bot<TOKEN>/sendMessage -- the token is concatenated
+	// directly after "/bot" with no separator, so Go's ServeMux exact-match
+	// on "/bot" won't work. Use a catch-all "/" handler that dispatches by prefix.
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/bot") {
+			handleTelegramRouter(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+	return mux
 }
 
 func handleHealth(w http.ResponseWriter, _ *http.Request) {

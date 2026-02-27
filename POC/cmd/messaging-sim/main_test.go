@@ -730,3 +730,82 @@ func TestValidBearerAuth(t *testing.T) {
 		})
 	}
 }
+
+// ---------- Mux-level routing ----------
+
+// TestMuxRouting_TelegramReachable verifies that Telegram's /bot<TOKEN>/sendMessage
+// path is correctly routed through the mux (not just the handler directly).
+// This catches the bug where Go's ServeMux exact-match on "/bot" doesn't
+// match "/botTOKEN123/sendMessage".
+func TestMuxRouting_TelegramReachable(t *testing.T) {
+	srv := httptest.NewServer(newMux())
+	defer srv.Close()
+
+	payload := `{"chat_id":"12345","text":"mux routing test"}`
+	req, _ := http.NewRequest(http.MethodPost, srv.URL+"/botMYTOKEN123/sendMessage", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var body map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !body["ok"].(bool) {
+		t.Fatal("expected ok=true in Telegram response")
+	}
+}
+
+// TestMuxRouting_AllEndpoints verifies all three platform endpoints are
+// reachable through the mux when accessed via httptest.NewServer.
+func TestMuxRouting_AllEndpoints(t *testing.T) {
+	srv := httptest.NewServer(newMux())
+	defer srv.Close()
+
+	tests := []struct {
+		name   string
+		method string
+		path   string
+		body   string
+		auth   string
+		expect int
+	}{
+		{"health", http.MethodGet, "/health", "", "", 200},
+		{"whatsapp", http.MethodPost, "/v1/messages", `{"messaging_product":"whatsapp","to":"+1","type":"text","text":{"body":"hi"}}`, "Bearer tok", 200},
+		{"telegram", http.MethodPost, "/botTOK/sendMessage", `{"chat_id":"1","text":"hi"}`, "", 200},
+		{"slack", http.MethodPost, "/api/chat.postMessage", `{"channel":"C1","text":"hi"}`, "Bearer tok", 200},
+		{"unknown_404", http.MethodGet, "/unknown", "", "", 404},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			var body *strings.Reader
+			if tc.body != "" {
+				body = strings.NewReader(tc.body)
+			} else {
+				body = strings.NewReader("")
+			}
+			req, _ := http.NewRequest(tc.method, srv.URL+tc.path, body)
+			req.Header.Set("Content-Type", "application/json")
+			if tc.auth != "" {
+				req.Header.Set("Authorization", tc.auth)
+			}
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("request failed: %v", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.expect {
+				t.Fatalf("expected %d, got %d", tc.expect, resp.StatusCode)
+			}
+		})
+	}
+}
