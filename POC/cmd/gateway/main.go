@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -23,8 +24,11 @@ func main() {
 	// must use the correct scheme. We use SPIFFE_MODE to determine this.
 	if len(os.Args) > 1 && os.Args[1] == "health" {
 		spiffeMode := os.Getenv("SPIFFE_MODE")
+		if spiffeMode == "" {
+			spiffeMode = "prod"
+		}
 		var port string
-		if spiffeMode == "prod" {
+		if strings.EqualFold(spiffeMode, "prod") {
 			port = os.Getenv("SPIFFE_LISTEN_PORT")
 			if port == "" {
 				port = "9443"
@@ -36,7 +40,7 @@ func main() {
 			}
 		}
 
-		if spiffeMode == "prod" {
+		if strings.EqualFold(spiffeMode, "prod") {
 			// In prod mode, the listener enforces mTLS client auth. Health checks
 			// from the same container may not have a client cert, so use a TCP
 			// readiness probe against the listen port instead of HTTP.
@@ -64,6 +68,9 @@ func main() {
 
 	// Load configuration from environment
 	cfg := gateway.ConfigFromEnv()
+	if err := gateway.ValidateDevRuntimeGuardrails(cfg); err != nil {
+		log.Fatalf("Startup guardrail violation: %v", err)
+	}
 
 	// RFA-m6j.1: Initialize OpenTelemetry TracerProvider.
 	// When OTelEndpoint is empty, this is a no-op (AC6).
@@ -91,7 +98,7 @@ func main() {
 	// RFA-8z8.1: In prod mode, initialize SPIFFE mTLS before creating the server.
 	// This connects to the SPIRE Agent, obtains an X.509 SVID, and configures
 	// both the server TLS and the reverse proxy upstream transport.
-	if cfg.SPIFFEMode == "prod" {
+	if strings.EqualFold(cfg.SPIFFEMode, "prod") {
 		if err := gw.EnableSPIFFETLS(context.Background()); err != nil {
 			log.Fatalf("Failed to initialize SPIFFE mTLS: %v", err)
 		}
@@ -101,13 +108,13 @@ func main() {
 	var listenAddr string
 	var serverTLS *tls.Config
 
-	if cfg.SPIFFEMode == "prod" {
+	if strings.EqualFold(cfg.SPIFFEMode, "prod") {
 		// RFA-8z8.1 AC1: Serve HTTPS with SPIRE-issued SVID on the SPIFFE listen port
 		listenAddr = fmt.Sprintf(":%d", cfg.SPIFFEListenPort)
 		serverTLS = gw.ServerTLSConfig()
 	} else {
-		// Dev mode: HTTP on the standard port (Phase 1 behavior preserved, AC4)
-		listenAddr = fmt.Sprintf(":%d", cfg.Port)
+		// Dev mode: bind loopback by default; non-loopback requires explicit override.
+		listenAddr = gateway.ResolveDevListenAddr(cfg)
 	}
 
 	// Create HTTP server
@@ -122,7 +129,7 @@ func main() {
 
 	// Start server in goroutine
 	go func() {
-		if cfg.SPIFFEMode == "prod" {
+		if strings.EqualFold(cfg.SPIFFEMode, "prod") {
 			log.Printf("Starting PRECINCT Gateway (HTTPS/mTLS) on port %d", cfg.SPIFFEListenPort)
 			log.Printf("Upstream MCP server (mTLS): %s", cfg.UpstreamURL)
 			log.Printf("SPIFFE trust domain: %s", cfg.SPIFFETrustDomain)
@@ -133,6 +140,7 @@ func main() {
 			}
 		} else {
 			log.Printf("Starting PRECINCT Gateway (HTTP) on port %d", cfg.Port)
+			log.Printf("Dev listener bind host: %s", cfg.DevListenHost)
 			log.Printf("Upstream MCP server: %s", cfg.UpstreamURL)
 			log.Printf("OPA policy directory: %s", cfg.OPAPolicyDir)
 			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {

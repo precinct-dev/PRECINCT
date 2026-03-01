@@ -20,11 +20,18 @@ type Config struct {
 	OPAPolicyPath            string
 	MaxRequestSizeBytes      int64
 	SPIFFEMode               string // "dev" or "prod"
-	LogLevel                 string
-	GroqAPIKey               string
-	GuardModelEndpoint       string // base URL for guard model API (default: Groq)
-	GuardModelName           string // model identifier for guard model (default: llama-prompt-guard-2-86m)
-	GuardAPIKey              string // API key for guard model (default: falls back to GroqAPIKey)
+	// ALLOW_INSECURE_DEV_MODE is an explicit acknowledgement gate for SPIFFE_MODE=dev.
+	// When false and SPIFFE_MODE=dev, startup must fail.
+	AllowInsecureDevMode bool
+	// DEV_LISTEN_HOST controls the bind host in dev mode (default loopback).
+	DevListenHost string
+	// ALLOW_NON_LOOPBACK_DEV_BIND is required to bind dev mode on non-loopback hosts.
+	AllowNonLoopbackDevBind bool
+	LogLevel                string
+	GroqAPIKey              string
+	GuardModelEndpoint      string // base URL for guard model API (default: Groq)
+	GuardModelName          string // model identifier for guard model (default: llama-prompt-guard-2-86m)
+	GuardAPIKey             string // API key for guard model (default: falls back to GroqAPIKey)
 	// DLP_INJECTION_POLICY env var overrides dlp.injection YAML config (RFA-sd7).
 	// Only injection gets an env var override:
 	//   - credentials=block is a security invariant (must not be easily toggled via env var)
@@ -277,6 +284,10 @@ func ConfigFromEnv() *Config {
 	enforceModelMediationGate := parseEnvBool("ENFORCE_MODEL_MEDIATION_GATE", true)
 	enforceHIPAAPromptSafetyGate := parseEnvBool("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", true)
 	modelPolicyIntentPrependEnabled := parseEnvBool("MODEL_POLICY_INTENT_PREPEND_ENABLED", false)
+	spiffeMode := strings.ToLower(strings.TrimSpace(getEnvOrDefault("SPIFFE_MODE", "prod")))
+	if spiffeMode == "" {
+		spiffeMode = "prod"
+	}
 
 	return &Config{
 		Port:                            port,
@@ -287,7 +298,10 @@ func ConfigFromEnv() *Config {
 		AuditLogPath:                    getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
 		OPAPolicyPath:                   getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
 		MaxRequestSizeBytes:             maxRequestSize,
-		SPIFFEMode:                      getEnvOrDefault("SPIFFE_MODE", "dev"),
+		SPIFFEMode:                      spiffeMode,
+		AllowInsecureDevMode:            parseEnvBool("ALLOW_INSECURE_DEV_MODE", false),
+		DevListenHost:                   getEnvOrDefault("DEV_LISTEN_HOST", "127.0.0.1"),
+		AllowNonLoopbackDevBind:         parseEnvBool("ALLOW_NON_LOOPBACK_DEV_BIND", false),
 		LogLevel:                        getEnvOrDefault("LOG_LEVEL", "info"),
 		GroqAPIKey:                      getEnvOrDefault("GROQ_API_KEY", ""),
 		GuardModelEndpoint:              getEnvOrDefault("GUARD_MODEL_ENDPOINT", "https://api.groq.com/openai/v1"),
