@@ -40,11 +40,18 @@ type enforcementProfileConformance struct {
 	Violations []string `json:"violations,omitempty"`
 }
 
+type enforcementControlResult struct {
+	ID      string `json:"id"`
+	Status  string `json:"status"`
+	Details string `json:"details,omitempty"`
+}
+
 type enforcementProfileRuntime struct {
 	Name            string                        `json:"name"`
 	Description     string                        `json:"description"`
 	StartupGateMode string                        `json:"startup_gate_mode"`
 	RequiredControl []string                      `json:"required_controls"`
+	ControlResults  []enforcementControlResult    `json:"control_results,omitempty"`
 	Runtime         map[string]string             `json:"runtime"`
 	Controls        enforcementProfileControls    `json:"controls"`
 	Conformance     enforcementProfileConformance `json:"conformance"`
@@ -81,6 +88,8 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"guard_artifact_path",
 			"guard_artifact_sha256",
 			"guard_artifact_public_key",
+			"destinations_config_path",
+			"risk_thresholds_path",
 		},
 	},
 	enforcementProfileProdRegulatedHIPAA: {
@@ -106,6 +115,8 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"guard_artifact_path",
 			"guard_artifact_sha256",
 			"guard_artifact_public_key",
+			"destinations_config_path",
+			"risk_thresholds_path",
 		},
 	},
 }
@@ -210,6 +221,12 @@ func resolveEnforcementProfile(cfg *Config) (*enforcementProfileRuntime, error) 
 		if strings.TrimSpace(cfg.GuardArtifactPublicKey) == "" {
 			violations = append(violations, "guard_artifact_public_key must be set in strict profiles")
 		}
+		if strings.TrimSpace(cfg.DestinationsConfigPath) == "" {
+			violations = append(violations, "destinations_config_path must be set in strict profiles")
+		}
+		if strings.TrimSpace(cfg.RiskThresholdsPath) == "" {
+			violations = append(violations, "risk_thresholds_path must be set in strict profiles")
+		}
 	}
 
 	conformance := enforcementProfileConformance{Status: "pass"}
@@ -225,6 +242,7 @@ func resolveEnforcementProfile(cfg *Config) (*enforcementProfileRuntime, error) 
 		Description:     def.Description,
 		StartupGateMode: def.StartupGateMode,
 		RequiredControl: append([]string(nil), def.RequiredControlIDs...),
+		ControlResults:  buildControlResults(def.RequiredControlIDs, violations),
 		Runtime: map[string]string{
 			"spiffe_mode":        spiffeMode,
 			"mcp_transport_mode": mcpMode,
@@ -248,6 +266,12 @@ func (p *enforcementProfileRuntime) snapshot() enforcementProfileRuntime {
 			Description:     "Developer profile with permissive startup checks and portable defaults.",
 			StartupGateMode: "permissive",
 			RequiredControl: []string{"enforce_model_mediation_gate"},
+			ControlResults: []enforcementControlResult{
+				{
+					ID:     "enforce_model_mediation_gate",
+					Status: "pass",
+				},
+			},
 			Runtime: map[string]string{
 				"spiffe_mode":        "dev",
 				"mcp_transport_mode": "mcp",
@@ -265,6 +289,9 @@ func (p *enforcementProfileRuntime) snapshot() enforcementProfileRuntime {
 	if p.RequiredControl != nil {
 		out.RequiredControl = append([]string(nil), p.RequiredControl...)
 	}
+	if p.ControlResults != nil {
+		out.ControlResults = append([]enforcementControlResult(nil), p.ControlResults...)
+	}
 	if p.Runtime != nil {
 		out.Runtime = make(map[string]string, len(p.Runtime))
 		for k, v := range p.Runtime {
@@ -275,6 +302,40 @@ func (p *enforcementProfileRuntime) snapshot() enforcementProfileRuntime {
 		out.Conformance.Violations = append([]string(nil), p.Conformance.Violations...)
 	}
 	return out
+}
+
+func buildControlResults(requiredControls []string, violations []string) []enforcementControlResult {
+	results := make([]enforcementControlResult, 0, len(requiredControls))
+	for _, control := range requiredControls {
+		entry := enforcementControlResult{
+			ID:     control,
+			Status: "pass",
+		}
+		for _, violation := range violations {
+			if violationMatchesControl(control, violation) {
+				entry.Status = "fail"
+				entry.Details = violation
+				break
+			}
+		}
+		results = append(results, entry)
+	}
+	return results
+}
+
+func violationMatchesControl(controlID, violation string) bool {
+	candidate := strings.ToLower(strings.TrimSpace(controlID))
+	if candidate == "" {
+		return false
+	}
+	if eq := strings.Index(candidate, "="); eq >= 0 {
+		candidate = candidate[:eq]
+	}
+	violationText := strings.ToLower(strings.TrimSpace(violation))
+	if violationText == "" {
+		return false
+	}
+	return strings.Contains(violationText, candidate)
 }
 
 func (p *enforcementProfileRuntime) export(path string) error {

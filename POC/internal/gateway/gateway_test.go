@@ -3125,6 +3125,8 @@ func TestMCPTransportHTTPClient_StrictRequiresSPIFFETLS(t *testing.T) {
 		EnforceHIPAAPromptSafetyGate:  true,
 		ApprovalSigningKey:            "prod-approval-signing-key-material-at-least-32",
 		KeyDBURL:                      "redis://keydb:6379",
+		DestinationsConfigPath:        filepath.Join(projectRoot, "config", "destinations.yaml"),
+		RiskThresholdsPath:            filepath.Join(projectRoot, "config", "risk_thresholds.yaml"),
 		EnforcementControlOverrides:   true,
 	}
 

@@ -21,6 +21,8 @@ func setStrictAttestationFixtureEnv(t *testing.T) {
 	toolRegistryPath := filepath.Join(projectRoot, "config", "tool-registry.yaml")
 	modelCatalogPath := filepath.Join(projectRoot, "config", "model-provider-catalog.v2.yaml")
 	guardArtifactPath := filepath.Join(projectRoot, "config", "guard-artifact.bin")
+	destinationsPath := filepath.Join(projectRoot, "config", "destinations.yaml")
+	riskThresholdsPath := filepath.Join(projectRoot, "config", "risk_thresholds.yaml")
 
 	guardBytes, err := os.ReadFile(guardArtifactPath)
 	if err != nil {
@@ -37,6 +39,8 @@ func setStrictAttestationFixtureEnv(t *testing.T) {
 	t.Setenv("GUARD_ARTIFACT_SHA256", guardDigest)
 	t.Setenv("GUARD_ARTIFACT_SIGNATURE_PATH", guardArtifactPath+".sig")
 	t.Setenv("GUARD_ARTIFACT_PUBLIC_KEY", attestationPubKey)
+	t.Setenv("DESTINATIONS_CONFIG_PATH", destinationsPath)
+	t.Setenv("RISK_THRESHOLDS_PATH", riskThresholdsPath)
 }
 
 func TestEnforcementProfile_StrictStartupFailsFastWithoutApprovalSigningKey(t *testing.T) {
@@ -144,4 +148,86 @@ func TestEnforcementProfile_StrictStartupFailsWithUnsignedToolRegistry(t *testin
 	if !strings.Contains(err.Error(), "strict tool registry attestation verification failed") {
 		t.Fatalf("expected strict registry attestation failure, got: %v", err)
 	}
+}
+
+func TestEnforcementProfile_StrictStartupFailsWhenDestinationAllowlistFallbackWouldBeUsed(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UPSTREAM_URL", upstream.URL)
+	t.Setenv("OPA_POLICY_DIR", testutil.OPAPolicyDir())
+	t.Setenv("OPA_POLICY_PATH", testutil.OPAPolicyPath())
+	setStrictAttestationFixtureEnv(t)
+	t.Setenv("DESTINATIONS_CONFIG_PATH", filepath.Join(t.TempDir(), "missing-destinations.yaml"))
+	t.Setenv("AUDIT_LOG_PATH", filepath.Join(t.TempDir(), "audit.jsonl"))
+	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileProdStandard)
+	t.Setenv("SPIFFE_MODE", "prod")
+	t.Setenv("KEYDB_URL", "redis://keydb:6379")
+	t.Setenv("MCP_TRANSPORT_MODE", "mcp")
+	t.Setenv("ENFORCE_MODEL_MEDIATION_GATE", "true")
+	t.Setenv("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", "true")
+	t.Setenv("APPROVAL_SIGNING_KEY", "prod-approval-signing-key-material-at-least-32")
+
+	cfg := ConfigFromEnv()
+	_, err := New(cfg)
+	if err == nil {
+		t.Fatal("expected strict startup failure when destination allowlist fallback would be required")
+	}
+	if !strings.Contains(err.Error(), "strict profile forbids fallback for destinations_config_path") {
+		t.Fatalf("expected strict destinations fallback error, got: %v", err)
+	}
+}
+
+func TestEnforcementProfile_StrictStartupFailsWhenRiskThresholdFallbackWouldBeUsed(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UPSTREAM_URL", upstream.URL)
+	t.Setenv("OPA_POLICY_DIR", testutil.OPAPolicyDir())
+	t.Setenv("OPA_POLICY_PATH", testutil.OPAPolicyPath())
+	setStrictAttestationFixtureEnv(t)
+	t.Setenv("RISK_THRESHOLDS_PATH", filepath.Join(t.TempDir(), "missing-risk-thresholds.yaml"))
+	t.Setenv("AUDIT_LOG_PATH", filepath.Join(t.TempDir(), "audit.jsonl"))
+	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileProdStandard)
+	t.Setenv("SPIFFE_MODE", "prod")
+	t.Setenv("KEYDB_URL", "redis://keydb:6379")
+	t.Setenv("MCP_TRANSPORT_MODE", "mcp")
+	t.Setenv("ENFORCE_MODEL_MEDIATION_GATE", "true")
+	t.Setenv("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", "true")
+	t.Setenv("APPROVAL_SIGNING_KEY", "prod-approval-signing-key-material-at-least-32")
+
+	cfg := ConfigFromEnv()
+	_, err := New(cfg)
+	if err == nil {
+		t.Fatal("expected strict startup failure when risk threshold fallback would be required")
+	}
+	if !strings.Contains(err.Error(), "strict profile forbids fallback for risk_thresholds_path") {
+		t.Fatalf("expected strict risk fallback error, got: %v", err)
+	}
+}
+
+func TestEnforcementProfile_DevAllowsFallbackToDefaults(t *testing.T) {
+	cfg := &Config{
+		Port:                   0,
+		UpstreamURL:            "http://localhost:8080",
+		OPAPolicyDir:           testutil.OPAPolicyDir(),
+		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		AuditLogPath:           filepath.Join(t.TempDir(), "audit.jsonl"),
+		OPAPolicyPath:          testutil.OPAPolicyPath(),
+		MaxRequestSizeBytes:    1024 * 1024,
+		SPIFFEMode:             "dev",
+		EnforcementProfile:     enforcementProfileDev,
+		DestinationsConfigPath: filepath.Join(t.TempDir(), "missing-destinations.yaml"),
+		RiskThresholdsPath:     filepath.Join(t.TempDir(), "missing-risk-thresholds.yaml"),
+	}
+
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("expected dev profile startup to allow fallback defaults, got: %v", err)
+	}
+	defer func() { _ = gw.Close() }()
 }

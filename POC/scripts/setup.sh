@@ -324,6 +324,41 @@ case "$SPIFFE_CHOICE" in
         ;;
 esac
 
+# ---- Q5: Enforcement Profile ----
+print_section "Q5: Enforcement Profile"
+echo "  Enforcement profiles define startup conformance strictness and control gates."
+echo ""
+echo "    [1] dev (DEFAULT for local dev)"
+echo "        Fast local iteration. Permissive startup checks."
+echo ""
+echo "    [2] prod_standard (RECOMMENDED for secure staging/prod)"
+echo "        Strict startup conformance; fails fast on missing controls."
+echo ""
+echo "    [3] prod_regulated_hipaa"
+echo "        Strict startup + HIPAA prompt-safety enforcement."
+echo ""
+default_profile_choice="1"
+if [ "$SPIFFE_MODE" = "prod" ]; then
+    default_profile_choice="2"
+fi
+printf "  Choose [1], [2], or [3] (default: %s): " "$default_profile_choice"
+read -r PROFILE_CHOICE || true
+PROFILE_CHOICE="${PROFILE_CHOICE:-$default_profile_choice}"
+case "$PROFILE_CHOICE" in
+    2)
+        ENFORCEMENT_PROFILE="prod_standard"
+        echo -e "  ${GREEN}Selected: prod_standard${NC} -- strict startup conformance"
+        ;;
+    3)
+        ENFORCEMENT_PROFILE="prod_regulated_hipaa"
+        echo -e "  ${GREEN}Selected: prod_regulated_hipaa${NC} -- strict + HIPAA prompt-safety"
+        ;;
+    *)
+        ENFORCEMENT_PROFILE="dev"
+        echo -e "  ${GREEN}Selected: dev${NC} -- permissive local profile"
+        ;;
+esac
+
 # =============================================================================
 # PHASE 3: Generate .env File
 # =============================================================================
@@ -371,6 +406,7 @@ KEYDB_URL=${KEYDB_URL}
 
 # SPIFFE identity mode
 SPIFFE_MODE=${SPIFFE_MODE}
+ENFORCEMENT_PROFILE=${ENFORCEMENT_PROFILE}
 ALLOW_INSECURE_DEV_MODE=${ALLOW_INSECURE_DEV_MODE}
 DEV_LISTEN_HOST=${DEV_LISTEN_HOST}
 ALLOW_NON_LOOPBACK_DEV_BIND=${ALLOW_NON_LOOPBACK_DEV_BIND}
@@ -414,6 +450,17 @@ SPIFFE_DETAIL="Header injection (dev mode)"
 if [ "$SPIFFE_MODE" = "prod" ]; then
     SPIFFE_DETAIL="mTLS with SPIRE X.509 SVIDs"
 fi
+
+PROFILE_STATUS="ENABLED"
+PROFILE_DETAIL="dev profile (permissive startup)"
+case "$ENFORCEMENT_PROFILE" in
+    prod_standard)
+        PROFILE_DETAIL="prod_standard profile (strict startup conformance)"
+        ;;
+    prod_regulated_hipaa)
+        PROFILE_DETAIL="prod_regulated_hipaa profile (strict + HIPAA prompt safety)"
+        ;;
+esac
 
 # Controls that are always enabled in this tier
 OPA_STATUS="ENABLED"
@@ -467,6 +514,7 @@ print_posture_row() {
 }
 
 print_posture_row "SPIFFE Identity"       "$SPIFFE_STATUS"       "$SPIFFE_DETAIL"
+print_posture_row "Enforcement Profile"   "$PROFILE_STATUS"      "$PROFILE_DETAIL"
 print_posture_row "OPA Policy Engine"     "$OPA_STATUS"          "$OPA_DETAIL"
 print_posture_row "Tool Integrity (Hash)" "$TOOL_INTEGRITY_STATUS" "$TOOL_INTEGRITY_DETAIL"
 print_posture_row "DLP Scanner"           "$DLP_STATUS"          "$DLP_DETAIL"

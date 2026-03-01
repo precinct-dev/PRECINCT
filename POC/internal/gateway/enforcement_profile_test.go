@@ -25,6 +25,8 @@ func newStrictProfileTestConfig(profile string) *Config {
 		GuardArtifactPath:             "/config/guard-artifact.bin",
 		GuardArtifactSHA256:           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 		GuardArtifactPublicKey:        "/config/attestation-ed25519.pub",
+		DestinationsConfigPath:        "/config/destinations.yaml",
+		RiskThresholdsPath:            "/config/risk_thresholds.yaml",
 		EnforcementControlOverrides:   true,
 	}
 }
@@ -141,6 +143,32 @@ func TestResolveEnforcementProfile_StrictFailsWithoutRegistryPublicKey(t *testin
 	}
 }
 
+func TestResolveEnforcementProfile_StrictFailsWithoutDestinationsConfigPath(t *testing.T) {
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.DestinationsConfigPath = ""
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure when destinations_config_path is missing")
+	}
+	if !strings.Contains(err.Error(), "destinations_config_path must be set") {
+		t.Fatalf("expected destinations_config_path requirement error, got: %v", err)
+	}
+}
+
+func TestResolveEnforcementProfile_StrictFailsWithoutRiskThresholdsPath(t *testing.T) {
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.RiskThresholdsPath = ""
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure when risk_thresholds_path is missing")
+	}
+	if !strings.Contains(err.Error(), "risk_thresholds_path must be set") {
+		t.Fatalf("expected risk_thresholds_path requirement error, got: %v", err)
+	}
+}
+
 func TestResolveEnforcementProfile_StrictPassesWithStrongApprovalSigningKey(t *testing.T) {
 	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
 
@@ -150,6 +178,14 @@ func TestResolveEnforcementProfile_StrictPassesWithStrongApprovalSigningKey(t *t
 	}
 	if profile.Conformance.Status != "pass" {
 		t.Fatalf("expected strict profile conformance pass, got %q", profile.Conformance.Status)
+	}
+	if len(profile.ControlResults) == 0 {
+		t.Fatal("expected control_results to be populated")
+	}
+	for _, result := range profile.ControlResults {
+		if result.Status != "pass" {
+			t.Fatalf("expected all control_results to pass, got %+v", result)
+		}
 	}
 }
 
@@ -193,5 +229,9 @@ func TestEnforcementProfileExportWritesJSON(t *testing.T) {
 	}
 	if payload["name"] != enforcementProfileDev {
 		t.Fatalf("expected profile name %q in export, got %v", enforcementProfileDev, payload["name"])
+	}
+	results, ok := payload["control_results"].([]any)
+	if !ok || len(results) == 0 {
+		t.Fatalf("expected non-empty control_results in export payload, got %v", payload["control_results"])
 	}
 }

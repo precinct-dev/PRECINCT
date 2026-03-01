@@ -27,6 +27,8 @@ func strictBypassContractTestConfig(t *testing.T) *gateway.Config {
 		GuardArtifactPath:             filepath.Join(projectRoot, "config", "guard-artifact.bin"),
 		GuardArtifactSHA256:           "8232540100ebde3b5682c2b47d1eee50764f6dadca3842400157061656fc95a3",
 		GuardArtifactPublicKey:        filepath.Join(projectRoot, "config", "attestation-ed25519.pub"),
+		DestinationsConfigPath:        filepath.Join(projectRoot, "config", "destinations.yaml"),
+		RiskThresholdsPath:            filepath.Join(projectRoot, "config", "risk_thresholds.yaml"),
 		AuditLogPath:                  "",
 		OPAPolicyPath:                 testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:           1024,

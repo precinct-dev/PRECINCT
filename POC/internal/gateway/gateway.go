@@ -287,11 +287,19 @@ func New(cfg *Config) (*Gateway, error) {
 
 	// Load destination allowlist (fall back to defaults if file not found)
 	var destinationAllowlist *middleware.DestinationAllowlist
+	startupControlResults := make([]enforcementControlResult, 0, 2)
 	if cfg.DestinationsConfigPath != "" {
 		dal, err := middleware.LoadDestinationAllowlist(cfg.DestinationsConfigPath)
 		if err != nil {
-			// Fall back to defaults if config file not found
-			slog.Warn("failed to load destination allowlist, using built-in defaults", "path", cfg.DestinationsConfigPath, "error", err)
+			startupControlResults = append(startupControlResults, enforcementControlResult{
+				ID:      "destinations_config_path",
+				Status:  "fail",
+				Details: fmt.Sprintf("fallback to built-in defaults denied: %v", err),
+			})
+			if enforcementProfile != nil && enforcementProfile.StartupGateMode == "strict" {
+				return nil, fmt.Errorf("strict profile forbids fallback for destinations_config_path: %w", err)
+			}
+			slog.Warn("unsafe fallback: failed to load destination allowlist, using built-in defaults", "path", cfg.DestinationsConfigPath, "error", err)
 			destinationAllowlist = middleware.DefaultDestinationAllowlist()
 		} else {
 			slog.Info("destination allowlist loaded",
@@ -299,10 +307,20 @@ func New(cfg *Config) (*Gateway, error) {
 				"entries", len(dal.Allowed),
 				"api.groq.com_allowed", dal.IsAllowed("api.groq.com"),
 			)
+			startupControlResults = append(startupControlResults, enforcementControlResult{
+				ID:      "destinations_config_path",
+				Status:  "pass",
+				Details: cfg.DestinationsConfigPath,
+			})
 			destinationAllowlist = dal
 		}
 	} else {
 		slog.Warn("DESTINATIONS_CONFIG_PATH is empty, using built-in destination allowlist defaults")
+		startupControlResults = append(startupControlResults, enforcementControlResult{
+			ID:      "destinations_config_path",
+			Status:  "warn",
+			Details: "implicit built-in defaults",
+		})
 		destinationAllowlist = middleware.DefaultDestinationAllowlist()
 	}
 
@@ -311,12 +329,31 @@ func New(cfg *Config) (*Gateway, error) {
 	if cfg.RiskThresholdsPath != "" {
 		rc, err := middleware.LoadRiskConfig(cfg.RiskThresholdsPath)
 		if err != nil {
-			// Fall back to defaults if config file not found
+			startupControlResults = append(startupControlResults, enforcementControlResult{
+				ID:      "risk_thresholds_path",
+				Status:  "fail",
+				Details: fmt.Sprintf("fallback to built-in defaults denied: %v", err),
+			})
+			if enforcementProfile != nil && enforcementProfile.StartupGateMode == "strict" {
+				return nil, fmt.Errorf("strict profile forbids fallback for risk_thresholds_path: %w", err)
+			}
+			slog.Warn("unsafe fallback: failed to load risk thresholds, using built-in defaults", "path", cfg.RiskThresholdsPath, "error", err)
 			riskConfig = middleware.DefaultRiskConfig()
 		} else {
+			startupControlResults = append(startupControlResults, enforcementControlResult{
+				ID:      "risk_thresholds_path",
+				Status:  "pass",
+				Details: cfg.RiskThresholdsPath,
+			})
 			riskConfig = rc
 		}
 	} else {
+		startupControlResults = append(startupControlResults, enforcementControlResult{
+			ID:      "risk_thresholds_path",
+			Status:  "warn",
+			Details: "implicit built-in defaults",
+		})
+		slog.Warn("RISK_THRESHOLDS_PATH is empty, using built-in risk threshold defaults")
 		riskConfig = middleware.DefaultRiskConfig()
 	}
 	approvalCapabilities := middleware.NewApprovalCapabilityService(
@@ -465,6 +502,7 @@ func New(cfg *Config) (*Gateway, error) {
 	if distributedControlPlaneState && redisClient != nil {
 		breakGlassManager.enableDistributedState(newKeyDBBreakGlassStore(redisClient))
 	}
+	emitStartupConformanceReport(enforcementProfile, startupControlResults)
 
 	return &Gateway{
 		config:                     cfg,
