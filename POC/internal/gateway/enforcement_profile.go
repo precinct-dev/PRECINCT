@@ -71,6 +71,7 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"spiffe_mode=prod",
 			"mcp_transport_mode=mcp",
 			"upstream_url=https",
+			"keydb_url",
 			"enforce_model_mediation_gate",
 			"approval_signing_key",
 			"tool_registry_config_path",
@@ -94,6 +95,7 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"spiffe_mode=prod",
 			"mcp_transport_mode=mcp",
 			"upstream_url=https",
+			"keydb_url",
 			"enforce_model_mediation_gate",
 			"enforce_hipaa_prompt_safety_gate",
 			"approval_signing_key",
@@ -185,6 +187,9 @@ func resolveEnforcementProfile(cfg *Config) (*enforcementProfileRuntime, error) 
 
 		if strings.TrimSpace(cfg.ToolRegistryConfigPath) == "" {
 			violations = append(violations, "tool_registry_config_path must be set in strict profiles")
+		}
+		if strings.TrimSpace(cfg.KeyDBURL) == "" {
+			violations = append(violations, "keydb_url must be set in strict profiles")
 		}
 		if strings.TrimSpace(cfg.ToolRegistryPublicKey) == "" {
 			violations = append(violations, "tool_registry_public_key must be set in strict profiles")

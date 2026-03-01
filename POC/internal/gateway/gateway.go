@@ -22,6 +22,7 @@ import (
 
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/mcpclient"
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/redis/go-redis/v9"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -238,9 +239,14 @@ func New(cfg *Config) (*Gateway, error) {
 	// TLS config is applied in EnableKeyDBTLS() after SPIRE is connected.
 	var sessionStore middleware.SessionStore
 	var rateLimitStore middleware.RateLimitStore
+	var redisClient *redis.Client
+	distributedControlPlaneState := shouldUseDistributedControlPlaneState(cfg, enforcementProfile)
+	if enforcementProfile != nil && enforcementProfile.StartupGateMode == "strict" && strings.TrimSpace(cfg.KeyDBURL) == "" {
+		return nil, fmt.Errorf("enforcement profile %q requires keydb_url for distributed control-plane state", enforcementProfile.Name)
+	}
 	if cfg.KeyDBURL != "" {
 		keyDBURL := KeyDBURLForMode(cfg.KeyDBURL, cfg.SPIFFEMode)
-		redisClient := middleware.NewKeyDBClient(keyDBURL, cfg.KeyDBPoolMin, cfg.KeyDBPoolMax)
+		redisClient = middleware.NewKeyDBClient(keyDBURL, cfg.KeyDBPoolMin, cfg.KeyDBPoolMax)
 		sessionStore = middleware.NewKeyDBStoreFromClient(redisClient, cfg.SessionTTL)
 		rateLimitStore = middleware.NewKeyDBRateLimitStore(redisClient)
 	} else {
@@ -263,7 +269,11 @@ func New(cfg *Config) (*Gateway, error) {
 	})
 
 	// RFA-qq0.16: Create handle store for response firewall
-	handleStore := NewHandleStore(time.Duration(cfg.HandleTTL) * time.Second)
+	handleTTL := time.Duration(cfg.HandleTTL) * time.Second
+	handleStore := NewHandleStore(handleTTL)
+	if distributedControlPlaneState && redisClient != nil {
+		handleStore = NewDistributedHandleStore(redisClient, handleTTL)
+	}
 
 	// RFA-qq0.17: Create step-up gating components
 	// RFA-bci: Use resolved guardAPIKey (SPIKE -> env fallback) instead of cfg.GroqAPIKey
@@ -309,6 +319,9 @@ func New(cfg *Config) (*Gateway, error) {
 		time.Duration(cfg.ApprovalMaxTTL)*time.Second,
 		auditor,
 	)
+	if distributedControlPlaneState && redisClient != nil {
+		approvalCapabilities.EnableDistributedState(redisClient)
+	}
 
 	// RFA-j2d.1: Ensure UIConfig exists (default to secure defaults if nil)
 	uiConfig := cfg.UI
@@ -408,6 +421,9 @@ func New(cfg *Config) (*Gateway, error) {
 		enforcementProfile.Controls.EnforceModelMediationGate,
 		enforcementProfile.Controls.EnforceHIPAAPromptSafety,
 	)
+	if distributedControlPlaneState && redisClient != nil {
+		modelPlanePolicy.enableDistributedBudgetStore(redisClient)
+	}
 	if err := modelPlanePolicy.loadProviderCatalog(cfg.ModelProviderCatalogPath, cfg.ModelProviderCatalogPublicKey); err != nil {
 		if auditor != nil {
 			auditor.Log(middleware.AuditEvent{
@@ -439,6 +455,11 @@ func New(cfg *Config) (*Gateway, error) {
 		adminAllowlist = defaultAdminAuthzAllowedSPIFFEIDs()
 	}
 
+	breakGlassManager := newBreakGlassManager(auditor)
+	if distributedControlPlaneState && redisClient != nil {
+		breakGlassManager.enableDistributedState(newKeyDBBreakGlassStore(redisClient))
+	}
+
 	return &Gateway{
 		config:                     cfg,
 		proxy:                      proxy,
@@ -467,7 +488,7 @@ func New(cfg *Config) (*Gateway, error) {
 		modelPlanePolicy:           modelPlanePolicy,
 		loopPolicy:                 newLoopPlanePolicyEngine(),
 		toolPolicy:                 newToolPlanePolicyEngine(cfg.CapabilityRegistryV2Path),
-		breakGlass:                 newBreakGlassManager(auditor),
+		breakGlass:                 breakGlassManager,
 		enforcementProfile:         enforcementProfile,
 		dlpRuleOps:                 dlpRuleOps,
 		cca:                        newConnectorConformanceAuthority(),
@@ -2009,9 +2030,29 @@ func (g *Gateway) enableKeyDBTLS(spiffeTLS *SPIFFETLSConfig, keyDBAuthzAllowedSP
 	g.sessionContext = middleware.NewSessionContext(g.sessionStore)
 	g.rateLimiter = middleware.NewRateLimiter(g.config.RateLimitRPM, g.config.RateLimitBurst, rateLimitStore)
 
+	if shouldUseDistributedControlPlaneState(g.config, g.enforcementProfile) {
+		if g.approvalCapabilities != nil {
+			g.approvalCapabilities.EnableDistributedState(redisClient)
+		}
+		if g.breakGlass != nil {
+			g.breakGlass.enableDistributedState(newKeyDBBreakGlassStore(redisClient))
+		}
+		if g.modelPlanePolicy != nil {
+			g.modelPlanePolicy.enableDistributedBudgetStore(redisClient)
+		}
+		if g.handleStore != nil {
+			g.handleStore.Close()
+		}
+		g.handleStore = NewDistributedHandleStore(redisClient, time.Duration(g.config.HandleTTL)*time.Second)
+	}
+
 	slog.Info("SPIFFE mTLS: KeyDB client configured with TLS", "keydb_url", keyDBURL)
 
 	return nil
+}
+
+func shouldUseDistributedControlPlaneState(cfg *Config, profile *enforcementProfileRuntime) bool {
+	return cfg != nil && strings.TrimSpace(cfg.KeyDBURL) != ""
 }
 
 // SPIFFETLSEnabled returns true if the gateway is configured for SPIFFE mTLS.
