@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/sha256"
 	"crypto/x509"
@@ -12,7 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/redis/go-redis/v9"
 	"gopkg.in/yaml.v3"
 )
 
@@ -37,6 +40,8 @@ type modelPlanePolicyEngine struct {
 	catalogSignatureVerified bool
 	budgetProfile            map[string]modelBudgetProfile
 	usage                    map[string]int
+	budgetClient             *redis.Client
+	budgetTTL                time.Duration
 	enforceMediationGate     bool
 	enforceHIPAAPromptSafety bool
 }
@@ -105,9 +110,16 @@ func newModelPlanePolicyEngineWithControls(enforceMediationGate, enforceHIPAAPro
 			"tiny":     {LimitUnits: 2, NearLimitFrom: 2},
 		},
 		usage:                    make(map[string]int),
+		budgetTTL:                24 * time.Hour,
 		enforceMediationGate:     enforceMediationGate,
 		enforceHIPAAPromptSafety: enforceHIPAAPromptSafety,
 	}
+}
+
+func (m *modelPlanePolicyEngine) enableDistributedBudgetStore(client *redis.Client) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.budgetClient = client
 }
 
 func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonCode, int, map[string]any) {
@@ -390,6 +402,15 @@ func verifyYAMLCatalogSignature(data []byte, catalogPath string, publicKeyPath s
 }
 
 func (m *modelPlanePolicyEngine) reserveBudget(tenant, profile string, units int) (nearLimit bool, exhausted bool) {
+	if m.budgetClient != nil {
+		near, ex, err := m.reserveBudgetDistributed(tenant, profile, units)
+		if err != nil {
+			// Fail closed on distributed-state failure in strict/prod posture.
+			return false, true
+		}
+		return near, ex
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -406,6 +427,72 @@ func (m *modelPlanePolicyEngine) reserveBudget(tenant, profile string, units int
 	m.usage[key] = next
 	return next >= b.NearLimitFrom, false
 }
+
+func (m *modelPlanePolicyEngine) reserveBudgetDistributed(tenant, profile string, units int) (nearLimit bool, exhausted bool, err error) {
+	m.mu.Lock()
+	b, ok := m.budgetProfile[profile]
+	if !ok {
+		b = m.budgetProfile["standard"]
+	}
+	client := m.budgetClient
+	ttl := m.budgetTTL
+	m.mu.Unlock()
+
+	if client == nil {
+		return false, true, fmt.Errorf("model budget store unavailable")
+	}
+	key := "modelbudget:" + tenant + "|" + profile
+	res, err := modelBudgetReserveLua.Run(context.Background(), client, []string{key},
+		units,
+		b.LimitUnits,
+		b.NearLimitFrom,
+		int(ttl.Seconds()),
+	).Result()
+	if err != nil {
+		return false, true, fmt.Errorf("distributed model budget reserve failed: %w", err)
+	}
+	values, ok := res.([]interface{})
+	if !ok || len(values) != 2 {
+		return false, true, fmt.Errorf("unexpected budget reserve response type %T", res)
+	}
+	exhaustedFlag, okExhausted := values[0].(int64)
+	nearFlag, okNear := values[1].(int64)
+	if !okExhausted || !okNear {
+		return false, true, fmt.Errorf("unexpected budget reserve values %T/%T", values[0], values[1])
+	}
+	return nearFlag == 1, exhaustedFlag == 1, nil
+}
+
+var modelBudgetReserveLua = redis.NewScript(`
+-- KEYS[1] = budget key
+-- ARGV[1] = units
+-- ARGV[2] = limit
+-- ARGV[3] = near_limit_from
+-- ARGV[4] = ttl_seconds
+
+local key = KEYS[1]
+local units = tonumber(ARGV[1])
+local limit = tonumber(ARGV[2])
+local near_from = tonumber(ARGV[3])
+local ttl = tonumber(ARGV[4])
+
+local current = tonumber(redis.call("GET", key) or "0")
+local next = current + units
+
+if next > limit then
+  return {1, 0}
+end
+
+redis.call("SET", key, tostring(next))
+if ttl > 0 then
+  redis.call("EXPIRE", key, ttl)
+end
+
+if next >= near_from then
+  return {0, 1}
+end
+return {0, 0}
+`)
 
 func (m *modelPlanePolicyEngine) selectFallback(provider, model, residency, riskMode string) (string, bool) {
 	primary, ok := m.providers[provider]

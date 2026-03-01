@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"slices"
@@ -88,7 +89,8 @@ type breakGlassManager struct {
 	maxTTL     time.Duration
 	auditor    *middleware.Auditor
 
-	requests map[string]breakGlassRecord
+	requests    map[string]breakGlassRecord
+	distributed breakGlassDistributedStore
 }
 
 func newBreakGlassManager(auditor *middleware.Auditor) *breakGlassManager {
@@ -99,6 +101,10 @@ func newBreakGlassManager(auditor *middleware.Auditor) *breakGlassManager {
 		auditor:    auditor,
 		requests:   make(map[string]breakGlassRecord),
 	}
+}
+
+func (m *breakGlassManager) enableDistributedState(store breakGlassDistributedStore) {
+	m.distributed = store
 }
 
 func (m *breakGlassManager) request(input breakGlassRequestInput) (breakGlassRecord, error) {
@@ -136,9 +142,9 @@ func (m *breakGlassManager) request(input breakGlassRequestInput) (breakGlassRec
 		ElevatedAuditFlag: true,
 	}
 
-	m.mu.Lock()
-	m.requests[record.RequestID] = record
-	m.mu.Unlock()
+	if err := m.persistRecord(record); err != nil {
+		return breakGlassRecord{}, err
+	}
 
 	m.logEvent("breakglass.request", record, fmt.Sprintf("incident_id=%s request_id=%s elevated_audit=true", record.IncidentID, record.RequestID), 200)
 	return record, nil
@@ -151,10 +157,10 @@ func (m *breakGlassManager) approve(input breakGlassApprovalInput) (breakGlassRe
 		return breakGlassRecord{}, fmt.Errorf("approved_by is required")
 	}
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	record, ok := m.requests[requestID]
+	record, ok, err := m.loadRecord(requestID)
+	if err != nil {
+		return breakGlassRecord{}, err
+	}
 	if !ok {
 		return breakGlassRecord{}, errBreakGlassNotFound
 	}
@@ -173,7 +179,9 @@ func (m *breakGlassManager) approve(input breakGlassApprovalInput) (breakGlassRe
 	} else {
 		record.Status = breakGlassStatusPending
 	}
-	m.requests[requestID] = record
+	if err := m.persistRecord(record); err != nil {
+		return breakGlassRecord{}, err
+	}
 
 	m.logEvent("breakglass.approve", record, fmt.Sprintf("incident_id=%s request_id=%s approved_by=%s approval_count=%d elevated_audit=true", record.IncidentID, record.RequestID, approvedBy, len(record.Approvers)), 200)
 	return cloneBreakGlassRecord(record), nil
@@ -188,10 +196,10 @@ func (m *breakGlassManager) activate(input breakGlassActivateInput) (breakGlassR
 
 	now := m.nowUTC()
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	record, ok := m.requests[requestID]
+	record, ok, err := m.loadRecord(requestID)
+	if err != nil {
+		return breakGlassRecord{}, err
+	}
 	if !ok {
 		return breakGlassRecord{}, errBreakGlassNotFound
 	}
@@ -212,7 +220,9 @@ func (m *breakGlassManager) activate(input breakGlassActivateInput) (breakGlassR
 	record.ActivationReason = strings.TrimSpace(input.Reason)
 	record.ActivatedAt = &activatedAt
 	record.ExpiresAt = &expiresAt
-	m.requests[requestID] = record
+	if err := m.persistRecord(record); err != nil {
+		return breakGlassRecord{}, err
+	}
 
 	m.logEvent("breakglass.activate", record, fmt.Sprintf("incident_id=%s request_id=%s activated_by=%s expires_at=%s elevated_audit=true", record.IncidentID, record.RequestID, activatedBy, expiresAt.Format(time.RFC3339)), 200)
 	return cloneBreakGlassRecord(record), nil
@@ -227,10 +237,10 @@ func (m *breakGlassManager) revert(input breakGlassRevertInput) (breakGlassRecor
 
 	now := m.nowUTC()
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	record, ok := m.requests[requestID]
+	record, ok, err := m.loadRecord(requestID)
+	if err != nil {
+		return breakGlassRecord{}, err
+	}
 	if !ok {
 		return breakGlassRecord{}, errBreakGlassNotFound
 	}
@@ -243,7 +253,9 @@ func (m *breakGlassManager) revert(input breakGlassRevertInput) (breakGlassRecor
 	record.RevertedBy = revertedBy
 	record.RevertReason = strings.TrimSpace(input.Reason)
 	record.RevertedAt = &revertedAt
-	m.requests[requestID] = record
+	if err := m.persistRecord(record); err != nil {
+		return breakGlassRecord{}, err
+	}
 
 	m.logEvent("breakglass.revert", record, fmt.Sprintf("incident_id=%s request_id=%s reverted_by=%s elevated_audit=true", record.IncidentID, record.RequestID, revertedBy), 200)
 	return cloneBreakGlassRecord(record), nil
@@ -256,16 +268,17 @@ func (m *breakGlassManager) activeOverride(scope breakGlassScope) (breakGlassRec
 
 	now := m.nowUTC()
 
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	for id, record := range m.requests {
+	records, err := m.listRecords()
+	if err != nil {
+		return breakGlassRecord{}, false
+	}
+	for _, record := range records {
 		if record.Status != breakGlassStatusActive {
 			continue
 		}
 		if record.ExpiresAt != nil && now.After(*record.ExpiresAt) {
 			record.Status = breakGlassStatusExpired
-			m.requests[id] = record
+			_ = m.persistRecord(record)
 			m.logEvent("breakglass.expire", record, fmt.Sprintf("incident_id=%s request_id=%s elevated_audit=true", record.IncidentID, record.RequestID), 410)
 			continue
 		}
@@ -277,9 +290,10 @@ func (m *breakGlassManager) activeOverride(scope breakGlassScope) (breakGlassRec
 }
 
 func (m *breakGlassManager) get(requestID string) (breakGlassRecord, bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	record, ok := m.requests[strings.TrimSpace(requestID)]
+	record, ok, err := m.loadRecord(strings.TrimSpace(requestID))
+	if err != nil {
+		return breakGlassRecord{}, false
+	}
 	if !ok {
 		return breakGlassRecord{}, false
 	}
@@ -287,10 +301,12 @@ func (m *breakGlassManager) get(requestID string) (breakGlassRecord, bool) {
 }
 
 func (m *breakGlassManager) list() []breakGlassRecord {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	out := make([]breakGlassRecord, 0, len(m.requests))
-	for _, record := range m.requests {
+	records, err := m.listRecords()
+	if err != nil {
+		return nil
+	}
+	out := make([]breakGlassRecord, 0, len(records))
+	for _, record := range records {
 		out = append(out, cloneBreakGlassRecord(record))
 	}
 	slices.SortFunc(out, func(a, b breakGlassRecord) int {
@@ -301,6 +317,42 @@ func (m *breakGlassManager) list() []breakGlassRecord {
 
 func (m *breakGlassManager) nowUTC() time.Time {
 	return m.now().UTC()
+}
+
+func (m *breakGlassManager) loadRecord(requestID string) (breakGlassRecord, bool, error) {
+	if m.distributed != nil {
+		return m.distributed.Get(context.Background(), strings.TrimSpace(requestID))
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	record, ok := m.requests[strings.TrimSpace(requestID)]
+	if !ok {
+		return breakGlassRecord{}, false, nil
+	}
+	return record, true, nil
+}
+
+func (m *breakGlassManager) persistRecord(record breakGlassRecord) error {
+	if m.distributed != nil {
+		return m.distributed.Put(context.Background(), record)
+	}
+	m.mu.Lock()
+	m.requests[record.RequestID] = record
+	m.mu.Unlock()
+	return nil
+}
+
+func (m *breakGlassManager) listRecords() ([]breakGlassRecord, error) {
+	if m.distributed != nil {
+		return m.distributed.List(context.Background())
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]breakGlassRecord, 0, len(m.requests))
+	for _, record := range m.requests {
+		out = append(out, cloneBreakGlassRecord(record))
+	}
+	return out, nil
 }
 
 func (m *breakGlassManager) logEvent(action string, record breakGlassRecord, result string, statusCode int) {

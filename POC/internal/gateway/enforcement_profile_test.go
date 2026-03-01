@@ -14,6 +14,7 @@ func newStrictProfileTestConfig(profile string) *Config {
 		SPIFFEMode:                    "prod",
 		MCPTransportMode:              "mcp",
 		UpstreamURL:                   "https://mcp-server.example.com/mcp",
+		KeyDBURL:                      "redis://keydb:6379",
 		EnforceModelMediationGate:     true,
 		EnforceHIPAAPromptSafetyGate:  true,
 		ApprovalSigningKey:            "prod-approval-signing-key-material-at-least-32",
@@ -111,6 +112,19 @@ func TestResolveEnforcementProfile_StrictFailsWithWeakApprovalSigningKey(t *test
 	}
 	if !strings.Contains(err.Error(), "approval_signing_key must be at least") {
 		t.Fatalf("expected approval signing key strength error, got: %v", err)
+	}
+}
+
+func TestResolveEnforcementProfile_StrictFailsWithoutKeyDBURL(t *testing.T) {
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.KeyDBURL = ""
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure when keydb_url is missing")
+	}
+	if !strings.Contains(err.Error(), "keydb_url must be set") {
+		t.Fatalf("expected keydb_url requirement error, got: %v", err)
 	}
 }
 

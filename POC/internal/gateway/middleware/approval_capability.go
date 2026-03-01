@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -137,6 +138,7 @@ type ApprovalCapabilityService struct {
 
 	requests      map[string]ApprovalRequestRecord
 	consumedNonce map[string]time.Time
+	distributed   approvalDistributedStore
 }
 
 var weakApprovalSigningKeyValues = map[string]struct{}{
@@ -225,9 +227,15 @@ func (s *ApprovalCapabilityService) CreateRequest(input ApprovalRequestInput) (A
 		ExpiresAt:   now.Add(ttl),
 	}
 
-	s.mu.Lock()
-	s.requests[record.RequestID] = record
-	s.mu.Unlock()
+	if s.distributed != nil {
+		if err := s.distributed.PutRequest(context.Background(), record); err != nil {
+			return ApprovalRequestRecord{}, err
+		}
+	} else {
+		s.mu.Lock()
+		s.requests[record.RequestID] = record
+		s.mu.Unlock()
+	}
 
 	s.logEvent("approval.request", record.Scope.SessionID, record.Scope.ActorSPIFFEID, "", fmt.Sprintf("request_id=%s action=%s resource=%s requested_by=%s ttl_seconds=%d", record.RequestID, record.Scope.Action, record.Scope.Resource, record.RequestedBy, record.TTLSeconds), 200)
 	return record, nil
@@ -238,10 +246,10 @@ func (s *ApprovalCapabilityService) GrantRequest(input ApprovalGrantInput) (Appr
 	approvedBy := strings.TrimSpace(input.ApprovedBy)
 	reason := strings.TrimSpace(input.Reason)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	record, ok := s.requests[requestID]
+	record, ok, err := s.loadRequestRecord(requestID)
+	if err != nil {
+		return ApprovalGrantResult{}, err
+	}
 	if !ok {
 		return ApprovalGrantResult{}, ErrApprovalRequestNotFound
 	}
@@ -252,7 +260,9 @@ func (s *ApprovalCapabilityService) GrantRequest(input ApprovalGrantInput) (Appr
 	now := s.nowUTC()
 	if now.After(record.ExpiresAt) {
 		record.Status = ApprovalStatusExpired
-		s.requests[requestID] = record
+		if err := s.persistRequestRecord(record); err != nil {
+			return ApprovalGrantResult{}, err
+		}
 		s.logEvent("approval.expire", record.Scope.SessionID, record.Scope.ActorSPIFFEID, "", fmt.Sprintf("request_id=%s status=expired", record.RequestID), 410)
 		return ApprovalGrantResult{}, ErrApprovalTokenExpired
 	}
@@ -279,7 +289,9 @@ func (s *ApprovalCapabilityService) GrantRequest(input ApprovalGrantInput) (Appr
 	record.Nonce = tokenPayload.Nonce
 	decisionAt := now
 	record.DecisionAt = &decisionAt
-	s.requests[requestID] = record
+	if err := s.persistRequestRecord(record); err != nil {
+		return ApprovalGrantResult{}, err
+	}
 
 	claims := approvalTokenPayloadToClaims(tokenPayload)
 	s.logEvent("approval.grant", record.Scope.SessionID, record.Scope.ActorSPIFFEID, "", fmt.Sprintf("request_id=%s approved_by=%s reason=%s nonce=%s", record.RequestID, approvedBy, reason, tokenPayload.Nonce), 200)
@@ -295,10 +307,10 @@ func (s *ApprovalCapabilityService) DenyRequest(input ApprovalDenyInput) (Approv
 	deniedBy := strings.TrimSpace(input.DeniedBy)
 	reason := strings.TrimSpace(input.Reason)
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	record, ok := s.requests[requestID]
+	record, ok, err := s.loadRequestRecord(requestID)
+	if err != nil {
+		return ApprovalRequestRecord{}, err
+	}
 	if !ok {
 		return ApprovalRequestRecord{}, ErrApprovalRequestNotFound
 	}
@@ -309,7 +321,9 @@ func (s *ApprovalCapabilityService) DenyRequest(input ApprovalDenyInput) (Approv
 	now := s.nowUTC()
 	if now.After(record.ExpiresAt) {
 		record.Status = ApprovalStatusExpired
-		s.requests[requestID] = record
+		if err := s.persistRequestRecord(record); err != nil {
+			return ApprovalRequestRecord{}, err
+		}
 		s.logEvent("approval.expire", record.Scope.SessionID, record.Scope.ActorSPIFFEID, "", fmt.Sprintf("request_id=%s status=expired", record.RequestID), 410)
 		return ApprovalRequestRecord{}, ErrApprovalTokenExpired
 	}
@@ -319,16 +333,19 @@ func (s *ApprovalCapabilityService) DenyRequest(input ApprovalDenyInput) (Approv
 	record.DecisionReason = reason
 	decisionAt := now
 	record.DecisionAt = &decisionAt
-	s.requests[requestID] = record
+	if err := s.persistRequestRecord(record); err != nil {
+		return ApprovalRequestRecord{}, err
+	}
 
 	s.logEvent("approval.deny", record.Scope.SessionID, record.Scope.ActorSPIFFEID, "", fmt.Sprintf("request_id=%s denied_by=%s reason=%s", record.RequestID, deniedBy, reason), 200)
 	return cloneApprovalRecord(record), nil
 }
 
 func (s *ApprovalCapabilityService) GetRequest(requestID string) (ApprovalRequestRecord, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	record, ok := s.requests[strings.TrimSpace(requestID)]
+	record, ok, err := s.loadRequestRecord(strings.TrimSpace(requestID))
+	if err != nil {
+		return ApprovalRequestRecord{}, false
+	}
 	if !ok {
 		return ApprovalRequestRecord{}, false
 	}
@@ -366,20 +383,42 @@ func (s *ApprovalCapabilityService) ValidateAndConsume(token string, expected Ap
 		return nil, ErrApprovalScopeMismatch
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	if s.distributed != nil {
+		consumed, markErr := s.distributed.MarkNonceConsumed(context.Background(), payload.Nonce, time.Unix(payload.ExpiresAtUnix, 0).UTC())
+		if markErr != nil {
+			return nil, markErr
+		}
+		if !consumed {
+			return nil, ErrApprovalTokenConsumed
+		}
+		record, ok, loadErr := s.loadRequestRecord(payload.RequestID)
+		if loadErr != nil {
+			return nil, loadErr
+		}
+		if ok {
+			record.Status = ApprovalStatusConsumed
+			consumedAt := now
+			record.ConsumedAt = &consumedAt
+			if persistErr := s.persistRequestRecord(record); persistErr != nil {
+				return nil, persistErr
+			}
+		}
+	} else {
+		s.mu.Lock()
+		if _, consumed := s.consumedNonce[payload.Nonce]; consumed {
+			s.mu.Unlock()
+			return nil, ErrApprovalTokenConsumed
+		}
+		s.consumedNonce[payload.Nonce] = now
 
-	if _, consumed := s.consumedNonce[payload.Nonce]; consumed {
-		return nil, ErrApprovalTokenConsumed
-	}
-	s.consumedNonce[payload.Nonce] = now
-
-	record, ok := s.requests[payload.RequestID]
-	if ok {
-		record.Status = ApprovalStatusConsumed
-		consumedAt := now
-		record.ConsumedAt = &consumedAt
-		s.requests[payload.RequestID] = record
+		record, ok := s.requests[payload.RequestID]
+		if ok {
+			record.Status = ApprovalStatusConsumed
+			consumedAt := now
+			record.ConsumedAt = &consumedAt
+			s.requests[payload.RequestID] = record
+		}
+		s.mu.Unlock()
 	}
 
 	claims := approvalTokenPayloadToClaims(payload)
@@ -435,17 +474,38 @@ func (s *ApprovalCapabilityService) parseAndVerifyToken(token string) (approvalT
 }
 
 func (s *ApprovalCapabilityService) expireIfKnown(requestID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	record, ok := s.requests[requestID]
-	if !ok {
+	record, ok, err := s.loadRequestRecord(requestID)
+	if err != nil || !ok {
 		return
 	}
 	if record.Status == ApprovalStatusConsumed || record.Status == ApprovalStatusDenied {
 		return
 	}
 	record.Status = ApprovalStatusExpired
-	s.requests[requestID] = record
+	_ = s.persistRequestRecord(record)
+}
+
+func (s *ApprovalCapabilityService) loadRequestRecord(requestID string) (ApprovalRequestRecord, bool, error) {
+	if s.distributed != nil {
+		return s.distributed.GetRequest(context.Background(), strings.TrimSpace(requestID))
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.requests[strings.TrimSpace(requestID)]
+	if !ok {
+		return ApprovalRequestRecord{}, false, nil
+	}
+	return record, true, nil
+}
+
+func (s *ApprovalCapabilityService) persistRequestRecord(record ApprovalRequestRecord) error {
+	if s.distributed != nil {
+		return s.distributed.PutRequest(context.Background(), record)
+	}
+	s.mu.Lock()
+	s.requests[record.RequestID] = record
+	s.mu.Unlock()
+	return nil
 }
 
 func (s *ApprovalCapabilityService) logEvent(action, sessionID, spiffeID, decisionID, result string, statusCode int) {

@@ -6,11 +6,16 @@
 package gateway
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // HandleEntry represents a stored handle with its associated data
@@ -35,6 +40,7 @@ type HandleStore struct {
 	entries map[string]*HandleEntry // ref -> entry
 	ttl     time.Duration           // default TTL for new entries
 	stopCh  chan struct{}           // signal to stop cleanup goroutine
+	client  *redis.Client           // distributed store backend when configured
 }
 
 // NewHandleStore creates a new handle store with the given default TTL.
@@ -50,6 +56,15 @@ func NewHandleStore(ttl time.Duration) *HandleStore {
 	go hs.cleanupLoop()
 
 	return hs
+}
+
+// NewDistributedHandleStore creates a KeyDB-backed handle store. Entries are
+// persisted with TTL so refs survive across gateway replicas in strict/prod.
+func NewDistributedHandleStore(client *redis.Client, ttl time.Duration) *HandleStore {
+	return &HandleStore{
+		ttl:    ttl,
+		client: client,
+	}
 }
 
 // Store saves raw response data and returns a handle reference.
@@ -69,6 +84,18 @@ func (hs *HandleStore) Store(rawData []byte, spiffeID, toolName string) (string,
 		CreatedAt: time.Now(),
 	}
 
+	if hs.client != nil {
+		data, err := json.Marshal(entry)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal handle entry: %w", err)
+		}
+		key := handleEntryKey(ref)
+		if err := hs.client.Set(context.Background(), key, data, hs.ttl).Err(); err != nil {
+			return "", fmt.Errorf("failed to store handle in keydb: %w", err)
+		}
+		return ref, nil
+	}
+
 	hs.mu.Lock()
 	hs.entries[ref] = entry
 	hs.mu.Unlock()
@@ -80,6 +107,25 @@ func (hs *HandleStore) Store(rawData []byte, spiffeID, toolName string) (string,
 // Returns nil if the handle does not exist or has expired.
 // Expired handles are removed on access.
 func (hs *HandleStore) Get(ref string) *HandleEntry {
+	if hs.client != nil {
+		raw, err := hs.client.Get(context.Background(), handleEntryKey(ref)).Bytes()
+		if err == redis.Nil {
+			return nil
+		}
+		if err != nil {
+			return nil
+		}
+		var entry HandleEntry
+		if err := json.Unmarshal(raw, &entry); err != nil {
+			return nil
+		}
+		if entry.Expired() {
+			_ = hs.client.Del(context.Background(), handleEntryKey(ref)).Err()
+			return nil
+		}
+		return &entry
+	}
+
 	hs.mu.RLock()
 	entry, exists := hs.entries[ref]
 	hs.mu.RUnlock()
@@ -101,6 +147,10 @@ func (hs *HandleStore) Get(ref string) *HandleEntry {
 
 // Delete removes a handle entry by reference
 func (hs *HandleStore) Delete(ref string) {
+	if hs.client != nil {
+		_ = hs.client.Del(context.Background(), handleEntryKey(ref)).Err()
+		return
+	}
 	hs.mu.Lock()
 	delete(hs.entries, ref)
 	hs.mu.Unlock()
@@ -108,6 +158,15 @@ func (hs *HandleStore) Delete(ref string) {
 
 // Count returns the number of active (non-expired) entries
 func (hs *HandleStore) Count() int {
+	if hs.client != nil {
+		ctx := context.Background()
+		iter := hs.client.Scan(ctx, 0, handleEntryKey("*"), 0).Iterator()
+		count := 0
+		for iter.Next(ctx) {
+			count++
+		}
+		return count
+	}
 	hs.mu.RLock()
 	defer hs.mu.RUnlock()
 	return len(hs.entries)
@@ -115,11 +174,16 @@ func (hs *HandleStore) Count() int {
 
 // Close stops the background cleanup goroutine
 func (hs *HandleStore) Close() {
-	close(hs.stopCh)
+	if hs.stopCh != nil {
+		close(hs.stopCh)
+	}
 }
 
 // cleanupLoop periodically removes expired entries
 func (hs *HandleStore) cleanupLoop() {
+	if hs.stopCh == nil {
+		return
+	}
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
 
@@ -158,4 +222,8 @@ func generateRef() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func handleEntryKey(ref string) string {
+	return "handle:ref:" + strings.TrimSpace(ref)
 }

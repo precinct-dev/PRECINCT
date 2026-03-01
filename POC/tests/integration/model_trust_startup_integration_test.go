@@ -105,6 +105,7 @@ func TestGatewayStartupFailsClosedOnGuardArtifactDigestMismatch(t *testing.T) {
 		RateLimitBurst:                100000,
 		EnforcementProfile:            "prod_standard",
 		ApprovalSigningKey:            "this-is-a-strong-signing-key-for-test-purposes-only-32chars",
+		KeyDBURL:                      "redis://keydb:6379",
 		ModelProviderCatalogPath:      catalogPath,
 		ModelProviderCatalogPublicKey: projectPubKey,
 		GuardArtifactPath:             artifactPath,
