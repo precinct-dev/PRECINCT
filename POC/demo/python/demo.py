@@ -266,11 +266,15 @@ def test_tool_registry_rugpull_protection(url: str) -> bool:
         "X-MCP-Server": "default",
         "X-Tenant": "default",
     }
+    admin_headers = {
+        "X-SPIFFE-ID": DSPY_SPIFFE,
+        "X-Session-ID": "demo-rugpull-admin",
+    }
     enabled = False
     client = None
     try:
         # Toggle rugpull ON at the upstream mock MCP server.
-        r = httpx.post(f"{admin_base}/__demo__/rugpull/on", timeout=5.0)
+        r = httpx.post(f"{admin_base}/__demo__/rugpull/on", headers=admin_headers, timeout=5.0)
         if r.status_code != 200:
             return print_proof(False, f"enable rugpull returned HTTP {r.status_code}: {r.text[:200]}")
         enabled = True
@@ -303,7 +307,7 @@ def test_tool_registry_rugpull_protection(url: str) -> bool:
         # Cleanup: toggle rugpull OFF and re-list to reset cache (best-effort).
         if enabled:
             try:
-                httpx.post(f"{admin_base}/__demo__/rugpull/off", timeout=5.0)
+                httpx.post(f"{admin_base}/__demo__/rugpull/off", headers=admin_headers, timeout=5.0)
                 httpx.post(url, json=payload, headers={**headers, "X-Session-ID": "demo-rugpull-tools-list-reset"}, timeout=10.0)
             except Exception:
                 pass

@@ -411,6 +411,8 @@ func testToolRegistryRugPullProtection() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, adminBase+"/__demo__/rugpull/on", nil)
+		req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+		req.Header.Set("X-Session-ID", "demo-rugpull-admin-on")
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
 			return printProof(false, fmt.Sprintf("failed to enable rugpull mode on mock server: %v", err))
@@ -426,6 +428,8 @@ func testToolRegistryRugPullProtection() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, adminBase+"/__demo__/rugpull/off", nil)
+		req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+		req.Header.Set("X-Session-ID", "demo-rugpull-admin-off")
 		resp, err := http.DefaultClient.Do(req)
 		if err == nil {
 			_ = resp.Body.Close()
@@ -881,20 +885,20 @@ func testInjection(query, passMsg, base64Note string) bool {
 			}
 			return printProof(true, msg)
 		}
-			// 403 at step 9 = guard model (Prompt Guard 2) blocked injection (defense-in-depth -- PASS)
-			if ge.HTTPStatus == 403 && ge.Step == 9 {
-				return printProof(true, fmt.Sprintf("Guard model (Prompt Guard 2) correctly blocked injection at step 9: %s. Defense-in-depth working -- guard catches what DLP regex at step 7 only flags.", ge.Code))
+		// 403 at step 9 = guard model (Prompt Guard 2) blocked injection (defense-in-depth -- PASS)
+		if ge.HTTPStatus == 403 && ge.Step == 9 {
+			return printProof(true, fmt.Sprintf("Guard model (Prompt Guard 2) correctly blocked injection at step 9: %s. Defense-in-depth working -- guard catches what DLP regex at step 7 only flags.", ge.Code))
+		}
+		// 403 at step 0 from extension slot = extension sidecar blocked injection first (PASS)
+		if ge.HTTPStatus == 403 && ge.Step == 0 && ge.Middleware == "extension_slot" &&
+			(ge.Code == "ext_content_scanner_blocked" || ge.Code == "extension_blocked" || strings.Contains(ge.Code, "extension")) {
+			return printProof(true, fmt.Sprintf("Extension sidecar blocked injection at step 0 before DLP/deep scan: %s. Defense-in-depth working.", ge.Code))
+		}
+		// 403 at step 10 = deep scan blocked injection (defense-in-depth -- PASS)
+		if ge.HTTPStatus == 403 && ge.Step == 10 {
+			if ge.Code != "deepscan_blocked" {
+				return printProof(false, fmt.Sprintf("expected deepscan_blocked at step 10, got %s", ge.Code))
 			}
-			// 403 at step 0 from extension slot = extension sidecar blocked injection first (PASS)
-			if ge.HTTPStatus == 403 && ge.Step == 0 && ge.Middleware == "extension_slot" &&
-				(ge.Code == "ext_content_scanner_blocked" || ge.Code == "extension_blocked" || strings.Contains(ge.Code, "extension")) {
-				return printProof(true, fmt.Sprintf("Extension sidecar blocked injection at step 0 before DLP/deep scan: %s. Defense-in-depth working.", ge.Code))
-			}
-			// 403 at step 10 = deep scan blocked injection (defense-in-depth -- PASS)
-			if ge.HTTPStatus == 403 && ge.Step == 10 {
-				if ge.Code != "deepscan_blocked" {
-					return printProof(false, fmt.Sprintf("expected deepscan_blocked at step 10, got %s", ge.Code))
-				}
 			return printProof(true, fmt.Sprintf("DLP regex flagged injection at step 7 (flag-only). Deep scan blocked at step 10: %s. Defense-in-depth working.", ge.Code))
 		}
 		// 503 with deepscan-related code = Groq API failed, fail_closed (PASS)

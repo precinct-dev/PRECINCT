@@ -16,12 +16,28 @@ if [ ! -x "$WS_CLIENT" ]; then
     go build -o "$WS_CLIENT" "${POC_DIR}/cmd/ws-e2e-client"
 fi
 
+SPIFFE_ID="spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+
+GATEWAY_WS_URL=""
+if curl -skf https://localhost:8443/health >/dev/null 2>&1; then
+    GATEWAY_WS_URL="wss://localhost:8443/openclaw/ws"
+elif curl -sf http://localhost:9090/health >/dev/null 2>&1; then
+    GATEWAY_WS_URL="ws://localhost:9090/openclaw/ws"
+else
+    log_fail "Gateway reachability" "Neither https://localhost:8443 nor http://localhost:9090 is healthy"
+    print_summary
+    exit 1
+fi
+log_detail "Gateway WS URL: ${GATEWAY_WS_URL}"
+
 # --- L.1: DLP flags sensitive content in message body ---
 log_subheader "L.1: DLP flags SSN in message body"
-WS_RESP=$("$WS_CLIENT" -url wss://localhost:8443/openclaw/ws \
+WS_RESP=$("$WS_CLIENT" -url "$GATEWAY_WS_URL" \
     -method message.send \
     -params '{"platform":"whatsapp","recipient":"15551234567","message":"Here is an SSN: 123-45-6789 for your records","auth_ref":"e2e-test-api-key"}' \
-    -scopes tools.messaging.send 2>&1 || true)
+    -scopes tools.messaging.send \
+    -spiffe-id "$SPIFFE_ID" \
+    -session-id "openclaw-l-ssn" 2>&1 || true)
 if echo "$WS_RESP" | jq -e '.ok==false' >/dev/null 2>&1; then
     # Message was blocked -- DLP is in block mode.
     log_pass "DLP blocked message containing SSN"
@@ -41,10 +57,12 @@ fi
 # We simulate this by sending a message that looks like it contains exfiltrated data
 # and checking whether the system flags or blocks it.
 log_subheader "L.2: Exfiltration pattern detection"
-WS_RESP=$("$WS_CLIENT" -url wss://localhost:8443/openclaw/ws \
+WS_RESP=$("$WS_CLIENT" -url "$GATEWAY_WS_URL" \
     -method message.send \
     -params '{"platform":"whatsapp","recipient":"15559876543","message":"Exfiltrating sensitive data: SSN 987-65-4321, CC 4111-1111-1111-1111","auth_ref":"e2e-test-api-key"}' \
-    -scopes tools.messaging.send 2>&1 || true)
+    -scopes tools.messaging.send \
+    -spiffe-id "$SPIFFE_ID" \
+    -session-id "openclaw-l-exfil" 2>&1 || true)
 if echo "$WS_RESP" | jq -e '.ok==false' >/dev/null 2>&1; then
     if echo "$WS_RESP" | grep -qi "exfiltration"; then
         log_pass "Exfiltration detected and blocked"
