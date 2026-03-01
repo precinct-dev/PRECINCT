@@ -29,6 +29,8 @@ COMPOSE_NETWORK="agentic-security-network"
 PF_PID=""
 PF_PID_MCP=""
 DOCKER_ADD_HOST=""
+COMPOSE_TORN_DOWN=false
+K8S_TORN_DOWN=false
 
 # Lua script for targeted rate-limit key cleanup (avoids FLUSHALL).
 # Scans for ratelimit:* keys only, leaving other KeyDB data intact.
@@ -1185,11 +1187,54 @@ teardown() {
     log "Tearing down environment ($mode)"
     if [ "$mode" = "compose" ]; then
         # Only tears down services in docker-compose.yml -- Phoenix is safe.
-        docker compose -f "$POC_DIR/docker-compose.yml" down -v 2>/dev/null || true
+        docker compose --project-directory "$POC_DIR" -f "$POC_DIR/docker-compose.yml" down -v --remove-orphans 2>/dev/null || true
+        # Defensive fallback: if a previous run used a different compose project name,
+        # the fixed container_name can still remain. Remove it explicitly.
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'mcp-security-gateway'; then
+            docker rm -f mcp-security-gateway >/dev/null 2>&1 || true
+        fi
+        COMPOSE_TORN_DOWN=true
     elif [ "$mode" = "k8s" ]; then
         # Only tears down K8s namespaces -- Phoenix Docker containers are safe.
         make -C "$POC_DIR" k8s-down 2>/dev/null || true
+        K8S_TORN_DOWN=true
     fi
+}
+
+# --------------------------------------------------------------------------
+# Exit handler
+# Ensures teardown also happens on error/early-exit paths (unless --no-teardown).
+# --------------------------------------------------------------------------
+on_exit() {
+    local rc="${1:-0}"
+    cleanup || true
+
+    if [ "$NO_TEARDOWN" = "true" ]; then
+        return "$rc"
+    fi
+
+    case "$MODE" in
+        compose)
+            if [ "$COMPOSE_TORN_DOWN" != "true" ]; then
+                teardown compose
+            fi
+            ;;
+        k8s)
+            if [ "$K8S_TORN_DOWN" != "true" ]; then
+                teardown k8s
+            fi
+            ;;
+        both)
+            if [ "$COMPOSE_TORN_DOWN" != "true" ]; then
+                teardown compose
+            fi
+            if [ "$K8S_TORN_DOWN" != "true" ]; then
+                teardown k8s
+            fi
+            ;;
+    esac
+
+    return "$rc"
 }
 
 # --------------------------------------------------------------------------
@@ -1278,4 +1323,5 @@ main() {
     exit "$total_failures"
 }
 
+trap 'on_exit $?' EXIT
 main
