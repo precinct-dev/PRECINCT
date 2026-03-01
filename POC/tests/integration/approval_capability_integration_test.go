@@ -164,7 +164,10 @@ func callOpenAICompat(t *testing.T, url, spiffeID, sessionID, token string, payl
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-SPIFFE-ID", spiffeID)
 	req.Header.Set("X-Session-ID", sessionID)
-	req.Header.Set("X-Risk-Mode", "high")
+	// Spoofed downgrade headers must not bypass trusted approval requirements.
+	req.Header.Set("X-Risk-Mode", "low")
+	req.Header.Set("X-Compliance-Profile", "standard")
+	req.Header.Set("X-Step-Up-Approved", "true")
 	req.Header.Set("X-Model-Provider", "openai")
 	req.Header.Set("X-Provider-Endpoint", "http://127.0.0.1:65535/openai/v1/chat/completions")
 	if token != "" {

@@ -212,20 +212,28 @@ func (g *Gateway) buildModelPlaneRequestFromOpenAI(r *http.Request, payload map[
 		Plane:         PlaneModel,
 	}
 
+	trustedRiskMode := g.trustedModelRiskMode(r.Context())
+	trustedComplianceProfile := g.trustedComplianceProfile(r.Context())
+	trustedStepUpApproved := trustedModelStepUpApproved(r.Context())
+	approvalMarker := ""
+	if trustedStepUpApproved {
+		approvalMarker = strings.TrimSpace(r.Header.Get("X-Approval-Marker"))
+	}
+
 	attrs := map[string]any{
 		"provider":           provider,
 		"model":              model,
 		"residency_intent":   defaultString(strings.TrimSpace(r.Header.Get("X-Residency-Intent")), "us"),
-		"risk_mode":          defaultString(strings.TrimSpace(r.Header.Get("X-Risk-Mode")), "low"),
+		"risk_mode":          trustedRiskMode,
 		"budget_profile":     defaultString(strings.TrimSpace(r.Header.Get("X-Budget-Profile")), "standard"),
 		"budget_units":       parseHeaderInt(r.Header.Get("X-Budget-Units"), 1),
 		"mediation_mode":     "mediated",
 		"direct_egress":      false,
-		"compliance_profile": strings.ToLower(strings.TrimSpace(r.Header.Get("X-Compliance-Profile"))),
+		"compliance_profile": trustedComplianceProfile,
 		"model_scope":        defaultString(strings.ToLower(strings.TrimSpace(r.Header.Get("X-Model-Scope"))), "external"),
 		"prompt_action":      strings.ToLower(strings.TrimSpace(r.Header.Get("X-Prompt-Action"))),
-		"approval_marker":    strings.TrimSpace(r.Header.Get("X-Approval-Marker")),
-		"step_up_approved":   parseHeaderBool(r.Header.Get("X-Step-Up-Approved"), false),
+		"approval_marker":    approvalMarker,
+		"step_up_approved":   trustedStepUpApproved,
 	}
 	attrs["prompt"] = extractOpenAIPrompt(payload)
 
@@ -790,6 +798,54 @@ func parseHeaderBool(raw string, fallback bool) bool {
 		return fallback
 	}
 	return v
+}
+
+func trustedModelStepUpApproved(ctx context.Context) bool {
+	result := middleware.GetStepUpResult(ctx)
+	if result == nil {
+		return false
+	}
+	return result.Allowed && result.Gate == "approval"
+}
+
+func (g *Gateway) trustedModelRiskMode(ctx context.Context) string {
+	// Fail-safe default when trusted context is missing or indicates elevated risk.
+	if middleware.IsStrictRuntimeProfile(ctx) {
+		return "high"
+	}
+	session := middleware.GetSessionContextData(ctx)
+	if session == nil || len(session.DataClassifications) == 0 {
+		return "high"
+	}
+	for _, class := range session.DataClassifications {
+		switch strings.ToLower(strings.TrimSpace(class)) {
+		case "phi", "pii", "sensitive", "regulated", "confidential":
+			return "high"
+		}
+	}
+	if session.RiskScore >= 0.5 {
+		return "high"
+	}
+	return "low"
+}
+
+func (g *Gateway) trustedComplianceProfile(ctx context.Context) string {
+	session := middleware.GetSessionContextData(ctx)
+	if session != nil {
+		for _, class := range session.DataClassifications {
+			switch strings.ToLower(strings.TrimSpace(class)) {
+			case "phi", "pii", "sensitive", "regulated", "confidential":
+				return "hipaa"
+			}
+		}
+	}
+	if g != nil {
+		profile := strings.ToLower(strings.TrimSpace(g.profileSnapshot().Name))
+		if profile == enforcementProfileProdRegulatedHIPAA {
+			return "hipaa"
+		}
+	}
+	return "standard"
 }
 
 func stringValue(v any) string {

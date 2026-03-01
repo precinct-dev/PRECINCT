@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
 func postOpenAICompat(t *testing.T, handler http.Handler, headers map[string]string, payload map[string]any) *httptest.ResponseRecorder {
@@ -24,6 +26,32 @@ func postOpenAICompat(t *testing.T, handler http.Handler, headers map[string]str
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 	return rec
+}
+
+func issueModelApprovalToken(t *testing.T, gw *Gateway, model, spiffeID, sessionID string) string {
+	t.Helper()
+	if gw == nil || gw.approvalCapabilities == nil {
+		t.Fatal("approval capability service unavailable in test gateway")
+	}
+	created, err := gw.approvalCapabilities.CreateRequest(middleware.ApprovalRequestInput{
+		Scope: middleware.ApprovalScope{
+			Action:        "model.call",
+			Resource:      model,
+			ActorSPIFFEID: spiffeID,
+			SessionID:     sessionID,
+		},
+	})
+	if err != nil {
+		t.Fatalf("create approval request: %v", err)
+	}
+	grant, err := gw.approvalCapabilities.GrantRequest(middleware.ApprovalGrantInput{
+		RequestID:  created.RequestID,
+		ApprovedBy: "security@test",
+	})
+	if err != nil {
+		t.Fatalf("grant approval request: %v", err)
+	}
+	return grant.Token
 }
 
 func TestOpenAICompat_ModelEgressSuccess(t *testing.T) {
@@ -93,6 +121,9 @@ func TestOpenAICompat_ModelPlaneDenied(t *testing.T) {
 func TestOpenAICompat_DestinationAllowlistDenied(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	handler := gw.Handler()
+	sessionID := "phase3-destination-deny-session"
+	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	token := issueModelApprovalToken(t, gw, "gpt-4o", spiffeID, sessionID)
 
 	rec := postOpenAICompat(t, handler, map[string]string{
 		"X-Model-Provider":    "openai",
@@ -100,6 +131,8 @@ func TestOpenAICompat_DestinationAllowlistDenied(t *testing.T) {
 		"X-Residency-Intent":  "us",
 		"X-Budget-Profile":    "standard",
 		"X-Budget-Units":      "1",
+		"X-Session-ID":        sessionID,
+		"X-Step-Up-Token":     token,
 	}, map[string]any{
 		"model": "gpt-4o",
 		"messages": []map[string]any{
@@ -120,6 +153,91 @@ func TestOpenAICompat_DestinationAllowlistDenied(t *testing.T) {
 	}
 }
 
+func TestBuildModelPlaneRequestFromOpenAI_UsesTrustedContextForRiskCompliance(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	body := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
+	req := httptest.NewRequest(http.MethodPost, openAICompatChatCompletionsPath, bytes.NewBuffer(body))
+	req.Header.Set("X-Risk-Mode", "low")               // spoofed downgrade attempt
+	req.Header.Set("X-Compliance-Profile", "standard") // spoofed downgrade attempt
+	req.Header.Set("X-Step-Up-Approved", "true")       // spoofed approval marker
+	req.Header.Set("X-Approval-Marker", "spoofed")
+
+	ctx := req.Context()
+	ctx = middleware.WithSessionContextData(ctx, &middleware.AgentSession{
+		DataClassifications: []string{"sensitive"},
+		RiskScore:           0.7,
+	})
+	req = req.WithContext(ctx)
+
+	planeReq := gw.buildModelPlaneRequestFromOpenAI(req, map[string]any{
+		"model": "gpt-4o",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hi"},
+		},
+	})
+	attrs := planeReq.Policy.Attributes
+
+	if got := attrs["risk_mode"]; got != "high" {
+		t.Fatalf("expected trusted risk_mode=high, got %v", got)
+	}
+	if got := attrs["compliance_profile"]; got != "hipaa" {
+		t.Fatalf("expected trusted compliance_profile=hipaa, got %v", got)
+	}
+	if got, _ := attrs["step_up_approved"].(bool); got {
+		t.Fatalf("expected step_up_approved=false without trusted step-up context, got %v", attrs["step_up_approved"])
+	}
+	if got := attrs["approval_marker"]; got != "" {
+		t.Fatalf("expected approval_marker empty without trusted step-up context, got %v", got)
+	}
+}
+
+func TestBuildModelPlaneRequestFromOpenAI_DefaultsSafeWhenTrustedContextMissing(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	body := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
+	req := httptest.NewRequest(http.MethodPost, openAICompatChatCompletionsPath, bytes.NewBuffer(body))
+	req.Header.Set("X-Risk-Mode", "low")
+	req.Header.Set("X-Compliance-Profile", "standard")
+
+	planeReq := gw.buildModelPlaneRequestFromOpenAI(req, map[string]any{
+		"model": "gpt-4o",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hi"},
+		},
+	})
+	attrs := planeReq.Policy.Attributes
+
+	if got := attrs["risk_mode"]; got != "high" {
+		t.Fatalf("expected safe default risk_mode=high when trusted context missing, got %v", got)
+	}
+}
+
+func TestBuildModelPlaneRequestFromOpenAI_TrustedStepUpContextSetsApproval(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	body := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
+	req := httptest.NewRequest(http.MethodPost, openAICompatChatCompletionsPath, bytes.NewBuffer(body))
+	req.Header.Set("X-Approval-Marker", "trusted-request-id")
+	ctx := middleware.WithStepUpResult(req.Context(), &middleware.StepUpGatingResult{
+		Allowed: true,
+		Gate:    "approval",
+	})
+	req = req.WithContext(ctx)
+
+	planeReq := gw.buildModelPlaneRequestFromOpenAI(req, map[string]any{
+		"model": "gpt-4o",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "hi"},
+		},
+	})
+	attrs := planeReq.Policy.Attributes
+
+	if got, _ := attrs["step_up_approved"].(bool); !got {
+		t.Fatalf("expected step_up_approved=true from trusted step-up context, got %v", attrs["step_up_approved"])
+	}
+	if got := attrs["approval_marker"]; got != "trusted-request-id" {
+		t.Fatalf("expected approval_marker from trusted step-up pass-through, got %v", got)
+	}
+}
+
 func TestOpenAICompat_FallbackApplied(t *testing.T) {
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -136,12 +254,17 @@ func TestOpenAICompat_FallbackApplied(t *testing.T) {
 
 	gw, _ := newPhase3TestGateway(t)
 	handler := gw.Handler()
+	sessionID := "phase3-fallback-session"
+	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	token := issueModelApprovalToken(t, gw, "gpt-4o", spiffeID, sessionID)
 
 	rec := postOpenAICompat(t, handler, map[string]string{
 		"X-Model-Provider":                 "openai",
 		"X-Provider-Endpoint-OpenAI":       primary.URL,
 		"X-Provider-Endpoint-Azure-OpenAI": fallback.URL,
 		"X-Residency-Intent":               "us",
+		"X-Session-ID":                     sessionID,
+		"X-Step-Up-Token":                  token,
 	}, map[string]any{
 		"model": "gpt-4o",
 		"messages": []map[string]any{
