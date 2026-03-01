@@ -381,7 +381,7 @@ services:
   # RFA-8z8.2: In SPIFFE_MODE=prod, KeyDB also listens on TLS port 6380 using
   # SPIRE-issued X.509 SVIDs written to /certs/ by keydb-svid-init. The gateway
   # connects via rediss://keydb:6380 with mTLS.
-  # In SPIFFE_MODE=dev (default), only port 6379 is used (no TLS).
+  # In SPIFFE_MODE=dev (compose demo profile), only port 6379 is used (no TLS).
   keydb:
     # Pin by digest (manifest-list) to avoid floating tags while keeping multi-arch support.
     image: eqalpha/keydb@sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac
@@ -572,6 +572,9 @@ services:
       - MODEL_PROVIDER_CATALOG_PATH=/config/model-provider-catalog.v2.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760
       - SPIFFE_MODE=dev
+      - ALLOW_INSECURE_DEV_MODE=1
+      - DEV_LISTEN_HOST=0.0.0.0
+      - ALLOW_NON_LOOPBACK_DEV_BIND=1
       - ENFORCEMENT_PROFILE=dev
       - SPIFFE_TRUST_DOMAIN=poc.local
       - SPIFFE_LISTEN_PORT=9443

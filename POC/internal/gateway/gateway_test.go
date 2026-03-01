@@ -147,8 +147,17 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Errorf("Expected default upstream URL, got %s", cfg.UpstreamURL)
 	}
 
-	if cfg.SPIFFEMode != "dev" {
-		t.Errorf("Expected default SPIFFE mode 'dev', got %s", cfg.SPIFFEMode)
+	if cfg.SPIFFEMode != "prod" {
+		t.Errorf("Expected default SPIFFE mode 'prod', got %s", cfg.SPIFFEMode)
+	}
+	if cfg.AllowInsecureDevMode {
+		t.Errorf("Expected ALLOW_INSECURE_DEV_MODE default false, got true")
+	}
+	if cfg.DevListenHost != "127.0.0.1" {
+		t.Errorf("Expected default DEV_LISTEN_HOST 127.0.0.1, got %s", cfg.DevListenHost)
+	}
+	if cfg.AllowNonLoopbackDevBind {
+		t.Errorf("Expected ALLOW_NON_LOOPBACK_DEV_BIND default false, got true")
 	}
 
 	// Verify circuit breaker defaults
@@ -171,7 +180,10 @@ func TestConfigFromEnv(t *testing.T) {
 	// Test custom values
 	t.Setenv("PORT", "8888")
 	t.Setenv("UPSTREAM_URL", "http://custom:9999")
-	t.Setenv("SPIFFE_MODE", "prod")
+	t.Setenv("SPIFFE_MODE", "dev")
+	t.Setenv("ALLOW_INSECURE_DEV_MODE", "true")
+	t.Setenv("ALLOW_NON_LOOPBACK_DEV_BIND", "true")
+	t.Setenv("DEV_LISTEN_HOST", "0.0.0.0")
 	cfg = ConfigFromEnv()
 
 	if cfg.Port != 8888 {
@@ -182,8 +194,17 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Errorf("Expected custom upstream URL, got %s", cfg.UpstreamURL)
 	}
 
-	if cfg.SPIFFEMode != "prod" {
-		t.Errorf("Expected SPIFFE mode 'prod', got %s", cfg.SPIFFEMode)
+	if cfg.SPIFFEMode != "dev" {
+		t.Errorf("Expected SPIFFE mode 'dev', got %s", cfg.SPIFFEMode)
+	}
+	if !cfg.AllowInsecureDevMode {
+		t.Errorf("Expected ALLOW_INSECURE_DEV_MODE true, got false")
+	}
+	if !cfg.AllowNonLoopbackDevBind {
+		t.Errorf("Expected ALLOW_NON_LOOPBACK_DEV_BIND true, got false")
+	}
+	if cfg.DevListenHost != "0.0.0.0" {
+		t.Errorf("Expected DEV_LISTEN_HOST 0.0.0.0, got %s", cfg.DevListenHost)
 	}
 
 	// Test circuit breaker custom values
