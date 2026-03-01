@@ -818,15 +818,21 @@ func StepUpGating(
 		if !result.Allowed {
 			// Map gate to specific error code
 			errCode := ErrStepUpDenied
+			statusCode := http.StatusForbidden
+			remediation := "Reduce risk score or obtain step-up approval."
 			switch {
 			case result.Gate == "approval":
 				errCode = ErrStepUpApprovalRequired
 			case result.GuardResult != nil && result.GuardResult.Blocked:
 				errCode = ErrStepUpGuardBlocked
+			case strings.Contains(strings.ToLower(result.Reason), "guard unavailable"):
+				errCode = ErrStepUpUnavailableFailClosed
+				statusCode = http.StatusServiceUnavailable
+				remediation = "Restore guard model availability; strict runtime requires the guard check."
 			case strings.Contains(result.Reason, "destination not allowed"):
 				errCode = ErrStepUpDestinationBlocked
 			}
-			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+			WriteGatewayError(w, r.WithContext(ctx), statusCode, GatewayError{
 				Code:           errCode,
 				Message:        result.Reason,
 				Middleware:     "step_up_gating",
@@ -841,7 +847,7 @@ func StepUpGating(
 						"novelty":       riskScore.Novelty,
 					},
 				},
-				Remediation: "Reduce risk score or obtain step-up approval.",
+				Remediation: remediation,
 			})
 			return
 		}
@@ -935,6 +941,7 @@ func applyStepUpControls(
 		Allowed: true,
 		Reason:  "step-up controls passed",
 	}
+	strictRuntime := IsStrictRuntimeProfile(ctx)
 
 	// Control 1: Destination allowlist check
 	if destination != "" && !allowlist.IsAllowed(destination) {
@@ -945,6 +952,12 @@ func applyStepUpControls(
 
 	// Control 2: Guard model check (Prompt Guard 2 via Groq)
 	if guardClient == nil {
+		if strictRuntime {
+			result.Allowed = false
+			result.GuardResult = &GuardResult{Error: "guard model not configured"}
+			result.Reason = "step-up guard unavailable in strict runtime (fail closed)"
+			return result
+		}
 		// No guard client configured - skip for step-up range (4-6)
 		// Fail open for medium risk since we have destination check as backstop
 		result.Reason = "step-up controls passed (guard model not configured)"
@@ -953,6 +966,14 @@ func applyStepUpControls(
 
 	guardResult, err := guardClient.ClassifyContent(ctx, string(body))
 	if err != nil {
+		if strictRuntime {
+			result.Allowed = false
+			result.GuardResult = &GuardResult{
+				Error: err.Error(),
+			}
+			result.Reason = "step-up guard unavailable in strict runtime (fail closed)"
+			return result
+		}
 		// Guard model unavailable - for step-up range (4-6), skip the guard check
 		// (fail open for medium risk; high risk fails closed in the approval/deny gates)
 		result.GuardResult = &GuardResult{

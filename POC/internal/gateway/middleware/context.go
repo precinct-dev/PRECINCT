@@ -8,22 +8,24 @@ import (
 type contextKey string
 
 const (
-	contextKeySessionID        contextKey = "session_id"
-	contextKeyDecisionID       contextKey = "decision_id"
-	contextKeyTraceID          contextKey = "trace_id"
-	contextKeySPIFFEID         contextKey = "spiffe_id"
-	contextKeyRequestBody      contextKey = "request_body"
-	contextKeyToolHashVerified contextKey = "tool_hash_verified"
-	contextKeyOPADecisionID    contextKey = "opa_decision_id"
-	contextKeySecurityFlags    contextKey = "security_flags"
-	contextKeyFlagsCollector   contextKey = "flags_collector" // RFA-9i2: mutable collector for upstream propagation
-	contextKeySessionContext   contextKey = "session_context_engine"
-	contextKeyUIEnabled        contextKey = "ui_enabled"        // RFA-j2d.7: MCP-UI enabled flag
-	contextKeyUICallOrigin     contextKey = "ui_call_origin"    // RFA-j2d.7: "model" or "app"
-	contextKeyUIAppToolCalls   contextKey = "ui_app_tool_calls" // RFA-j2d.7: app session tool call count
-	contextKeyUIResourceURI    contextKey = "ui_resource_uri"   // RFA-j2d.7: ui:// resource URI
-	contextKeyDLPRulesetVer    contextKey = "dlp_ruleset_version"
-	contextKeyDLPRulesetDigest contextKey = "dlp_ruleset_digest"
+	contextKeySessionID                 contextKey = "session_id"
+	contextKeyDecisionID                contextKey = "decision_id"
+	contextKeyTraceID                   contextKey = "trace_id"
+	contextKeySPIFFEID                  contextKey = "spiffe_id"
+	contextKeyRequestBody               contextKey = "request_body"
+	contextKeyToolHashVerified          contextKey = "tool_hash_verified"
+	contextKeyOPADecisionID             contextKey = "opa_decision_id"
+	contextKeySecurityFlags             contextKey = "security_flags"
+	contextKeyFlagsCollector            contextKey = "flags_collector" // RFA-9i2: mutable collector for upstream propagation
+	contextKeySessionContext            contextKey = "session_context_engine"
+	contextKeyUIEnabled                 contextKey = "ui_enabled"        // RFA-j2d.7: MCP-UI enabled flag
+	contextKeyUICallOrigin              contextKey = "ui_call_origin"    // RFA-j2d.7: "model" or "app"
+	contextKeyUIAppToolCalls            contextKey = "ui_app_tool_calls" // RFA-j2d.7: app session tool call count
+	contextKeyUIResourceURI             contextKey = "ui_resource_uri"   // RFA-j2d.7: ui:// resource URI
+	contextKeyDLPRulesetVer             contextKey = "dlp_ruleset_version"
+	contextKeyDLPRulesetDigest          contextKey = "dlp_ruleset_digest"
+	contextKeyRuntimeSPIFFEMode         contextKey = "runtime_spiffe_mode"
+	contextKeyRuntimeEnforcementProfile contextKey = "runtime_enforcement_profile"
 )
 
 // SecurityFlagsCollector is a mutable container for security flags that
@@ -254,4 +256,29 @@ func WithDLPRulesetMetadata(ctx context.Context, version, digest string) context
 	ctx = context.WithValue(ctx, contextKeyDLPRulesetVer, version)
 	ctx = context.WithValue(ctx, contextKeyDLPRulesetDigest, digest)
 	return ctx
+}
+
+// WithRuntimeProfile adds runtime mode/profile metadata to context so downstream
+// middleware can apply profile-aware enforcement (for example fail-open vs fail-closed).
+func WithRuntimeProfile(ctx context.Context, spiffeMode, enforcementProfile string) context.Context {
+	ctx = context.WithValue(ctx, contextKeyRuntimeSPIFFEMode, spiffeMode)
+	ctx = context.WithValue(ctx, contextKeyRuntimeEnforcementProfile, enforcementProfile)
+	return ctx
+}
+
+// GetRuntimeSPIFFEMode returns the SPIFFE mode bound to the request context.
+func GetRuntimeSPIFFEMode(ctx context.Context) string {
+	if v := ctx.Value(contextKeyRuntimeSPIFFEMode); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// GetRuntimeEnforcementProfile returns the active enforcement profile bound to
+// the request context.
+func GetRuntimeEnforcementProfile(ctx context.Context) string {
+	if v := ctx.Value(contextKeyRuntimeEnforcementProfile); v != nil {
+		return v.(string)
+	}
+	return ""
 }

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -815,6 +816,81 @@ func TestStepUpGating_NilGuardClient_StepUpPassesThrough(t *testing.T) {
 	// No guard client = skip guard check, should pass through
 	if !nextCalled {
 		t.Error("Expected next handler to be called with nil guard client")
+	}
+}
+
+func TestStepUpGating_GuardModelUnavailable_StrictRuntimeFailsClosed(t *testing.T) {
+	registry := testRegistry()
+	allowlist := defaultAllowlist()
+	config := defaultRiskConfig()
+	guardClient := &mockGuardClient{err: fmt.Errorf("connection refused")}
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := StepUpGating(next, guardClient, allowlist, config, registry, nil)
+
+	body := createTestMCPBody("tavily_search", map[string]interface{}{
+		"query":       "test",
+		"destination": "api.tavily.com",
+	})
+	req := newTestRequest(body)
+	session := &AgentSession{DataClassifications: []string{"internal"}}
+	ctx := WithSessionContextData(req.Context(), session)
+	ctx = WithRuntimeProfile(ctx, "prod", "prod_standard")
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if nextCalled {
+		t.Error("Expected next handler NOT to be called in strict runtime")
+	}
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Expected 503, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), ErrStepUpUnavailableFailClosed) {
+		t.Fatalf("Expected error code %q, got body=%s", ErrStepUpUnavailableFailClosed, rr.Body.String())
+	}
+}
+
+func TestStepUpGating_NilGuardClient_StrictRuntimeFailsClosed(t *testing.T) {
+	registry := testRegistry()
+	allowlist := defaultAllowlist()
+	config := defaultRiskConfig()
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := StepUpGating(next, nil, allowlist, config, registry, nil)
+
+	body := createTestMCPBody("tavily_search", map[string]interface{}{
+		"query":       "test",
+		"destination": "api.tavily.com",
+	})
+	req := newTestRequest(body)
+	session := &AgentSession{DataClassifications: []string{"internal"}}
+	ctx := WithSessionContextData(req.Context(), session)
+	ctx = WithRuntimeProfile(ctx, "prod", "prod_standard")
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if nextCalled {
+		t.Error("Expected next handler NOT to be called in strict runtime")
+	}
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("Expected 503, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), ErrStepUpUnavailableFailClosed) {
+		t.Fatalf("Expected error code %q, got body=%s", ErrStepUpUnavailableFailClosed, rr.Body.String())
 	}
 }
 

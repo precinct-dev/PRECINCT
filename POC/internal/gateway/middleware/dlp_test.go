@@ -3,6 +3,7 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -1277,5 +1278,42 @@ func TestDLPMiddleware_IncludesRulesetMetadataInDecision(t *testing.T) {
 	}
 	if ge.Details["dlp_ruleset_digest"] != "digest-test" {
 		t.Fatalf("expected dlp_ruleset_digest=digest-test, got %v", ge.Details["dlp_ruleset_digest"])
+	}
+}
+
+type errorScanner struct{}
+
+func (e *errorScanner) Scan(content string) ScanResult {
+	return ScanResult{Error: errors.New("scanner unavailable")}
+}
+
+func TestDLPMiddleware_ScannerError_StrictRuntimeFailsClosed(t *testing.T) {
+	scanner := &errorScanner{}
+	nextCalled := false
+	handler := DLPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	}), scanner)
+
+	req := httptest.NewRequest(http.MethodPost, "/test", nil)
+	ctx := WithRequestBody(req.Context(), []byte("payload"))
+	ctx = WithRuntimeProfile(ctx, "prod", "prod_standard")
+	req = req.WithContext(ctx)
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if nextCalled {
+		t.Fatal("expected next handler not to be called in strict runtime")
+	}
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var ge GatewayError
+	if err := json.Unmarshal(rec.Body.Bytes(), &ge); err != nil {
+		t.Fatalf("decode gateway error: %v body=%s", err, rec.Body.String())
+	}
+	if ge.Code != ErrDLPUnavailableFailClosed {
+		t.Fatalf("expected code %q, got %q", ErrDLPUnavailableFailClosed, ge.Code)
 	}
 }

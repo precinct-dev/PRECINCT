@@ -327,9 +327,30 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 			ctx = WithDLPRulesetMetadata(ctx, dlpRulesetVersion, dlpRulesetDigest)
 		}
 
-		// Handle scanner errors - fail open
+		// Handle scanner errors.
 		if result.Error != nil {
-			// Log error but allow request to continue
+			if IsStrictRuntimeProfile(ctx) {
+				span.SetAttributes(
+					attribute.Bool("has_credentials", false),
+					attribute.Bool("has_pii", false),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "scanner error - fail closed (strict runtime)"),
+				)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusServiceUnavailable, GatewayError{
+					Code:           ErrDLPUnavailableFailClosed,
+					Message:        "DLP scanner unavailable in strict runtime profile",
+					Middleware:     "dlp_scan",
+					MiddlewareStep: 7,
+					Remediation:    "Restore DLP scanner availability before retrying.",
+					Details: map[string]any{
+						"error":               result.Error.Error(),
+						"dlp_ruleset_version": dlpRulesetVersion,
+						"dlp_ruleset_digest":  dlpRulesetDigest,
+					},
+				})
+				return
+			}
+			// Dev/permissive runtime: log error but allow request to continue.
 			span.SetAttributes(
 				attribute.Bool("has_credentials", false),
 				attribute.Bool("has_pii", false),

@@ -22,15 +22,17 @@ const (
 	ErrRegistryToolUnknown  = "registry_tool_unknown"
 
 	// DLP (step 7) -- 403 Forbidden
-	ErrDLPCredentialsDetected = "dlp_credentials_detected"
-	ErrDLPInjectionBlocked    = "dlp_injection_blocked" // RFA-sd7: injection blocked by policy
-	ErrDLPPIIBlocked          = "dlp_pii_blocked"       // RFA-sd7: PII blocked by policy
+	ErrDLPCredentialsDetected   = "dlp_credentials_detected"
+	ErrDLPInjectionBlocked      = "dlp_injection_blocked" // RFA-sd7: injection blocked by policy
+	ErrDLPPIIBlocked            = "dlp_pii_blocked"       // RFA-sd7: PII blocked by policy
+	ErrDLPUnavailableFailClosed = "dlp_unavailable_fail_closed"
 
 	// Step-Up Gating (step 9) -- 403 Forbidden
-	ErrStepUpDenied             = "stepup_denied"
-	ErrStepUpApprovalRequired   = "stepup_approval_required"
-	ErrStepUpGuardBlocked       = "stepup_guard_blocked"
-	ErrStepUpDestinationBlocked = "stepup_destination_blocked"
+	ErrStepUpDenied                = "stepup_denied"
+	ErrStepUpApprovalRequired      = "stepup_approval_required"
+	ErrStepUpGuardBlocked          = "stepup_guard_blocked"
+	ErrStepUpDestinationBlocked    = "stepup_destination_blocked"
+	ErrStepUpUnavailableFailClosed = "stepup_unavailable_fail_closed"
 
 	// Deep Scan (step 10) -- 403 / 503
 	ErrDeepScanBlocked               = "deepscan_blocked"

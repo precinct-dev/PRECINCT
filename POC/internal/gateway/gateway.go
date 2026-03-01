@@ -542,6 +542,7 @@ func (g *Gateway) Handler() http.Handler {
 	handler = middleware.BodyCapture(handler)                                    // 2
 	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
 	handler = middleware.RequestMetrics(handler)                                 // 0 - outermost: record request_total with status code
+	handler = middleware.RuntimeProfile(handler, g.config.SPIFFEMode, g.config.EnforcementProfile)
 
 	// Add endpoints
 	mux := http.NewServeMux()

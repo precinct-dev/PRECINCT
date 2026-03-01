@@ -158,12 +158,12 @@ func NewDeepScannerWithConfig(cfg DeepScannerConfig) *DeepScanner {
 	}
 
 	return &DeepScanner{
-		groqAPIKey:         cfg.APIKey,
-		groqBaseURL:        endpoint,
-		modelName:          modelName,
-		timeout:            cfg.Timeout,
-		fallbackMode:       fallback,
-		resultChan:         make(chan DeepScanResult, 100),
+		groqAPIKey:   cfg.APIKey,
+		groqBaseURL:  endpoint,
+		modelName:    modelName,
+		timeout:      cfg.Timeout,
+		fallbackMode: fallback,
+		resultChan:   make(chan DeepScanResult, 100),
 		httpClient: &http.Client{
 			Timeout: cfg.Timeout,
 		},
@@ -561,8 +561,24 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner, riskConfig *Ris
 			return
 		}
 
-		// If no API key, pass-through (AC4)
+		// If no API key, strict runtime fails closed; dev/permissive passes through.
 		if !scanner.HasAPIKey() {
+			if IsStrictRuntimeProfile(ctx) {
+				span.SetAttributes(
+					attribute.Bool("dispatched", false),
+					attribute.Bool("async", false),
+					attribute.String("mcp.result", "denied"),
+					attribute.String("mcp.reason", "guard model unavailable - no API key (strict runtime fail closed)"),
+				)
+				WriteGatewayError(w, r.WithContext(ctx), http.StatusServiceUnavailable, GatewayError{
+					Code:           ErrDeepScanUnavailableFailClosed,
+					Message:        "Guard model API key is required in strict runtime profile",
+					Middleware:     "deep_scan_dispatch",
+					MiddlewareStep: 10,
+					Remediation:    "Configure guard model credentials before retrying.",
+				})
+				return
+			}
 			span.SetAttributes(
 				attribute.Bool("dispatched", false),
 				attribute.Bool("async", false),
@@ -614,13 +630,18 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner, riskConfig *Ris
 			)
 		}
 
-		// Handle scan errors with fallback logic (AC5, AC6)
+		// Handle scan errors with fallback logic.
 		if result.Error != nil {
 			injThreshold, jbThreshold := deepScanThresholds(riskConfig)
 			scanner.emitAuditEvent(ctx, result, "guard_model_unavailable", false, injThreshold, jbThreshold)
 
-			if scanner.fallbackMode == FailClosed {
-				// AC5: Block the request
+			failClosed := scanner.fallbackMode == FailClosed || IsStrictRuntimeProfile(ctx)
+			if failClosed {
+				// Strict/prod runtime always fails closed on guard unavailability.
+				remediation := "Retry when the guard model service is available, or switch fallback to fail_open."
+				if IsStrictRuntimeProfile(ctx) {
+					remediation = "Restore guard model availability; strict runtime does not allow fail_open."
+				}
 				span.SetAttributes(
 					attribute.String("mcp.result", "denied"),
 					attribute.String("mcp.reason", "guard model unavailable - fail closed"),
@@ -630,11 +651,11 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner, riskConfig *Ris
 					Message:        "Guard model unavailable and fallback mode is fail_closed",
 					Middleware:     "deep_scan_dispatch",
 					MiddlewareStep: 10,
-					Remediation:    "Retry when the guard model service is available, or switch fallback to fail_open.",
+					Remediation:    remediation,
 				})
 				return
 			}
-			// AC6: fail_open -- allow the request, audit event already emitted
+			// Dev/permissive fail_open: allow the request, audit event already emitted.
 			span.SetAttributes(
 				attribute.String("mcp.result", "allowed"),
 				attribute.String("mcp.reason", "guard model unavailable - fail open"),
