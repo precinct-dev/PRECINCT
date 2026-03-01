@@ -16,6 +16,12 @@ Validate artifact completeness + integrity:
 make security-scan-validate
 ```
 
+Validate threat-model control coverage + reviewer report generation:
+
+```bash
+make control-matrix-check
+```
+
 Run strict gate (required for production-intent readiness checks):
 
 ```bash
@@ -40,6 +46,8 @@ Expected files:
 - `summaries/gosec-summary.json`
 - `summaries/trivy-fs-summary.json`
 - `summaries/trivy-image-summary.json`
+- `control-verification-report.json`
+- `control-verification-report.md`
 
 ## How to Interpret the Manifest
 
@@ -103,3 +111,5 @@ The validator fails when:
 - manifest entries are missing
 - artifact SHA-256 does not match manifest
 - strict mode is requested and any scan is skipped/failed
+- control matrix coverage is missing for security/usability/blind-spot domains
+- required matrix evidence is missing or stale

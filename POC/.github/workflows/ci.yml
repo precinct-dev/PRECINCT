@@ -39,6 +39,9 @@ jobs:
       - name: Manifest Policy Check
         run: make manifest-policy-check
 
+      - name: Control Matrix Check
+        run: make control-matrix-check
+
   build:
     name: Build
     runs-on: ubuntu-latest
