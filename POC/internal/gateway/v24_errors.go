@@ -18,6 +18,7 @@ const (
 	v24MiddlewareCircuitBreakerAdmin = "v24_circuit_breaker_admin"
 	v24MiddlewarePolicyReloadAdmin   = "v24_policy_reload_admin"
 	v24MiddlewareAdminAuthz          = "v24_admin_authz"
+	v24MiddlewareBypassContract      = "v24_opa_bypass_contract"
 	v24MiddlewareAppWrapperWS        = "v24_app_wrapper_ws"
 	v24MiddlewareModelCompat         = "v24_model_compat"
 	v24MiddlewareAppWrapperHTTP      = "v24_app_wrapper_http"

@@ -155,33 +155,17 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		)
 		defer span.End()
 
-		// Demo-only endpoints are governed by dedicated handler-side contracts
-		// (enablement + explicit admin authz for rugpull toggles). They should
-		// pass through OPA tool-grant evaluation.
-		if r.URL.Path == "/__demo__/ratelimit" ||
-			r.URL.Path == "/__demo__/rugpull/on" ||
-			r.URL.Path == "/__demo__/rugpull/off" {
+		// OPA bypasses are contract-driven. Every bypassed route class must
+		// declare compensating checks in opa_bypass_contracts.go.
+		if contract, ok := MatchOPABypassContract(r); ok {
+			reason := strings.TrimSpace(contract.PassthroughReason)
+			if reason == "" {
+				reason = "opa bypass contract passthrough"
+			}
 			span.SetAttributes(
 				attribute.String("mcp.result", "allowed"),
-				attribute.String("mcp.reason", "demo endpoint passthrough"),
-			)
-			next.ServeHTTP(w, r.WithContext(ctx))
-			return
-		}
-
-		// Phase 3 plane entry points and OpenAI-compatible model egress are
-		// governed by dedicated PRECINCT Gateway contracts, not MCP tool-grant policy.
-		// App WebSocket wrapper upgrades are also governed by dedicated wrapper
-		// authz logic and should not be blocked by MCP tool-grant policy.
-		if strings.HasPrefix(r.URL.Path, "/v1/") ||
-			r.URL.Path == "/tools/invoke" ||
-			isWebSocketUpgradeRequest(r) ||
-			strings.HasPrefix(r.URL.Path, "/openai/v1/") ||
-			r.URL.Path == "/admin" ||
-			strings.HasPrefix(r.URL.Path, "/admin/") {
-			span.SetAttributes(
-				attribute.String("mcp.result", "allowed"),
-				attribute.String("mcp.reason", "phase3 model/plane/admin passthrough"),
+				attribute.String("mcp.reason", reason),
+				attribute.String("mcp.contract_id", contract.ID),
 			)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return

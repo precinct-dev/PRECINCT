@@ -77,6 +77,12 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := validateOPABypassCompensatingContracts(); err != nil {
+		if enforcementProfile != nil && enforcementProfile.StartupGateMode == "strict" {
+			return nil, err
+		}
+		slog.Warn("opa bypass contract validation warning", "error", err)
+	}
 	if err := enforcementProfile.export(cfg.ProfileMetadataExportPath); err != nil {
 		return nil, fmt.Errorf("failed to export enforcement profile metadata: %w", err)
 	}
@@ -607,6 +613,21 @@ func (g *Gateway) proxyHandler() http.Handler {
 
 		// Wrap response writer to capture status code for span and internal route handling.
 		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		// Route-level compensating controls for OPA-bypassed paths.
+		if allowed, contractID := g.enforceOPABypassCompensatingChecks(proxyRW, r.WithContext(ctx)); !allowed {
+			result := "denied"
+			if proxyRW.statusCode < 400 {
+				result = "allowed"
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "opa_bypass_compensating_check"),
+				attribute.String("mcp.contract_id", contractID),
+			)
+			return
+		}
 
 		// Demo-only rugpull control endpoints. These execute inside the full
 		// middleware chain and require explicit admin authorization.
