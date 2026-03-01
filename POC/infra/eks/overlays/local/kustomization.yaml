@@ -150,6 +150,8 @@ patches:
                     value: "debug"
                   - name: SPIFFE_MODE
                     value: "dev"
+                  - name: ALLOW_INSECURE_DEV_MODE
+                    value: "1"
                   # go-spiffe Workload API socket (used for SPIKE Nexus mTLS, KeyDB mTLS, etc.)
                   - name: SPIFFE_ENDPOINT_SOCKET
                     value: "unix:///run/spire/sockets/agent.sock"

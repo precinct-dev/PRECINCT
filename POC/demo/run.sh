@@ -159,8 +159,12 @@ start_k8s() {
     # state via PVC; re-running bootstrap against stale state can hang forever.
     # Wipe stale state before bringing the stack up so bootstrap can complete.
     log "Resetting SPIKE state for deterministic demo-k8s (local-only)"
+    kubectl -n spike-system scale deployment/spike-keeper --replicas=0 >/dev/null 2>&1 || true
+    kubectl -n spike-system delete pod -l app.kubernetes.io/name=spike-keeper --ignore-not-found >/dev/null 2>&1 || true
     kubectl -n spike-system scale deployment/spike-nexus --replicas=0 >/dev/null 2>&1 || true
     kubectl -n spike-system delete pod -l app.kubernetes.io/name=spike-nexus --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n spike-system delete job spike-bootstrap --ignore-not-found >/dev/null 2>&1 || true
+    kubectl -n spike-system delete job spike-secret-seeder --ignore-not-found >/dev/null 2>&1 || true
     kubectl -n spike-system delete configmap spike-bootstrap-state --ignore-not-found >/dev/null 2>&1 || true
     kubectl -n spike-system delete pvc spike-nexus-data --ignore-not-found >/dev/null 2>&1 || true
     # Wait for PVC deletion to actually complete (Terminating PVCs can break mounts).
@@ -973,7 +977,10 @@ run_demo_cycle() {
         wait_for_health "http://localhost:9090" || exit 1
         # Determinism: ensure upstream rugpull state is OFF before running tests.
         log "Ensuring upstream rugpull state is OFF (via gateway demo endpoint)"
-        docker run --rm --network "$COMPOSE_NETWORK" curlimages/curl:8.6.0 -sf -X POST "${url}/__demo__/rugpull/off" >/dev/null
+        docker run --rm --network "$COMPOSE_NETWORK" curlimages/curl:8.6.0 -sf \
+            -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
+            -H "X-Session-ID: demo-rugpull-reset-compose" \
+            -X POST "${url}/__demo__/rugpull/off" >/dev/null
     elif [ "$mode" = "k8s" ]; then
         # Ensure kubectl points at Docker Desktop before we attempt to discover
         # node IPs / NodePorts (cycle 2 runs with --skip-setup, so we can't
@@ -1028,14 +1035,38 @@ run_demo_cycle() {
         # create brief "no ready endpoints" windows that manifest as flaky
         # ConnectError/ECONNREFUSED in the containerized demos.
         ensure_k8s_demo_ingress "$network"
-        wait_for_health_k8s "$url" "$network" || exit 1
+        if ! wait_for_health_k8s "$url" "$network"; then
+            warn "Gateway NodePort probe failed from demo network; falling back to kubectl port-forward"
+            kubectl -n gateway port-forward svc/mcp-security-gateway 39090:9090 >/tmp/precinct-k8s-gateway-portforward.log 2>&1 &
+            PF_PID="$!"
+            local pf_ready=0
+            for _ in $(seq 1 30); do
+                if curl -sf "http://127.0.0.1:39090/health" >/dev/null 2>&1; then
+                    pf_ready=1
+                    break
+                fi
+                sleep 1
+            done
+            if [ "$pf_ready" -ne 1 ]; then
+                err "Port-forward fallback failed (gateway health not reachable on localhost:39090)"
+                [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null || true
+                PF_PID=""
+                exit 1
+            fi
+            url="http://host.docker.internal:39090"
+            DEMO_RUGPULL_ADMIN_URL="$url"
+            wait_for_health_k8s "$url" "$network" || exit 1
+        fi
         k8s_probe_direct_external_egress "https://api.groq.com/openai/v1/chat/completions" || exit 1
 
         # Determinism: ensure upstream rugpull state is OFF before running tests.
         # Fail-fast rather than letting the demo fail later with a confusing
         # registry_hash_mismatch cascade.
         log "Ensuring upstream rugpull state is OFF (via gateway demo endpoint)"
-        docker run --rm --network "$network" curlimages/curl:8.6.0 -sf -X POST "${url}/__demo__/rugpull/off" >/dev/null
+        docker run --rm --network "$network" curlimages/curl:8.6.0 -sf \
+            -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
+            -H "X-Session-ID: demo-rugpull-reset-k8s" \
+            -X POST "${url}/__demo__/rugpull/off" >/dev/null
     else
         err "Unknown mode: $mode (expected compose|k8s|both)"
         exit 1

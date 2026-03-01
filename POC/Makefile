@@ -48,9 +48,8 @@ help: ## Show available targets
 
 up: compose-verify ## Start Docker Compose stack (waits for all services healthy)
 	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
-		echo "ERROR: phoenix-observability-network not found."; \
-		echo "Start the Phoenix stack first: make phoenix-up"; \
-		exit 1; \
+		echo "phoenix-observability-network not found; starting Phoenix stack..."; \
+		$(MAKE) phoenix-up; \
 	fi
 	@echo "Building and starting services (waiting for all health checks)..."
 	@if docker compose up -d --build --wait --wait-timeout 180; then \

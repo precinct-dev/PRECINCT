@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -25,6 +26,8 @@ func main() {
 	params := flag.String("params", "{}", "JSON params for the method")
 	role := flag.String("role", "operator", "Role for connect frame")
 	scopes := flag.String("scopes", "", "Comma-separated scopes")
+	spiffeID := flag.String("spiffe-id", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev", "SPIFFE identity header for gateway auth")
+	sessionID := flag.String("session-id", "openclaw-ws-e2e", "Session identifier header")
 	flag.Parse()
 
 	if *method == "" {
@@ -32,11 +35,19 @@ func main() {
 		os.Exit(1)
 	}
 
+	headers := http.Header{}
+	if strings.TrimSpace(*spiffeID) != "" {
+		headers.Set("X-SPIFFE-ID", strings.TrimSpace(*spiffeID))
+	}
+	if strings.TrimSpace(*sessionID) != "" {
+		headers.Set("X-Session-ID", strings.TrimSpace(*sessionID))
+	}
+
 	dialer := websocket.Dialer{
 		TLSClientConfig:  &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // E2E client for local testing only
 		HandshakeTimeout: 10 * time.Second,
 	}
-	conn, _, err := dialer.Dial(*url, nil)
+	conn, _, err := dialer.Dial(*url, headers)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error: dial %s: %v\n", *url, err)
 		os.Exit(1)
