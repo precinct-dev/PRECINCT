@@ -528,7 +528,7 @@ func StepUpGating(
 
 		// OpenAI-compatible model route: require step-up approval capability for
 		// explicit high-risk model operations.
-		if requiresModelApproval(r) {
+		if requiresModelApproval(r, body) {
 			model := extractModelName(body)
 			if model == "" {
 				model = "unknown-model"
@@ -857,7 +857,7 @@ func StepUpGating(
 	})
 }
 
-func requiresModelApproval(r *http.Request) bool {
+func requiresModelApproval(r *http.Request, body []byte) bool {
 	if r == nil {
 		return false
 	}
@@ -867,19 +867,45 @@ func requiresModelApproval(r *http.Request) bool {
 	if r.URL.Path != openAICompatChatCompletionsPath && r.URL.Path != openClawResponsesPath {
 		return false
 	}
-	riskMode := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Risk-Mode")))
-	if riskMode == "high" {
+
+	ctx := r.Context()
+	// Strict runtime defaults to explicit approval requirement for model routes.
+	if IsStrictRuntimeProfile(ctx) {
 		return true
 	}
-	profile := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Compliance-Profile")))
-	if strings.Contains(profile, "hipaa") {
-		if parseBoolHeader(r.Header.Get("X-Prompt-Has-PHI")) || parseBoolHeader(r.Header.Get("X-Prompt-Has-PII")) {
-			return true
-		}
-		if strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Prompt-Action")), "override") {
+
+	// Trusted session context is the authority for risk posture. If missing, fail
+	// safe by requiring approval (no caller-controlled downgrade path).
+	session := GetSessionContextData(ctx)
+	if session == nil || len(session.DataClassifications) == 0 {
+		return true
+	}
+
+	// Regulated/sensitive classifications always require approval.
+	for _, class := range session.DataClassifications {
+		switch strings.ToLower(strings.TrimSpace(class)) {
+		case "phi", "pii", "sensitive", "regulated", "confidential":
 			return true
 		}
 	}
+
+	// Elevated session risk requires approval even without explicit classification.
+	if session.RiskScore >= 0.5 {
+		return true
+	}
+
+	// Trusted model policy defaults: certain model/provider classes always require
+	// explicit approval even when session context is otherwise low-risk.
+	model := strings.ToLower(strings.TrimSpace(extractModelName(body)))
+	if strings.HasPrefix(model, "gpt-4") {
+		return true
+	}
+	provider := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Model-Provider")))
+	if provider == "openai" || provider == "azure_openai" {
+		return true
+	}
+
+	// Public/internal session context can proceed without mandatory approval.
 	return false
 }
 

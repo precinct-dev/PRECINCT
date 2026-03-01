@@ -586,7 +586,7 @@ func TestStepUpGating_ApprovalToken_AllowsCriticalTool(t *testing.T) {
 	}
 }
 
-func TestStepUpGating_ModelHighRisk_RequiresApprovalToken(t *testing.T) {
+func TestStepUpGating_ModelRoute_RequiresApprovalToken(t *testing.T) {
 	registry := testRegistry()
 	allowlist := defaultAllowlist()
 	config := defaultRiskConfig()
@@ -599,13 +599,14 @@ func TestStepUpGating_ModelHighRisk_RequiresApprovalToken(t *testing.T) {
 
 	body := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
 	req := newModelCompatRequest(body)
-	req.Header.Set("X-Risk-Mode", "high")
+	// Spoofed step-up approval marker header must not bypass token validation.
+	req.Header.Set("X-Step-Up-Approved", "true")
 	rr := httptest.NewRecorder()
 
 	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for high-risk model operation without approval token, got %d", rr.Code)
+		t.Fatalf("expected 403 for model route without approval token, got %d", rr.Code)
 	}
 
 	var resp GatewayError
@@ -652,7 +653,6 @@ func TestStepUpGating_ModelHighRisk_AllowsWithApprovalToken(t *testing.T) {
 
 	body := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
 	req := newModelCompatRequest(body)
-	req.Header.Set("X-Risk-Mode", "high")
 	req.Header.Set("X-Step-Up-Token", grant.Token)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
@@ -662,6 +662,20 @@ func TestStepUpGating_ModelHighRisk_AllowsWithApprovalToken(t *testing.T) {
 	}
 	if rr.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", rr.Code)
+	}
+}
+
+func TestRequiresModelApproval_IgnoresRiskAndComplianceHeaders(t *testing.T) {
+	body := []byte(`{"model":"gpt-4o","messages":[{"role":"user","content":"hi"}]}`)
+	req := httptest.NewRequest(http.MethodPost, openAICompatChatCompletionsPath, bytes.NewBuffer(body))
+	req.Header.Set("X-Risk-Mode", "low")
+	req.Header.Set("X-Compliance-Profile", "standard")
+	req.Header.Set("X-Prompt-Has-PHI", "false")
+	req.Header.Set("X-Prompt-Has-PII", "false")
+	req.Header.Set("X-Prompt-Action", "")
+
+	if !requiresModelApproval(req, body) {
+		t.Fatal("expected model route to require approval regardless of caller-controlled risk/compliance headers")
 	}
 }
 
