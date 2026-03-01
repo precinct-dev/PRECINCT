@@ -175,7 +175,7 @@ test: ## Run all tests (Go packages + integration/unit suites + OPA)
 		echo "WARNING: opa not installed, skipping OPA tests"; \
 	fi
 
-production-readiness-validate: security-scan-strict security-scan-validate ## Strict production-readiness security evidence gate
+production-readiness-validate: security-scan-strict security-scan-validate manifest-policy-check ## Strict production-readiness security evidence gate
 	@echo "production-readiness-validate: PASS"
 
 story-evidence-validate: ## Validate evidence paths in a bd story (STORY_ID=<id>)
@@ -609,7 +609,7 @@ build:
 # 11. Security scans
 # ---------------------------------------------------------------------------
 
-.PHONY: security-scan security-scan-strict security-scan-validate
+.PHONY: security-scan security-scan-strict security-scan-validate manifest-policy-check
 
 security-scan:
 	SECURITY_SCAN_STRICT=0 scripts/security/collect-security-scan-artifacts.sh
@@ -619,6 +619,9 @@ security-scan-strict:
 
 security-scan-validate:
 	tests/e2e/validate_security_scan_artifacts.sh
+
+manifest-policy-check:
+	go run ./cmd/manifest-policy-check
 
 # ---------------------------------------------------------------------------
 # 12. Compliance tools

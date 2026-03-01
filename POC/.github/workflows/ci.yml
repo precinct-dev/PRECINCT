@@ -33,6 +33,12 @@ jobs:
       - name: Test
         run: go test -race -count=1 -timeout 180s ./...
 
+      - name: Security Scan
+        run: make security-scan
+
+      - name: Manifest Policy Check
+        run: make manifest-policy-check
+
   build:
     name: Build
     runs-on: ubuntu-latest
