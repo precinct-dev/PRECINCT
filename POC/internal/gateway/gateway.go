@@ -64,7 +64,7 @@ type Gateway struct {
 	dlpRuleOps                 *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
 	cca                        *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
 	ingressReplayGuard         *ingressReplayGuard               // RFA-l6h6.2.2: ingress replay/freshness guard
-	extensionRegistry          *middleware.ExtensionRegistry      // pluggable extension slots
+	extensionRegistry          *middleware.ExtensionRegistry     // pluggable extension slots
 	extensionRegistryStop      func()                            // stop function for extension registry fsnotify watcher
 	adminAuthzAllowedSPIFFEIDs map[string]struct{}               // explicit SPIFFE allowlist for /admin/* authorization
 	portAdapters               []PortAdapter                     // registered port adapters for third-party integrations
@@ -508,10 +508,10 @@ func (g *Gateway) Handler() http.Handler {
 	handler := http.Handler(proxyWithResponseFirewall)
 
 	// Apply middleware in reverse order (innermost first)
-	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor, middleware.NewToolRegistryScopeResolver(g.registry))                   // 13 - LAST before proxy (RFA-0gr: dynamic scope)
-	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                                           // 12
-	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                                                   // 11
-	handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig)                                                                      // 10
+	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor, middleware.NewToolRegistryScopeResolver(g.registry)) // 13 - LAST before proxy (RFA-0gr: dynamic scope)
+	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                         // 12
+	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                                 // 11
+	handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig)                                                    // 10
 	if g.extensionRegistry != nil {
 		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostAnalysis, g.auditor) // post_analysis: after DeepScan, before RateLimit
 	}
@@ -520,8 +520,8 @@ func (g *Gateway) Handler() http.Handler {
 	if g.extensionRegistry != nil {
 		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostInspection, g.auditor) // post_inspection: after DLP, before Session
 	}
-	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy())                                                                           // 7
-	handler = middleware.OPAPolicy(handler, g.opa)                                                                                                     // 6
+	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy()) // 7
+	handler = middleware.OPAPolicy(handler, g.opa)                           // 6
 	if g.extensionRegistry != nil {
 		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostAuthz, g.auditor) // post_authz: after OPA, before DLP
 	}
@@ -546,11 +546,6 @@ func (g *Gateway) Handler() http.Handler {
 	// Add endpoints
 	mux := http.NewServeMux()
 	mux.Handle("/health", http.HandlerFunc(g.healthHandler))
-	// Demo-only: allow the demo runner/clients to toggle upstream rugpull mode
-	// without direct network access to tool pods (keeps tools ingress restricted
-	// to the gateway namespace in k8s). Disabled by default.
-	mux.Handle("/__demo__/rugpull/on", http.HandlerFunc(g.demoRugpullToggleHandler(true)))
-	mux.Handle("/__demo__/rugpull/off", http.HandlerFunc(g.demoRugpullToggleHandler(false)))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	mux.Handle("/", handler)
@@ -590,6 +585,23 @@ func (g *Gateway) proxyHandler() http.Handler {
 
 		// Wrap response writer to capture status code for span and internal route handling.
 		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+		// Demo-only rugpull control endpoints. These execute inside the full
+		// middleware chain and require explicit admin authorization.
+		if r.URL.Path == "/__demo__/rugpull/on" || r.URL.Path == "/__demo__/rugpull/off" {
+			enable := r.URL.Path == "/__demo__/rugpull/on"
+			g.handleDemoRugpullToggle(proxyRW, r.WithContext(ctx), enable)
+			result := "allowed"
+			if proxyRW.statusCode >= 400 {
+				result = "denied"
+			}
+			span.SetAttributes(
+				attribute.Int("status_code", proxyRW.statusCode),
+				attribute.String("mcp.result", result),
+				attribute.String("mcp.reason", "demo rugpull endpoint"),
+			)
+			return
+		}
 
 		// Demo-only, fast-path endpoint for deterministic rate-limit proofs.
 		//
@@ -1534,57 +1546,96 @@ func (g *Gateway) healthHandler(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(health)
 }
 
-// demoRugpullToggleHandler is a demo-only endpoint that forwards a rugpull toggle
-// to the upstream MCP server. This keeps the k8s NetworkPolicy invariant that
-// tool pods only accept ingress from the gateway namespace.
-func (g *Gateway) demoRugpullToggleHandler(enable bool) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Hide endpoint when not explicitly enabled.
-		if g.config == nil || !g.config.DemoRugpullAdminEnabled || g.config.SPIFFEMode != "dev" {
-			http.NotFound(w, r)
-			return
-		}
-		if r.Method != http.MethodPost {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
-
-		up, err := url.Parse(g.config.UpstreamURL)
-		if err != nil {
-			w.WriteHeader(http.StatusBadGateway)
-			_, _ = w.Write([]byte(`{"error":"invalid upstream url"}`))
-			return
-		}
-		if enable {
-			up.Path = "/__demo__/rugpull/on"
-		} else {
-			up.Path = "/__demo__/rugpull/off"
-		}
-		up.RawQuery = ""
-		up.Fragment = ""
-
-		transport := g.proxy.Transport
-		if transport == nil {
-			transport = http.DefaultTransport
-		}
-		client := &http.Client{
-			Timeout:   5 * time.Second,
-			Transport: transport,
-		}
-		req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, up.String(), nil)
-		resp, err := client.Do(req)
-		if err != nil {
-			w.WriteHeader(http.StatusBadGateway)
-			_, _ = w.Write([]byte(`{"error":"failed to reach upstream demo endpoint"}`))
-			return
-		}
-		defer func() { _ = resp.Body.Close() }()
-		body, _ := io.ReadAll(resp.Body)
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(resp.StatusCode)
-		_, _ = w.Write(body)
+// handleDemoRugpullToggle forwards demo rugpull toggles to upstream after
+// explicit enablement and admin authorization checks.
+func (g *Gateway) handleDemoRugpullToggle(w http.ResponseWriter, r *http.Request, enable bool) {
+	action := "demo_rugpull_disable"
+	if enable {
+		action = "demo_rugpull_enable"
 	}
+
+	// Hide endpoint when not explicitly enabled.
+	if g.config == nil || !g.config.DemoRugpullAdminEnabled || !strings.EqualFold(g.config.SPIFFEMode, "dev") {
+		http.NotFound(w, r)
+		g.logDemoRugpullAudit(r, action, "denied", http.StatusNotFound)
+		return
+	}
+	if r.Method != http.MethodPost {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		g.logDemoRugpullAudit(r, action, "denied", http.StatusMethodNotAllowed)
+		return
+	}
+	if !g.authorizeAdminRequest(w, r) {
+		g.logDemoRugpullAudit(r, action, "denied", http.StatusForbidden)
+		return
+	}
+
+	up, err := url.Parse(g.config.UpstreamURL)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"invalid upstream url"}`))
+		g.logDemoRugpullAudit(r, action, "error", http.StatusBadGateway)
+		return
+	}
+	if enable {
+		up.Path = "/__demo__/rugpull/on"
+	} else {
+		up.Path = "/__demo__/rugpull/off"
+	}
+	up.RawQuery = ""
+	up.Fragment = ""
+
+	transport := g.proxy.Transport
+	if transport == nil {
+		transport = http.DefaultTransport
+	}
+	client := &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: transport,
+	}
+	req, _ := http.NewRequestWithContext(r.Context(), http.MethodPost, up.String(), nil)
+	resp, err := client.Do(req)
+	if err != nil {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"failed to reach upstream demo endpoint"}`))
+		g.logDemoRugpullAudit(r, action, "error", http.StatusBadGateway)
+		return
+	}
+	defer func() { _ = resp.Body.Close() }()
+	body, _ := io.ReadAll(resp.Body)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = w.Write(body)
+
+	result := "allowed"
+	if resp.StatusCode >= 400 {
+		result = "denied"
+	}
+	g.logDemoRugpullAudit(r, action, result, resp.StatusCode)
+}
+
+func (g *Gateway) logDemoRugpullAudit(r *http.Request, action, result string, status int) {
+	if g == nil || g.auditor == nil || r == nil {
+		return
+	}
+	ctx := r.Context()
+	spiffeID := strings.TrimSpace(middleware.GetSPIFFEID(ctx))
+	if spiffeID == "" {
+		spiffeID = "unknown"
+	}
+	g.auditor.Log(middleware.AuditEvent{
+		Timestamp:  time.Now().UTC().Format(time.RFC3339Nano),
+		SessionID:  middleware.GetSessionID(ctx),
+		DecisionID: middleware.GetDecisionID(ctx),
+		TraceID:    middleware.GetTraceID(ctx),
+		SPIFFEID:   spiffeID,
+		Action:     action,
+		Result:     result,
+		Method:     r.Method,
+		Path:       r.URL.Path,
+		StatusCode: status,
+	})
 }
 
 type circuitBreakerEntry struct {
