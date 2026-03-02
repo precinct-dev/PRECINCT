@@ -64,6 +64,7 @@
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
             <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+            <li role="none"><a href="helm.html" role="menuitem">Helm</a></li>
           </ul>
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
@@ -74,7 +75,11 @@
           </button>
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="secure-your-agent.html" role="menuitem">Secure Your Agent</a></li>
+            <li role="none"><a href="building-adapters.html" role="menuitem">Building Adapters</a></li>
             <li role="none"><a href="sdks.html" role="menuitem" class="active">SDKs</a></li>
+            <li role="none"><a href="python-sdk.html" role="menuitem">Python SDK</a></li>
+            <li role="none"><a href="go-sdk.html" role="menuitem">Go SDK</a></li>
             <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
             <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
           </ul>
@@ -122,7 +127,7 @@
                 <li><a href="#overview">Overview</a></li>
                 <li><a href="#python-sdk">Python SDK</a></li>
                 <li><a href="#go-sdk">Go SDK</a></li>
-                <li><a href="#error-handling">Error Handling</a></li>
+                <li><a href="#error-handling">Error Codes</a></li>
                 <li><a href="#spiffe-identity">SPIFFE Identity</a></li>
                 <li><a href="#installation">Installation</a></li>
               </ul>
@@ -157,7 +162,7 @@
                 <li><a href="#overview">Overview</a></li>
                 <li><a href="#python-sdk">Python SDK</a></li>
                 <li><a href="#go-sdk">Go SDK</a></li>
-                <li><a href="#error-handling">Error Handling</a></li>
+                <li><a href="#error-handling">Error Codes</a></li>
                 <li><a href="#spiffe-identity">SPIFFE Identity</a></li>
                 <li><a href="#installation">Installation</a></li>
               </ul>
@@ -199,30 +204,6 @@
               interfaces for tool invocation, error handling, and identity management.
             </p>
 
-            <div class="card-grid card-grid-2">
-              <div class="card">
-                <h3 class="mt-0">Python SDK</h3>
-                <p>
-                  <code>mcp_gateway_sdk</code>: an async-first Python client with
-                  Pydantic models, automatic retry, and structured error types.
-                </p>
-                <p>
-                  <a href="https://github.com/RamXX/agentic_reference_architecture/tree/main/POC/sdk/python" target="_blank" rel="noopener noreferrer">View on GitHub &rarr;</a>
-                </p>
-              </div>
-              <div class="card">
-                <h3 class="mt-0">Go SDK</h3>
-                <p>
-                  <code>mcpgateway</code>: an idiomatic Go client with typed responses,
-                  context-based cancellation, and zero external dependencies beyond the
-                  standard library.
-                </p>
-                <p>
-                  <a href="https://github.com/RamXX/agentic_reference_architecture/tree/main/POC/sdk/go" target="_blank" rel="noopener noreferrer">View on GitHub &rarr;</a>
-                </p>
-              </div>
-            </div>
-
             <div class="callout-note">
               <strong>Roadmap:</strong> Rust, TypeScript, and Elixir SDKs are planned.
               Follow the
@@ -231,151 +212,41 @@
             </div>
           </section>
 
-          <!-- ========== Python SDK ========== -->
-          <section id="python-sdk">
-            <h2>Python SDK: <code>mcp_gateway_sdk</code></h2>
-            <p>
-              The Python SDK provides a <code>GatewayClient</code> class that handles all
-              communication with the PRECINCT gateway. It automatically injects the caller's
-              SPIFFE ID into every request and maps gateway error codes to typed Python exceptions.
-            </p>
+          <!-- ========== SDK Landing Cards ========== -->
+          <section id="python-sdk"></section>
+          <section id="go-sdk"></section>
 
-            <h3>Basic Usage</h3>
-            <pre data-lang="python"><code>from mcp_gateway_sdk import GatewayClient, GatewayError
-
-# Initialize the client with gateway URL and SPIFFE identity
-client = GatewayClient(
-    gateway_url="http://localhost:9090",
-    spiffe_id="spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-)
-
-# List available tools
-tools = await client.list_tools()
-for tool in tools:
-    print(f"  {tool.name}: {tool.description}")
-
-# Call a tool
-result = await client.call_tool(
-    name="tavily_search",
-    arguments={"query": "AI security best practices"}
-)
-print(result.content)</code></pre>
-
-            <h3>Error Handling</h3>
-            <pre data-lang="python"><code>from mcp_gateway_sdk import (
-    GatewayClient,
-    AuthzDeniedError,
-    DLPViolationError,
-    RateLimitError,
-    ToolNotFoundError,
-)
-
-try:
-    result = await client.call_tool("sensitive_tool", {"data": payload})
-except AuthzDeniedError as e:
-    # OPA policy denied the request (layer 6)
-    print(f"Policy denied: {e.decision_id}")
-except DLPViolationError as e:
-    # DLP scanner detected credentials (layer 7)
-    print(f"DLP blocked: {e.pattern_matched}")
-except RateLimitError as e:
-    # Rate limit exceeded (layer 11)
-    print(f"Rate limited, retry after: {e.retry_after}s")
-except ToolNotFoundError as e:
-    # Tool not registered (layer 5)
-    print(f"Unknown tool: {e.tool_name}")</code></pre>
-
-            <h3>Key Features</h3>
-            <ul>
-              <li><strong>Automatic SPIFFE ID injection:</strong> every request includes the <code>X-SPIFFE-ID</code> header.</li>
-              <li><strong>Typed error hierarchy:</strong> gateway deny codes map to specific Python exception classes.</li>
-              <li><strong>Pydantic models:</strong> request and response payloads are validated with Pydantic.</li>
-              <li><strong>Async-first:</strong> built on <code>httpx</code> with native <code>async/await</code> support.</li>
-              <li><strong>Structured logging:</strong> all gateway interactions are logged in structured JSON format.</li>
-            </ul>
-          </section>
-
-          <!-- ========== Go SDK ========== -->
-          <section id="go-sdk">
-            <h2>Go SDK: <code>mcpgateway</code></h2>
-            <p>
-              The Go SDK mirrors the Python SDK's semantics with idiomatic Go conventions.
-              It uses standard <code>context.Context</code> for cancellation, returns typed
-              errors, and has zero dependencies beyond the Go standard library.
-            </p>
-
-            <h3>Basic Usage</h3>
-            <pre data-lang="go"><code>package main
-
-import (
-    "context"
-    "fmt"
-    "log"
-
-    "github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway"
-)
-
-func main() {
-    client, err := mcpgateway.NewClient(
-        "http://localhost:9090",
-        mcpgateway.WithSPIFFEID("spiffe://poc.local/agents/mcp-client/researcher/dev"),
-    )
-    if err != nil {
-        log.Fatal(err)
-    }
-
-    ctx := context.Background()
-
-    // List available tools
-    tools, err := client.ListTools(ctx)
-    if err != nil {
-        log.Fatal(err)
-    }
-    for _, t := range tools {
-        fmt.Printf("  %s: %s\n", t.Name, t.Description)
-    }
-
-    // Call a tool
-    result, err := client.CallTool(ctx, "tavily_search", map[string]any{
-        "query": "AI security best practices",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-    fmt.Println(result.Content)
-}</code></pre>
-
-            <h3>Error Handling</h3>
-            <pre data-lang="go"><code>result, err := client.CallTool(ctx, "sensitive_tool", args)
-if err != nil {
-    var authzErr *mcpgateway.AuthzDeniedError
-    var dlpErr   *mcpgateway.DLPViolationError
-    var rateErr  *mcpgateway.RateLimitError
-
-    switch {
-    case errors.As(err, &authzErr):
-        // OPA policy denied (layer 6)
-        log.Printf("Policy denied: decision=%s", authzErr.DecisionID)
-    case errors.As(err, &dlpErr):
-        // DLP blocked credentials (layer 7)
-        log.Printf("DLP violation: pattern=%s", dlpErr.Pattern)
-    case errors.As(err, &rateErr):
-        // Rate limit exceeded (layer 11)
-        log.Printf("Rate limited, retry after %v", rateErr.RetryAfter)
-    default:
-        log.Printf("Gateway error: %v", err)
-    }
-}</code></pre>
-
-            <h3>Key Features</h3>
-            <ul>
-              <li><strong>Zero external dependencies:</strong> uses only the Go standard library.</li>
-              <li><strong>Context-based cancellation:</strong> all methods accept <code>context.Context</code>.</li>
-              <li><strong>Typed error values:</strong> gateway deny codes map to Go error types compatible with <code>errors.As</code>.</li>
-              <li><strong>Functional options pattern:</strong> client configuration via <code>With*</code> option functions.</li>
-              <li><strong>Connection pooling:</strong> reuses HTTP connections via the default transport.</li>
-            </ul>
-          </section>
+          <div class="card-grid card-grid-2">
+            <div class="card">
+              <h3 class="mt-0">Python SDK: <code>mcp_gateway_sdk</code></h3>
+              <p>
+                Async-first Python client built on <code>httpx</code>. Includes typed error
+                hierarchy, runtime helpers for PydanticAI/DSPy/LangGraph, and OpenTelemetry
+                integration.
+              </p>
+              <ul>
+                <li>Python &ge;3.10</li>
+                <li>Automatic SPIFFE ID injection</li>
+                <li>Exponential backoff retry (503 only)</li>
+                <li>Context manager lifecycle</li>
+              </ul>
+              <p><a href="python-sdk.html" class="card-link">Full Python SDK Reference &rarr;</a></p>
+            </div>
+            <div class="card">
+              <h3 class="mt-0">Go SDK: <code>mcpgateway</code></h3>
+              <p>
+                Idiomatic Go client with functional options, context-based cancellation,
+                and zero external dependencies beyond <code>google/uuid</code>.
+              </p>
+              <ul>
+                <li>Go &ge;1.24.6</li>
+                <li>Auto-detects protocol methods vs tool names</li>
+                <li>Goroutine-safe with connection pooling</li>
+                <li>mTLS via custom <code>http.Client</code></li>
+              </ul>
+              <p><a href="go-sdk.html" class="card-link">Full Go SDK Reference &rarr;</a></p>
+            </div>
+          </div>
 
           <!-- ========== Error Handling ========== -->
           <section id="error-handling">
@@ -490,18 +361,12 @@ client, err := mcpgateway.NewClient(
           <!-- ========== Installation ========== -->
           <section id="installation">
             <h2>Installation</h2>
-
             <h3>Python</h3>
-            <pre data-lang="bash"><code># From the repository
-cd POC/sdk/python
-pip install -e .
-
-# Or install directly
-pip install mcp-gateway-sdk</code></pre>
-
+            <pre data-lang="bash"><code>pip install mcp-gateway-sdk</code></pre>
+            <p>See the <a href="python-sdk.html#installation">Python SDK installation guide</a> for optional dependency groups.</p>
             <h3>Go</h3>
-            <pre data-lang="bash"><code># Add to your Go module
-go get github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway</code></pre>
+            <pre data-lang="bash"><code>go get github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway</code></pre>
+            <p>See the <a href="go-sdk.html#installation">Go SDK installation guide</a> for local development setup.</p>
 
             <div class="callout callout-warning">
               <div class="callout-title">
@@ -543,6 +408,7 @@ go get github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway</co
             <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
             <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="building-adapters.html">Building Adapters</a></li>
             <li><a href="cli.html">CLI Reference</a></li>
           </ul>
         </div>
@@ -562,6 +428,7 @@ go get github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway</co
           <ul>
             <li><a href="docker-compose.html">Docker Compose</a></li>
             <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="helm.html">Helm</a></li>
             <li><a href="for-auditors.html">For Auditors</a></li>
           </ul>
         </div>

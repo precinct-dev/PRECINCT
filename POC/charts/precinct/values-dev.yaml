@@ -1,0 +1,45 @@
+# ------------------------------------------------------------------------------
+# Dev Environment Values
+#
+# Single-replica deployments, ClusterIP exposure, debug logging,
+# dev image tags, lower resource limits.
+# Matches POC/infra/eks/overlays/dev/ kustomize overlay.
+# ------------------------------------------------------------------------------
+
+global:
+  environment: dev
+  trustDomain: agentic-ref-arch.poc
+  imageRegistry: ghcr.io/OWNER/agentic-ref-arch
+
+gateway:
+  replicas: 1
+  image:
+    repository: ghcr.io/OWNER/agentic-ref-arch/mcp-security-gateway
+    tag: dev
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  env:
+    logLevel: debug
+    spiffeMode: dev
+    enforcementProfile: dev
+  service:
+    type: ClusterIP
+    port: 9090
+
+services:
+  mcpServer:
+    replicas: 1
+
+security:
+  podSecurityStandards: privileged
+
+admissionControl:
+  gatekeeper:
+    enforcementAction: dryrun
+  sigstore:
+    enabled: false

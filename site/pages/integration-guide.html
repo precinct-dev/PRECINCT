@@ -64,6 +64,7 @@
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
             <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+            <li role="none"><a href="helm.html" role="menuitem">Helm</a></li>
           </ul>
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
@@ -74,7 +75,11 @@
           </button>
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="integration-guide.html" role="menuitem" class="active">Integration Guide</a></li>
+            <li role="none"><a href="secure-your-agent.html" role="menuitem">Secure Your Agent</a></li>
+            <li role="none"><a href="building-adapters.html" role="menuitem">Building Adapters</a></li>
             <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="python-sdk.html" role="menuitem">Python SDK</a></li>
+            <li role="none"><a href="go-sdk.html" role="menuitem">Go SDK</a></li>
             <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
             <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
           </ul>
@@ -217,7 +222,7 @@
                   Your agent uses a proprietary protocol or cannot be modified at all.
                   Write a thin adapter that translates your protocol into MCP calls
                   through the gateway, the same pattern used in the
-                  <a href="case-study.html">OpenClaw case study</a>.
+                  <a href="case-study.html">adapter case study</a>.
                 </p>
                 <p><strong>Effort:</strong> ~800 lines of adapter code</p>
               </div>
@@ -517,7 +522,7 @@ result, err := client.CallTool(ctx, "my_tool", map[string]any{
               <li>Translate the gateway response back to the application's expected format</li>
             </ol>
             <p>
-              The <a href="case-study.html">OpenClaw case study</a> is a
+              The <a href="case-study.html">adapter case study</a> is a
               complete worked example of this pattern, including HTTP and
               WebSocket adapters totaling ~800 lines of Go.
             </p>
@@ -621,7 +626,7 @@ agw audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
               <div class="card">
                 <h3 class="mt-0">Case Study</h3>
                 <p>
-                  See how OpenClaw was secured with PRECINCT using the adapter
+                  See how a real application was secured with PRECINCT using the adapter
                   pattern, without changing its code.
                 </p>
                 <p><a href="case-study.html">Read the case study &rarr;</a></p>
@@ -657,6 +662,7 @@ agw audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
             <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
             <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="building-adapters.html">Building Adapters</a></li>
             <li><a href="cli.html">CLI Reference</a></li>
           </ul>
         </div>
@@ -676,6 +682,7 @@ agw audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
           <ul>
             <li><a href="docker-compose.html">Docker Compose</a></li>
             <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="helm.html">Helm</a></li>
             <li><a href="for-auditors.html">For Auditors</a></li>
           </ul>
         </div>

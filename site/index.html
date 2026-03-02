@@ -67,6 +67,7 @@
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="pages/docker-compose.html" role="menuitem">Docker Compose</a></li>
             <li role="none"><a href="pages/kubernetes.html" role="menuitem">Kubernetes</a></li>
+            <li role="none"><a href="pages/helm.html" role="menuitem">Helm</a></li>
           </ul>
         </li>
         <li><a href="pages/for-auditors.html" class="nav-link">For Auditors</a></li>
@@ -77,7 +78,11 @@
           </button>
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="pages/integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="pages/secure-your-agent.html" role="menuitem">Secure Your Agent</a></li>
+            <li role="none"><a href="pages/building-adapters.html" role="menuitem">Building Adapters</a></li>
             <li role="none"><a href="pages/sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="pages/python-sdk.html" role="menuitem">Python SDK</a></li>
+            <li role="none"><a href="pages/go-sdk.html" role="menuitem">Go SDK</a></li>
             <li role="none"><a href="pages/cli.html" role="menuitem">CLI</a></li>
             <li role="none"><a href="pages/getting-started.html" role="menuitem">Getting Started</a></li>
           </ul>
@@ -377,7 +382,7 @@
           </div>
           <div class="card">
             <h3 class="mt-0">Adapter Coverage</h3>
-            <p>OpenClaw secure-port integration with live HTTP, WebSocket, and webhook enforcement through the gateway.</p>
+            <p>Reference port adapter with live HTTP, WebSocket, and webhook enforcement through the gateway.</p>
           </div>
           <div class="card">
             <h3 class="mt-0">Ops &amp; Assurance</h3>
@@ -465,11 +470,6 @@
             </thead>
             <tbody>
               <tr>
-                <td class="step-num">0</td>
-                <td>Request Metrics</td>
-                <td>Capture timing, size, and routing metadata for observability</td>
-              </tr>
-              <tr>
                 <td class="step-num">1</td>
                 <td>Request Size Limit</td>
                 <td>Reject oversized payloads before further processing</td>
@@ -539,6 +539,10 @@
         </div>
 
         <div class="middleware-note">
+          <p>
+            An outer observability wrapper (Request Metrics, step 0) captures timing,
+            size, and routing metadata but is not an enforcement layer.
+          </p>
           <p>
             <strong>Key design constraint:</strong> Token substitution happens last, at step 13,
             immediately before egress. No middleware layer ever sees raw credentials. The agent
@@ -675,6 +679,7 @@
             <li><a href="pages/capabilities.html">Capabilities</a></li>
             <li><a href="pages/getting-started.html">Getting Started</a></li>
             <li><a href="pages/sdks.html">SDKs</a></li>
+            <li><a href="pages/building-adapters.html">Building Adapters</a></li>
             <li><a href="pages/cli.html">CLI Reference</a></li>
           </ul>
         </div>
@@ -694,6 +699,7 @@
           <ul>
             <li><a href="pages/docker-compose.html">Docker Compose</a></li>
             <li><a href="pages/kubernetes.html">Kubernetes</a></li>
+            <li><a href="pages/helm.html">Helm</a></li>
             <li><a href="pages/for-auditors.html">For Auditors</a></li>
           </ul>
         </div>
