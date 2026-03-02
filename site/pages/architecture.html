@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PRECINCT Architecture -- Policy-driven Runtime Enforcement and Cryptographic Identity for Networked Compute and Tools</title>
-  <meta name="description" content="Detailed architecture overview of PRECINCT: the five governed planes, 13-layer middleware chain, threat model, and key design decisions for securing agentic AI systems.">
-  <meta name="keywords" content="PRECINCT architecture, agentic AI security, five governed planes, 13-layer middleware, zero-trust, SPIFFE, OPA, threat model">
+  <meta name="description" content="Detailed architecture overview of PRECINCT: the five governed planes, 13-layer middleware chain, dual observability backends, threat model, and key design decisions for securing agentic AI systems.">
+  <meta name="keywords" content="PRECINCT architecture, agentic AI security, five governed planes, 13-layer middleware, zero-trust, SPIFFE, OPA, Phoenix, OpenSearch Dashboards, threat model">
   <meta name="author" content="PRECINCT Contributors">
   <meta name="robots" content="index, follow">
 
@@ -46,6 +46,7 @@
       <ul class="nav-links">
         <li><a href="../index.html" class="nav-link">Home</a></li>
         <li><a href="architecture.html" class="nav-link active">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link">Capabilities</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Components <span class="caret" aria-hidden="true"></span>
@@ -242,7 +243,7 @@ graph TB
           <section id="core-components">
             <h2>Core Components</h2>
             <p>
-              PRECINCT is built on four proven, open-source infrastructure components. Each addresses
+              PRECINCT is built on six proven, open-source infrastructure components. Each addresses
               a distinct security concern, and together they form a complete zero-trust security posture
               for agentic AI systems.
             </p>
@@ -278,9 +279,24 @@ graph TB
                     <td>Enforcement</td>
                     <td>The centralized enforcement point. A reverse proxy that orchestrates the 13-layer middleware chain, mediates all agent-to-tool communication, and ensures no request bypasses policy evaluation.</td>
                   </tr>
+                  <tr>
+                    <td><strong>Phoenix + OTel Collector</strong></td>
+                    <td>Trace Observability</td>
+                    <td>Distributed tracing for full request waterfalls across all middleware steps. Optimized for latency diagnostics, trace correlation, and incident triage.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>OpenSearch + Dashboards (Optional)</strong></td>
+                    <td>Compliance Evidence</td>
+                    <td>Indexed forensic and compliance investigations over audit records. In regulated Kubernetes deployments, this extension is wired with Secret-managed TLS/mTLS material and SPIRE identities.</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
+            <p>
+              This dual-backend model separates concerns cleanly: Phoenix remains the primary trace
+              analysis surface, while OpenSearch Dashboards provides indexed audit evidence search for
+              compliance and forensic workflows.
+            </p>
           </section>
 
           <!-- ========== The 13-Layer Middleware Chain ========== -->
@@ -663,6 +679,7 @@ sequenceDiagram
           <ul>
             <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
           </ul>
         </div>

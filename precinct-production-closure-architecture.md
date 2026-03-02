@@ -41,6 +41,7 @@ These invariants apply across all deployment profiles and are the portability co
 5. **Audit invariants**
    - Every enforcement decision emits stable correlation IDs (`session_id`, `trace_id`, `decision_id`).
    - Audit trail is tamper-evident and exportable to immutable storage.
+   - Any indexed evidence backend (for example OpenSearch) uses secret-managed credentials/certificates, encrypted transport (TLS/mTLS), and identity-bound access controls.
 6. **Governance invariants**
    - Rule and connector changes are signed, versioned, reviewable, and auditable.
 
@@ -302,6 +303,10 @@ Make technical evidence auditor-ready, machine-readable, and exportable.
    - stable IDs
    - reproducible extraction queries
    - schema versioning
+4. **Indexed evidence integration contract (optional profile)**
+   - normalized audit index schema for cross-system queries
+   - secure transport and auth requirements (secrets, TLS/mTLS, identity)
+   - deterministic query recipes that map control IDs to indexed evidence
 
 ### Scope boundary
 
@@ -441,4 +446,3 @@ The architecture is considered upgraded when:
 3. Kubernetes-first implementation path is explicit.
 4. Compose portability boundaries are explicit for each component.
 5. Technical evidence model supports machine-readable auditor consumption.
-

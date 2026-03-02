@@ -86,6 +86,8 @@ down: ## Stop Docker Compose stack
 
 clean: ## Full cleanup (containers, volumes, build artifacts, logs)
 	docker compose down -v
+	-docker compose -f docker-compose.phoenix.yml down -v >/dev/null 2>&1 || true
+	-docker compose -f docker-compose.opensearch.yml down -v >/dev/null 2>&1 || true
 	rm -rf build/sbom/ build/bin/
 	@if [ -f .beads/daemon.log ]; then \
 		: > .beads/daemon.log; \
@@ -144,7 +146,45 @@ phoenix-reset: ## Stop Phoenix stack and destroy trace data
 	docker compose -f docker-compose.phoenix.yml down -v
 
 # ===========================================================================
-# 4. CI / Quality (ci, lint, test, production-readiness-validate)
+# 4. OpenSearch Observability (optional)
+# ===========================================================================
+
+.PHONY: opensearch-up opensearch-down opensearch-reset opensearch-seed opensearch-validate
+.PHONY: observability-up observability-down observability-reset
+
+opensearch-up: ## Start OpenSearch + Dashboards + audit forwarder (optional compliance/forensics profile)
+	@echo "Reconfiguring gateway audit sink for OpenSearch profile..."
+	docker compose -f docker-compose.yml -f docker-compose.opensearch-bridge.yml up -d --no-deps mcp-security-gateway
+	@echo "Starting OpenSearch stack..."
+	docker compose -f docker-compose.opensearch.yml up -d --wait --wait-timeout 120
+	@echo "OpenSearch API: http://localhost:9200"
+	@echo "OpenSearch Dashboards: http://localhost:5601"
+	@echo "Next: make opensearch-seed"
+
+opensearch-down: ## Stop OpenSearch + Dashboards stack (preserves OpenSearch data)
+	docker compose -f docker-compose.opensearch.yml down
+
+opensearch-reset: ## Stop OpenSearch + Dashboards and destroy all OpenSearch data
+	docker compose -f docker-compose.opensearch.yml down -v
+
+opensearch-seed: ## Seed OpenSearch index template and import PRECINCT dashboard objects
+	@bash scripts/observability/seed-opensearch-dashboards.sh
+
+opensearch-validate: ## Validate OpenSearch health, template, and dashboard API
+	@bash scripts/observability/validate-opensearch-stack.sh
+
+observability-up: phoenix-up opensearch-up ## Start both observability backends (Phoenix + OpenSearch)
+
+observability-down: ## Stop both observability backends (preserves data)
+	$(MAKE) phoenix-down
+	$(MAKE) opensearch-down
+
+observability-reset: ## Destroy all observability backend data (Phoenix + OpenSearch)
+	$(MAKE) phoenix-reset
+	$(MAKE) opensearch-reset
+
+# ===========================================================================
+# 5. CI / Quality (ci, lint, test, production-readiness-validate)
 # ===========================================================================
 
 .PHONY: ci lint test production-readiness-validate story-evidence-validate
@@ -217,7 +257,7 @@ demo-cli: ## Run all CLI demos (agw CLI, operate, compliance, repave, upgrade)
 # 6. Kubernetes (k8s-up, k8s-down, k8s-validate)
 # ===========================================================================
 
-.PHONY: k8s-up k8s-down k8s-validate
+.PHONY: k8s-up k8s-down k8s-validate k8s-opensearch-up k8s-opensearch-down
 
 k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@if ! kubectl cluster-info 2>/dev/null | grep -q 'Kubernetes control plane'; then \
@@ -314,9 +354,22 @@ k8s-down: ## Tear down local K8s deployment
 	-kubectl delete mutatingwebhookconfigurations gatekeeper-mutating-webhook-configuration --ignore-not-found 2>/dev/null
 	-kubectl -n spire-system delete pvc -l app.kubernetes.io/name=spire-server --ignore-not-found 2>/dev/null
 
+k8s-opensearch-up: k8s-up ## Deploy local K8s stack plus optional OpenSearch observability extension
+	@echo "Applying OpenSearch extension overlay..."
+	@-kubectl apply -k infra/eks/overlays/local-opensearch/ 2>&1
+	-kubectl -n observability rollout status statefulset/opensearch --timeout=180s 2>/dev/null || \
+		echo "WARNING: OpenSearch not yet ready"
+	-kubectl -n observability rollout status deployment/opensearch-dashboards --timeout=180s 2>/dev/null || \
+		echo "WARNING: OpenSearch Dashboards not yet ready"
+	-kubectl -n observability rollout status daemonset/opensearch-audit-forwarder --timeout=180s 2>/dev/null || \
+		echo "WARNING: OpenSearch audit forwarder not yet ready"
+
+k8s-opensearch-down: ## Remove only OpenSearch extension resources from local K8s deployment
+	@-kubectl delete -k infra/eks/observability/opensearch --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
+
 k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first)
 	@set -e; \
-	overlays="local dev staging prod"; \
+	overlays="local local-opensearch dev staging prod"; \
 	for o in $$overlays; do \
 		echo "Building overlay: $$o"; \
 		kustomize build "infra/eks/overlays/$$o" >"/tmp/precinct-k8s-$$o.yaml"; \
@@ -845,6 +898,25 @@ k8s-register-spire:
 		-parentID $$PARENT_ID \
 		-spiffeID spiffe://agentic-ref-arch.poc/spike/pilot/role/superuser/seeder \
 		-selector k8s:ns:spike-system -selector k8s:sa:spike-seeder 2>/dev/null || true; \
+	echo "  Registering opensearch workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch \
+		-selector k8s:ns:observability -selector k8s:sa:opensearch \
+		-dns opensearch \
+		-dns opensearch.observability.svc.cluster.local 2>/dev/null || true; \
+	echo "  Registering opensearch-dashboards workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-dashboards \
+		-selector k8s:ns:observability -selector k8s:sa:opensearch-dashboards \
+		-dns opensearch-dashboards \
+		-dns opensearch-dashboards.observability.svc.cluster.local 2>/dev/null || true; \
+	echo "  Registering opensearch-audit-forwarder workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-audit-forwarder \
+		-selector k8s:ns:observability -selector k8s:sa:opensearch-audit-forwarder 2>/dev/null || true; \
 	echo "  Current entries:"; \
 	$(SPIRE_EXEC) entry show -socketPath $(SPIRE_SOCK)
 
@@ -892,5 +964,7 @@ attestation-resign: ## Re-sign attestation artifacts (generates keypair if missi
 
 k8s-local-up: k8s-up
 k8s-local-down: k8s-down
+k8s-local-opensearch-up: k8s-opensearch-up
+k8s-local-opensearch-down: k8s-opensearch-down
 clean-logs:
 	@if [ -f .beads/daemon.log ]; then : > .beads/daemon.log; fi

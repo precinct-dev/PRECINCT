@@ -116,6 +116,40 @@ data:
       -dns spike-nexus.spike-system.svc.cluster.local \
     || echo "  (entry may already exist, continuing)"
 
+    # OpenSearch workload
+    echo "  Workload: opensearch..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
+      -spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch \
+      -selector k8s:ns:observability \
+      -selector k8s:sa:opensearch \
+      -dns opensearch \
+      -dns opensearch.observability.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
+    # OpenSearch Dashboards workload
+    echo "  Workload: opensearch-dashboards..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
+      -spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-dashboards \
+      -selector k8s:ns:observability \
+      -selector k8s:sa:opensearch-dashboards \
+      -dns opensearch-dashboards \
+      -dns opensearch-dashboards.observability.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
+    # OpenSearch audit forwarder workload
+    echo "  Workload: opensearch-audit-forwarder..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
+      -spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-audit-forwarder \
+      -selector k8s:ns:observability \
+      -selector k8s:sa:opensearch-audit-forwarder \
+    || echo "  (entry may already exist, continuing)"
+
     echo ""
     echo "=== Current entries ==="
     /opt/spire/bin/spire-server entry show -socketPath "$SOCK"

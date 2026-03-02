@@ -21,9 +21,9 @@
 #   - kubeconform installed (brew install kubeconform) for offline validation
 #   - For audit S3: tofu apply in audit/ directory first
 # ------------------------------------------------------------------------------
-.PHONY: help deploy deploy-namespace deploy-rbac deploy-configs deploy-otel \
-        deploy-phoenix deploy-policies deploy-audit undeploy verify dry-run \
-        status logs-otel logs-phoenix
+.PHONY: help deploy deploy-with-opensearch deploy-namespace deploy-rbac deploy-configs deploy-otel \
+        deploy-phoenix deploy-opensearch deploy-policies deploy-audit undeploy verify dry-run \
+        dry-run-opensearch status logs-otel logs-phoenix logs-opensearch logs-opensearch-forwarder
 
 KUBECTL ?= kubectl
 NAMESPACE := observability
@@ -46,6 +46,12 @@ deploy: deploy-namespace deploy-rbac deploy-configs deploy-phoenix deploy-otel d
 	@echo ""
 	@echo "Phoenix UI: kubectl -n $(NAMESPACE) get svc phoenix -o jsonpath='{.spec.ports[?(@.name==\"http-ui\")].nodePort}'"
 	@echo "  Access via: http://<node-ip>:<nodePort>"
+
+deploy-with-opensearch: deploy deploy-opensearch ## Deploy observability stack plus OpenSearch extension
+	@echo ""
+	@echo "OpenSearch extension deployed."
+	@echo "OpenSearch API: https://opensearch.observability.svc.cluster.local:9200"
+	@echo "OpenSearch Dashboards: https://opensearch-dashboards.observability.svc.cluster.local:5601"
 
 # ---------------------------------------------------------------------------
 # Individual deployment targets
@@ -86,6 +92,17 @@ deploy-policies: deploy-namespace ## Apply NetworkPolicies
 	@echo "=== Deploying NetworkPolicies ==="
 	$(KUBECTL) apply -f observability-policies.yaml
 
+deploy-opensearch: deploy-namespace ## Deploy optional OpenSearch extension (TLS/mTLS + dashboards + audit forwarder)
+	@echo "=== Deploying OpenSearch Extension ==="
+	$(KUBECTL) apply -k opensearch
+	@echo "Waiting for opensearch StatefulSet..."
+	$(KUBECTL) -n $(NAMESPACE) rollout status statefulset/opensearch --timeout=180s
+	@echo "Waiting for opensearch-dashboards Deployment..."
+	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/opensearch-dashboards --timeout=180s
+	@echo "Waiting for opensearch-audit-forwarder DaemonSet..."
+	$(KUBECTL) -n $(NAMESPACE) rollout status daemonset/opensearch-audit-forwarder --timeout=180s
+	@echo "OpenSearch extension deployed."
+
 deploy-audit: ## Apply audit S3 IAM resources (requires tofu)
 	@echo "=== Deploying Audit S3 IAM Resources ==="
 	@echo "Running tofu apply in audit/ directory..."
@@ -117,6 +134,11 @@ verify: ## Verify observability stack health
 	@echo "=== NetworkPolicies ==="
 	$(KUBECTL) -n $(NAMESPACE) get networkpolicies
 	@echo ""
+	@echo "=== OpenSearch Resources (if installed) ==="
+	$(KUBECTL) -n $(NAMESPACE) get statefulset opensearch 2>/dev/null || echo "(opensearch not installed)"
+	$(KUBECTL) -n $(NAMESPACE) get deployment opensearch-dashboards 2>/dev/null || echo "(opensearch-dashboards not installed)"
+	$(KUBECTL) -n $(NAMESPACE) get daemonset opensearch-audit-forwarder 2>/dev/null || echo "(opensearch-audit-forwarder not installed)"
+	@echo ""
 	@echo "=== OTEL Collector Logs (last 5 lines) ==="
 	$(KUBECTL) -n $(NAMESPACE) logs -l app.kubernetes.io/name=otel-collector --tail=5 2>/dev/null || echo "(no logs yet)"
 	@echo ""
@@ -142,6 +164,12 @@ logs-otel: ## Tail OTEL Collector logs
 
 logs-phoenix: ## Tail Phoenix logs
 	$(KUBECTL) -n $(NAMESPACE) logs -f -l app.kubernetes.io/name=phoenix
+
+logs-opensearch: ## Tail OpenSearch logs
+	$(KUBECTL) -n $(NAMESPACE) logs -f statefulset/opensearch
+
+logs-opensearch-forwarder: ## Tail OpenSearch audit forwarder logs
+	$(KUBECTL) -n $(NAMESPACE) logs -f -l app.kubernetes.io/name=opensearch-audit-forwarder
 
 # ---------------------------------------------------------------------------
 # Dry run (validation without a cluster)
@@ -180,12 +208,42 @@ dry-run: ## Validate all manifests (kubeconform or kubectl dry-run)
 	fi
 	@echo "All observability manifests valid."
 
+dry-run-opensearch: ## Validate OpenSearch extension manifests (kubeconform or kubectl dry-run)
+	@if command -v kubeconform >/dev/null 2>&1; then \
+		echo "=== Validating OpenSearch extension with kubeconform (offline) ==="; \
+		kubeconform -summary -strict \
+			opensearch/opensearch-rbac.yaml \
+			opensearch/opensearch-configmap.yaml \
+			opensearch/opensearch-service.yaml \
+			opensearch/opensearch-statefulset.yaml \
+			opensearch/opensearch-dashboards-deployment.yaml \
+			opensearch/opensearch-dashboards-service.yaml \
+			opensearch/opensearch-audit-forwarder-configmap.yaml \
+			opensearch/opensearch-audit-forwarder-deployment.yaml \
+			opensearch/opensearch-policies.yaml; \
+	else \
+		echo "=== Validating OpenSearch extension with kubectl dry-run (requires cluster) ==="; \
+		for f in opensearch/opensearch-rbac.yaml \
+			opensearch/opensearch-configmap.yaml \
+			opensearch/opensearch-service.yaml \
+			opensearch/opensearch-statefulset.yaml \
+			opensearch/opensearch-dashboards-deployment.yaml \
+			opensearch/opensearch-dashboards-service.yaml \
+			opensearch/opensearch-audit-forwarder-configmap.yaml \
+			opensearch/opensearch-audit-forwarder-deployment.yaml \
+			opensearch/opensearch-policies.yaml; do \
+			$(KUBECTL) apply --dry-run=client -f "$$f"; \
+		done; \
+	fi
+	@echo "OpenSearch extension manifests valid."
+
 # ---------------------------------------------------------------------------
 # Cleanup
 # ---------------------------------------------------------------------------
 
 undeploy: ## Remove all observability resources
 	@echo "=== Removing Observability Stack ==="
+	-$(KUBECTL) delete -k opensearch --ignore-not-found
 	-$(KUBECTL) delete -f observability-policies.yaml --ignore-not-found
 	-$(KUBECTL) delete -f otel-collector/otel-collector-deployment.yaml --ignore-not-found
 	-$(KUBECTL) delete -f otel-collector/otel-collector-service.yaml --ignore-not-found

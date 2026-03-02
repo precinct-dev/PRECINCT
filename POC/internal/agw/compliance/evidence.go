@@ -10,8 +10,21 @@ import (
 
 type ControlEvidenceParams struct {
 	ControlID    string
-	AuditLogPath string
+	AuditSource  string // auto|file|docker|opensearch
+	AuditLogPath string // local JSONL audit log path (used by audit-source auto|file)
 	WorkDir      string
+
+	// OpenSearch-backed audit source options (used when AuditSource=opensearch).
+	OpenSearchURL                string
+	OpenSearchIndex              string
+	OpenSearchUsername           string
+	OpenSearchPassword           string
+	OpenSearchCACertPath         string
+	OpenSearchClientCertPath     string
+	OpenSearchClientKeyPath      string
+	OpenSearchTimeWindow         string
+	OpenSearchMaxEntries         int
+	OpenSearchInsecureSkipVerify bool
 }
 
 type ControlEvidenceResult struct {
@@ -61,7 +74,22 @@ func CollectControlEvidence(p ControlEvidenceParams) (ControlEvidenceResult, err
 		return ControlEvidenceResult{}, fmt.Errorf("control %s not found", controlID)
 	}
 
-	entries, auditSource, err := CollectAuditEntries(projectRoot, defaultAuditLogPath(p.AuditLogPath))
+	entries, auditSource, err := CollectAuditEntriesWithOptions(projectRoot, AuditCollectionOptions{
+		Source:       p.AuditSource,
+		AuditLogPath: defaultAuditLogPath(p.AuditLogPath),
+		OpenSearch: OpenSearchAuditOptions{
+			URL:                p.OpenSearchURL,
+			Index:              p.OpenSearchIndex,
+			Username:           p.OpenSearchUsername,
+			Password:           p.OpenSearchPassword,
+			CACertPath:         p.OpenSearchCACertPath,
+			ClientCertPath:     p.OpenSearchClientCertPath,
+			ClientKeyPath:      p.OpenSearchClientKeyPath,
+			TimeWindow:         p.OpenSearchTimeWindow,
+			MaxEntries:         p.OpenSearchMaxEntries,
+			InsecureSkipVerify: p.OpenSearchInsecureSkipVerify,
+		},
+	})
 	if err != nil {
 		return ControlEvidenceResult{}, err
 	}

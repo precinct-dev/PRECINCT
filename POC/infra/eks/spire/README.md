@@ -39,6 +39,9 @@ Story: RFA-9fv.3
 | PRECINCT Gateway | `spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway` | `k8s:ns:gateway`, `k8s:sa:mcp-security-gateway` |
 | MCP Tool Servers | `spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool` | `k8s:ns:tools`, `k8s:sa:mcp-tool` |
 | SPIKE Nexus | `spiffe://agentic-ref-arch.poc/ns/spike-system/sa/spike-nexus` | `k8s:ns:spike-system`, `k8s:sa:spike-nexus` |
+| OpenSearch | `spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch` | `k8s:ns:observability`, `k8s:sa:opensearch` |
+| OpenSearch Dashboards | `spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-dashboards` | `k8s:ns:observability`, `k8s:sa:opensearch-dashboards` |
+| OpenSearch Audit Forwarder | `spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-audit-forwarder` | `k8s:ns:observability`, `k8s:sa:opensearch-audit-forwarder` |
 
 ## Deployment
 

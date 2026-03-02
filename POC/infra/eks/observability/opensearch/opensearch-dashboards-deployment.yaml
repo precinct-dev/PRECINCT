@@ -1,0 +1,153 @@
+# ------------------------------------------------------------------------------
+# OpenSearch Dashboards Deployment (TLS to OpenSearch, HTTPS UI)
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: opensearch-dashboards
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: opensearch-dashboards
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: dashboards
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opensearch-dashboards
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opensearch-dashboards
+        app.kubernetes.io/part-of: mcp-observability
+        app.kubernetes.io/component: dashboards
+    spec:
+      serviceAccountName: opensearch-dashboards
+      terminationGracePeriodSeconds: 20
+      initContainers:
+        - name: wait-for-spire-socket
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              i=1
+              while [ "$i" -le 60 ]; do
+                if [ -S /run/spire/sockets/agent.sock ]; then
+                  exit 0
+                fi
+                sleep 1
+                i=$((i + 1))
+              done
+              echo "SPIRE Workload API socket not found after 60s" >&2
+              exit 1
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      containers:
+        - name: opensearch-dashboards
+          image: opensearchproject/opensearch-dashboards:2.15.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: https-ui
+              containerPort: 5601
+              protocol: TCP
+          env:
+            - name: OPENSEARCH_HOSTS
+              value: '["https://opensearch.observability.svc.cluster.local:9200"]'
+            - name: OPENSEARCH_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-admin-credentials
+                  key: username
+                  optional: false
+            - name: OPENSEARCH_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-admin-credentials
+                  key: password
+                  optional: false
+            - name: OPENSEARCH_SSL_CERTIFICATEAUTHORITIES
+              value: "/usr/share/opensearch-dashboards/config/client-tls/ca.crt"
+            - name: OPENSEARCH_SSL_CERTIFICATE
+              value: "/usr/share/opensearch-dashboards/config/client-tls/tls.crt"
+            - name: OPENSEARCH_SSL_KEY
+              value: "/usr/share/opensearch-dashboards/config/client-tls/tls.key"
+            - name: OPENSEARCH_SSL_VERIFICATIONMODE
+              value: "full"
+            - name: SERVER_SSL_ENABLED
+              value: "true"
+            - name: SERVER_SSL_CERTIFICATE
+              value: "/usr/share/opensearch-dashboards/config/server-tls/tls.crt"
+            - name: SERVER_SSL_KEY
+              value: "/usr/share/opensearch-dashboards/config/server-tls/tls.key"
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: "unix:///run/spire/sockets/agent.sock"
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: https-ui
+              scheme: HTTPS
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: https-ui
+              scheme: HTTPS
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 300m
+              memory: 512Mi
+          volumeMounts:
+            - name: opensearch-client-tls
+              mountPath: /usr/share/opensearch-dashboards/config/client-tls
+              readOnly: true
+            - name: dashboards-server-tls
+              mountPath: /usr/share/opensearch-dashboards/config/server-tls
+              readOnly: true
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: opensearch-client-tls
+          secret:
+            secretName: opensearch-client-tls
+            optional: false
+        - name: dashboards-server-tls
+          secret:
+            secretName: opensearch-dashboards-server-tls
+            optional: false
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate

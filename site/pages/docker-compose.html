@@ -44,6 +44,7 @@
       <ul class="nav-links">
         <li><a href="../index.html" class="nav-link">Home</a></li>
         <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link">Capabilities</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Components <span class="caret" aria-hidden="true"></span>
@@ -203,6 +204,14 @@
 make phoenix-up    # Start observability stack (Phoenix + OTel)
 make up            # Start the full PRECINCT stack
 make demo-compose  # Run 28 E2E test scenarios</code></pre>
+
+              <p>
+                Optional compliance/forensics profile (Apache-2 stack) for indexed audit search:
+              </p>
+              <pre data-lang="bash"><code>make opensearch-up
+make opensearch-seed
+make opensearch-validate
+# Dashboards: http://localhost:5601</code></pre>
             </section>
 
             <!-- ======================================================== -->
@@ -468,6 +477,18 @@ graph TB
                       <td>Start Phoenix observability</td>
                     </tr>
                     <tr>
+                      <td><code>make opensearch-up</code></td>
+                      <td>Start OpenSearch + Dashboards + audit forwarder</td>
+                    </tr>
+                    <tr>
+                      <td><code>make opensearch-seed</code></td>
+                      <td>Seed OpenSearch index template and dashboard objects</td>
+                    </tr>
+                    <tr>
+                      <td><code>make opensearch-validate</code></td>
+                      <td>Validate OpenSearch profile health and template wiring</td>
+                    </tr>
+                    <tr>
                       <td><code>make repave</code></td>
                       <td>Rebuild containers (3 Rs doctrine)</td>
                     </tr>
@@ -529,6 +550,7 @@ make clean         # Full cleanup (containers, volumes, build artifacts)</code><
           <ul>
             <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
           </ul>
         </div>

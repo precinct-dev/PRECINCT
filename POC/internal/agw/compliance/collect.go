@@ -25,8 +25,21 @@ type EvidenceSummary struct {
 type CollectParams struct {
 	Framework    string
 	OutputDir    string // base directory where the timestamped evidence dir is created
-	AuditLogPath string // optional local JSONL audit log path (default /tmp/audit.jsonl)
+	AuditSource  string // auto|file|docker|opensearch
+	AuditLogPath string // local JSONL audit log path (used by audit-source auto|file)
 	WorkDir      string // cwd for project root discovery
+
+	// OpenSearch-backed audit source options (used when AuditSource=opensearch).
+	OpenSearchURL                string
+	OpenSearchIndex              string
+	OpenSearchUsername           string
+	OpenSearchPassword           string
+	OpenSearchCACertPath         string
+	OpenSearchClientCertPath     string
+	OpenSearchClientKeyPath      string
+	OpenSearchTimeWindow         string
+	OpenSearchMaxEntries         int
+	OpenSearchInsecureSkipVerify bool
 }
 
 type CollectResult struct {
@@ -79,7 +92,22 @@ func CollectEvidencePackage(p CollectParams) (*CollectResult, error) {
 		return nil, err
 	}
 
-	entries, auditSource, err := CollectAuditEntries(projectRoot, defaultAuditLogPath(p.AuditLogPath))
+	entries, auditSource, err := CollectAuditEntriesWithOptions(projectRoot, AuditCollectionOptions{
+		Source:       p.AuditSource,
+		AuditLogPath: defaultAuditLogPath(p.AuditLogPath),
+		OpenSearch: OpenSearchAuditOptions{
+			URL:                p.OpenSearchURL,
+			Index:              p.OpenSearchIndex,
+			Username:           p.OpenSearchUsername,
+			Password:           p.OpenSearchPassword,
+			CACertPath:         p.OpenSearchCACertPath,
+			ClientCertPath:     p.OpenSearchClientCertPath,
+			ClientKeyPath:      p.OpenSearchClientKeyPath,
+			TimeWindow:         p.OpenSearchTimeWindow,
+			MaxEntries:         p.OpenSearchMaxEntries,
+			InsecureSkipVerify: p.OpenSearchInsecureSkipVerify,
+		},
+	})
 	if err != nil {
 		return nil, err
 	}

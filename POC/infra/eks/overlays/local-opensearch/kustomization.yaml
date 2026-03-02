@@ -1,0 +1,15 @@
+# ------------------------------------------------------------------------------
+# Local Overlay + OpenSearch Observability Extension
+#
+# Builds on top of overlays/local and adds the optional OpenSearch extension
+# for compliance/forensics operations (Apache-2 stack).
+#
+# Usage:
+#   kustomize build infra/eks/overlays/local-opensearch
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../local
+  - ../../observability/opensearch

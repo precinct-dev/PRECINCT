@@ -46,6 +46,7 @@
       <ul class="nav-links">
         <li><a href="../index.html" class="nav-link">Home</a></li>
         <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link">Capabilities</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Components <span class="caret" aria-hidden="true"></span>
@@ -900,6 +901,18 @@ agw audit explain --request-id req-c8d4e512
 
 # Verify hash chain integrity
 agw audit verify --from "2025-11-15T00:00:00Z" --to "2025-11-15T23:59:59Z"</code></pre>
+
+            <h3>CLI compliance evidence commands (OpenSearch-backed, secure path)</h3>
+            <pre><code class="language-bash">export AGW_OPENSEARCH_PASSWORD='&lt;secret&gt;'
+
+# Collect SOC2 evidence from indexed audit records over HTTPS + mTLS
+agw compliance collect \
+  --framework soc2 \
+  --audit-source opensearch \
+  --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \
+  --opensearch-ca-cert /certs/ca.crt \
+  --opensearch-client-cert /certs/client.crt \
+  --opensearch-client-key /certs/client.key</code></pre>
           </section>
 
           <!-- ========== Docker Compose vs Kubernetes for Audit ========== -->
@@ -947,6 +960,11 @@ agw audit verify --from "2025-11-15T00:00:00Z" --to "2025-11-15T23:59:59Z"</code
                     <td><strong>Image digest pinning</strong></td>
                     <td>Enforced via admission control</td>
                     <td>Specified in compose file (not enforced)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Indexed forensic search</strong></td>
+                    <td>Optional OpenSearch + Dashboards extension with Secret-managed TLS/mTLS and SPIRE workload identities</td>
+                    <td>Optional profile available, but evidence remains non-authoritative for retention claims</td>
                   </tr>
                   <tr>
                     <td><strong>Audit defensibility</strong></td>
@@ -1006,6 +1024,7 @@ agw audit verify --from "2025-11-15T00:00:00Z" --to "2025-11-15T23:59:59Z"</code
           <ul>
             <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
           </ul>
         </div>

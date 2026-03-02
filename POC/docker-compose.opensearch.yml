@@ -1,0 +1,80 @@
+# Optional OpenSearch observability profile (Apache-2 stack)
+#
+# Purpose:
+# - Searchable security/audit events for compliance operations and forensics
+# - OpenSearch Dashboards for analyst-facing investigation workflows
+#
+# This stack is intentionally optional and complements the Phoenix trace workflow.
+
+services:
+  opensearch:
+    image: opensearchproject/opensearch:2.15.0
+    container_name: opensearch
+    hostname: opensearch
+    environment:
+      - discovery.type=single-node
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:9200/_cluster/health >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks:
+      - opensearch-net
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.15.0
+    container_name: opensearch-dashboards
+    hostname: opensearch-dashboards
+    environment:
+      - OPENSEARCH_HOSTS=["http://opensearch:9200"]
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+      - opensearch-net
+
+  audit-log-forwarder:
+    image: cr.fluentbit.io/fluent/fluent-bit:3.1.10
+    container_name: audit-log-forwarder
+    hostname: audit-log-forwarder
+    command: ["/fluent-bit/bin/fluent-bit", "-c", "/fluent-bit/etc/fluent-bit-opensearch-audit.conf"]
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    volumes:
+      - ./config/fluent-bit-opensearch-audit.conf:/fluent-bit/etc/fluent-bit-opensearch-audit.conf:ro
+      - gateway-audit-logs:/audit:ro
+      - fluent-bit-state:/fluent-bit/state
+    networks:
+      - opensearch-net
+
+networks:
+  opensearch-net:
+    driver: bridge
+    name: opensearch-observability-network
+
+volumes:
+  opensearch-data:
+    name: opensearch-data
+  fluent-bit-state:
+    name: fluent-bit-state
+  gateway-audit-logs:
+    name: gateway-audit-logs

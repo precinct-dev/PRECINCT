@@ -104,3 +104,19 @@ func TestAgwComplianceCollect_FrameworkRequired(t *testing.T) {
 		t.Fatalf("expected framework required error, got %q", stderr.String())
 	}
 }
+
+func TestAgwComplianceCollect_OpenSearchRequiresSecretMaterial(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	code := run(
+		[]string{"compliance", "collect", "--framework", "soc2", "--audit-source", "opensearch"},
+		strings.NewReader(""),
+		&stdout,
+		&stderr,
+	)
+	if code != 1 {
+		t.Fatalf("expected exit 1, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "AGW_OPENSEARCH_PASSWORD") {
+		t.Fatalf("expected opensearch password env error, got %q", stderr.String())
+	}
+}

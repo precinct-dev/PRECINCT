@@ -50,6 +50,7 @@ Supporting infrastructure:
 - **KeyDB** -- Session state and rate-limit counters
 - **OPA** -- Policy-as-code with Rego
 - **Phoenix + OTel Collector** -- Distributed tracing and observability
+- **OpenSearch + Dashboards (optional)** -- Indexed audit evidence search for compliance operations and forensics
 
 
 ## Quick Start
@@ -74,6 +75,15 @@ make down && make up
 ```
 
 Phoenix UI is available at `http://localhost:6006` for trace inspection.
+
+Optional compliance/forensics observability profile (Apache-2 stack):
+
+```bash
+make opensearch-up
+make opensearch-seed
+```
+
+OpenSearch Dashboards is available at `http://localhost:5601`.
 
 ## Git Hooks (beads)
 
@@ -132,8 +142,19 @@ scripts/                  Setup and operational scripts
 | `make phoenix-up` | Start Phoenix + OTel collector (persistent traces) |
 | `make phoenix-down` | Stop Phoenix stack (preserves trace data) |
 | `make phoenix-reset` | Stop Phoenix stack and destroy trace data |
+| **OpenSearch Observability (Optional)** | |
+| `make opensearch-up` | Start OpenSearch + Dashboards + audit forwarder |
+| `make opensearch-seed` | Seed OpenSearch index template and dashboard objects |
+| `make opensearch-validate` | Validate OpenSearch health and template wiring |
+| `make opensearch-down` | Stop OpenSearch profile (preserves indexed data) |
+| `make opensearch-reset` | Stop OpenSearch profile and destroy indexed data |
+| `make observability-up` | Start both observability backends (Phoenix + OpenSearch) |
+| `make observability-down` | Stop both observability backends (preserves data) |
+| `make observability-reset` | Destroy all observability backend data |
 | **Kubernetes** | |
 | `make k8s-up` | Deploy to local K8s (Docker Desktop) |
+| `make k8s-opensearch-up` | Deploy local K8s stack plus OpenSearch observability extension |
+| `make k8s-opensearch-down` | Remove OpenSearch extension resources from local K8s deployment |
 | `make k8s-down` | Tear down local K8s deployment |
 | **CI / Quality** | |
 | `make ci` | Full CI pipeline (lint + test + build) |
@@ -157,6 +178,7 @@ scripts/                  Setup and operational scripts
 | [docs/spike-token-substitution.md](docs/spike-token-substitution.md) | SPIKE late-binding secrets |
 | [docs/operations/performance.md](docs/operations/performance.md) | Performance benchmarks |
 | [docs/operations/session-management.md](docs/operations/session-management.md) | Session and exfiltration detection |
+| [docs/operations/opensearch-observability.md](docs/operations/opensearch-observability.md) | Optional OpenSearch + Dashboards observability profile |
 | [docs/compliance/gdpr-article-30-ropa.md](docs/compliance/gdpr-article-30-ropa.md) | GDPR Article 30 compliance |
 | [docs/security/baseline.md](docs/security/baseline.md) | Security baseline |
 | [docs/security/agentic-zero-trust-faq.md](docs/security/agentic-zero-trust-faq.md) | Living FAQ for zero-trust security review questions |
@@ -179,6 +201,6 @@ This is a **reference implementation** validating
 [PRECINCT v2.2](../precinct-reference-architecture.md).
 It demonstrates that a 13-layer security middleware chain can be implemented,
 deployed, and tested end-to-end with real infrastructure (SPIRE, SPIKE, KeyDB,
-OPA, Phoenix) in both Docker Compose and Kubernetes environments.
+OPA, Phoenix, optional OpenSearch) in both Docker Compose and Kubernetes environments.
 
 All 233 backlog stories have been completed and verified.

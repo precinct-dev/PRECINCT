@@ -58,7 +58,7 @@ Token substitution happens last, immediately before the upstream proxy. This is 
 
 ### Core Technology Stack
 
-Four open components work together:
+Five open components work together:
 
 | Component | Role |
 |-----------|------|
@@ -66,6 +66,7 @@ Four open components work together:
 | **SPIKE** | SPIFFE-native secrets management with Shamir Secret Sharing. Agents receive opaque tokens; the gateway substitutes real credentials at egress time. Even if the LLM is compromised, it never sees actual secrets. |
 | **OPA** | Policy-as-code authorization. Fine-grained rules match SPIFFE identity patterns to tool allowlists, path restrictions, destination constraints, and step-up requirements. |
 | **PRECINCT Gateway** | The enforcement point. 38,000 lines of Go implementing the 13-layer chain, with 62,000 lines of tests. Structured logging (slog), OTel metrics, and hash-chained audit events. |
+| **Phoenix + OpenSearch Dashboards (optional)** | Dual observability backends: Phoenix for request-trace waterfalls; OpenSearch Dashboards for indexed audit/compliance investigations and evidence export workflows. |
 
 ---
 
@@ -214,7 +215,7 @@ This uses Kustomize overlays to deploy across isolated namespaces:
 | `gateway` | PRECINCT Gateway |
 | `tools` | MCP Server |
 | `data` | KeyDB |
-| `observability` | OTel Collector, Phoenix UI |
+| `observability` | OTel Collector, Phoenix UI, optional OpenSearch + Dashboards + audit forwarder |
 | `gatekeeper-system` | OPA Gatekeeper for admission control |
 | `cosign-system` | Sigstore Policy Controller for image verification |
 
@@ -333,10 +334,12 @@ Run the complete validation suite:
 # Docker Compose mode
 make demo-compose                          # 28 test scenarios
 make demo-compose-strict-observability     # With strict deep scan enforcement
+make opensearch-up && make opensearch-seed # Optional indexed evidence profile
 
 # Kubernetes mode
 make demo-k8s                              # 28 test scenarios
 make k8s-runtime-campaign                  # Machine-readable validation report
+make k8s-opensearch-up                     # Optional K8s OpenSearch extension
 
 # Unit + integration tests
 go test -race -count=1 ./...               # 1,200+ tests, zero failures
@@ -373,6 +376,8 @@ This means:
 - Compliance evidence is centralized. One audit log, one policy engine, one identity system -- regardless of how many applications connect.
 
 The architecture is open, auditable, and portable. It runs on Docker Compose for development and any Kubernetes cluster for production. All code is Go, all policies are Rego, all identities are SPIFFE, and all evidence is under your control.
+
+For regulated profiles, any indexed evidence backend must follow the same trust model as core services: secret-managed credentials, TLS/mTLS transport, and identity-bound authorization.
 
 ---
 

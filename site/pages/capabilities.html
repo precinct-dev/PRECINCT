@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Capabilities -- Complete PRECINCT Feature Map</title>
+  <meta name="description" content="Complete capability map for PRECINCT: 13-layer runtime controls, governed planes, SDKs, OpenClaw port, compliance tooling, observability, security scans, and deployment options.">
+  <meta name="keywords" content="PRECINCT capabilities, agentic AI security, OpenClaw, SPIFFE, SPIKE, OPA, compliance, observability, Kubernetes, Docker Compose">
+  <meta name="author" content="PRECINCT Contributors">
+  <meta name="robots" content="index, follow">
+
+  <meta property="og:title" content="PRECINCT Capabilities">
+  <meta property="og:description" content="A complete map of all implemented PRECINCT capabilities with proof commands and coverage links.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://precinct.dev/pages/capabilities.html">
+  <meta property="og:site_name" content="PRECINCT">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link active">Capabilities</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+          </ul>
+        </li>
+        <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="page-content">
+    <div class="container">
+      <div class="layout-with-sidebar">
+
+        <aside class="sidebar" aria-label="Page sections">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#snapshot">Capability Snapshot</a></li>
+                <li><a href="#core-security">Core Security Controls</a></li>
+                <li><a href="#runtime-matrix">Runtime Matrix</a></li>
+                <li><a href="#integration">Integration & Platform</a></li>
+                <li><a href="#operations">Operations & Compliance</a></li>
+                <li><a href="#proof-commands">Proof Commands</a></li>
+              </ul>
+            </div>
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">Related</div>
+              <ul>
+                <li><a href="architecture.html">Architecture</a></li>
+                <li><a href="case-study.html">OpenClaw Case Study</a></li>
+                <li><a href="for-auditors.html">For Auditors</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <button class="sidebar-toggle" aria-label="Toggle page navigation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          Page Navigation
+        </button>
+
+        <div class="sidebar-mobile" aria-label="Page sections (mobile)">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#snapshot">Capability Snapshot</a></li>
+                <li><a href="#core-security">Core Security Controls</a></li>
+                <li><a href="#runtime-matrix">Runtime Matrix</a></li>
+                <li><a href="#integration">Integration & Platform</a></li>
+                <li><a href="#operations">Operations & Compliance</a></li>
+                <li><a href="#proof-commands">Proof Commands</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="sidebar-overlay"></div>
+
+        <article class="layout-main content">
+
+          <h1>Complete Capability Map</h1>
+          <p class="lead">
+            This page consolidates the full implemented scope of PRECINCT across runtime enforcement,
+            identity, policy, secrets, observability, compliance, and operational validation.
+            Every item below maps to live code paths and executable proof commands.
+          </p>
+
+          <section id="snapshot">
+            <h2>Capability Snapshot</h2>
+            <div class="card-grid card-grid-4">
+              <div class="card">
+                <h3 class="mt-0">13-Layer Runtime Chain</h3>
+                <p>End-to-end request governance from ingress controls through late-binding token substitution.</p>
+                <span class="badge badge-accent">Runtime Enforcement</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">5 Governed Planes</h3>
+                <p>Model, Tool, Context, Loop, and Ingress policies under one gateway decision fabric.</p>
+                <span class="badge badge-success">Policy Architecture</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Dual Deployment Modes</h3>
+                <p>Production-intent behavior validated in both Docker Compose and Kubernetes workflows.</p>
+                <span class="badge badge-warning">Portable Deployment</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Live Adapter Coverage</h3>
+                <p>OpenClaw secure port with HTTP + WebSocket + webhook paths enforced through gateway policy.</p>
+                <span class="badge badge-default">App Integration</span>
+              </div>
+            </div>
+          </section>
+
+          <section id="core-security">
+            <h2>Core Security Controls</h2>
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Core PRECINCT security controls and what they enforce</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Control Domain</th>
+                    <th scope="col">Implemented Capabilities</th>
+                    <th scope="col">Primary Components</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Identity</strong></td>
+                    <td>SPIFFE IDs, SPIRE issuance and rotation, trust-domain scoped workload identity, mTLS-ready verification.</td>
+                    <td>SPIRE Server/Agent, gateway SPIFFE auth layer</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Authorization</strong></td>
+                    <td>Policy-as-code decisions, risk-aware grants, step-up gating, deterministic deny codes and remediation fields.</td>
+                    <td>OPA/Rego engine, policy bundles, step-up middleware</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Secrets</strong></td>
+                    <td>Late-binding references, SPIFFE-authenticated secret redemption, token scope enforcement, no credential exposure to agents.</td>
+                    <td>SPIKE Nexus/Keepers, token substitution layer (step 13)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Content Protection</strong></td>
+                    <td>Credential DLP blocking, injection detection, deep scan guard model path, session-aware exfiltration pattern tracking.</td>
+                    <td>DLP scanner, deep scan layer, session context engine</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Operational Resilience</strong></td>
+                    <td>Per-identity rate limiting, per-tool circuit breaker, bounded payload handling, consistent health and retry behavior.</td>
+                    <td>Rate limiter, circuit breaker, ingress/request guards</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Traceability</strong></td>
+                    <td>Structured audit records, decision and trace IDs, hash-chain evidence, OpenTelemetry traces to Phoenix, and indexed forensic search via OpenSearch Dashboards.</td>
+                    <td>Audit middleware, OTel collector, Phoenix, OpenSearch extension</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="runtime-matrix">
+            <h2>Runtime Capability Matrix</h2>
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Gateway runtime layer matrix</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Step</th>
+                    <th scope="col">Layer</th>
+                    <th scope="col">What It Enforces</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td><code>0</code></td><td>Request Metrics</td><td>Ingress timing and metadata for observability and diagnostics.</td></tr>
+                  <tr><td><code>1</code></td><td>Request Size Limit</td><td>Early rejection of oversized bodies (10MB default guardrail).</td></tr>
+                  <tr><td><code>2</code></td><td>Body Capture</td><td>Canonical request parsing for downstream policy and security layers.</td></tr>
+                  <tr><td><code>3</code></td><td>SPIFFE Auth</td><td>Identity verification for calling workload/session context.</td></tr>
+                  <tr><td><code>4</code></td><td>Audit Log</td><td>Tamper-evident records with decision metadata.</td></tr>
+                  <tr><td><code>5</code></td><td>Tool Registry Verify</td><td>Tool authorization and hash integrity verification.</td></tr>
+                  <tr><td><code>6</code></td><td>OPA Policy</td><td>Fine-grained policy decisions for actions, tools, and risk level.</td></tr>
+                  <tr><td><code>7</code></td><td>DLP Scanning</td><td>Credential detection, sensitive content handling, injection markers.</td></tr>
+                  <tr><td><code>8</code></td><td>Session Context</td><td>Cross-request state tracking and exfiltration signal accumulation.</td></tr>
+                  <tr><td><code>9</code></td><td>Step-Up Gating</td><td>Additional authorization for elevated-risk operations.</td></tr>
+                  <tr><td><code>10</code></td><td>Deep Scan</td><td>Model-assisted inspection for adversarial payloads.</td></tr>
+                  <tr><td><code>11</code></td><td>Rate Limiting</td><td>Per-identity quotas and burst protections.</td></tr>
+                  <tr><td><code>12</code></td><td>Circuit Breaker</td><td>Upstream-failure isolation and recovery stabilization.</td></tr>
+                  <tr><td><code>13</code></td><td>Token Substitution</td><td>Final-step secret redemption and substitution at egress only.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="integration">
+            <h2>Integration & Platform Coverage</h2>
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Integrations and platform capabilities</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Area</th>
+                    <th scope="col">Coverage</th>
+                    <th scope="col">Where to Explore</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>SDKs</strong></td>
+                    <td>Python and Go SDKs with structured errors and SPIFFE identity propagation.</td>
+                    <td><a href="sdks.html">SDKs page</a></td>
+                  </tr>
+                  <tr>
+                    <td><strong>CLI Operations</strong></td>
+                    <td><code>agw</code> flows for compliance evidence, operations, status, and governance commands.</td>
+                    <td><a href="cli.html">CLI reference</a></td>
+                  </tr>
+                  <tr>
+                    <td><strong>OpenClaw Port</strong></td>
+                    <td>Adapter-secured OpenClaw support including WS messaging and webhook ingress enforcement.</td>
+                    <td><a href="case-study.html">OpenClaw case study</a></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Deployment Targets</strong></td>
+                    <td>Compose for fast local evaluation; Kubernetes overlays for local/dev/staging/prod workflows.</td>
+                    <td><a href="docker-compose.html">Compose</a>, <a href="kubernetes.html">Kubernetes</a></td>
+                  </tr>
+                  <tr>
+                    <td><strong>Observability</strong></td>
+                    <td>Dual backends: Phoenix for trace waterfalls and OpenSearch Dashboards for indexed audit/compliance investigations.</td>
+                    <td><a href="getting-started.html">Getting started</a></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="operations">
+            <h2>Operations, Security, and Compliance Workflow</h2>
+            <p>
+              Beyond runtime controls, PRECINCT includes production-readiness gates and evidence workflows
+              for security and compliance reviews.
+            </p>
+            <ul>
+              <li>Security scans (strict and non-strict) with artifact validation.</li>
+              <li>Manifest policy checks and control matrix verification gates.</li>
+              <li>Compliance reporting and evidence collection flows for audit packages.</li>
+              <li>Dual observability backends: Phoenix for trace analysis and OpenSearch Dashboards for indexed compliance evidence search.</li>
+              <li>Kubernetes OpenSearch extension wired with Secret-backed certs/credentials, SPIRE identities, and NetworkPolicy isolation.</li>
+              <li><code>agw</code> evidence export can pull from OpenSearch over HTTPS + mTLS for compliance-proof workflows.</li>
+              <li>GDPR ROPA visibility and right-to-erasure operation support.</li>
+              <li>Conformance and benchmark harnesses for behavioral and performance validation.</li>
+            </ul>
+          </section>
+
+          <section id="proof-commands">
+            <h2>Proof Commands (Run Locally)</h2>
+            <pre data-lang="bash"><code># Full runtime exercise
+make demo
+
+# OpenClaw secure-port campaign (WS + webhook + policy behavior)
+make openclaw-demo
+
+# Validation suites (compose + k8s)
+make validate
+
+# Strict production-readiness security evidence gate
+make production-readiness-validate
+
+# Compliance automation and reporting
+make compliance-report
+make compliance-evidence FRAMEWORK=soc2
+
+# Optional indexed evidence backend (Apache-2 stack)
+make opensearch-up
+make opensearch-seed
+make opensearch-validate
+
+# Optional K8s OpenSearch extension
+make k8s-opensearch-up
+
+# Compliance evidence from OpenSearch (HTTPS + mTLS)
+export AGW_OPENSEARCH_PASSWORD='<secret>'
+go run ./cmd/agw compliance collect \
+  --framework soc2 \
+  --audit-source opensearch \
+  --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \
+  --opensearch-ca-cert /certs/ca.crt \
+  --opensearch-client-cert /certs/client.crt \
+  --opensearch-client-key /certs/client.key
+
+# Security scans
+make security-scan
+make security-scan-strict</code></pre>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Capability Coverage Guarantee
+              </div>
+              <p>
+                This capability page is intended as the canonical site-level inventory. When new runtime,
+                adapter, operations, or compliance features are added, this page should be updated in the
+                same change set so stakeholder-facing coverage stays complete.
+              </p>
+            </div>
+          </section>
+
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="cli.html">CLI Reference</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="for-auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by <a href="../index.html#sponsors">Cibertrend, Inc.</a> and <a href="../index.html#sponsors">Hextropian Systems, Inc.</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

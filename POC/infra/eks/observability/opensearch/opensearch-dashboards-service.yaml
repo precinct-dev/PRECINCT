@@ -1,0 +1,21 @@
+# ------------------------------------------------------------------------------
+# OpenSearch Dashboards Service (HTTPS)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch-dashboards
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: opensearch-dashboards
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: dashboards
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: opensearch-dashboards
+  ports:
+    - name: https-ui
+      port: 5601
+      targetPort: https-ui
+      protocol: TCP
