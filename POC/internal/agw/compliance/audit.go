@@ -79,20 +79,10 @@ func LoadAuditFromDockerComposeLogs(projectRoot string) ([]map[string]any, error
 }
 
 func CollectAuditEntries(projectRoot, auditLogPath string) ([]map[string]any, string, error) {
-	// Prefer an explicit local file if present (mirrors tools/compliance/generate.py default).
-	if auditLogPath != "" {
-		if _, err := os.Stat(auditLogPath); err == nil {
-			entries, err := LoadAuditJSONLEntries(auditLogPath)
-			return entries, auditLogPath, err
-		}
-	}
-
-	entries, err := LoadAuditFromDockerComposeLogs(projectRoot)
-	if err != nil {
-		// No hard failure: allow evidence package creation even if logs are unavailable.
-		return []map[string]any{}, "docker compose logs (unavailable)", nil
-	}
-	return entries, "docker compose logs", nil
+	return CollectAuditEntriesWithOptions(projectRoot, AuditCollectionOptions{
+		Source:       "auto",
+		AuditLogPath: auditLogPath,
+	})
 }
 
 func WriteAuditSnapshotJSONL(dstPath string, entries []map[string]any) error {

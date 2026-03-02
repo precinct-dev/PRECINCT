@@ -45,6 +45,7 @@
       <ul class="nav-links">
         <li><a href="../index.html" class="nav-link">Home</a></li>
         <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link">Capabilities</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Components <span class="caret" aria-hidden="true"></span>
@@ -590,8 +591,15 @@ agw audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
               <li><strong>Step-up gating:</strong> human-in-the-loop for critical operations at layer 9</li>
               <li><strong>Rate limiting:</strong> per-agent throughput control at layer 11</li>
               <li><strong>Audit trail:</strong> tamper-evident, hash-chained logging at layer 4</li>
+              <li><strong>Dual observability:</strong> Phoenix for request-trace waterfalls and optional OpenSearch Dashboards for indexed audit/compliance investigations</li>
               <li><strong>Late-binding secrets:</strong> credential substitution at layer 13</li>
             </ul>
+
+            <p>
+              For regulated environments, you can collect compliance evidence directly from the
+              OpenSearch index using <code>agw compliance collect --audit-source opensearch</code>
+              with HTTPS and mTLS certificate flags.
+            </p>
 
             <div class="card-grid card-grid-3">
               <div class="card">
@@ -646,6 +654,7 @@ agw audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
           <ul>
             <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
             <li><a href="sdks.html">SDKs</a></li>
             <li><a href="cli.html">CLI Reference</a></li>

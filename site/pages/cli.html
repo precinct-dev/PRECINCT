@@ -45,6 +45,7 @@
       <ul class="nav-links">
         <li><a href="../index.html" class="nav-link">Home</a></li>
         <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link">Capabilities</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Components <span class="caret" aria-hidden="true"></span>
@@ -316,18 +317,34 @@ agw audit verify --file /var/log/precinct/audit.jsonl</code></pre>
           <section id="compliance">
             <h2>agw compliance</h2>
             <p>
-              Generate compliance reports and run automated control checks against active
-              framework mappings.
+              Collect evidence, generate reports, and extract control-specific proof artifacts
+              from local audit files, Docker logs, or OpenSearch.
             </p>
 
-            <pre data-lang="bash"><code># Generate a full compliance report (SOC 2, ISO 27001, NIST)
-agw compliance report --format html --output report.html
+            <pre data-lang="bash"><code># Collect framework evidence package (writes timestamped directory)
+agw compliance collect --framework soc2
 
-# Run control checks for a specific framework
-agw compliance check --framework soc2
+# Generate formatted compliance report artifacts
+agw compliance report --framework soc2 --output pdf
 
-# Export evidence artifacts as a ZIP bundle
-agw compliance evidence --framework iso27001 --output evidence.zip</code></pre>
+# Extract evidence for a single control
+agw compliance evidence --control GW-AUTH-001 --format json</code></pre>
+
+            <h3>OpenSearch-backed evidence collection (HTTPS + mTLS)</h3>
+            <pre data-lang="bash"><code>export AGW_OPENSEARCH_PASSWORD='&lt;secret&gt;'
+
+agw compliance collect \
+  --framework soc2 \
+  --audit-source opensearch \
+  --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \
+  --opensearch-index 'precinct-audit-*' \
+  --opensearch-ca-cert /certs/ca.crt \
+  --opensearch-client-cert /certs/client.crt \
+  --opensearch-client-key /certs/client.key</code></pre>
+            <p>
+              When <code>--audit-source opensearch</code> is selected, the CLI requires a CA cert,
+              client cert/key, and password from environment to enforce secure evidence export.
+            </p>
           </section>
 
           <!-- ========== gdpr ========== -->
@@ -509,6 +526,7 @@ agw status upstreams</code></pre>
           <ul>
             <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
             <li><a href="sdks.html">SDKs</a></li>
             <li><a href="cli.html">CLI Reference</a></li>

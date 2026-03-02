@@ -44,6 +44,7 @@
       <ul class="nav-links">
         <li><a href="../index.html" class="nav-link">Home</a></li>
         <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link">Capabilities</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Components <span class="caret" aria-hidden="true"></span>
@@ -196,6 +197,7 @@
               </p>
               <pre data-lang="bash"><code>cd POC
 make k8s-up        # Deploy to local K8s (Docker Desktop)
+make k8s-opensearch-up  # Optional: add OpenSearch + Dashboards extension
 make demo-k8s      # Run E2E demo
 make k8s-down      # Tear down</code></pre>
             </section>
@@ -251,6 +253,9 @@ graph TB
     subgraph obs-ns["observability"]
       otel["OTel Collector"]
       phoenix-ui["Phoenix UI"]
+      os["OpenSearch (optional)"]
+      osd["OpenSearch Dashboards (optional)"]
+      osf["Audit Forwarder (optional)"]
     end
 
     subgraph gk-ns["gatekeeper-system"]
@@ -269,6 +274,8 @@ graph TB
   gw --> keydb-pod
   gw --> mcp
   gw --> otel
+  osf --> os
+  osd --> os
   gk -.->|admission| gw-ns
   cosign -.->|admission| gw-ns
                 </div>
@@ -311,8 +318,8 @@ graph TB
                     </tr>
                     <tr>
                       <td><code>observability</code></td>
-                      <td>OTel Collector, Phoenix UI</td>
-                      <td>Tracing and monitoring</td>
+                      <td>OTel Collector, Phoenix UI, optional OpenSearch + Dashboards + audit forwarder</td>
+                      <td>Tracing, indexed audit search, and compliance investigations</td>
                     </tr>
                     <tr>
                       <td><code>gatekeeper-system</code></td>
@@ -351,6 +358,11 @@ graph TB
                 <li>
                   <strong>SPIFFE mTLS</strong> for all inter-service communication. No service
                   can communicate without a valid, attested SPIFFE identity.
+                </li>
+                <li>
+                  <strong>Secret-managed certificates and credentials</strong> for the OpenSearch
+                  extension. TLS/mTLS material and auth credentials are mounted from Kubernetes
+                  Secrets only.
                 </li>
                 <li>
                   <strong>Pod Security Standards</strong> enforced per namespace using the
@@ -393,6 +405,11 @@ graph TB
                       <td>join_token attestation, NodePort services</td>
                     </tr>
                     <tr>
+                      <td><code>local-opensearch</code></td>
+                      <td>Docker Desktop + OpenSearch extension</td>
+                      <td>Inherits <code>local</code> plus OpenSearch/Dashboards/audit-forwarder with SPIRE identity and Secret-backed TLS</td>
+                    </tr>
+                    <tr>
                       <td><code>dev</code></td>
                       <td>Development cluster</td>
                       <td>Relaxed policies, header-based identity allowed</td>
@@ -415,6 +432,7 @@ graph TB
                 Preview and validate overlays before applying them to the cluster.
               </p>
               <pre data-lang="bash"><code>kustomize build infra/eks/overlays/local/   # Preview local
+kustomize build infra/eks/overlays/local-opensearch/  # Preview local + OpenSearch
 kustomize build infra/eks/overlays/prod/    # Preview prod
 make k8s-validate                            # Validate all overlays</code></pre>
             </section>
@@ -581,6 +599,7 @@ make k8s-validate                            # Validate all overlays</code></pre
           <ul>
             <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
           </ul>
         </div>

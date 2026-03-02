@@ -9,6 +9,7 @@ For portability class decisions per feature, see [Compose Backport Decision Ledg
 For non-K8s adaptation constraints, see [Non-K8s Cloud Adaptation Guide](architecture/non-k8s-cloud-adaptation-guide.md).
 For strategy and tradeoffs when onboarding apps without upstream source modifications, see [No-Upstream-Modification Integration Playbook](sdk/no-upstream-mod-integration-playbook.md).
 For framework taxonomy mappings (MITRE ATLAS + OWASP Agentic Top 10) on audit signal keys, see [Framework Taxonomy Signal Mappings](security/framework-taxonomy-signal-mappings.md).
+For OpenSearch-based compliance/forensics observability, see [OpenSearch Observability Profile](operations/opensearch-observability.md).
 For detailed prerequisites, see [Prerequisites](getting-started/prerequisites.md).
 For EKS IaC details, see [EKS IaC Approach](eks-iac.md).
 
@@ -64,13 +65,14 @@ This is the primary deployment mode for development and evaluation. The full 13-
 
 ### Step 1: Start Phoenix Observability Stack
 
-Phoenix must be started first because the gateway needs the `phoenix-observability-network` Docker network to send OpenTelemetry traces.
-
 ```bash
 make phoenix-up
 ```
 
 This creates the `phoenix-observability-network`, starts the Phoenix trace viewer and the OpenTelemetry collector, and waits for health checks.
+`make up` will auto-start Phoenix if the shared observability network is missing,
+but explicit `make phoenix-up` remains the recommended preflight when you want
+observability online before core services.
 
 **Verify:** Open [http://localhost:6006](http://localhost:6006) in a browser. The Phoenix UI should load.
 
@@ -81,7 +83,7 @@ make up
 ```
 
 This command:
-1. Verifies that `phoenix-observability-network` exists (fails with a clear error if not)
+1. Ensures `phoenix-observability-network` exists (auto-starts Phoenix when missing)
 2. Builds all container images from source
 3. Starts all services with dependency ordering
 4. Waits for all health checks to pass (`--wait --wait-timeout 180`)
@@ -198,6 +200,10 @@ make k8s-registry
 make k8s-up
 # Alias: make k8s-local-up
 
+# 3b. Optional: include OpenSearch extension (mTLS + dashboards + audit forwarder)
+make k8s-opensearch-up
+# Alias: make k8s-local-opensearch-up
+
 # 4. Verify
 kubectl get pods -A | grep -E '(gateway|spire|spike|data|tools)'
 
@@ -224,6 +230,11 @@ make k8s-down
 6. Generates TLS certs for the policy-controller webhook
 7. Waits for all rollouts: SPIRE server/agent, SPIKE keeper/nexus/bootstrap/seeder, KeyDB, MCP server, gateway
 8. Registers SPIRE workload entries via `make k8s-register-spire`
+
+To include OpenSearch in local K8s, apply the extension overlay:
+
+- `infra/eks/overlays/local-opensearch/` (inherits `overlays/local` and adds `observability/opensearch`)
+- `make k8s-opensearch-up` applies this overlay and waits for OpenSearch rollouts
 
 ### Local Overlay Adaptations
 
@@ -295,7 +306,8 @@ make phoenix-reset
 
 The gateway reaches the OTel collector via the shared `phoenix-observability-network` Docker network. The gateway's `OTEL_EXPORTER_OTLP_ENDPOINT` is set to `otel-collector:4317`.
 
-Phoenix must be started before the main stack (`make phoenix-up` before `make up`) because the gateway container joins the `phoenix-observability-network` and Docker Compose will fail if that network does not exist.
+If Phoenix is not already running, `make up` now auto-runs `make phoenix-up` to
+guarantee the shared network exists before gateway startup.
 
 ### Trace Visibility
 
@@ -304,6 +316,25 @@ Every request through the gateway produces spans showing the full 13-middleware 
 - Which middleware layers triggered (DLP flags, rate limit decisions, deep scan results)
 - Token substitution timing
 - Upstream MCP server response time
+
+### OpenSearch + Dashboards (Optional Compliance/Forensics Profile)
+
+Use this optional profile when you need indexed evidence search and analyst
+dashboards in addition to Phoenix traces:
+
+```bash
+make opensearch-up
+make opensearch-seed
+make opensearch-validate
+```
+
+Endpoints:
+
+- OpenSearch API: `http://localhost:9200`
+- OpenSearch Dashboards: `http://localhost:5601`
+
+This profile re-routes gateway audit JSONL to a shared volume and forwards
+records into OpenSearch (`precinct-audit-*`) via Fluent Bit.
 
 ---
 
@@ -377,6 +408,9 @@ make up
 ```
 
 The gateway container joins the `phoenix-observability-network` to send traces to the OTel collector. If this network does not exist, Docker Compose fails at container creation.
+
+Note: this failure mode is now uncommon because `make up` auto-starts Phoenix when
+the network is missing.
 
 ### SPIRE Entry Registration Must Happen Before Workloads Start
 
@@ -479,6 +513,7 @@ Notes:
 |----------|---------|-------------|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel-collector:4317` | OpenTelemetry collector gRPC endpoint |
 | `OTEL_SERVICE_NAME` | `mcp-security-gateway` | Service name in traces |
+| `AUDIT_LOG_PATH` | `/tmp/audit.jsonl` | Default audit sink path. OpenSearch profile overrides to `/var/log/gateway/audit.jsonl` |
 
 Strict observability evidence gate:
 
@@ -648,7 +683,17 @@ workflow continuity, but that is not equivalent evidence for cloud release sign-
 | `make phoenix-up` | Start Phoenix + OTel collector |
 | `make phoenix-down` | Stop Phoenix (preserves traces) |
 | `make phoenix-reset` | Stop Phoenix + destroy trace data |
+| `make opensearch-up` | Start OpenSearch + Dashboards + audit forwarder |
+| `make opensearch-seed` | Seed OpenSearch index template and dashboard objects |
+| `make opensearch-validate` | Validate OpenSearch profile health and template wiring |
+| `make opensearch-down` | Stop OpenSearch profile (preserves indexed data) |
+| `make opensearch-reset` | Stop OpenSearch profile + destroy indexed data |
+| `make observability-up` | Start both observability backends (Phoenix + OpenSearch) |
+| `make observability-down` | Stop both observability backends (preserves data) |
+| `make observability-reset` | Destroy all observability backend data |
 | `make k8s-up` | Deploy full stack to local K8s |
+| `make k8s-opensearch-up` | Deploy local K8s stack plus OpenSearch observability extension |
+| `make k8s-opensearch-down` | Remove OpenSearch extension resources from local K8s deployment |
 | `make k8s-down` | Teardown local K8s deployment |
 | `make k8s-prereqs` | Install K8s CRD prerequisites (Gatekeeper, sigstore) |
 | `make k8s-registry` | Start local container registry |

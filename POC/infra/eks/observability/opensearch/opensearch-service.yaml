@@ -1,0 +1,44 @@
+# ------------------------------------------------------------------------------
+# OpenSearch Services
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch-headless
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: search
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: opensearch
+  ports:
+    - name: https-api
+      port: 9200
+      targetPort: https-api
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: opensearch
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: search
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: opensearch
+  ports:
+    - name: https-api
+      port: 9200
+      targetPort: https-api
+      protocol: TCP
+    - name: metrics
+      port: 9600
+      targetPort: metrics
+      protocol: TCP

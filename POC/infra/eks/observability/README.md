@@ -6,6 +6,9 @@ Full observability stack for the PRECINCT POC on EKS:
 OTEL collector routing traces to Phoenix, structured audit logs to S3 with
 Object Lock, and Phoenix for trace visualization.
 
+Optional extension: OpenSearch + OpenSearch Dashboards + audit forwarder for
+indexed audit forensics and compliance evidence operations (Apache-2 stack).
+
 ## Architecture
 
 ```
@@ -44,6 +47,7 @@ end-to-end session reconstruction. The `trace_id` in audit events matches the
 | OTEL Collector | `otel-collector/` | Trace/metric/log pipeline |
 | Phoenix | `phoenix/` | Trace visualization and dashboards |
 | Audit S3 Sink | `audit/` | Immutable audit log storage |
+| OpenSearch Extension (optional) | `opensearch/` | Indexed audit search + dashboards |
 | NetworkPolicies | `observability-policies.yaml` | Traffic flow control |
 | Namespace | `observability-namespace.yaml` | Isolation boundary |
 
@@ -54,6 +58,7 @@ end-to-end session reconstruction. The `trace_id` in audit events matches the
 - SPIRE deployed (`make -C ../spire deploy`)
 - kubeconform installed (`brew install kubeconform`) for offline validation
 - For audit S3: OpenTofu/Terraform installed
+- For OpenSearch extension: required TLS and credential secrets created in `observability` namespace (see `opensearch/README.md`)
 
 ## Deployment
 
@@ -84,6 +89,9 @@ make deploy-policies
 
 # 6. (Optional) Deploy audit S3 IAM resources
 make deploy-audit
+
+# 7. (Optional) Deploy OpenSearch extension
+make deploy-opensearch
 ```
 
 ### Audit S3 Setup
@@ -120,6 +128,7 @@ make logs-phoenix
 
 # Validate manifests offline
 make dry-run
+make dry-run-opensearch
 ```
 
 ### Immutable Audit Sink Validation (K8s)
@@ -164,6 +173,22 @@ Phoenix provides operator visibility into:
 
 These views are constructed from the OTEL traces emitted by the gateway's
 13-middleware chain, correlated via `trace_id`.
+
+### OpenSearch Dashboards Access (Optional)
+
+OpenSearch Dashboards is exposed as a ClusterIP service:
+
+```bash
+kubectl -n observability port-forward svc/opensearch-dashboards 5601:5601
+# Access via: https://localhost:5601
+```
+
+OpenSearch API:
+
+```bash
+kubectl -n observability port-forward svc/opensearch 9200:9200
+# Access via: https://localhost:9200
+```
 
 ## Audit Event Schema
 
@@ -223,3 +248,6 @@ cd audit && tofu destroy
 | any | phoenix | 6006 | UI access |
 | otel-collector | kube-dns | 53 | DNS resolution |
 | phoenix | kube-dns | 53 | DNS resolution |
+| opensearch-dashboards | opensearch | 9200 | HTTPS API + mTLS |
+| opensearch-audit-forwarder | opensearch | 9200 | Audit ingest + mTLS |
+| any | opensearch-dashboards | 5601 | Dashboards UI (restrict in production) |

@@ -46,6 +46,7 @@
       <ul class="nav-links">
         <li><a href="../index.html" class="nav-link">Home</a></li>
         <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link">Capabilities</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Components <span class="caret" aria-hidden="true"></span>
@@ -265,6 +266,11 @@ cd agentic_reference_architecture/POC</code></pre>
             <h3>Step 2: Start the observability stack</h3>
             <pre data-lang="bash"><code>make phoenix-up
 # Phoenix UI available at http://localhost:6006</code></pre>
+            <p>
+              Optional indexed audit backend:
+              <code>make opensearch-up && make opensearch-seed</code>
+              (Dashboards at <code>http://localhost:5601</code>).
+            </p>
 
             <h3>Step 3: Start the full PRECINCT stack</h3>
             <pre data-lang="bash"><code>make up
@@ -307,6 +313,11 @@ cd agentic_reference_architecture/POC</code></pre>
             <pre data-lang="bash"><code>cd POC
 make k8s-up
 # Gateway available at http://localhost:30090</code></pre>
+            <p>
+              Optional: deploy the Kubernetes OpenSearch extension with
+              <code>make k8s-opensearch-up</code> once required TLS and credential
+              secrets are provisioned in <code>observability</code>.
+            </p>
 
             <h3>Step 3: Run E2E demo</h3>
             <pre data-lang="bash"><code>make demo-k8s</code></pre>
@@ -639,6 +650,7 @@ make k8s-up
           <ul>
             <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
             <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
           </ul>
         </div>

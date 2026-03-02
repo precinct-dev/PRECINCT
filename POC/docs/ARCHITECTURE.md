@@ -11,7 +11,7 @@
 
 Phase 2 hardens the Docker Compose stack delivered in Phase 1 (70 stories, 13-middleware chain, 594 tests) and extends it to local Kubernetes, real secrets management, cross-request session persistence, mTLS, full observability, and one-button compliance reporting.
 
-The system remains a **reverse-proxy gateway** written in Go that interposes between AI agents and MCP tool servers. Phase 2 adds five infrastructure services (SPIKE Nexus, KeyDB, OTel Collector, Phoenix, SPIRE with mTLS enforcement) and two offline toolchains (compliance report generator, CLI setup wizard).
+The system remains a **reverse-proxy gateway** written in Go that interposes between AI agents and MCP tool servers. Phase 2 adds five core infrastructure services (SPIKE Nexus, KeyDB, OTel Collector, Phoenix, SPIRE with mTLS enforcement), an optional OpenSearch + Dashboards observability extension for indexed forensic/compliance workflows, and two offline toolchains (compliance report generator, CLI setup wizard).
 
 ### 1.1 Architecture Diagram
 
@@ -58,6 +58,7 @@ The system remains a **reverse-proxy gateway** written in Go that interposes bet
 | Session store | KeyDB | eqalpha/keydb:latest | BSD-3 | Redis-compatible, truly open license |
 | Observability | OTel SDK (Go) | 1.28+ | Apache-2.0 | Vendor-neutral, per-middleware spans |
 | Trace backend | Phoenix | latest | Apache-2.0 | OTel-native, zero-config |
+| Evidence search backend (optional) | OpenSearch + OpenSearch Dashboards | 2.x | Apache-2.0 | Indexed audit/compliance investigations and dashboard workflows |
 | OTel pipeline | OTel Collector Contrib | latest | Apache-2.0 | Standard pipeline |
 | Container signing | cosign | 2.2+ | Apache-2.0 | Keyless OIDC signing (K8s only) |
 | Admission | sigstore/policy-controller | latest | Apache-2.0 | Signature verification webhook (K8s only) |
@@ -302,6 +303,7 @@ W3C Trace Context (`traceparent` / `tracestate` headers) is propagated automatic
 1. The gateway's reverse proxy transport injects `traceparent` into outbound requests to MCP servers.
 2. SPIKE Nexus supports trace context propagation natively (it is a Go service using the standard OTel SDK).
 3. The OTel Collector receives spans from all services and forwards them to Phoenix.
+4. When the optional OpenSearch profile is enabled, a Fluent Bit forwarder ships gateway audit JSONL into `precinct-audit-*` indexes for indexed evidence lookup.
 
 **Span attribute schema (contract, per DESIGN.md Section 4.3.3):**
 
@@ -322,11 +324,12 @@ All gateway spans include these attributes:
 **Docker Compose changes:**
 - Gateway adds `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317` and `OTEL_SERVICE_NAME=mcp-security-gateway` to its environment.
 - No collector config changes needed -- it already receives OTLP gRPC on 4317 and exports to Phoenix.
+- Optional OpenSearch profile adds a Fluent Bit audit forwarder and dashboard/object seeding scripts without changing gateway span emission semantics.
 
 **Alternatives rejected:**
 - Metrics-only (no traces): Does not satisfy the "trace a single request through all 13 middleware layers" requirement (Ops persona, DESIGN.md Section 1.4).
 - Jaeger direct export: Would bypass the OTel Collector, losing the pipeline flexibility.
-- Logging-based "traces": Not queryable, not visualizable, does not integrate with Phoenix.
+- Logging-only visibility (without OTel spans): Insufficient for end-to-end middleware latency analysis and cross-service trace correlation.
 
 ---
 
@@ -843,6 +846,8 @@ Every integration point between components is explicitly documented here. This i
 | Gateway -> Collector | OTLP gRPC | `otel-collector:4317` | Spans with middleware attributes |
 | Collector -> Phoenix | OTLP gRPC | `phoenix:4317` | Forwarded spans |
 
+Optional indexed evidence path (compliance/forensics profile): gateway audit JSONL is forwarded by Fluent Bit into OpenSearch indexes (e.g., `precinct-audit-*`) and reviewed in OpenSearch Dashboards.
+
 ### 6.4 Gateway <-> SPIRE Agent
 
 | Direction | Protocol | Endpoint | Data |
@@ -927,7 +932,8 @@ Agent Request
 [Resp Firewall] --- span: gateway.response_firewall ------+
     |                                                      |
     v                                                      v
-Agent Response                                    OTel Collector --> Phoenix
+Agent Response                    OTel Collector --> Phoenix (traces)
+                                  Fluent Bit -----> OpenSearch (optional audit index)
 ```
 
 ### 8.2 SPIKE Nexus Token Lifecycle

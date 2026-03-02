@@ -13,7 +13,7 @@ and runtime values in `docker-compose.yml`.
 1. [Gateway Environment Variables](#1-gateway-environment-variables)
 2. [SPIRE Environment Variables](#2-spire-environment-variables)
 3. [SPIKE Environment Variables](#3-spike-environment-variables)
-4. [Phoenix / OpenTelemetry Environment Variables](#4-phoenix--opentelemetry-environment-variables)
+4. [Phoenix / OpenTelemetry / OpenSearch Variables](#4-phoenix--opentelemetry--opensearch-variables)
 5. [MCP-UI Environment Variables](#5-mcp-ui-environment-variables)
 6. [Configuration Files](#6-configuration-files)
 7. [OPA Policy Structure](#7-opa-policy-structure)
@@ -315,7 +315,7 @@ environment variables. Source: `docker-compose.yml` service definitions.
 
 ---
 
-## 4. Phoenix / OpenTelemetry Environment Variables
+## 4. Phoenix / OpenTelemetry / OpenSearch Variables
 
 The observability stack runs in a separate compose file (`docker-compose.phoenix.yml`).
 
@@ -340,6 +340,58 @@ not environment variables. Key ports:
 | `4317` | gRPC | OTLP gRPC receiver -- gateway sends traces here |
 | `4318` | HTTP | OTLP HTTP receiver |
 | `13133` | HTTP | Health check endpoint |
+
+### OpenSearch Profile (Optional)
+
+OpenSearch is intentionally optional and complements Phoenix traces with indexed
+audit evidence search and dashboards.
+
+Compose files:
+
+- `docker-compose.opensearch.yml` (OpenSearch, Dashboards, Fluent Bit forwarder)
+- `docker-compose.opensearch-bridge.yml` (gateway audit sink override)
+
+Commands:
+
+```bash
+make opensearch-up
+make opensearch-seed
+make opensearch-validate
+```
+
+Profile endpoints:
+
+- OpenSearch API: `http://localhost:9200`
+- OpenSearch Dashboards: `http://localhost:5601`
+
+Profile-specific audit sink override:
+
+| Variable | Profile Value | Description |
+|----------|---------------|-------------|
+| `AUDIT_LOG_PATH` | `/var/log/gateway/audit.jsonl` | Set by `docker-compose.opensearch-bridge.yml` so Fluent Bit can ingest gateway audit JSONL |
+
+### `agw` Compliance Export from OpenSearch
+
+`agw` supports OpenSearch-backed evidence collection for compliance workflows:
+
+```bash
+export AGW_OPENSEARCH_PASSWORD='<secret>'
+go run ./cmd/agw compliance collect \
+  --framework soc2 \
+  --audit-source opensearch \
+  --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \
+  --opensearch-index 'precinct-audit-*' \
+  --opensearch-ca-cert /certs/ca.crt \
+  --opensearch-client-cert /certs/client.crt \
+  --opensearch-client-key /certs/client.key
+```
+
+Security requirements enforced by CLI when `--audit-source opensearch`:
+
+- Password must come from env var (`--opensearch-password-env`, default `AGW_OPENSEARCH_PASSWORD`)
+- `--opensearch-ca-cert` is required
+- `--opensearch-client-cert` and `--opensearch-client-key` are required
+- OpenSearch URL must be `https://`
 
 ---
 

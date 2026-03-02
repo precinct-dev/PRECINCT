@@ -20,7 +20,7 @@ This document presents a comprehensive security architecture for agentic AI syst
 2. **Authorization**: What is the agent permitted to do, and under what conditions?
 3. **Secrets**: How do we provide agents with credentials without exposing them to exfiltration?
 
-The architecture integrates four core technologies:
+The architecture integrates five core technology pillars:
 
 | Component | Function | Role in Architecture |
 |-----------|----------|---------------------|
@@ -28,6 +28,7 @@ The architecture integrates four core technologies:
 | **SPIKE** | Secrets management | SPIFFE-native secrets with late-binding tokens |
 | **OPA** | Authorization | Fine-grained, policy-as-code authorization |
 | **PRECINCT Gateway** | Enforcement | Inline inspection, tool/model/ingress governance, DLP |
+| **OTel + Evidence Backends** | Observability and compliance evidence | Vendor-neutral traces/metrics/logs with optional indexed audit investigations (e.g., OpenSearch Dashboards) |
 
 The architecture supports both:
 - **single-purpose, recyclable agents without long-term memory** (ephemeral workloads), and
@@ -1893,7 +1894,7 @@ flowchart TB
   subgraph EXT["External Systems"]
     TOOLS["Tool Providers / APIs / CLI Adapters"]
     LLM["External/Internal Model Providers"]
-    OBS["OTel + Logs + Immutable Audit Store"]
+    OBS["OTel + Logs + Immutable Audit Store (+ optional OpenSearch Dashboards)"]
   end
 
   AGENT --> U
@@ -1929,6 +1930,7 @@ flowchart TB
 | Tool Registry | ConfigMap + hot reload | 60s refresh |
 | UI Resource Registry | ConfigMap + hot reload | Extends Tool Registry with `ui://` content hashes |
 | UI Capability Grants | OPA policy data | Per-server/tenant UI permission model |
+| Indexed Evidence Backend (optional) | OpenSearch + OpenSearch Dashboards | Compliance/forensics investigations over audit index; use Secret-managed credentials + TLS/mTLS + workload identity in regulated profiles |
 
 ### 8.3 Key Management Hierarchy
 
@@ -2840,7 +2842,8 @@ Recommended approach:
    - `precinct-gateway`
    - `opa-bundle-server` (or a local bundle mount)
    - `tool-registry` (static file for local)
-   - `otel-collector` + a local log sink (stdout/json or Loki)
+   - `otel-collector` + trace backend (Phoenix/OpenInference-compatible)
+   - Optional: `opensearch` + `opensearch-dashboards` + audit forwarder for indexed compliance evidence search
    - Optional: a “dev-mode” SPIFFE/SPIRE setup with clear warnings
 2. Ship **opinionated defaults**:
    - A small starter bundle with common tool policies
@@ -2926,9 +2929,11 @@ Build default dashboards around operator questions:
 - UI capability strips and CSP mediation events (servers requesting UI without approval)
 - UI resource hash mismatches (potential UI rug-pulls)
 - App-driven tool call rates and rate-limit events
+- Indexed audit evidence lookups by `decision_id` / `trace_id` / `session_id`
 
 Each alert should link to:
 - A pre-built trace query
+- A pre-built indexed audit query (if evidence backend is enabled)
 - The policy decision that fired
 - A runbook page with clear mitigation steps
 
@@ -3039,17 +3044,23 @@ If an environment cannot satisfy (2) or (3), treat it as “developer convenienc
 - This architecture already assumes an HSM/KMS root-of-trust for key hierarchy; on-prem deployments should map this to the mandated HSM.
 - Ensure audit signing keys and any WORM/immutability controls meet organizational requirements.
 
-### 10.11 Telemetry Compatibility (OTel First, OpenInference-Friendly)
+### 10.11 Telemetry Compatibility (OTel First, Dual-Backend Friendly)
 
 Telemetry backends vary wildly (Datadog, Splunk, ELK, Grafana stack, cloud-native). The architecture should not require a specific vendor.
 
 **Baseline stance**
 - Use **OpenTelemetry** as the transport/format for traces/metrics/log export (OTLP).
 - Emit a stable **JSON audit event** schema (queryable in any log system).
+- Keep trace analysis and indexed compliance evidence as orthogonal concerns: traces answer execution-path questions, indexed audit backends answer forensic/compliance lookup questions.
 
 **Inference/LLM-specific observability**
 - If teams use Arize Phoenix / OpenInference, provide a mapping layer that annotates OTEL spans with OpenInference-compatible attributes.
 - Treat OpenInference as an optional *semantic convention*, not a hard dependency; the gateway must remain useful with “plain OTEL + JSON logs”.
+
+**Indexed compliance/forensics backend (optional)**
+- Teams may add OpenSearch + OpenSearch Dashboards (Apache-2) for indexed audit investigations and compliance workflows.
+- This is complementary to trace backends, not a replacement for trace waterfalls.
+- In regulated profiles, credentials and certificates for this backend must come from secret management; enforce TLS/mTLS and workload identity on collector/forwarder-to-index transport.
 
 ### 10.12 AI Framework Compatibility (Keep Adoption Low-Friction)
 
@@ -3244,6 +3255,7 @@ These profiles are intended to make the architecture deployable in the environme
 - `opa-bundle` (local file mount or local bundle server)
 - `tool-registry` (static allowlist file)
 - `otel-collector` exporting to stdout JSON (and optionally a local Loki/Tempo stack)
+- Optional: `opensearch` + `opensearch-dashboards` for indexed audit evidence
 
 **Local readiness checklist**
 - Identity: gateway and at least one agent get SPIFFE IDs and can mTLS to each other (dev attestation explicitly enabled).
@@ -3251,6 +3263,7 @@ These profiles are intended to make the architecture deployable in the environme
 - Tool integrity: registry hash verification blocks intentional mismatches (desc/schema).
 - Secrets: SPIKE token mode works end-to-end (agent only sees `$SPIKE{...}`).
 - Audit: each tool call emits one structured audit event with `session_id` and `trace_id`.
+- Optional evidence profile: indexed audit records are queryable by `decision_id` in OpenSearch Dashboards.
 
 **Non-goals / guardrails**
 - This profile may not provide enforceable host-level egress controls; treat as **non-production** unless you can enforce egress at the host/proxy layer.
@@ -3283,6 +3296,7 @@ These profiles are intended to make the architecture deployable in the environme
 - Observability:
   - OTEL collector exports to the org backend; local disk buffering is configured for outages.
   - Logs are structured JSON; correlation fields are present (`trace_id`, `session_id`, `decision_id`).
+  - If indexed evidence backend is enabled, transport to the index uses TLS (mTLS preferred) and credentials are sourced from secrets, not inline config.
 - Audit retention:
   - Audit events are shipped to append-only storage (or at minimum, remote immutable storage).
 
@@ -3328,6 +3342,7 @@ These profiles are intended to make the architecture deployable in the environme
   - Admission policies enforce signed images and pinned digests (and optionally model/policy artifacts).
 - Observability:
   - OTEL collector deployed; dashboards link alerts to traces and policy decisions.
+  - If OpenSearch Dashboards is enabled, index credentials/certs are Secret-managed and index transport is TLS/mTLS with workload identity checks where supported.
 - Operational:
   - Break-glass paths are defined and audited (who can temporarily widen policies).
 
@@ -3358,6 +3373,7 @@ For anything called “production”, all of the following must be true:
 7. **Model egress is mediated**: no direct provider egress from agent workloads (policy + identity + network gates).
 8. **Context invariants are enforced**: `no-scan-no-send`, `no-provenance-no-persist`, `no-verification-no-load`, `minimum-necessary`.
 9. **Profile conformance is real**: deployed controls match `prod_standard` or `prod_regulated_hipaa` expectations.
+10. **Indexed evidence path is hardened (if enabled)**: no plaintext credentials in config; TLS/mTLS and identity-bound access are enforced for audit indexing/query components.
 
 #### 10.13.7 Enforcement Profiles (Resolved Defaults)
 

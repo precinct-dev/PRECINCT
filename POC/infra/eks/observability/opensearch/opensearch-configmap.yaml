@@ -1,0 +1,45 @@
+# ------------------------------------------------------------------------------
+# OpenSearch and Audit Forwarder Config
+#
+# Secrets that MUST be provisioned out-of-band (never committed with values):
+#   - opensearch-node-tls             (keys: tls.crt, tls.key, ca.crt)
+#   - opensearch-client-tls           (keys: tls.crt, tls.key, ca.crt)
+#   - opensearch-dashboards-server-tls (keys: tls.crt, tls.key)
+#   - opensearch-admin-credentials    (keys: username, password)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-config
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: opensearch
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: search
+
+data:
+  opensearch.yml: |
+    cluster.name: precinct-observability
+    node.name: ${HOSTNAME}
+    network.host: 0.0.0.0
+    http.port: 9200
+    discovery.type: single-node
+
+    plugins.security.ssl.transport.pemcert_filepath: tls/tls.crt
+    plugins.security.ssl.transport.pemkey_filepath: tls/tls.key
+    plugins.security.ssl.transport.pemtrustedcas_filepath: tls/ca.crt
+    plugins.security.ssl.transport.enforce_hostname_verification: false
+
+    plugins.security.ssl.http.enabled: true
+    plugins.security.ssl.http.pemcert_filepath: tls/tls.crt
+    plugins.security.ssl.http.pemkey_filepath: tls/tls.key
+    plugins.security.ssl.http.pemtrustedcas_filepath: tls/ca.crt
+    plugins.security.ssl.http.clientauth_mode: REQUIRE
+
+    plugins.security.nodes_dn:
+      - 'CN=opensearch-node,O=PRECINCT'
+    plugins.security.authcz.admin_dn:
+      - 'CN=opensearch-admin,O=PRECINCT'
+
+    plugins.security.allow_default_init_securityindex: true
+    plugins.security.allow_unsafe_democertificates: false
