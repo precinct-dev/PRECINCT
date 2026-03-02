@@ -62,7 +62,8 @@
           </button>
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
-            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem" class="active">Kubernetes</a></li>
+            <li role="none"><a href="helm.html" role="menuitem">Helm</a></li>
           </ul>
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
@@ -73,7 +74,11 @@
           </button>
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="secure-your-agent.html" role="menuitem">Secure Your Agent</a></li>
+            <li role="none"><a href="building-adapters.html" role="menuitem">Building Adapters</a></li>
             <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="python-sdk.html" role="menuitem">Python SDK</a></li>
+            <li role="none"><a href="go-sdk.html" role="menuitem">Go SDK</a></li>
             <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
             <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
           </ul>
@@ -139,6 +144,10 @@
             <li><a href="#immutable-audit">Immutable Audit Storage</a></li>
             <li><a href="#cloud-adaptation">Cloud Adaptation</a></li>
             <li><a href="#production-checklist">Production Checklist</a></li>
+            <li><a href="#cicd">CI/CD Pipeline</a></li>
+            <li><a href="#multi-tenancy">Multi-Tenancy</a></li>
+            <li><a href="#service-mesh">Service Mesh</a></li>
+            <li><a href="#helm-deployment">Helm Deployment</a></li>
           </ul>
         </div>
       </nav>
@@ -159,6 +168,10 @@
               <li><a href="#immutable-audit">Immutable Audit Storage</a></li>
               <li><a href="#cloud-adaptation">Cloud Adaptation</a></li>
               <li><a href="#production-checklist">Production Checklist</a></li>
+              <li><a href="#cicd">CI/CD Pipeline</a></li>
+              <li><a href="#multi-tenancy">Multi-Tenancy</a></li>
+              <li><a href="#service-mesh">Service Mesh</a></li>
+              <li><a href="#helm-deployment">Helm Deployment</a></li>
             </ul>
           </div>
         </aside>
@@ -572,6 +585,162 @@ make k8s-validate                            # Validate all overlays</code></pre
               </ol>
             </section>
 
+            <!-- ======================================================== -->
+            <!-- CI/CD PIPELINE INTEGRATION                                -->
+            <!-- ======================================================== -->
+            <section id="cicd">
+              <h2>CI/CD Pipeline Integration</h2>
+              <p>
+                PRECINCT's kustomize-based manifests integrate naturally with GitOps pipelines.
+                Here are patterns for the most common tools.
+              </p>
+
+              <h3>ArgoCD</h3>
+              <pre data-lang="yaml"><code>apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: precinct
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/RamXX/agentic_reference_architecture
+    targetRevision: main
+    path: POC/infra/eks/overlays/prod
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: precinct
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true</code></pre>
+
+              <h3>Flux</h3>
+              <pre data-lang="yaml"><code>apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: precinct
+  namespace: flux-system
+spec:
+  interval: 5m
+  path: ./POC/infra/eks/overlays/prod
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: precinct</code></pre>
+
+              <h3>GitHub Actions</h3>
+              <pre data-lang="yaml"><code>- name: Deploy PRECINCT
+  run: |
+    kustomize build POC/infra/eks/overlays/${{ env.ENVIRONMENT }} | kubectl apply -f -
+    kubectl rollout status deployment/gateway -n precinct --timeout=300s</code></pre>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- MULTI-TENANCY                                             -->
+            <!-- ======================================================== -->
+            <section id="multi-tenancy">
+              <h2>Multi-Tenancy</h2>
+              <p>
+                For organizations running multiple teams or business units on a shared cluster,
+                PRECINCT supports namespace-based tenant isolation with per-tenant policy boundaries.
+              </p>
+
+              <h3>Namespace Isolation</h3>
+              <p>
+                Deploy separate PRECINCT gateway instances per tenant namespace. Each gateway
+                loads only the OPA policies relevant to that tenant's agents and tools.
+              </p>
+              <pre data-lang="text"><code>precinct-team-alpha/    # Gateway + tools for Team Alpha
+precinct-team-beta/     # Gateway + tools for Team Beta
+spire/                  # Shared SPIRE infrastructure
+spike-system/           # Shared SPIKE secret store</code></pre>
+
+              <h3>SPIRE Trust Domain Segmentation</h3>
+              <p>
+                Use SPIFFE ID path conventions to encode tenant boundaries. OPA policies then
+                enforce that agents can only access tools within their tenant scope:
+              </p>
+              <pre data-lang="rego"><code># Only allow agents to call tools in their own tenant namespace
+allow if {
+    tenant := split(input.caller_spiffe_id, "/")[3]
+    input.target_namespace == concat("-", ["precinct", tenant])
+}</code></pre>
+
+              <h3>RBAC Patterns</h3>
+              <p>
+                Combine Kubernetes RBAC with PRECINCT's OPA policies for defense-in-depth.
+                K8s RBAC controls who can deploy and configure; OPA controls what agents can do at runtime.
+              </p>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- SERVICE MESH INTEGRATION                                  -->
+            <!-- ======================================================== -->
+            <section id="service-mesh">
+              <h2>Service Mesh Integration</h2>
+              <p>
+                PRECINCT uses SPIRE for workload identity and mTLS. If your cluster also runs
+                a service mesh (Istio, Linkerd), coordination is needed to avoid double mTLS
+                and identity conflicts.
+              </p>
+
+              <h3>Istio Coexistence</h3>
+              <ul>
+                <li>
+                  <strong>Disable Istio sidecar injection</strong> for PRECINCT namespaces
+                  (<code>spire</code>, <code>spike-system</code>, <code>precinct</code>)
+                  using the <code>istio-injection: disabled</code> namespace label.
+                </li>
+                <li>
+                  <strong>Alternatively, use PeerAuthentication PERMISSIVE mode</strong> for
+                  the PRECINCT namespace to allow both SPIRE mTLS and Istio mTLS traffic.
+                </li>
+              </ul>
+
+              <h3>Linkerd Coexistence</h3>
+              <ul>
+                <li>
+                  Use the <code>linkerd.io/inject: disabled</code> annotation on PRECINCT pods
+                  to prevent proxy injection. SPIRE handles identity and encryption for all
+                  gateway traffic.
+                </li>
+              </ul>
+
+              <div class="callout callout-warning">
+                <div class="callout-title">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  Avoid Double mTLS
+                </div>
+                <p>
+                  Running both SPIRE mTLS and a service mesh's mTLS on the same connections
+                  adds latency and complexity with no security benefit. Choose one identity
+                  provider per communication path.
+                </p>
+              </div>
+            </section>
+
+            <!-- ======================================================== -->
+            <!-- HELM DEPLOYMENT                                           -->
+            <!-- ======================================================== -->
+            <section id="helm-deployment">
+              <h2>Helm Deployment</h2>
+              <div class="callout callout-info">
+                <div class="callout-title">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                  Prefer Helm?
+                </div>
+                <p>
+                  PRECINCT includes a thin Helm chart that wraps the kustomize overlays with
+                  a post-renderer bridge. This gives you <code>helm install</code> / <code>helm upgrade</code>
+                  workflows while keeping kustomize as the source of truth for manifests.
+                </p>
+                <p>
+                  <a href="helm.html">Helm Deployment Guide &rarr;</a>
+                </p>
+              </div>
+            </section>
+
           </article>
         </main>
 
@@ -601,6 +770,9 @@ make k8s-validate                            # Validate all overlays</code></pre
             <li><a href="architecture.html">Architecture Spec</a></li>
             <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="building-adapters.html">Building Adapters</a></li>
+            <li><a href="cli.html">CLI Reference</a></li>
           </ul>
         </div>
 
@@ -619,6 +791,7 @@ make k8s-validate                            # Validate all overlays</code></pre
           <ul>
             <li><a href="docker-compose.html">Docker Compose</a></li>
             <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="helm.html">Helm</a></li>
             <li><a href="for-auditors.html">For Auditors</a></li>
           </ul>
         </div>

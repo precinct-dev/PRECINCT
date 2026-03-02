@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Capabilities -- Complete PRECINCT Feature Map</title>
-  <meta name="description" content="Complete capability map for PRECINCT: 13-layer runtime controls, governed planes, SDKs, OpenClaw port, compliance tooling, observability, security scans, and deployment options.">
-  <meta name="keywords" content="PRECINCT capabilities, agentic AI security, OpenClaw, SPIFFE, SPIKE, OPA, compliance, observability, Kubernetes, Docker Compose">
+  <meta name="description" content="Complete capability map for PRECINCT: 13-layer runtime controls, governed planes, SDKs, reference port adapter, compliance tooling, observability, security scans, and deployment options.">
+  <meta name="keywords" content="PRECINCT capabilities, agentic AI security, port adapter, SPIFFE, SPIKE, OPA, compliance, observability, Kubernetes, Docker Compose">
   <meta name="author" content="PRECINCT Contributors">
   <meta name="robots" content="index, follow">
 
@@ -61,6 +61,7 @@
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
             <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+            <li role="none"><a href="helm.html" role="menuitem">Helm</a></li>
           </ul>
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
@@ -71,7 +72,11 @@
           </button>
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="secure-your-agent.html" role="menuitem">Secure Your Agent</a></li>
+            <li role="none"><a href="building-adapters.html" role="menuitem">Building Adapters</a></li>
             <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="python-sdk.html" role="menuitem">Python SDK</a></li>
+            <li role="none"><a href="go-sdk.html" role="menuitem">Go SDK</a></li>
             <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
             <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
           </ul>
@@ -125,7 +130,7 @@
               <div class="sidebar-nav-title">Related</div>
               <ul>
                 <li><a href="architecture.html">Architecture</a></li>
-                <li><a href="case-study.html">OpenClaw Case Study</a></li>
+                <li><a href="case-study.html">Adapter Case Study</a></li>
                 <li><a href="for-auditors.html">For Auditors</a></li>
               </ul>
             </div>
@@ -187,7 +192,7 @@
               </div>
               <div class="card">
                 <h3 class="mt-0">Live Adapter Coverage</h3>
-                <p>OpenClaw secure port with HTTP + WebSocket + webhook paths enforced through gateway policy.</p>
+                <p>Reference port adapter with HTTP + WebSocket + webhook paths enforced through gateway policy.</p>
                 <span class="badge badge-default">App Integration</span>
               </div>
             </div>
@@ -254,7 +259,6 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr><td><code>0</code></td><td>Request Metrics</td><td>Ingress timing and metadata for observability and diagnostics.</td></tr>
                   <tr><td><code>1</code></td><td>Request Size Limit</td><td>Early rejection of oversized bodies (10MB default guardrail).</td></tr>
                   <tr><td><code>2</code></td><td>Body Capture</td><td>Canonical request parsing for downstream policy and security layers.</td></tr>
                   <tr><td><code>3</code></td><td>SPIFFE Auth</td><td>Identity verification for calling workload/session context.</td></tr>
@@ -270,6 +274,10 @@
                   <tr><td><code>13</code></td><td>Token Substitution</td><td>Final-step secret redemption and substitution at egress only.</td></tr>
                 </tbody>
               </table>
+              <p>
+                An outer observability wrapper (Request Metrics, step 0) captures timing,
+                size, and routing metadata but is not an enforcement layer.
+              </p>
             </div>
           </section>
 
@@ -297,9 +305,9 @@
                     <td><a href="cli.html">CLI reference</a></td>
                   </tr>
                   <tr>
-                    <td><strong>OpenClaw Port</strong></td>
-                    <td>Adapter-secured OpenClaw support including WS messaging and webhook ingress enforcement.</td>
-                    <td><a href="case-study.html">OpenClaw case study</a></td>
+                    <td><strong>Reference Port Adapter</strong></td>
+                    <td>Adapter-secured application support including WS messaging and webhook ingress enforcement.</td>
+                    <td><a href="case-study.html">Case study</a></td>
                   </tr>
                   <tr>
                     <td><strong>Deployment Targets</strong></td>
@@ -339,8 +347,8 @@
             <pre data-lang="bash"><code># Full runtime exercise
 make demo
 
-# OpenClaw secure-port campaign (WS + webhook + policy behavior)
-make openclaw-demo
+# Reference adapter secure-port campaign (WS + webhook + policy behavior)
+make adapter-demo
 
 # Validation suites (compose + k8s)
 make validate
@@ -412,6 +420,7 @@ make security-scan-strict</code></pre>
             <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
             <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="building-adapters.html">Building Adapters</a></li>
             <li><a href="cli.html">CLI Reference</a></li>
           </ul>
         </div>
@@ -431,6 +440,7 @@ make security-scan-strict</code></pre>
           <ul>
             <li><a href="docker-compose.html">Docker Compose</a></li>
             <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="helm.html">Helm</a></li>
             <li><a href="for-auditors.html">For Auditors</a></li>
           </ul>
         </div>

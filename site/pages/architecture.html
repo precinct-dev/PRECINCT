@@ -65,6 +65,7 @@
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
             <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+            <li role="none"><a href="helm.html" role="menuitem">Helm</a></li>
           </ul>
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
@@ -75,7 +76,11 @@
           </button>
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="secure-your-agent.html" role="menuitem">Secure Your Agent</a></li>
+            <li role="none"><a href="building-adapters.html" role="menuitem">Building Adapters</a></li>
             <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="python-sdk.html" role="menuitem">Python SDK</a></li>
+            <li role="none"><a href="go-sdk.html" role="menuitem">Go SDK</a></li>
             <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
             <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
           </ul>
@@ -321,12 +326,6 @@ graph TB
                 </thead>
                 <tbody>
                   <tr>
-                    <td><code>0</code></td>
-                    <td>Request Metrics</td>
-                    <td>OpenTelemetry counters for timing, size, and routing metadata</td>
-                    <td>&lt;0.1ms</td>
-                  </tr>
-                  <tr>
                     <td><code>1</code></td>
                     <td>Request Size Limit</td>
                     <td>Reject payloads exceeding 10MB before further processing</td>
@@ -420,6 +419,11 @@ graph TB
               </table>
             </div>
 
+            <p>
+              An outer observability wrapper (Request Metrics, step 0) captures timing,
+              size, and routing metadata but is not an enforcement layer.
+            </p>
+
             <div class="callout callout-info">
               <div class="callout-title">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
@@ -452,7 +456,6 @@ graph TB
 sequenceDiagram
     participant Agent
     participant GW as PRECINCT Gateway
-    participant Metrics as 0. Request Metrics
     participant Size as 1. Size Limit
     participant Body as 2. Body Capture
     participant SPIFFE as 3. SPIFFE Auth
@@ -469,8 +472,7 @@ sequenceDiagram
     participant Upstream as MCP Server
 
     Agent->>GW: JSON-RPC Request
-    GW->>Metrics: Record counters
-    Metrics->>Size: Check payload size
+    GW->>Size: Check payload size
     Size->>Body: Buffer body
     Body->>SPIFFE: Verify SVID
     SPIFFE->>Audit: Write audit record
@@ -681,6 +683,9 @@ sequenceDiagram
             <li><a href="architecture.html">Architecture Spec</a></li>
             <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="building-adapters.html">Building Adapters</a></li>
+            <li><a href="cli.html">CLI Reference</a></li>
           </ul>
         </div>
 
@@ -699,6 +704,7 @@ sequenceDiagram
           <ul>
             <li><a href="docker-compose.html">Docker Compose</a></li>
             <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="helm.html">Helm</a></li>
             <li><a href="for-auditors.html">For Auditors</a></li>
           </ul>
         </div>

@@ -1,0 +1,58 @@
+# ------------------------------------------------------------------------------
+# Production Environment Values
+#
+# Three gateway replicas for HA, two MCP server replicas,
+# prod_standard enforcement, mTLS SPIFFE, structured JSON logging,
+# strict PSS, PodDisruptionBudgets, image signature enforcement.
+# Matches POC/infra/eks/overlays/prod/ kustomize overlay.
+# ------------------------------------------------------------------------------
+
+global:
+  environment: prod
+  trustDomain: agentic-ref-arch.poc
+  imageRegistry: ghcr.io/ramxx/agentic-ref-arch
+
+gateway:
+  replicas: 3
+  image:
+    repository: ghcr.io/ramxx/agentic-ref-arch/mcp-security-gateway
+    tag: prod
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  env:
+    logLevel: info
+    spiffeMode: prod
+    enforcementProfile: prod_standard
+    mcpTransportMode: mcp
+    upstreamURL: "https://mcp-server.tools.svc.cluster.local:8081/mcp"
+  service:
+    type: ClusterIP
+    port: 9090
+
+services:
+  mcpServer:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+
+networkPolicies:
+  enabled: true
+
+security:
+  podSecurityStandards: restricted
+
+admissionControl:
+  gatekeeper:
+    enforcementAction: deny
+  sigstore:
+    enabled: true

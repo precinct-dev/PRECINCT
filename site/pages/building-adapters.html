@@ -1,0 +1,1311 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Building Port Adapters -- Adapter Guide | PRECINCT</title>
+  <meta name="description" content="Step-by-step guide to building PRECINCT port adapters for non-MCP applications, using the reference adapter as a complete worked example.">
+  <meta name="keywords" content="PRECINCT adapter, port adapter, PortAdapter, gateway integration, WebSocket, webhook, agentic AI">
+  <meta name="author" content="PRECINCT Contributors">
+  <meta name="robots" content="index, follow">
+
+  <meta property="og:title" content="Building Port Adapters -- Adapter Guide">
+  <meta property="og:description" content="Step-by-step guide to building PRECINCT port adapters for non-MCP applications, using the reference adapter as a complete worked example.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://precinct.dev/pages/building-adapters.html">
+  <meta property="og:site_name" content="PRECINCT">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- HEADER / NAV                                                  -->
+  <!-- ============================================================ -->
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link">Capabilities</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+            <li role="none"><a href="helm.html" role="menuitem">Helm</a></li>
+          </ul>
+        </li>
+        <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="secure-your-agent.html" role="menuitem">Secure Your Agent</a></li>
+            <li role="none"><a href="building-adapters.html" role="menuitem" class="active">Building Adapters</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="python-sdk.html" role="menuitem">Python SDK</a></li>
+            <li role="none"><a href="go-sdk.html" role="menuitem">Go SDK</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <main class="page-content">
+    <div class="container">
+      <div class="layout-with-sidebar">
+
+        <!-- ============================================================ -->
+        <!-- SIDEBAR NAVIGATION                                            -->
+        <!-- ============================================================ -->
+        <aside class="sidebar" aria-label="Page sections">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#when-you-need-adapter">When You Need an Adapter</a></li>
+                <li><a href="#architecture">Architecture Overview</a></li>
+                <li><a href="#port-adapter-interface">The PortAdapter Interface</a></li>
+                <li><a href="#port-gateway-services">PortGatewayServices Facade</a></li>
+                <li><a href="#protocol-layer">Protocol Layer Design</a></li>
+                <li><a href="#http-handler">Building an HTTP Handler</a></li>
+                <li><a href="#websocket-handler">Building a WebSocket Handler</a></li>
+                <li><a href="#webhook-receiver">Building a Webhook Receiver</a></li>
+                <li><a href="#late-binding-secrets">Late-Binding Secrets</a></li>
+                <li><a href="#testing">Testing Your Adapter</a></li>
+                <li><a href="#registration">Registration</a></li>
+                <li><a href="#checklist">Checklist</a></li>
+              </ul>
+            </div>
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">Related</div>
+              <ul>
+                <li><a href="case-study.html">Case Study</a></li>
+                <li><a href="integration-guide.html">Integration Guide</a></li>
+                <li><a href="gateway.html">Gateway</a></li>
+                <li><a href="sdks.html">SDKs</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <!-- Mobile sidebar toggle -->
+        <button class="sidebar-toggle" aria-label="Toggle page navigation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          Page Navigation
+        </button>
+
+        <!-- Mobile sidebar panel -->
+        <div class="sidebar-mobile" aria-label="Page sections (mobile)">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#when-you-need-adapter">When You Need an Adapter</a></li>
+                <li><a href="#architecture">Architecture Overview</a></li>
+                <li><a href="#port-adapter-interface">The PortAdapter Interface</a></li>
+                <li><a href="#port-gateway-services">PortGatewayServices Facade</a></li>
+                <li><a href="#protocol-layer">Protocol Layer Design</a></li>
+                <li><a href="#http-handler">Building an HTTP Handler</a></li>
+                <li><a href="#websocket-handler">Building a WebSocket Handler</a></li>
+                <li><a href="#webhook-receiver">Building a Webhook Receiver</a></li>
+                <li><a href="#late-binding-secrets">Late-Binding Secrets</a></li>
+                <li><a href="#testing">Testing Your Adapter</a></li>
+                <li><a href="#registration">Registration</a></li>
+                <li><a href="#checklist">Checklist</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="sidebar-overlay"></div>
+
+        <!-- ============================================================ -->
+        <!-- MAIN CONTENT                                                  -->
+        <!-- ============================================================ -->
+        <article class="layout-main content">
+
+          <h1>Building Port Adapters</h1>
+          <p class="lead">
+            Port adapters let non-MCP applications route through the PRECINCT gateway's
+            full 13-layer security stack -- identity, policy, DLP, audit, rate limiting --
+            without reimplementing any of it. This guide walks through the complete adapter
+            architecture using the reference adapter (from the <a href="case-study.html">case study</a>) as a worked example.
+          </p>
+
+          <div class="callout callout-info">
+            <div class="callout-title">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              Prerequisite
+            </div>
+            <p>
+              Read the <a href="integration-guide.html">Integration Guide</a> first to understand
+              SPIFFE identity registration, tool setup, and OPA policy configuration. This guide
+              assumes your workload already has a SPIRE entry and can reach the gateway.
+            </p>
+          </div>
+
+          <!-- ========== When You Need an Adapter ========== -->
+          <section id="when-you-need-adapter">
+            <h2>When You Need an Adapter</h2>
+            <p>
+              Not every integration requires a port adapter. PRECINCT offers three integration
+              paths, each appropriate for a different situation. Use the simplest one that
+              meets your needs.
+            </p>
+
+            <div class="card-grid card-grid-3">
+              <div class="card">
+                <h3 class="mt-0">1. MCP-Native</h3>
+                <p>
+                  Your application already speaks MCP (Model Context Protocol). Point it at the
+                  PRECINCT gateway as an MCP proxy. All 13 middleware layers apply automatically.
+                  No code needed.
+                </p>
+                <p><strong>Use when:</strong> the client supports MCP natively (e.g., Claude Desktop,
+                  Cursor, any MCP-compliant agent).</p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">2. SDK</h3>
+                <p>
+                  Use the <a href="sdks.html">Python or Go SDK</a> to call the gateway's JSON-RPC
+                  API directly from your application code. The SDK handles SPIFFE identity injection,
+                  error mapping, and retry logic.
+                </p>
+                <p><strong>Use when:</strong> you control the application code and want to add
+                  individual tool calls or model requests behind the gateway.</p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">3. Port Adapter</h3>
+                <p>
+                  Write a port adapter when your application has its own HTTP/WebSocket/webhook
+                  protocol that differs from MCP. The adapter translates between your protocol
+                  and the gateway's internal plane APIs.
+                </p>
+                <p><strong>Use when:</strong> the application has a pre-existing wire format
+                  (e.g., OpenAI Responses API, custom WebSocket RPC, platform webhooks).</p>
+              </div>
+            </div>
+
+            <div class="callout-note">
+              <strong>Decision rule:</strong> If you can use MCP directly, do that. If you can
+              embed SDK calls, do that. Build an adapter only when you need to front a
+              non-MCP protocol with the full security stack.
+            </div>
+          </section>
+
+          <!-- ========== Architecture Overview ========== -->
+          <section id="architecture">
+            <h2>Architecture Overview</h2>
+            <p>
+              A port adapter sits between the external application and the gateway's internal
+              processing pipeline. The gateway's HTTP handler tries each registered adapter in
+              order; the first adapter whose <code>TryServeHTTP</code> returns <code>true</code>
+              claims the request. Unclaimed requests fall through to the default MCP handler.
+            </p>
+
+            <div class="mermaid">
+graph LR
+    A["External App"] -->|"Custom Protocol"| B["Port Adapter"]
+    B -->|"PortGatewayServices"| C["Gateway Internals"]
+    C --> D["13-Layer Middleware"]
+    D --> E["Upstream / Egress"]
+
+    subgraph "Port Adapter Boundary"
+        B
+    end
+
+    subgraph "Gateway"
+        C
+        D
+    end
+            </div>
+
+            <p>
+              The adapter never touches the middleware chain directly. Instead, it calls
+              methods on the <code>PortGatewayServices</code> facade to build plane requests,
+              evaluate policy, execute egress, write audit logs, and handle errors. The facade
+              delegates to the same internal functions that the MCP path uses, so every
+              adapter gets identical security enforcement.
+            </p>
+
+            <h3>Request Dispatch Flow</h3>
+            <div class="mermaid">
+sequenceDiagram
+    participant Client
+    participant Gateway
+    participant Adapter
+    participant Services as PortGatewayServices
+    participant Upstream
+
+    Client->>Gateway: HTTP Request
+    Gateway->>Adapter: TryServeHTTP(w, r)
+    alt Path matches
+        Adapter->>Services: BuildModelPlaneRequest()
+        Adapter->>Services: EvaluateModelPlaneDecision()
+        alt Decision = allow
+            Adapter->>Services: ExecuteModelEgress()
+            Services->>Upstream: Proxied request
+            Upstream-->>Services: Response
+            Services-->>Adapter: ModelEgressResult
+            Adapter->>Services: LogPlaneDecision()
+            Adapter-->>Client: Translated response
+        else Decision = deny
+            Adapter->>Services: LogPlaneDecision()
+            Adapter-->>Client: Error response
+        end
+        Adapter-->>Gateway: return true
+    else Path does not match
+        Adapter-->>Gateway: return false
+        Gateway->>Gateway: Try next adapter or MCP handler
+    end
+            </div>
+          </section>
+
+          <!-- ========== The PortAdapter Interface ========== -->
+          <section id="port-adapter-interface">
+            <h2>The PortAdapter Interface</h2>
+            <p>
+              The contract for a port adapter is deliberately minimal. It consists of two methods
+              defined in <code>POC/internal/gateway/port.go</code>:
+            </p>
+
+            <pre data-lang="go"><code>// PortAdapter is the extension point for third-party agent integrations.
+// Each adapter claims a set of URL paths and handles matching requests.
+type PortAdapter interface {
+    // Name returns a short, unique identifier for the port.
+    Name() string
+
+    // TryServeHTTP inspects the request and, if the path belongs to this port,
+    // serves it and returns true. Returns false if the request is not handled.
+    TryServeHTTP(w http.ResponseWriter, r *http.Request) bool
+}</code></pre>
+
+            <h3>Contract Rules</h3>
+            <ul>
+              <li><strong><code>Name()</code></strong> must return a unique string identifier. It is used in
+                logging and metrics. The reference adapter returns <code>"openclaw"</code>.</li>
+              <li><strong><code>TryServeHTTP</code></strong> must inspect <code>r.URL.Path</code> and
+                return <code>false</code> if the path does not belong to this adapter. If the path
+                matches, handle the full request and return <code>true</code>. Never write to
+                <code>w</code> when returning <code>false</code>.</li>
+              <li>Use a compile-time check to verify your struct satisfies the interface:
+                <code>var _ gateway.PortAdapter = (*Adapter)(nil)</code></li>
+            </ul>
+
+            <h3>Reference Adapter Example: TryServeHTTP Dispatch</h3>
+            <pre data-lang="go"><code>func (a *Adapter) TryServeHTTP(w http.ResponseWriter, r *http.Request) bool {
+    if r == nil || r.URL == nil {
+        return false
+    }
+
+    // WS path
+    if r.URL.Path == openClawWSPath {
+        a.handleWSEntry(w, r)
+        return true
+    }
+
+    // Webhook paths
+    if strings.HasPrefix(r.URL.Path, webhookBasePath) {
+        a.handleWebhook(w, r)
+        return true
+    }
+
+    // HTTP paths
+    switch r.URL.Path {
+    case protocol.ResponsesPath:
+        a.handleResponses(w, r)
+        return true
+    case protocol.ToolsInvokePath:
+        a.handleToolsInvoke(w, r)
+        return true
+    default:
+        return false
+    }
+}</code></pre>
+
+            <p>
+              The dispatch is a simple path-matching switch. Each matched path delegates to a
+              dedicated handler method. Unrecognized paths return <code>false</code> to let the
+              gateway try the next adapter or fall through to the default MCP handler.
+            </p>
+          </section>
+
+          <!-- ========== PortGatewayServices Facade ========== -->
+          <section id="port-gateway-services">
+            <h2>The PortGatewayServices Facade</h2>
+            <p>
+              The <code>PortGatewayServices</code> interface is the narrow API surface that
+              adapters use to access gateway internals. It is defined in
+              <code>POC/internal/gateway/port.go</code> and implemented by the
+              <code>*Gateway</code> struct in <code>port_services.go</code>.
+            </p>
+
+            <h3>Model Plane</h3>
+            <pre data-lang="go"><code>// Build a PlaneRequestV2 from an HTTP request and OpenAI-compatible payload.
+BuildModelPlaneRequest(r *http.Request, payload map[string]any) PlaneRequestV2
+
+// Evaluate model-plane policy. Returns (decision, reason, httpStatus, metadata).
+EvaluateModelPlaneDecision(r *http.Request, req PlaneRequestV2) (Decision, ReasonCode, int, map[string]any)
+
+// Execute model egress: proxy to the upstream LLM provider.
+ExecuteModelEgress(ctx context.Context, attrs map[string]any,
+    payload map[string]any, authHeader string) (*ModelEgressResult, error)
+
+// Check if policy-intent projection is enabled.
+ShouldApplyPolicyIntentProjection() bool</code></pre>
+
+            <h3>Tool Plane</h3>
+            <pre data-lang="go"><code>// Evaluate a tool request against the tool-plane policy engine.
+EvaluateToolRequest(req PlaneRequestV2) ToolPlaneEvalResult</code></pre>
+
+            <h3>Messaging Egress</h3>
+            <pre data-lang="go"><code>// Execute messaging egress to a platform (WhatsApp, Telegram, Slack).
+ExecuteMessagingEgress(ctx context.Context, attrs map[string]string,
+    payload []byte, authHeader string) (*MessagingEgressResult, error)
+
+// Redeem a SPIKE secret token. Used for per-message token resolution
+// in WebSocket frames that bypass the HTTP middleware chain.
+RedeemSPIKESecret(ctx context.Context, tokenStr string) (string, error)</code></pre>
+
+            <h3>Audit and Logging</h3>
+            <pre data-lang="go"><code>// Log a plane decision with full correlation metadata.
+LogPlaneDecision(r *http.Request, decision PlaneDecisionV2, httpStatus int)
+
+// Write a structured audit event.
+AuditLog(event middleware.AuditEvent)</code></pre>
+
+            <h3>Error Writing</h3>
+            <pre data-lang="go"><code>// Write a structured v24 gateway error response.
+WriteGatewayError(w http.ResponseWriter, r *http.Request,
+    httpCode int, errorCode string, message string,
+    middlewareName string, reason ReasonCode, details map[string]any)</code></pre>
+
+            <h3>Approval Capabilities</h3>
+            <pre data-lang="go"><code>// Validate and consume a one-time step-up approval token.
+ValidateAndConsumeApproval(token string, scope middleware.ApprovalScope) (
+    *middleware.ApprovalCapabilityClaims, error)
+
+// Check if the approval capabilities service is configured.
+HasApprovalService() bool</code></pre>
+
+            <h3>Connector Conformance</h3>
+            <pre data-lang="go"><code>// Validate a connector's identity and signature via CCA runtime check.
+// Returns (allowed, reason).
+ValidateConnector(connectorID, signature string) (bool, string)</code></pre>
+
+            <h3>Exported Helpers</h3>
+            <p>
+              The <code>port.go</code> file also exports several utility functions for use by
+              adapters:
+            </p>
+            <pre data-lang="go"><code>// Correlation IDs from request context.
+GetDecisionCorrelationIDs(r *http.Request, env RunEnvelope) (traceID, decisionID string)
+
+// Merge metadata maps (non-destructive).
+MergeMetadata(base, extra map[string]any) map[string]any
+
+// Safe string extraction with fallback.
+GetStringAttr(attrs map[string]any, key, fallback string) string
+DefaultString(v, fallback string) string
+
+// Policy-intent projection helpers.
+BuildModelPolicyIntentProjection(attrs map[string]any, envelope RunEnvelope) string
+PrependSystemPolicyIntentMessage(payload map[string]any, projection string) bool
+ProjectionHeaderValue(enabled, applied bool) string
+
+// Header and status helpers.
+CopyHeaderIfPresent(dst, src http.Header, key string)
+StatusForToolReason(reason ReasonCode) int</code></pre>
+          </section>
+
+          <!-- ========== Protocol Layer Design ========== -->
+          <section id="protocol-layer">
+            <h2>Protocol Layer Design</h2>
+            <p>
+              A well-structured adapter separates <em>protocol types</em> (wire-format parsing
+              and serialization) from <em>gateway interaction</em> (policy evaluation, egress
+              execution). The reference adapter places all protocol types and parsing functions
+              in a dedicated <code>protocol/</code> subpackage.
+            </p>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Why Separate?
+              </div>
+              <p>
+                Keeping protocol types in their own package lets you unit-test parsing
+                logic in isolation (no gateway dependency) and swap wire formats without
+                changing the adapter's gateway interaction code.
+              </p>
+            </div>
+
+            <h3>Key Protocol Types</h3>
+            <p>
+              From <code>POC/ports/openclaw/protocol/http_adapter.go</code>:
+            </p>
+            <pre data-lang="go"><code>const (
+    ResponsesPath   = "/v1/responses"
+    ToolsInvokePath = "/tools/invoke"
+)
+
+type ResponsesRequest struct {
+    Model           string
+    Messages        []ResponseMessage
+    Instructions    string
+    Stream          bool
+    User            string
+    MaxOutputTokens int
+}
+
+type ResponseMessage struct {
+    Role    string
+    Content string
+}
+
+type ToolsInvokeRequest struct {
+    Tool          string
+    Action        string
+    Args          map[string]any
+    SessionKey    string
+    DryRun        bool
+    ApprovalToken string
+}
+
+type ToolPolicyTarget struct {
+    Action       string
+    Resource     string
+    CapabilityID string
+    Adapter      string
+}</code></pre>
+
+            <h3>Protocol Functions</h3>
+            <p>
+              The protocol package also provides pure parsing and translation functions that
+              contain no gateway dependencies:
+            </p>
+            <pre data-lang="go"><code>// Parse raw JSON into a typed ResponsesRequest.
+func ParseResponsesRequest(raw []byte) (ResponsesRequest, error)
+
+// Convert ResponsesRequest messages into OpenAI-compatible format.
+func BuildOpenAIMessages(req ResponsesRequest) []map[string]any
+
+// Parse raw JSON into a typed ToolsInvokeRequest.
+func ParseToolsInvokeRequest(raw []byte) (ToolsInvokeRequest, error)
+
+// Map a tool invocation to its policy target (action, resource, capability).
+func ResolveToolPolicyTarget(req ToolsInvokeRequest) ToolPolicyTarget
+
+// Check if a tool is on the dangerous-tool blocklist for HTTP.
+func IsDangerousHTTPTool(tool string) bool</code></pre>
+
+            <h3>Dangerous Tool Blocklist</h3>
+            <p>
+              The protocol layer defines a set of tools that are blocked on the HTTP wrapper
+              path for safety. These tools are only permitted through the WebSocket control
+              plane where session-level authorization applies:
+            </p>
+            <pre data-lang="go"><code>var dangerousHTTPToolSet = map[string]struct{}{
+    "sessions_spawn": {},
+    "sessions_send":  {},
+    "gateway":        {},
+    "whatsapp_login": {},
+    "exec":           {},
+    "shell":          {},
+    "bash":           {},
+}</code></pre>
+          </section>
+
+          <!-- ========== Building an HTTP Handler ========== -->
+          <section id="http-handler">
+            <h2>Building an HTTP Handler</h2>
+            <p>
+              HTTP handlers are the most common adapter entry point. The reference adapter
+              exposes two HTTP routes: <code>/v1/responses</code> for the model plane and
+              <code>/tools/invoke</code> for the tool plane.
+            </p>
+
+            <h3>Model Plane: <code>/v1/responses</code></h3>
+            <p>
+              The model-plane handler follows a 10-step flow. Each step calls a
+              <code>PortGatewayServices</code> method rather than reimplementing the logic:
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Model plane handler flow steps</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Step</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Facade Method</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr><td>1</td><td>Validate HTTP method (POST only)</td><td><code>WriteGatewayError</code></td></tr>
+                  <tr><td>2</td><td>Read and parse request body</td><td><code>protocol.ParseResponsesRequest</code></td></tr>
+                  <tr><td>3</td><td>Reject <code>stream=true</code> (unsupported on secure wrapper)</td><td><code>WriteGatewayError</code></td></tr>
+                  <tr><td>4</td><td>Translate to OpenAI-compatible payload</td><td><code>protocol.BuildOpenAIMessages</code></td></tr>
+                  <tr><td>5</td><td>Build the model-plane request</td><td><code>BuildModelPlaneRequest</code></td></tr>
+                  <tr><td>6</td><td>Evaluate model-plane policy (OPA, DLP, identity)</td><td><code>EvaluateModelPlaneDecision</code></td></tr>
+                  <tr><td>7</td><td>Apply policy-intent projection (if enabled)</td><td><code>BuildModelPolicyIntentProjection</code> / <code>PrependSystemPolicyIntentMessage</code></td></tr>
+                  <tr><td>8</td><td>Execute egress to upstream LLM provider</td><td><code>ExecuteModelEgress</code></td></tr>
+                  <tr><td>9</td><td>Log the plane decision with correlation IDs</td><td><code>LogPlaneDecision</code></td></tr>
+                  <tr><td>10</td><td>Translate response to application format, set correlation headers</td><td>(adapter-specific)</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Correlation Headers</h3>
+            <p>
+              Every response from the adapter must include PRECINCT correlation headers so
+              that clients and auditors can trace decisions back to specific policy evaluations:
+            </p>
+            <pre data-lang="go"><code>w.Header().Set("X-Precinct-Decision-ID", decisionID)
+w.Header().Set("X-Precinct-Trace-ID", traceID)
+w.Header().Set("X-Precinct-Reason-Code", string(finalReason))
+w.Header().Set("X-Precinct-Provider-Used", egress.ProviderUsed)
+w.Header().Set("X-Precinct-Policy-Intent-Projection",
+    gateway.ProjectionHeaderValue(projectionEnabled, projectionApplied))</code></pre>
+
+            <h3>Tool Plane: <code>/tools/invoke</code> with Step-Up Approval</h3>
+            <p>
+              The tool-plane handler adds step-up approval support. When the policy engine
+              returns <code>RequireStepUp: true</code>, the adapter checks for an approval
+              token in the request and validates it:
+            </p>
+            <pre data-lang="go"><code>func (a *Adapter) evaluateToolRequest(req gateway.PlaneRequestV2) gateway.ToolPlaneEvalResult {
+    eval := a.gw.EvaluateToolRequest(req)
+    if !eval.RequireStepUp {
+        return eval
+    }
+
+    // Look for approval token in multiple field names.
+    token := strings.TrimSpace(
+        gateway.GetStringAttr(attrs, "approval_capability_token", ""))
+    if token == "" {
+        token = strings.TrimSpace(
+            gateway.GetStringAttr(attrs, "step_up_token", ""))
+    }
+
+    if token == "" {
+        eval.Metadata = gateway.MergeMetadata(eval.Metadata,
+            map[string]any{"step_up_state": "missing_token"})
+        return eval
+    }
+    if !a.gw.HasApprovalService() {
+        eval.Metadata = gateway.MergeMetadata(eval.Metadata,
+            map[string]any{"step_up_state": "approval_service_unavailable"})
+        return eval
+    }
+
+    _, err := a.gw.ValidateAndConsumeApproval(token, middleware.ApprovalScope{
+        Action:        strings.TrimSpace(req.Policy.Action),
+        Resource:      strings.TrimSpace(req.Policy.Resource),
+        ActorSPIFFEID: req.Envelope.ActorSPIFFEID,
+        SessionID:     req.Envelope.SessionID,
+    })
+    if err != nil {
+        eval.Metadata = gateway.MergeMetadata(eval.Metadata,
+            map[string]any{"step_up_state": "invalid_or_expired_token"})
+        return eval
+    }
+
+    eval.RequireStepUp = false
+    eval.Decision = gateway.DecisionAllow
+    eval.Reason = gateway.ReasonToolAllow
+    eval.HTTPStatus = gateway.StatusForToolReason(gateway.ReasonToolAllow)
+    eval.Metadata = gateway.MergeMetadata(eval.Metadata,
+        map[string]any{"step_up_state": "approved_token_consumed"})
+    return eval
+}</code></pre>
+          </section>
+
+          <!-- ========== WebSocket Handler ========== -->
+          <section id="websocket-handler">
+            <h2>Building a WebSocket Handler</h2>
+            <p>
+              WebSocket adapters are more complex than HTTP because they maintain session
+              state across multiple frames. The reference adapter implements a full WS RPC
+              protocol at <code>/openclaw/ws</code>.
+            </p>
+
+            <h3>Connection Lifecycle</h3>
+            <div class="mermaid">
+sequenceDiagram
+    participant Client
+    participant Adapter as WS Adapter
+    participant Services as PortGatewayServices
+
+    Client->>Adapter: WS Upgrade
+    Adapter->>Adapter: Validate upgrade, spawn goroutine
+    Client->>Adapter: {"type":"req", "method":"connect", ...}
+    Adapter->>Adapter: Validate SPIFFE ID, role, scopes
+    Adapter-->>Client: {"type":"res", "ok":true, "payload":{"type":"hello-ok",...}}
+
+    loop Per-message dispatch
+        Client->>Adapter: {"type":"req", "method":"message.send", ...}
+        Adapter->>Adapter: wsAllowed(session, method)?
+        alt Allowed
+            Adapter->>Services: EvaluateToolRequest()
+            Adapter->>Services: RedeemSPIKESecret() (if auth_ref)
+            Adapter->>Services: ExecuteMessagingEgress()
+            Adapter-->>Client: {"type":"res", "ok":true, ...}
+        else Forbidden
+            Adapter-->>Client: {"type":"res", "ok":false, "error":{...}}
+        end
+    end
+            </div>
+
+            <h3>Frame Schema</h3>
+            <p>
+              The WS protocol uses a simple request/response frame format:
+            </p>
+            <pre data-lang="go"><code>type wsRequestFrame struct {
+    Type   string         `json:"type"`   // Always "req"
+    ID     string         `json:"id"`     // Client-generated correlation ID
+    Method string         `json:"method"` // RPC method name
+    Params map[string]any `json:"params,omitempty"`
+}
+
+type wsResponseFrame struct {
+    Type    string         `json:"type"`    // Always "res"
+    ID      string         `json:"id"`      // Echoes the request ID
+    OK      bool           `json:"ok"`
+    Payload map[string]any `json:"payload,omitempty"`
+    Error   *wsErrorShape  `json:"error,omitempty"`
+}</code></pre>
+
+            <h3>Connect Handshake</h3>
+            <p>
+              The first frame after the WebSocket upgrade <em>must</em> be a <code>connect</code>
+              request. The adapter validates:
+            </p>
+            <ul>
+              <li><strong>Role:</strong> must be <code>"operator"</code> or <code>"node"</code>.</li>
+              <li><strong>SPIFFE identity:</strong> must be present in the request context from the
+                upstream mTLS handshake.</li>
+              <li><strong>Device identity:</strong> required for the <code>"node"</code> role, including
+                an <code>auth.token</code> field.</li>
+              <li><strong>Scopes:</strong> parsed from the request and stored in the session for
+                per-method authorization.</li>
+            </ul>
+
+            <h3>Role-Based Method Access</h3>
+            <p>
+              After connection, every method call is checked against the session's role and
+              scopes via the <code>wsAllowed</code> function:
+            </p>
+            <pre data-lang="go"><code>func wsAllowed(session wsSession, method string) bool {
+    switch method {
+    case "health":
+        return true
+    case "devices.list":
+        if session.Role == "operator" { return true }
+        _, ok := session.Scopes["devices:read"]
+        return ok
+    case "devices.ping":
+        if session.Role == "operator" { return true }
+        _, ok := session.Scopes["devices:write"]
+        return ok
+    case "message.send":
+        if session.Role == "operator" { return true }
+        _, ok := session.Scopes["tools.messaging.send"]
+        return ok
+    case "message.status":
+        if session.Role == "operator" { return true }
+        _, ok := session.Scopes["tools.messaging.status"]
+        return ok
+    case "connector.register":
+        return session.Role == "operator"
+    default:
+        return false
+    }
+}</code></pre>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Context Lifetime
+              </div>
+              <p>
+                WebSocket connections outlive the original HTTP upgrade request. The reference
+                adapter uses <code>context.Background()</code> for egress HTTP calls instead
+                of <code>req.Context()</code>, because the upgrade request context may be
+                canceled by the server while the WS connection is still active.
+              </p>
+            </div>
+
+            <h3>Per-Message Audit</h3>
+            <p>
+              Every WS frame -- whether allowed or denied -- is logged through the
+              <code>AuditLog</code> facade method with correlation IDs, the session role,
+              device ID, and the method name:
+            </p>
+            <pre data-lang="go"><code>a.gw.AuditLog(middleware.AuditEvent{
+    SessionID:  sessionID,
+    DecisionID: decisionID,
+    TraceID:    traceID,
+    SPIFFEID:   middleware.GetSPIFFEID(req.Context()),
+    Action:     "openclaw.ws." + method,
+    Result:     result,
+    Method:     http.MethodGet,
+    Path:       openClawWSPath,
+    StatusCode: statusCode,
+})</code></pre>
+          </section>
+
+          <!-- ========== Webhook Receiver ========== -->
+          <section id="webhook-receiver">
+            <h2>Building a Webhook Receiver</h2>
+            <p>
+              Webhook receivers handle inbound platform callbacks (WhatsApp, Telegram, Slack)
+              and route them through the gateway's ingress security stack. The reference adapter
+              registers webhook routes under <code>/openclaw/webhooks/</code>.
+            </p>
+
+            <h3>Platform Extraction</h3>
+            <p>
+              The adapter determines the messaging platform from the URL path:
+            </p>
+            <pre data-lang="go"><code>const (
+    webhookBasePath     = "/openclaw/webhooks"
+    whatsappWebhookPath = webhookBasePath + "/whatsapp"
+    telegramWebhookPath = webhookBasePath + "/telegram"
+    slackWebhookPath    = webhookBasePath + "/slack"
+)
+
+func platformFromPath(path string) string {
+    switch path {
+    case whatsappWebhookPath: return "whatsapp"
+    case telegramWebhookPath: return "telegram"
+    case slackWebhookPath:    return "slack"
+    default:                  return ""
+    }
+}</code></pre>
+
+            <h3>Connector Signature Computation</h3>
+            <p>
+              Before processing any webhook payload, the adapter computes a deterministic
+              connector signature and validates it against the Connector Conformance Authority
+              (CCA):
+            </p>
+            <pre data-lang="go"><code>func computeWebhookConnectorSig(connectorID, platform string) string {
+    canon := map[string]any{
+        "connector_id":   connectorID,
+        "connector_type": "webhook",
+        "platform":       platform,
+    }
+    data, _ := json.Marshal(canon)
+    digest := sha256.Sum256(data)
+    return hex.EncodeToString(digest[:])
+}
+
+// In the handler:
+connectorID := extractConnectorID(payload, platform)
+connectorSig := computeWebhookConnectorSig(connectorID, platform)
+allowed, reason := a.gw.ValidateConnector(connectorID, connectorSig)
+if !allowed {
+    // Reject the webhook
+}</code></pre>
+
+            <h3>Internal Loopback</h3>
+            <p>
+              After validation, the webhook receiver does <em>not</em> process the message
+              directly. Instead, it POSTs a <code>PlaneRequestV2</code> to the gateway's own
+              <code>/v1/ingress/submit</code> endpoint via internal HTTP loopback. This ensures
+              the inbound message passes through the full ingress middleware chain (DLP scanning,
+              replay detection, freshness checks, etc.):
+            </p>
+            <pre data-lang="go"><code>func (a *Adapter) postIngressLoopback(req gateway.PlaneRequestV2) (*http.Response, error) {
+    body, err := json.Marshal(req)
+    if err != nil {
+        return nil, fmt.Errorf("marshal ingress request: %w", err)
+    }
+
+    loopbackURL := a.internalGatewayURL + "/v1/ingress/submit"
+    httpReq, err := http.NewRequest(http.MethodPost, loopbackURL, bytes.NewReader(body))
+    if err != nil {
+        return nil, fmt.Errorf("build loopback request: %w", err)
+    }
+    httpReq.Header.Set("Content-Type", "application/json")
+    // Carry the webhook actor identity for the ingress middleware chain.
+    httpReq.Header.Set("X-SPIFFE-ID", req.Envelope.ActorSPIFFEID)
+
+    client := &http.Client{Timeout: 10 * time.Second}
+    return client.Do(httpReq)
+}</code></pre>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Why Loopback?
+              </div>
+              <p>
+                The loopback pattern reuses the gateway's existing ingress middleware chain
+                instead of duplicating it. This means the webhook gets the same DLP scanning,
+                schema validation, replay detection, and audit logging that any other ingress
+                message receives. The internal gateway URL is configurable via the
+                <code>GATEWAY_INTERNAL_URL</code> environment variable (default:
+                <code>http://localhost:8443</code>).
+              </p>
+            </div>
+          </section>
+
+          <!-- ========== Late-Binding Secrets ========== -->
+          <section id="late-binding-secrets">
+            <h2>Late-Binding Secrets</h2>
+            <p>
+              WebSocket frames bypass the HTTP middleware chain, which means they do not
+              automatically benefit from the SPIKE token substitution middleware (layer 13).
+              Adapters must handle SPIKE token resolution explicitly for per-message secrets.
+            </p>
+
+            <h3><code>$SPIKE{...}</code> References</h3>
+            <p>
+              When a WS frame includes an <code>auth_ref</code> parameter, the adapter checks
+              whether the value is a SPIKE token reference. If so, it calls
+              <code>RedeemSPIKESecret</code> to resolve the actual secret value at call time:
+            </p>
+            <pre data-lang="go"><code>func (a *Adapter) resolveSPIKERef(ctx context.Context,
+    authRef string, fallbackAuth string) (string, error) {
+
+    if strings.TrimSpace(authRef) == "" {
+        return fallbackAuth, nil
+    }
+    if strings.HasPrefix(authRef, "$SPIKE{") {
+        resolved, err := a.gw.RedeemSPIKESecret(ctx, authRef)
+        if err != nil {
+            return "", fmt.Errorf("SPIKE token resolution failed: %w", err)
+        }
+        return "Bearer " + resolved, nil
+    }
+    // Non-SPIKE value -- use as Bearer token directly.
+    return "Bearer " + authRef, nil
+}</code></pre>
+
+            <h3>Bearer Fallback Pattern</h3>
+            <p>
+              The resolution follows a three-tier fallback:
+            </p>
+            <ol>
+              <li>If <code>auth_ref</code> is a <code>$SPIKE{...}</code> token, redeem it via
+                SPIKE Nexus and use the resolved value as a Bearer token.</li>
+              <li>If <code>auth_ref</code> is a plain string, use it directly as a Bearer token.</li>
+              <li>If <code>auth_ref</code> is empty, fall back to the <code>Authorization</code>
+                header from the original WebSocket upgrade request.</li>
+            </ol>
+
+            <p>
+              This pattern ensures that secrets are never stored in the adapter's memory
+              longer than the duration of a single egress call. The SPIKE redeemer in the
+              gateway contacts SPIKE Nexus over mTLS to resolve the token and returns only
+              the secret value.
+            </p>
+          </section>
+
+          <!-- ========== Testing ========== -->
+          <section id="testing">
+            <h2>Testing Your Adapter</h2>
+
+            <h3>Walking Skeleton</h3>
+            <p>
+              Before building a full adapter, create a walking skeleton that validates your
+              plane request shapes against the gateway's policy engine. The reference adapter
+              includes a walking skeleton in
+              <code>POC/ports/openclaw/walking_skeleton/</code> that provides typed builders
+              for each plane without any gateway dependency:
+            </p>
+            <pre data-lang="go"><code>// walking_skeleton/adapter.go
+
+type EnvelopeParams struct {
+    RunID     string
+    SessionID string
+    SPIFFEID  string
+    Plane     string
+}
+
+type ToolExecuteParams struct {
+    EnvelopeParams
+    Resource   string
+    Attributes map[string]any
+}
+
+func BuildToolExecuteRequest(params ToolExecuteParams) map[string]any {
+    resource := params.Resource
+    if resource == "" {
+        resource = "tool/read"
+    }
+    return buildRequest(
+        params.EnvelopeParams,
+        "tool.execute",
+        resource,
+        params.Attributes,
+    )
+}</code></pre>
+
+            <p>
+              The walking skeleton tests verify that request shapes are correct before you
+              start wiring the adapter to real gateway services:
+            </p>
+            <pre data-lang="go"><code>// walking_skeleton/adapter_test.go
+
+func TestBuildToolExecuteRequestSupportsResourceOverride(t *testing.T) {
+    req := BuildToolExecuteRequest(ToolExecuteParams{
+        EnvelopeParams: EnvelopeParams{
+            RunID:     "openclaw-it-tool-deny",
+            SessionID: "openclaw-it-session-1",
+            SPIFFEID:  "spiffe://poc.local/agents/mcp-client/openclaw/dev",
+            Plane:     "tool",
+        },
+        Resource: "tool/write",
+        Attributes: map[string]any{
+            "capability_id": "tool.unapproved.mcp",
+            "tool_name":     "write",
+        },
+    })
+
+    policy := mapField(t, req["policy"])
+    if policy["resource"] != "tool/write" {
+        t.Fatalf("expected tool/write resource, got %v", policy["resource"])
+    }
+}</code></pre>
+
+            <h3>Unit Tests with Mock PortGatewayServices</h3>
+            <p>
+              For unit testing the adapter itself, create a mock that implements the
+              <code>PortGatewayServices</code> interface. The interface has a deliberately
+              narrow surface (12 methods), making mocks straightforward:
+            </p>
+            <pre data-lang="go"><code>type mockGatewayServices struct {
+    buildModelReq     func(r *http.Request, payload map[string]any) gateway.PlaneRequestV2
+    evaluateModelDec  func(r *http.Request, req gateway.PlaneRequestV2) (
+                          gateway.Decision, gateway.ReasonCode, int, map[string]any)
+    executeModelEg    func(ctx context.Context, attrs map[string]any,
+                          payload map[string]any, auth string) (*gateway.ModelEgressResult, error)
+    evaluateToolReq   func(req gateway.PlaneRequestV2) gateway.ToolPlaneEvalResult
+    // ... remaining methods
+}
+
+func (m *mockGatewayServices) BuildModelPlaneRequest(
+    r *http.Request, payload map[string]any) gateway.PlaneRequestV2 {
+    if m.buildModelReq != nil {
+        return m.buildModelReq(r, payload)
+    }
+    return gateway.PlaneRequestV2{}
+}
+// ... implement remaining interface methods</code></pre>
+
+            <h3>Integration Tests with Real Stack</h3>
+            <p>
+              Integration tests should run against a real gateway instance with SPIRE, OPA,
+              and SPIKE configured. Use <code>docker compose</code> or a Kubernetes cluster
+              to stand up the full stack, then send requests to your adapter's routes:
+            </p>
+            <pre data-lang="bash"><code># Start the full stack
+make demo-compose
+
+# Test the model plane
+curl -s -X POST http://localhost:9090/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/openclaw/dev" \
+  -d '{"model":"gpt-4o-mini","input":"Hello, world"}'
+
+# Test the tool plane
+curl -s -X POST http://localhost:9090/tools/invoke \
+  -H "Content-Type: application/json" \
+  -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/openclaw/dev" \
+  -d '{"tool":"tavily_search","args":{"query":"test"}}'
+
+# Verify correlation headers in response
+curl -s -D - -X POST http://localhost:9090/v1/responses \
+  -H "Content-Type: application/json" \
+  -H "X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/openclaw/dev" \
+  -d '{"model":"gpt-4o-mini","input":"test"}' 2>&1 | grep X-Precinct</code></pre>
+          </section>
+
+          <!-- ========== Registration ========== -->
+          <section id="registration">
+            <h2>Registration</h2>
+            <p>
+              Registering an adapter is a single line in <code>cmd/gateway/main.go</code>.
+              After creating the gateway instance and before starting the HTTP server, call
+              <code>RegisterPort</code>:
+            </p>
+
+            <pre data-lang="go"><code>// POC/cmd/gateway/main.go, line 96
+gw.RegisterPort(openclaw.NewAdapter(gw))</code></pre>
+
+            <p>
+              The <code>RegisterPort</code> method appends the adapter to the gateway's
+              dispatch chain:
+            </p>
+            <pre data-lang="go"><code>// POC/internal/gateway/port_services.go
+func (g *Gateway) RegisterPort(adapter PortAdapter) {
+    g.portAdapters = append(g.portAdapters, adapter)
+}</code></pre>
+
+            <p>
+              Multiple adapters can be registered. The gateway tries them in registration
+              order; the first one whose <code>TryServeHTTP</code> returns <code>true</code>
+              wins the request.
+            </p>
+
+            <h3>Adapter Constructor Pattern</h3>
+            <p>
+              Adapters receive the gateway as a <code>PortGatewayServices</code> interface,
+              not a concrete <code>*Gateway</code> pointer. This keeps the coupling narrow
+              and testable:
+            </p>
+            <pre data-lang="go"><code>type Adapter struct {
+    gw                 gateway.PortGatewayServices
+    internalGatewayURL string
+}
+
+func NewAdapter(gw gateway.PortGatewayServices) *Adapter {
+    gwURL := os.Getenv("GATEWAY_INTERNAL_URL")
+    if gwURL == "" {
+        gwURL = "http://localhost:8443"
+    }
+    return &Adapter{gw: gw, internalGatewayURL: gwURL}
+}
+
+// For testing with an explicit loopback URL:
+func NewAdapterWithLoopbackURL(
+    gw gateway.PortGatewayServices, loopbackURL string) *Adapter {
+    return &Adapter{gw: gw, internalGatewayURL: loopbackURL}
+}</code></pre>
+          </section>
+
+          <!-- ========== Checklist ========== -->
+          <section id="checklist">
+            <h2>Checklist</h2>
+            <p>
+              Use this checklist to ensure your adapter is complete and ready to ship.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Adapter implementation checklist</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Item</th>
+                    <th scope="col">Description</th>
+                    <th scope="col">File</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Interface compliance</td>
+                    <td>Struct implements <code>gateway.PortAdapter</code> with compile-time check</td>
+                    <td><code>adapter.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>Name() unique</td>
+                    <td>Returns a short, unique identifier not used by other adapters</td>
+                    <td><code>adapter.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>TryServeHTTP dispatch</td>
+                    <td>Path matching returns <code>false</code> for unrecognized paths; never writes to <code>w</code> when returning <code>false</code></td>
+                    <td><code>adapter.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>Protocol types separated</td>
+                    <td>Wire-format types and parsing in a <code>protocol/</code> subpackage</td>
+                    <td><code>protocol/</code></td>
+                  </tr>
+                  <tr>
+                    <td>Model plane handler</td>
+                    <td>Calls <code>BuildModelPlaneRequest</code>, <code>EvaluateModelPlaneDecision</code>, <code>ExecuteModelEgress</code>, <code>LogPlaneDecision</code></td>
+                    <td><code>http_handler.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>Tool plane handler</td>
+                    <td>Evaluates tool policy, handles step-up approval, logs decisions</td>
+                    <td><code>http_handler.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>Correlation headers</td>
+                    <td>Every response sets <code>X-Precinct-Decision-ID</code>, <code>X-Precinct-Trace-ID</code>, <code>X-Precinct-Reason-Code</code></td>
+                    <td><code>http_handler.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>Error responses</td>
+                    <td>Uses <code>WriteGatewayError</code> for framework errors; includes correlation headers in custom error responses</td>
+                    <td><code>http_handler.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>WS handler (if needed)</td>
+                    <td>Connect handshake, role/scope validation, per-message audit, <code>context.Background()</code> for egress</td>
+                    <td><code>ws_handler.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>Webhook receiver (if needed)</td>
+                    <td>Connector signature validation, internal loopback to <code>/v1/ingress/submit</code></td>
+                    <td><code>webhook_receiver.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>SPIKE token resolution</td>
+                    <td><code>$SPIKE{...}</code> references resolved via <code>RedeemSPIKESecret</code> with Bearer fallback</td>
+                    <td><code>messaging_egress.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>Walking skeleton tests</td>
+                    <td>Request-shape builders with unit tests, no gateway dependency</td>
+                    <td><code>walking_skeleton/</code></td>
+                  </tr>
+                  <tr>
+                    <td>Unit tests</td>
+                    <td>Mock <code>PortGatewayServices</code>, test all handler paths (allow, deny, error)</td>
+                    <td><code>*_test.go</code></td>
+                  </tr>
+                  <tr>
+                    <td>Integration tests</td>
+                    <td>Real gateway + SPIRE + OPA stack, test full request lifecycle</td>
+                    <td><code>e2e/</code></td>
+                  </tr>
+                  <tr>
+                    <td>Registration</td>
+                    <td>One-line <code>gw.RegisterPort(yourpkg.NewAdapter(gw))</code> in <code>cmd/gateway/main.go</code></td>
+                    <td><code>main.go</code></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="building-adapters.html">Building Adapters</a></li>
+            <li><a href="cli.html">CLI Reference</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="helm.html">Helm</a></li>
+            <li><a href="for-auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by Cibertrend, Inc. and Hextropian Systems, Inc.
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

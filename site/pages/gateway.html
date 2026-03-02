@@ -65,6 +65,7 @@
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
             <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+            <li role="none"><a href="helm.html" role="menuitem">Helm</a></li>
           </ul>
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
@@ -75,7 +76,11 @@
           </button>
           <ul class="dropdown-menu" role="menu">
             <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="secure-your-agent.html" role="menuitem">Secure Your Agent</a></li>
+            <li role="none"><a href="building-adapters.html" role="menuitem">Building Adapters</a></li>
             <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="python-sdk.html" role="menuitem">Python SDK</a></li>
+            <li role="none"><a href="go-sdk.html" role="menuitem">Go SDK</a></li>
             <li role="none"><a href="cli.html" role="menuitem">CLI</a></li>
             <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
           </ul>
@@ -776,9 +781,10 @@ extensions:
 
             <h3>Per-Middleware Latency Breakdown</h3>
             <p>
-              Individual middleware latency is observable via OpenTelemetry metrics exported from
-              layer 0 (Request Metrics). Each middleware emits timing spans that can be visualized
-              in any OTel-compatible backend (Jaeger, Grafana Tempo, Datadog).
+              An outer observability wrapper (Request Metrics, step 0) captures timing,
+              size, and routing metadata (&lt;0.1ms overhead). Each enforcement layer below
+              emits timing spans observable in any OTel-compatible backend (Jaeger,
+              Grafana Tempo, Datadog).
             </p>
 
             <div class="table-wrapper">
@@ -792,11 +798,6 @@ extensions:
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td>0. Request Metrics</td>
-                    <td>&lt;0.05ms</td>
-                    <td>&lt;0.1ms</td>
-                  </tr>
                   <tr>
                     <td>1. Request Size Limit</td>
                     <td>&lt;0.05ms</td>
@@ -907,6 +908,9 @@ extensions:
             <li><a href="architecture.html">Architecture Spec</a></li>
             <li><a href="capabilities.html">Capabilities</a></li>
             <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="building-adapters.html">Building Adapters</a></li>
+            <li><a href="cli.html">CLI Reference</a></li>
           </ul>
         </div>
 
@@ -925,6 +929,7 @@ extensions:
           <ul>
             <li><a href="docker-compose.html">Docker Compose</a></li>
             <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="helm.html">Helm</a></li>
             <li><a href="for-auditors.html">For Auditors</a></li>
           </ul>
         </div>
