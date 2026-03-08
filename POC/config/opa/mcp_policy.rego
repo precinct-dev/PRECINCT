@@ -42,6 +42,7 @@ allow := {
     destination_allowed(input.tool, input.params)
     step_up_satisfied(input.tool, input.step_up_token)
     session_risk_acceptable
+    principal_level_acceptable
 }
 
 # True when at least one grant matches the caller SPIFFE ID.
@@ -263,6 +264,72 @@ allow := {
     destination_allowed(input.tool, input.params)
     step_up_satisfied(input.tool, input.step_up_token)
     not session_risk_acceptable
+}
+
+
+# OC-3ch6: Principal level insufficient for requested operation
+allow := {
+    "allow": false,
+    "reason": "principal_level_insufficient"
+} if {
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
+    path_allowed(input.tool, input.params)
+    destination_allowed(input.tool, input.params)
+    step_up_satisfied(input.tool, input.step_up_token)
+    session_risk_acceptable
+    not principal_level_acceptable
+}
+
+# ============================================================================
+# OC-3ch6: Principal-aware authorization rules
+# ============================================================================
+
+default principal_level_acceptable := true
+
+principal_level_acceptable := false if {
+    input.principal != null
+    input.principal.level > 2
+    is_destructive_action
+}
+
+principal_level_acceptable := false if {
+    input.principal != null
+    input.principal.level > 1
+    is_data_export_action
+}
+
+principal_level_acceptable := false if {
+    input.principal != null
+    input.principal.level > 3
+    is_messaging_action
+}
+
+principal_level_acceptable := false if {
+    input.principal != null
+    input.principal.level == 5
+    input.path != "/health"
+}
+
+is_destructive_action if {
+    action := lower(input.action)
+    keywords := ["delete", "rm", "remove", "drop", "reset", "wipe", "shutdown", "terminate", "revoke", "purge", "destroy"]
+    keyword := keywords[_]
+    contains(action, keyword)
+}
+
+is_data_export_action if {
+    action := lower(input.action)
+    keywords := ["export", "dump", "backup", "extract", "exfil"]
+    keyword := keywords[_]
+    contains(action, keyword)
+}
+
+is_messaging_action if {
+    action := lower(input.action)
+    keywords := ["message", "notify", "broadcast", "send_agent", "agent_invoke"]
+    keyword := keywords[_]
+    contains(action, keyword)
 }
 
 # RFA-qq0.19: Poisoning pattern detection

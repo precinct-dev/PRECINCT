@@ -15,7 +15,8 @@ const (
 	// OPA Policy (step 6) -- 403 Forbidden
 	ErrAuthzPolicyDenied    = "authz_policy_denied"
 	ErrAuthzNoMatchingGrant = "authz_no_matching_grant"
-	ErrAuthzToolNotFound    = "authz_tool_not_found"
+	ErrAuthzToolNotFound          = "authz_tool_not_found"
+	ErrPrincipalLevelInsufficient = "principal_level_insufficient" // OC-3ch6
 
 	// Tool Registry (step 5) -- 403 Forbidden
 	ErrRegistryHashMismatch = "registry_hash_mismatch"

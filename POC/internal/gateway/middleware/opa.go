@@ -27,6 +27,15 @@ func NewOPAClient(endpoint string) *OPAClient {
 	}
 }
 
+// PrincipalInput represents the principal authority metadata for OPA policy evaluation.
+// OC-3ch6: Enables level-based access control for destructive operations, data export,
+// inter-agent messaging, and anonymous access.
+type PrincipalInput struct {
+	Level        int      `json:"level"`
+	Role         string   `json:"role"`
+	Capabilities []string `json:"capabilities"`
+}
+
 // OPAInput represents input to OPA policy evaluation
 type OPAInput struct {
 	SPIFFEID    string                 `json:"spiffe_id"`
@@ -37,7 +46,8 @@ type OPAInput struct {
 	Params      map[string]interface{} `json:"params"`
 	StepUpToken string                 `json:"step_up_token"`
 	Session     SessionInput           `json:"session"`
-	UI          *UIInput               `json:"ui,omitempty"` // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
+	UI          *UIInput               `json:"ui,omitempty"`        // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
+	Principal   *PrincipalInput        `json:"principal,omitempty"` // OC-3ch6: principal authority for level-based access control
 }
 
 // SessionInput represents session data for OPA evaluation
@@ -240,6 +250,15 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 			Session:     sessionInput,
 		}
 
+		// OC-3ch6: Populate principal from request context for level-based access control
+		if role := GetPrincipalRole(ctx); role.Role != "" {
+			input.Principal = &PrincipalInput{
+				Level:        role.Level,
+				Role:         role.Role,
+				Capabilities: role.Capabilities,
+			}
+		}
+
 		// RFA-j2d.7: Populate UI section from request context when MCP-UI is relevant.
 		// The UI context values are set by upstream middleware or the gateway handler
 		// (e.g., from X-UI-Call-Origin header, session state, or gateway config).
@@ -296,13 +315,21 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 					),
 				)
 			}
+			// OC-3ch6: Use specific error code when OPA denies due to principal level
+			errorCode := ErrAuthzPolicyDenied
+			remediation := "Check that the SPIFFE ID has a grant for the requested tool and path."
+			if reason == "principal_level_insufficient" {
+				errorCode = ErrPrincipalLevelInsufficient
+				remediation = "The principal's authority level is insufficient for this operation. A higher-privilege identity is required."
+			}
+
 			WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
-				Code:           ErrAuthzPolicyDenied,
+				Code:           errorCode,
 				Message:        fmt.Sprintf("Policy denied: %s", reason),
 				Middleware:     "opa_policy",
 				MiddlewareStep: 6,
 				Details:        map[string]any{"reason": reason},
-				Remediation:    "Check that the SPIFFE ID has a grant for the requested tool and path.",
+				Remediation:    remediation,
 			})
 			return
 		}
