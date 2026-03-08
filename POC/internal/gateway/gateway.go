@@ -602,9 +602,10 @@ func (g *Gateway) Handler() http.Handler {
 		toolHashRefresher,
 		middleware.WithObservedHashFailClosed(failClosedObservedHash),
 	) // 5
-	handler = middleware.AuditLog(handler, g.auditor)                            // 4
-	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                // 3
-	handler = middleware.BodyCapture(handler)                                    // 2
+	handler = middleware.AuditLog(handler, g.auditor)                                                // 4
+	handler = middleware.PrincipalHeaders(handler, g.config.SPIFFETrustDomain, g.config.SPIFFEMode) // 3b: OC-t7go
+	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                  // 3
+	handler = middleware.BodyCapture(handler)                                                       // 2
 	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
 	handler = middleware.RequestMetrics(handler)                                 // 0 - outermost: record request_total with status code
 	handler = middleware.RuntimeProfile(handler, g.config.SPIFFEMode, g.config.EnforcementProfile)
