@@ -33,6 +33,7 @@ const (
 	ErrStepUpGuardBlocked          = "stepup_guard_blocked"
 	ErrStepUpDestinationBlocked    = "stepup_destination_blocked"
 	ErrStepUpUnavailableFailClosed = "stepup_unavailable_fail_closed"
+	ErrIrreversibleActionDenied    = "irreversible_action_denied" // OC-h4m7: step 9, HTTP 403
 
 	// Deep Scan (step 10) -- 403 / 503
 	ErrDeepScanBlocked               = "deepscan_blocked"

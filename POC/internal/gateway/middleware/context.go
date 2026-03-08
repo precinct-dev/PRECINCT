@@ -26,6 +26,7 @@ const (
 	contextKeyDLPRulesetDigest          contextKey = "dlp_ruleset_digest"
 	contextKeyRuntimeSPIFFEMode         contextKey = "runtime_spiffe_mode"
 	contextKeyRuntimeEnforcementProfile contextKey = "runtime_enforcement_profile"
+	contextKeyPrincipalLevel            contextKey = "principal_level" // OC-h4m7: principal trust level (0=system, 1=owner, 2=operator, 3=agent, 4=external)
 )
 
 // SecurityFlagsCollector is a mutable container for security flags that
@@ -281,4 +282,18 @@ func GetRuntimeEnforcementProfile(ctx context.Context) string {
 		return v.(string)
 	}
 	return ""
+}
+
+// GetPrincipalLevel retrieves the principal trust level from context (OC-h4m7).
+// Returns 0 (system/highest trust) if not set.
+func GetPrincipalLevel(ctx context.Context) int {
+	if v := ctx.Value(contextKeyPrincipalLevel); v != nil {
+		return v.(int)
+	}
+	return 0
+}
+
+// WithPrincipalLevel adds principal trust level to context (OC-h4m7).
+func WithPrincipalLevel(ctx context.Context, level int) context.Context {
+	return context.WithValue(ctx, contextKeyPrincipalLevel, level)
 }
