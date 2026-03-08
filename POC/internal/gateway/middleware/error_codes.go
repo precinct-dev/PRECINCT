@@ -15,7 +15,8 @@ const (
 	// OPA Policy (step 6) -- 403 Forbidden
 	ErrAuthzPolicyDenied    = "authz_policy_denied"
 	ErrAuthzNoMatchingGrant = "authz_no_matching_grant"
-	ErrAuthzToolNotFound    = "authz_tool_not_found"
+	ErrAuthzToolNotFound          = "authz_tool_not_found"
+	ErrPrincipalLevelInsufficient = "principal_level_insufficient" // OC-3ch6
 
 	// Tool Registry (step 5) -- 403 Forbidden
 	ErrRegistryHashMismatch = "registry_hash_mismatch"
@@ -33,6 +34,7 @@ const (
 	ErrStepUpGuardBlocked          = "stepup_guard_blocked"
 	ErrStepUpDestinationBlocked    = "stepup_destination_blocked"
 	ErrStepUpUnavailableFailClosed = "stepup_unavailable_fail_closed"
+	ErrIrreversibleActionDenied    = "irreversible_action_denied" // OC-h4m7: step 9, HTTP 403
 
 	// Deep Scan (step 10) -- 403 / 503
 	ErrDeepScanBlocked               = "deepscan_blocked"

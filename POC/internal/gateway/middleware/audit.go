@@ -29,6 +29,8 @@ type AuditEvent struct {
 	DecisionID     string         `json:"decision_id"`
 	TraceID        string         `json:"trace_id"`
 	SPIFFEID       string         `json:"spiffe_id"`
+	PrincipalLevel int            `json:"principal_level"`          // OC-t7go: numeric authority level (0-5)
+	PrincipalRole  string         `json:"principal_role,omitempty"` // OC-t7go: role string (system, owner, etc.)
 	Action         string         `json:"action"`
 	Result         string         `json:"result"`
 	Method         string         `json:"method"`
@@ -45,9 +47,12 @@ type AuditEvent struct {
 
 // SecurityAudit contains security-related audit information
 type SecurityAudit struct {
-	ToolHashVerified bool           `json:"tool_hash_verified"`
-	SafeZoneFlags    []string       `json:"safezone_flags,omitempty"`
-	FrameworkRefs    *FrameworkRefs `json:"framework_refs,omitempty"`
+	ToolHashVerified      bool           `json:"tool_hash_verified"`
+	SafeZoneFlags         []string       `json:"safezone_flags,omitempty"`
+	FrameworkRefs         *FrameworkRefs `json:"framework_refs,omitempty"`
+	ReversibilityScore    int            `json:"reversibility_score,omitempty"`    // OC-h4m7: 0-3 reversibility score
+	ReversibilityCategory string         `json:"reversibility_category,omitempty"` // OC-h4m7: reversible/costly_reversible/partially_reversible/irreversible
+	BackupRecommended     bool           `json:"backup_recommended,omitempty"`     // OC-lmzm: true when pre-action snapshot recommended (Score >= 2)
 }
 
 // AuthzAudit contains authorization-related audit information
@@ -365,6 +370,13 @@ func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 		collector := &SecurityFlagsCollector{}
 		ctx = WithFlagsCollector(ctx, collector)
 
+		// OC-t7go: Create a mutable principal role collector so the
+		// PrincipalHeaders middleware (step 3b) can propagate the resolved
+		// role back to this audit middleware. Same upstream-propagation
+		// pattern as SecurityFlagsCollector.
+		principalCollector := &PrincipalRoleCollector{}
+		ctx = WithPrincipalRoleCollector(ctx, principalCollector)
+
 		// Wrap response writer to capture status code
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
@@ -407,18 +419,29 @@ func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 			attribute.String("mcp.reason", "audit logged"),
 		)
 
+		// OC-t7go: Read principal role from the collector (upstream-propagated)
+		// with fallback to context value for backward compatibility.
+		var principal PrincipalRole
+		if principalCollector.Role != nil {
+			principal = *principalCollector.Role
+		} else {
+			principal = GetPrincipalRole(ctx)
+		}
+
 		auditor.Log(AuditEvent{
-			SessionID:     sessionID,
-			DecisionID:    decisionID,
-			TraceID:       GetTraceID(ctx),
-			SPIFFEID:      GetSPIFFEID(ctx),
-			Action:        "mcp_request",
-			Result:        "completed",
-			Method:        r.Method,
-			Path:          r.URL.Path,
-			StatusCode:    wrapped.statusCode,
-			Security:      securityAudit,
-			Authorization: authzAudit,
+			SessionID:      sessionID,
+			DecisionID:     decisionID,
+			TraceID:        GetTraceID(ctx),
+			SPIFFEID:       GetSPIFFEID(ctx),
+			PrincipalLevel: principal.Level,
+			PrincipalRole:  principal.Role,
+			Action:         "mcp_request",
+			Result:         "completed",
+			Method:         r.Method,
+			Path:           r.URL.Path,
+			StatusCode:     wrapped.statusCode,
+			Security:       securityAudit,
+			Authorization:  authzAudit,
 		})
 	})
 }
