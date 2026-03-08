@@ -275,25 +275,31 @@ The following maps each of the 16 case studies from the Agents of Chaos paper to
 | Case Study | Threat Description | PRECINCT Control |
 |---|---|---|
 | #8 (Identity spoofing via authority confusion) | Agent impersonates a higher-privilege principal or confuses identity boundaries | SPIFFE/SPIRE workload identity (middleware step 3), Principal Hierarchy with SPIFFE-to-role resolution |
+| #11 (Privilege confusion across task contexts) | Agent uses elevated context from one task to act in another, spoofing authorization level | SPIFFE/SPIRE per-workload identity isolation, OPA policy with task-scoped claims (middleware step 6) |
 
 #### Tampering
 
 | Case Study | Threat Description | PRECINCT Control |
 |---|---|---|
+| #2 (Conversation history manipulation) | Agent rewrites or suppresses its own action history to hide malicious behavior | Hash-chained audit logging (middleware step 4) provides tamper-evident history independent of agent-controlled context |
+| #9 (Misdirection via false tool outputs) | Agent or compromised tool returns fabricated results to mislead downstream decisions | Tool registry hash verification (middleware step 5), response firewall with output validation, deep scan (middleware step 10) |
 | #10 (Mutable external data source / rug-pull) | External data source modified after initial verification to inject malicious content | Tool registry hash verification (middleware step 5), Data Source Integrity with MutablePolicy enforcement |
 
 #### Repudiation
 
 | Case Study | Threat Description | PRECINCT Control |
 |---|---|---|
-| All applicable cases | Agent disputes actions taken or denies responsibility for harmful outputs | Hash-chained audit logging (middleware step 4), structured JSON audit with trace/session/decision IDs |
+| #2 (Conversation history manipulation) | Agent rewrites or suppresses its own action history to deny accountability | Hash-chained audit logging (middleware step 4), structured JSON audit with trace/session/decision IDs; gateway-side audit is independent of agent-controlled history |
+| #7 (Memory destruction / gaslighting) | Agent deletes or alters shared memory to deny prior actions occurred | Hash-chained audit logging (middleware step 4), immutable audit trail with cryptographic integrity verification (`middleware/audit_verify.go`) |
 
 #### Information Disclosure
 
 | Case Study | Threat Description | PRECINCT Control |
 |---|---|---|
 | #3 (SSN in email body) | Sensitive PII embedded in outbound agent communication | DLP scanner (middleware step 7), Channel Mediation with content routing through middleware |
+| #13 (Side-channel leakage via timing or metadata) | Sensitive information leaked through timing patterns, metadata, or observable side effects | Rate limiting normalization (middleware step 1), structured response shaping, audit log access controls |
 | #14 (Data exfiltration) | Agent exfiltrates data through side channels or legitimate tool responses | Response firewall, late-binding secret substitution, egress budgets |
+| #15 (Out-of-band command injection via steganography) | Hidden instructions embedded in images, PDFs, or other binary payloads bypass text-based scanning | Deep scan path (middleware step 10) with multi-modal content analysis, strict input validation and content-type enforcement |
 
 #### Denial of Service
 
@@ -301,13 +307,17 @@ The following maps each of the 16 case studies from the Agents of Chaos paper to
 |---|---|---|
 | #4 (Instruction loops) | Agent trapped in infinite loop consuming resources | Rate limits and circuit breakers, immutable run envelopes with step/time/cost bounds |
 | #5 (Resource exhaustion) | Agent consumes excessive compute, memory, or API quota | Rate limiting (middleware step 1), provider budget policy, Channel Mediation for unbounded consumption |
+| #16 (Long-horizon persistence) | Agent plants triggers or maintains hidden state for future exploitation, sustaining resource drain over time | Session context tracking (middleware step 8) with TTL enforcement, immutable run envelopes with step/time/cost bounds, audit trail anomaly detection |
 
 #### Elevation of Privilege
 
 | Case Study | Threat Description | PRECINCT Control |
 |---|---|---|
 | #1 (Progressive destruction) | Agent gradually escalates actions from benign to destructive | Escalation Detection with EscalationScore formula, Irreversibility Gating with ClassifyActionDestructiveness |
+| #6 (Cross-agent prompt injection via shared memory) | One agent poisons shared context to hijack another agent's actions with elevated privileges | Input sanitization and injection scanning (middleware steps 7, 10), per-workload SPIFFE identity isolation, OPA policy enforcement per principal |
 | #7 (Concession accumulation) | Agent incrementally extracts permissions through repeated small requests | Session context tracking (middleware step 8), Escalation Detection with threshold alerts (Warning=15/Critical=25/Emergency=40) |
+| #11 (Privilege confusion across task contexts) | Agent carries over elevated permissions from one task context to act in another | OPA policy with task-scoped claims (middleware step 6), per-request authorization evaluation, SPIFFE identity scoping |
+| #12 (Gradual policy erosion) | Agent makes incremental exceptions to security policies, accumulating concessions until controls are effectively bypassed | Escalation Detection (middleware step 8) with cumulative scoring, immutable OPA policy bundles with signed artifacts, audit trail for policy override patterns |
 
 ### Threat Coverage Matrix (Updated)
 
@@ -317,16 +327,27 @@ The following matrix summarizes PRECINCT control coverage against the threat cat
 |---|---|---|---|---|
 | Spoofing | #8 | SPIFFE/SPIRE workload identity | Step 3 | `middleware/spiffe_auth.go` |
 | Spoofing | #8 | Principal Hierarchy (NEW) | Step 3 | SPIFFE-to-role resolution, X-Precinct-Principal-Level header |
+| Spoofing | #11 | Per-workload identity isolation | Step 3 | SPIFFE/SPIRE task-scoped claims, OPA policy enforcement |
+| Tampering | #2 | Hash-chained audit logging | Step 4 | `middleware/audit.go`, tamper-evident history |
+| Tampering | #9 | Response validation + deep scan | Steps 5, 10 | Tool registry hash verification, output validation |
 | Tampering | #10 | Tool registry hash verification | Step 5 | `middleware/tool_registry.go` |
 | Tampering | #10 | Data Source Integrity (NEW) | Step 5 | DataSourceDefinition struct, MutablePolicy enforcement |
-| Repudiation | All | Hash-chained audit logging | Step 4 | `middleware/audit.go`, `middleware/audit_verify.go` |
-| Info Disclosure | #3, #14 | DLP scanner | Step 7 | `middleware/dlp.go` |
+| Repudiation | #2 | Hash-chained audit logging | Step 4 | `middleware/audit.go`, gateway-side audit independent of agent history |
+| Repudiation | #7 | Immutable audit trail | Step 4 | `middleware/audit_verify.go`, cryptographic integrity verification |
+| Info Disclosure | #3 | DLP scanner | Step 7 | `middleware/dlp.go` |
 | Info Disclosure | #3 | Channel Mediation (NEW) | Steps 7, 10 | Ed25519 webhook verification, content routing |
+| Info Disclosure | #13 | Rate limiting normalization | Step 1 | Timing side-channel mitigation, structured response shaping |
+| Info Disclosure | #14 | Response firewall + egress budgets | Steps 7, 10 | Late-binding secret substitution, DLP scanner |
+| Info Disclosure | #15 | Deep scan with content analysis | Step 10 | Multi-modal content analysis, content-type enforcement |
 | DoS | #4, #5 | Rate limits and circuit breakers | Step 1 | Rate limiter middleware |
 | DoS | #4, #5 | Channel Mediation (NEW) | Steps 7, 10 | Unbounded consumption prevention |
+| DoS | #16 | Session TTL + run envelopes | Step 8 | Session context tracking, step/time/cost bounds |
 | EoP | #1 | Irreversibility Gating (NEW) | Step 9 | ClassifyActionDestructiveness, automatic step-up |
 | EoP | #1, #7 | Escalation Detection (NEW) | Step 8 | EscalationScore (Impact x (4 - Reversibility)), thresholds |
+| EoP | #6 | Input sanitization + identity isolation | Steps 7, 10, 3 | Injection scanning, per-workload SPIFFE identity |
 | EoP | #7 | Session context tracking | Step 8 | `middleware/session_context.go` |
+| EoP | #11 | Task-scoped OPA policy | Step 6 | Per-request authorization, SPIFFE identity scoping |
+| EoP | #12 | Cumulative escalation scoring | Step 8 | Immutable OPA bundles, audit trail for policy overrides |
 
 ## Suggested Next Step
 
