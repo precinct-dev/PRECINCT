@@ -787,10 +787,25 @@ func StepUpGating(
 		// The tool name itself often encodes the action (e.g., "delete_resource"),
 		// so we pass it as the action parameter for keyword matching.
 		rev := ClassifyReversibility(toolName, toolName, params, toolDef)
-		principalLevel := GetPrincipalLevel(ctx)
+		// OC-h4m7: Read principal level from the struct-based PrincipalRole set by
+		// PrincipalHeaders middleware (OC-t7go). Fall back to the int-based key
+		// (set by legacy or direct WithPrincipalLevel callers) so both paths work.
+		principalLevel := GetPrincipalRole(ctx).Level
+		if principalLevel == 0 {
+			if l := GetPrincipalLevel(ctx); l != 0 {
+				principalLevel = l
+			}
+		}
 
 		// OC-h4m7: Inject X-Precinct-Reversibility header into proxied request
+		// and response (so callers know the classification even on denials).
 		r.Header.Set("X-Precinct-Reversibility", rev.Category)
+		w.Header().Set("X-Precinct-Reversibility", rev.Category)
+		if rev.RequiresBackup {
+			// Advisory header: set on response for all requests with Score>=2.
+			// X-Precinct-Backup-Recommended on the request is set later (only when allowed).
+			w.Header().Set("X-Precinct-Backup-Recommended", "true")
+		}
 
 		// Compute risk score with reversibility-aware overrides
 		riskScore := ComputeRiskScore(toolDef, session, destination, isExternal, registry, allowlist, riskConfig.UnknownToolDefaults,
