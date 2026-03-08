@@ -16,7 +16,9 @@ to the upstream MCP server.
    - [POST / -- Main JSON-RPC Endpoint](#post----main-json-rpc-endpoint)
    - [POST /data/dereference -- Response Firewall Handle Dereference](#post-datadereference----response-firewall-handle-dereference)
    - [GET /health -- Health Check](#get-health----health-check)
+   - [Port Adapter Endpoints](#port-adapter-endpoints)
 2. [Required Headers](#required-headers)
+   - [Response Headers](#response-headers)
 3. [SPIFFE ID Schema](#spiffe-id-schema)
 4. [JSON-RPC 2.0 Wire Format](#json-rpc-20-wire-format)
 5. [Error Response Envelope](#error-response-envelope)
@@ -201,6 +203,30 @@ Contract details and lifecycle semantics are defined in
 
 ---
 
+### Port Adapter Endpoints
+
+Port adapters translate external protocol requests into `PlaneRequestV2` structs and
+run them through the full middleware chain.
+
+#### Discord Adapter Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/discord/send` | Send Discord message (DLP-scanned, SPIKE token redeemed) |
+| POST | `/discord/webhooks` | Receive Discord webhook (Ed25519 verified) |
+| POST | `/discord/commands` | Execute Discord bot command (tool plane evaluation) |
+
+#### Email Adapter Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/email/send` | Send email (DLP-scanned subject+body, mass-send detection) |
+| POST | `/email/webhooks` | Receive email webhook |
+| GET/POST | `/email/list` | List email metadata |
+| POST | `/email/read` | Read email content (auto-classified) |
+
+---
+
 ### Approval Capability Admin Endpoints
 
 High-risk tool/model operations can use short-lived bounded approval capabilities:
@@ -323,6 +349,32 @@ before upstream proxy forwarding:
 - In `SPIFFE_MODE=dev` (default), `X-SPIFFE-ID` is accepted as a plain header.
 - In `SPIFFE_MODE=prod`, the SPIFFE ID is extracted from the mTLS client certificate and the header is ignored.
 - The `X-Session-ID` must be a valid UUID. The session context middleware uses it to track data flow across requests for exfiltration detection.
+
+### Response Headers
+
+The gateway injects the following headers into proxied responses:
+
+| Header | Type | Description |
+|--------|------|-------------|
+| `X-Precinct-Principal-Level` | integer | Authority level (0=system, 5=anonymous) |
+| `X-Precinct-Principal-Role` | string | Role name (owner, agent, external_user, etc.) |
+| `X-Precinct-Principal-Capabilities` | string (comma-sep) | Authorized capabilities (e.g., "execute,read,write") |
+| `X-Precinct-Auth-Method` | string | `mtls_svid` (prod) or `header_declared` (dev) |
+| `X-Precinct-Reversibility` | string | reversible, costly_reversible, partially_reversible, irreversible |
+| `X-Precinct-Backup-Recommended` | boolean string | `"true"` if Score >= 2 |
+| `X-Precinct-Escalation-Score` | float | Session escalation score (0.0+) |
+
+---
+
+## Proxied Request Headers
+
+The gateway injects advisory headers into proxied requests forwarded to the upstream MCP server.
+These headers are set by the middleware chain and provide security context to the agent framework.
+
+| Header | Type | Set When | Description |
+|--------|------|----------|-------------|
+| `X-Precinct-Reversibility` | string | Always (for tool calls) | Reversibility category of the action: `reversible`, `costly_reversible`, `partially_reversible`, or `irreversible` |
+| `X-Precinct-Backup-Recommended` | boolean string | `RequiresBackup=true` AND action allowed | Set to `"true"` when the action requires a pre-execution state snapshot (reversibility Score >= 2). Agent frameworks should capture current state before executing. Absent for reversible actions or denied requests. |
 
 ---
 
@@ -471,6 +523,8 @@ Complete catalog of all 25 error codes defined in `internal/gateway/middleware/e
 | `authz_policy_denied` | 6 | 403 | `opa_policy` | OPA policy explicitly denied access to this tool | Check OPA policy grants for this agent/tool combination |
 | `authz_no_matching_grant` | 6 | 403 | `opa_policy` | No OPA grant matches this agent and tool combination | Add a grant in the OPA policy for this SPIFFE ID and tool |
 | `authz_tool_not_found` | 6 | 403 | `opa_policy` | The tool was not found in OPA policy data | Add the tool to the OPA data document |
+| `principal_level_insufficient` | 6 | 403 | `opa_policy` | Requester's principal level too low for this action | Ensure the caller's SPIFFE ID maps to a principal level with adequate privileges for the requested tool |
+| `irreversible_action_denied` | 9 | 403 | `step_up_gating` | Irreversible action denied: non-owner + escalated session | Obtain step-up authorization or human approval before executing irreversible actions |
 | `dlp_credentials_detected` | 7 | 403 | `dlp_scan` | Credentials (API keys, passwords, tokens) detected in request payload. **Always blocked** -- this is a security invariant | Use `$SPIKE{ref:...}` token references instead of embedding secrets |
 | `dlp_injection_blocked` | 7 | 403 | `dlp_scan` | Prompt injection patterns detected and blocked by DLP policy | Remove injection patterns from the request. Policy configurable via `DLP_INJECTION_POLICY` env var (`block` or `flag`) |
 | `dlp_pii_blocked` | 7 | 403 | `dlp_scan` | Personally identifiable information detected and blocked by DLP policy | Remove PII from the request or adjust DLP policy in `risk_thresholds.yaml` |
@@ -498,6 +552,20 @@ Complete catalog of all 25 error codes defined in `internal/gateway/middleware/e
 | `mcp_transport_failed` | proxy | 502 | `mcp_transport` | Transport-level failure (connection refused, timeout, TLS error) | Ensure the upstream MCP server is running and accessible |
 | `mcp_request_failed` | proxy | 502 | `mcp_transport` | The upstream MCP server returned a JSON-RPC error | Check the upstream MCP server logs for the root cause |
 | `mcp_invalid_response` | proxy | 502 | `mcp_transport` | The upstream MCP server returned a malformed or oversized response | Verify the MCP server returns valid JSON-RPC 2.0 responses within `MAX_REQUEST_SIZE_BYTES` |
+
+### Data Source and Escalation Errors
+
+| Code | Step | HTTP | Middleware | Description | Remediation |
+|------|------|------|------------|-------------|-------------|
+| `data_source_hash_mismatch` | 5 | 403 | `tool_registry_verify` | External data source content does not match registered hash | Re-register the data source with the correct content hash, or investigate potential tampering |
+| `unregistered_data_source` | 5 | 403 | `tool_registry_verify` | Data source URI not in registry | Register the data source in `config/tool-registry.yaml` |
+| `escalation_emergency` | 8 | 403 | `session_context` | Session escalation score exceeds emergency threshold | Review session action history; reduce destructive operations or start a new session |
+
+### Port Adapter Errors
+
+| Code | Step | HTTP | Middleware | Description | Remediation |
+|------|------|------|------------|-------------|-------------|
+| `discord_signature_invalid` | N/A | 401 | Port | Discord webhook Ed25519 signature verification failed | Verify `DISCORD_PUBLIC_KEY` env var matches the Discord application's public key |
 
 ---
 

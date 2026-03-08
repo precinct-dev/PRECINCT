@@ -83,6 +83,90 @@ Produced artifacts:
 **Accepted:** 2026-02-06  
 **Review Date:** Ongoing
 
+## Architectural Security Controls
+
+The following controls address threat patterns validated by external research (Shapira et al., 2026, *Agents of Chaos*, arXiv:2602.20021v1).
+
+### Channel Mediation
+
+**Purpose:** Prevent prompt injection via unmediated external channels and unbounded resource consumption.
+
+**Implementation:**
+
+- Middleware chain step 7 (DLP) and step 10 (deep scan) route all channel content through security pipeline
+- Ed25519 signature verification for webhook and event-driven ingress
+- Content normalization before agent ingestion
+
+**Evidence:**
+
+- DLP middleware: `internal/gateway/middleware/dlp.go`
+- Deep scan middleware: `internal/gateway/middleware/deep_scan.go`
+- Middleware chain ordering: `internal/gateway/gateway.go`
+
+### Data Source Integrity
+
+**Purpose:** Prevent external data poisoning and rug-pull attacks where data sources change after initial verification.
+
+**Implementation:**
+
+- Middleware chain step 5 (tool registry verification) enforces hash verification per DataSourceDefinition struct
+- MutablePolicy enforcement: mutable sources trigger re-verification on each access
+- Digest logging for external data fetches
+
+**Evidence:**
+
+- Tool registry middleware: `internal/gateway/middleware/tool_registry.go`
+- DataSourceDefinition struct and MutablePolicy: `internal/gateway/middleware/tool_registry.go`
+
+### Escalation Detection
+
+**Purpose:** Detect and prevent progressive concession accumulation and gradual privilege escalation.
+
+**Implementation:**
+
+- Middleware chain step 8 (session context) tracks cumulative escalation
+- EscalationScore formula: Impact x (4 - Reversibility)
+- Three-tier threshold system: Warning=15, Critical=25, Emergency=40
+- RecordEscalation() function accumulates score across session
+
+**Evidence:**
+
+- Session context middleware: `internal/gateway/middleware/session_context.go`
+- Escalation scoring and RecordEscalation(): `internal/gateway/middleware/session_context.go`
+
+### Principal Hierarchy
+
+**Purpose:** Prevent identity spoofing via authority confusion across trust boundaries.
+
+**Implementation:**
+
+- Middleware chain step 3 (SPIFFE auth) performs SPIFFE-to-role resolution
+- X-Precinct-Principal-Level header injected by gateway for downstream policy decisions
+- OPA authorization incorporates principal level for least-privilege enforcement
+
+**Evidence:**
+
+- SPIFFE auth middleware: `internal/gateway/middleware/spiffe_auth.go`
+- X-Precinct-Principal-Level header enrichment: `internal/gateway/middleware/spiffe_auth.go`
+- OPA policy incorporating principal level: `config/opa/mcp_policy.rego`
+
+### Irreversibility Gating
+
+**Purpose:** Prevent execution of irreversible actions without adequate oversight.
+
+**Implementation:**
+
+- Middleware chain step 9 (step-up gating) classifies action destructiveness
+- ClassifyActionDestructiveness() taxonomy categorizes actions by reversibility
+- Automatic step-up authentication for critical/irreversible classifications
+- Human-in-the-loop approval required for irreversible action classes
+
+**Evidence:**
+
+- Step-up gating middleware: `internal/gateway/middleware/step_up_gating.go`
+- ClassifyActionDestructiveness function: `internal/gateway/middleware/step_up_gating.go`
+- Audit logging of destructiveness classification: `internal/gateway/middleware/audit.go`
+
 ## Readiness Gate
 
 Production-intent readiness must use strict security evidence gates:

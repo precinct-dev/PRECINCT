@@ -4,7 +4,7 @@ PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Netwo
 
 ## Authentication, Authorization, and Secrets Management for Agentic Systems (MCP and Beyond)
 
-**Version 2.4 — Consolidated Reference Architecture (PRECINCT Gateway + Phase 3 Hardened Controls)**
+**Version 2.5 — Consolidated Reference Architecture (PRECINCT Gateway + Phase 3 Hardened Controls + Agents of Chaos Threat Coverage)**
 
 *Ramiro | February 2026*
 
@@ -37,10 +37,10 @@ while keeping identity, authorization, and secrets controls consistent.
 
 Phase 3 extends this architecture into a full multi-plane control system:
 - LLM/model egress plane
-- context/memory plane
-- tool plane (MCP and non-MCP adapters)
+- context/memory plane (escalation tracking, principal hierarchy resolution)
+- tool plane (MCP and non-MCP adapters, irreversibility classification)
 - loop governance plane
-- ingress/event plane
+- ingress/event plane (communication channel mediation, data source integrity)
 
 ### Key Innovations
 
@@ -53,6 +53,10 @@ Phase 3 extends this architecture into a full multi-plane control system:
 4. **Session Context Engine**: Detects cross-tool manipulation and exfiltration patterns by maintaining stateful session tracking.
 
 5. **MCP-UI Extension Governance**: Treats `ui://` resources as executable payloads with opt-in capability gating, content scanning, CSP/permissions mediation, and app-driven tool call controls--preventing active content delivery from bypassing existing gateway protections.
+
+6. **Communication Channel Mediation**: Port adapters for Discord and Email extend the 13-layer middleware chain to autonomous agent messaging, blocking unmediated communication at the SPIFFE layer.
+
+7. **Escalation Detection and Irreversibility Gating**: Cumulative destructiveness tracking prevents gradual escalation attacks where individual actions pass thresholds but the pattern is dangerous.
 
 ---
 
@@ -69,6 +73,11 @@ Phase 3 extends this architecture into a full multi-plane control system:
    - 7.10 [Mandatory Model Mediation (Production Baseline)](#710-mandatory-model-mediation-production-baseline)
    - 7.11 [Context Admission Invariants (Hard Requirements)](#711-context-admission-invariants-hard-requirements)
    - 7.12 [Ingress Connector Conformance (Non-MITM by Default)](#712-ingress-connector-conformance-non-mitm-by-default)
+   - 7.13 [Communication Channel Mediation](#713-communication-channel-mediation)
+   - 7.14 [Data Source Integrity](#714-data-source-integrity)
+   - 7.15 [Escalation Detection](#715-escalation-detection)
+   - 7.16 [Principal Hierarchy](#716-principal-hierarchy)
+   - 7.17 [Irreversibility Classification](#717-irreversibility-classification)
 8. [Production Reference Architecture](#8-production-reference-architecture)
 9. [Go Implementation Guide](#9-go-implementation-guide)
 10. [Operational Considerations](#10-operational-considerations)
@@ -204,6 +213,23 @@ The MCP Apps extension introduces `ui://` resources that deliver executable HTML
 | Authorization Bypass | Scope escalation, confused deputy | High |
 | Active Content (MCP-UI) | XSS, clickjacking, CSP bypass, app-driven tool abuse | High |
 | Supply Chain | Compromised MCP servers, libraries | Medium |
+
+### 2.4 Threat Coverage: Agents of Chaos
+
+Shapira et al. (2026), "Agents of Chaos" (arXiv:2602.20021v1), documented 16 case studies from a 2-week red-teaming exercise against autonomous LLM agents. PRECINCT defends against these threats at the infrastructure boundary:
+
+| Defense Category | PRECINCT Layer | Case Studies |
+|-----------------|---------------|--------------|
+| Channel mediation | Discord/Email adapters | #4, #11 |
+| DLP scanning | Step 7 | #3, #13 |
+| Rate limiting | Step 11 | #4, #5 |
+| Identity verification | Step 3 (SPIFFE) | #8, #9 |
+| Tool integrity | Step 5 (registry) | #10, #15 |
+| Deep scan | Step 10 | #12, #16 |
+| Escalation detection | Session context | #1, #7 |
+| Data source integrity | Registry extension | #10, #15 |
+| Principal hierarchy | OPA + SPIFFE | #2, #9 |
+| Irreversibility gating | Step 9 | #6, #16 |
 
 ---
 
@@ -1857,6 +1883,81 @@ Production requirement:
 - ingress adapters/connectors must pass conformance checks and register signed manifests before enablement
 - non-conformant connectors are denied at registration and runtime
 - every admitted event must carry trace/session/decision linkage
+
+### 7.13 Communication Channel Mediation
+
+PRECINCT extends its enforcement boundary to autonomous agent communication channels via port adapters. Two adapters address threats documented in 'Agents of Chaos' (Shapira et al., 2026, arXiv:2602.20021v1):
+
+**Discord Adapter** (`POC/ports/discord/`) mediates:
+- Outbound message sends: DLP scanning of content, OPA policy on recipient channels, SPIKE token for bot credentials
+- Inbound webhooks: Ed25519 signature verification, connector validation, audit logging
+- Bot command execution: tool plane evaluation before dispatch
+
+**Email Adapter** (`POC/ports/email/`) mediates:
+- Outbound sends: DLP scanning of subject+body, mass-email step-up (>10 recipients), SPIKE token for SMTP credentials, recipient domain OPA enforcement
+- Inbound reads: automatic content classification (sensitive/standard) for exfiltration detection
+- List operations: session context tracking with standard classification
+
+The adapter pattern means all 13 middleware layers apply to messaging operations. Agents communicating directly without the gateway (Case Studies #4 and #11) are blocked at the SPIFFE authentication layer -- they cannot present a valid workload identity for unmediated communication.
+
+### 7.14 Data Source Integrity
+
+Case Study #10 ('Agents of Chaos') demonstrated that attackers can corrupt agents by mutating external data sources the agent trusts -- a rug-pull attack at the content level rather than the code level.
+
+PRECINCT extends its tool registry to external data sources via `DataSourceDefinition`:
+
+- **Content hash verification**: SHA-256 of approved content stored in the registry (format: `sha256:<hex>`)
+- **Mutable policy**: three modes -- `block_on_change`, `flag_on_change`, `allow`
+- **Hot reload**: same fsnotify + Ed25519 signature pattern as the tool registry
+- **SPIFFE-bound approval**: each data source records the approver's SPIFFE ID
+
+When an agent requests access to a registered data source, the gateway fetches the current content and compares its hash to the approved hash. A mismatch triggers the configured policy.
+
+### 7.15 Escalation Detection
+
+Case Studies #1 and #7 ('Agents of Chaos') demonstrate gradual escalation attacks where each individual action scores within acceptable thresholds, but the cumulative pattern represents dangerous behavior.
+
+PRECINCT tracks cumulative destructiveness via `EscalationScore` in `AgentSession`:
+
+**Scoring formula**: `contribution = Impact x (4 - Reversibility)`
+- Read-only (0, 0): 0 x 4 = 0
+- Send/create (1, 1): 1 x 3 = 3
+- Modify/update (2, 2): 2 x 2 = 4
+- Delete/destroy (3, 3): 3 x 1 = 3
+- Irreversible destructive (3, 0): 3 x 4 = 12
+
+**Thresholds**:
+- Warning (>=15): `escalation_warning` flag added to SecurityFlagsCollector
+- Critical (>=25): `escalation_critical` flag (forces step-up on all subsequent actions)
+- Emergency (>=40): `escalation_emergency` flag (deny all non-read actions)
+
+Time-window decay: only actions within the session window (default 1 hour) contribute to the score. Old destructive actions age out.
+
+### 7.16 Principal Hierarchy
+
+Agent identity in multi-agent systems is not flat. An instruction from a system operator carries different authority than the same instruction from an end user or from another agent. PRECINCT resolves SPIFFE identities into a six-level principal hierarchy:
+
+- Level 6: System (the gateway itself)
+- Level 5: Operator (administrators with full authorization)
+- Level 4: Trusted Agent (agents with operator-delegated authority)
+- Level 3: Standard Agent (normal user-delegated agents)
+- Level 2: Restricted Agent (limited authorization scope)
+- Level 1: Unknown (no recognized identity pattern)
+
+Resolution from SPIFFE ID path patterns allows OPA policies to enforce owner-only operations (Case Study #2) and authorization chain tracing (Case Study #9).
+
+### 7.17 Irreversibility Classification
+
+Not all actions are equally recoverable. PRECINCT's four-tier destructiveness taxonomy (`ClassifyActionDestructiveness`) provides Impact and Reversibility scores per action:
+
+| Tier | Impact | Reversibility | Actions |
+|------|--------|---------------|---------|
+| Low | 0 | 0 | read, list, search, get |
+| Medium | 1 | 1 | create, send, write, insert |
+| High | 2 | 2 | modify, update, overwrite, patch |
+| Critical | 3 | 3 | delete, rm, drop, destroy, purge |
+
+These values feed both the escalation accumulator and the step-up gating risk score. A `force` or `recursive` flag increases Impact by 1.
 
 ---
 
@@ -3698,6 +3799,9 @@ To keep this architecture solid for teams using different stacks, use this imple
 | Authorization bypass | ✅ | ✅ | ✅ | | **Full** |
 | Model artifact compromise | | | | ✅ | **Medium** (digest/signature verification) |
 | Active content (MCP-UI) | | | ✅ | ✅ | **High** (capability gating + CSP mediation + content scan) |
+| Gradual escalation (AoC #1, #7) | | | | ✅ | **High** (EscalationScore + session window decay) |
+| Unmediated agent comms (AoC #4, #11) | ✅ | | ✅ | ✅ | **Full** (channel adapters + SPIFFE auth) |
+| Data source rug-pull (AoC #10) | | | | ✅ | **High** (DataSourceDefinition hash verification) |
 
 ### 11.2 What This Architecture Protects Against
 
@@ -3871,6 +3975,7 @@ Use the addendum artifacts as the source for backlog decomposition and delivery 
 - [OPA Go Integration](https://www.openpolicyagent.org/docs/latest/integration/)
 
 ### Security Research
+- [Shapira et al. (2026): Agents of Chaos (arXiv:2602.20021v1)](https://arxiv.org/abs/2602.20021)
 - [Elastic Security Labs: MCP Attack Vectors](https://www.elastic.co/security-labs/mcp-tools-attack-defense-recommendations)
 - [Invariant Labs: Tool Poisoning Attacks](https://invariantlabs.ai/blog/mcp-security-notification-tool-poisoning-attacks)
 - [Docker MCP Gateway](https://docs.docker.com/ai/mcp-catalog-and-toolkit/mcp-gateway/)
@@ -3890,6 +3995,6 @@ Use the addendum artifacts as the source for backlog decomposition and delivery 
 
 ---
 
-*Document Version: 2.4*
-*Last Updated: February 2026*
+*Document Version: 2.5*
+*Last Updated: March 2026*
 *Classification: Internal - Technical Reference Architecture*

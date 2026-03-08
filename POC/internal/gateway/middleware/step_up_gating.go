@@ -318,7 +318,15 @@ func (dal *DestinationAllowlist) IsAllowed(destination string) bool {
 	return false
 }
 
-// ComputeRiskScore computes the 4-dimensional risk score for a tool call
+// ComputeRiskScore computes the 4-dimensional risk score for a tool call.
+//
+// OC-h4m7: accepts optional reversibility override and principal level for
+// automatic step-up escalation of irreversible actions. When rev is non-nil
+// and rev.Score >= 2, the Reversibility dimension is overridden. When
+// rev.Score == 3 (irreversible) and principalLevel > 1 (non-owner), the
+// total score is forced into the approval range (>= 7). When rev.Score == 3
+// and the session's EscalationScore exceeds EscalationWarningThreshold, the
+// total is forced into the deny range (>= 10).
 func ComputeRiskScore(
 	toolDef *ToolDefinition,
 	session *AgentSession,
@@ -327,11 +335,20 @@ func ComputeRiskScore(
 	registry *ToolRegistry,
 	allowlist *DestinationAllowlist,
 	defaults UnknownToolDefaults,
+	opts ...RiskScoreOption,
 ) RiskDimension {
+
+	// Apply options
+	var rso riskScoreOptions
+	for _, o := range opts {
+		o(&rso)
+	}
 
 	// If tool is unknown, use defaults with max novelty
 	if toolDef == nil {
-		return RiskDimension(defaults)
+		rd := RiskDimension(defaults)
+		applyReversibilityOverrides(&rd, session, &rso)
+		return rd
 	}
 
 	// --- Impact dimension (0-3) ---
@@ -346,11 +363,76 @@ func ComputeRiskScore(
 	// --- Novelty dimension (0-3) ---
 	novelty := computeNovelty(toolDef, destination, allowlist)
 
-	return RiskDimension{
+	rd := RiskDimension{
 		Impact:        impact,
 		Reversibility: reversibility,
 		Exposure:      exposure,
 		Novelty:       novelty,
+	}
+
+	// OC-h4m7: Apply reversibility-aware overrides
+	applyReversibilityOverrides(&rd, session, &rso)
+
+	return rd
+}
+
+// RiskScoreOption is a functional option for ComputeRiskScore (OC-h4m7).
+type RiskScoreOption func(*riskScoreOptions)
+
+type riskScoreOptions struct {
+	reversibility *ActionReversibility
+	principalLevel int // 0=system, 1=owner, 2=operator, 3=agent, 4=external
+}
+
+// WithReversibility injects a pre-computed reversibility classification into risk scoring.
+func WithReversibility(rev ActionReversibility) RiskScoreOption {
+	return func(o *riskScoreOptions) {
+		o.reversibility = &rev
+	}
+}
+
+// WithPrincipalLevelOption injects the principal trust level into risk scoring.
+func WithPrincipalLevelOption(level int) RiskScoreOption {
+	return func(o *riskScoreOptions) {
+		o.principalLevel = level
+	}
+}
+
+// applyReversibilityOverrides applies OC-h4m7 reversibility-aware gate escalation.
+func applyReversibilityOverrides(rd *RiskDimension, session *AgentSession, opts *riskScoreOptions) {
+	if opts.reversibility == nil {
+		return
+	}
+	rev := opts.reversibility
+
+	// Override Reversibility dimension when classifier score exceeds current value
+	if rev.Score >= 2 && rev.Score > rd.Reversibility {
+		rd.Reversibility = rev.Score
+	}
+
+	// Force approval gate for irreversible actions by non-owners (Level > 1)
+	if rev.Score == 3 && opts.principalLevel > 1 {
+		forceMinTotal(rd, 7)
+	}
+
+	// Force deny gate for irreversible actions in escalated sessions
+	if rev.Score == 3 && session != nil && session.EscalationScore > EscalationWarningThreshold {
+		forceMinTotal(rd, 10)
+	}
+}
+
+// forceMinTotal raises the total risk score to at least minTotal by incrementing
+// dimensions in priority order: Impact, then Exposure, then Novelty. Each
+// dimension is capped at 3 (the maximum per-dimension value).
+func forceMinTotal(rd *RiskDimension, minTotal int) {
+	dims := []*int{&rd.Impact, &rd.Exposure, &rd.Novelty}
+	for _, dim := range dims {
+		for rd.Total() < minTotal && *dim < 3 {
+			*dim++
+		}
+		if rd.Total() >= minTotal {
+			return
+		}
 	}
 }
 
@@ -701,8 +783,35 @@ func StepUpGating(
 		// Get session context (set by step 8)
 		session := GetSessionContextData(ctx)
 
-		// Compute risk score
-		riskScore := ComputeRiskScore(toolDef, session, destination, isExternal, registry, allowlist, riskConfig.UnknownToolDefaults)
+		// OC-h4m7: Classify reversibility from tool name, action, and params.
+		// The tool name itself often encodes the action (e.g., "delete_resource"),
+		// so we pass it as the action parameter for keyword matching.
+		rev := ClassifyReversibility(toolName, toolName, params, toolDef)
+		// OC-h4m7: Read principal level from the struct-based PrincipalRole set by
+		// PrincipalHeaders middleware (OC-t7go). Fall back to the int-based key
+		// (set by legacy or direct WithPrincipalLevel callers) so both paths work.
+		principalLevel := GetPrincipalRole(ctx).Level
+		if principalLevel == 0 {
+			if l := GetPrincipalLevel(ctx); l != 0 {
+				principalLevel = l
+			}
+		}
+
+		// OC-h4m7: Inject X-Precinct-Reversibility header into proxied request
+		// and response (so callers know the classification even on denials).
+		r.Header.Set("X-Precinct-Reversibility", rev.Category)
+		w.Header().Set("X-Precinct-Reversibility", rev.Category)
+		if rev.RequiresBackup {
+			// Advisory header: set on response for all requests with Score>=2.
+			// X-Precinct-Backup-Recommended on the request is set later (only when allowed).
+			w.Header().Set("X-Precinct-Backup-Recommended", "true")
+		}
+
+		// Compute risk score with reversibility-aware overrides
+		riskScore := ComputeRiskScore(toolDef, session, destination, isExternal, registry, allowlist, riskConfig.UnknownToolDefaults,
+			WithReversibility(rev),
+			WithPrincipalLevelOption(principalLevel),
+		)
 		totalScore := riskScore.Total()
 
 		// Determine which gate applies
@@ -765,6 +874,18 @@ func StepUpGating(
 			result.Reason = "risk score exceeds maximum threshold - denied by default"
 		}
 
+		// OC-lmzm: Set X-Precinct-Backup-Recommended advisory header when
+		// the action requires a pre-execution state snapshot (Score >= 2) AND
+		// the action is allowed. Denied actions won't execute, so no snapshot needed.
+		if rev.RequiresBackup && result.Allowed {
+			r.Header.Set("X-Precinct-Backup-Recommended", "true")
+
+			// OC-lmzm: Record authorized destructive action in session context.
+			if session != nil {
+				session.DestructiveActionsAuthorized++
+			}
+		}
+
 		// RFA-m6j.2: Set per-middleware span attributes
 		guardResultStr := ""
 		if result.GuardResult != nil {
@@ -784,6 +905,9 @@ func StepUpGating(
 			attribute.Int("exposure", riskScore.Exposure),
 			attribute.Int("novelty", riskScore.Novelty),
 			attribute.String("guard_result", guardResultStr),
+			attribute.Int("reversibility_score", rev.Score),
+			attribute.String("reversibility_category", rev.Category),
+			attribute.Bool("backup_recommended", rev.RequiresBackup && result.Allowed),
 		)
 		if result.Allowed {
 			span.SetAttributes(
@@ -800,7 +924,7 @@ func StepUpGating(
 		// Store result in context for audit
 		ctx = WithStepUpResult(ctx, result)
 
-		// Log audit event for step-up decision
+		// Log audit event for step-up decision (OC-h4m7: includes reversibility classification)
 		if auditor != nil {
 			auditor.Log(AuditEvent{
 				SessionID:  GetSessionID(ctx),
@@ -811,6 +935,11 @@ func StepUpGating(
 				Result:     fmt.Sprintf("gate=%s allowed=%v total_score=%d impact=%d reversibility=%d exposure=%d novelty=%d reason=%s", gate, result.Allowed, totalScore, riskScore.Impact, riskScore.Reversibility, riskScore.Exposure, riskScore.Novelty, result.Reason),
 				Method:     r.Method,
 				Path:       r.URL.Path,
+				Security: &SecurityAudit{
+					ReversibilityScore:    rev.Score,
+					ReversibilityCategory: rev.Category,
+					BackupRecommended:     rev.RequiresBackup && result.Allowed,
+				},
 			})
 		}
 
