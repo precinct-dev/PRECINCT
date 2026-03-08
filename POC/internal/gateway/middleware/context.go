@@ -26,6 +26,8 @@ const (
 	contextKeyDLPRulesetDigest          contextKey = "dlp_ruleset_digest"
 	contextKeyRuntimeSPIFFEMode         contextKey = "runtime_spiffe_mode"
 	contextKeyRuntimeEnforcementProfile contextKey = "runtime_enforcement_profile"
+	contextKeyPrincipalRole             contextKey = "principal_role"           // OC-t7go: resolved principal authority
+	contextKeyPrincipalRoleCollector    contextKey = "principal_role_collector" // OC-t7go: mutable collector for upstream propagation
 )
 
 // SecurityFlagsCollector is a mutable container for security flags that
@@ -281,4 +283,51 @@ func GetRuntimeEnforcementProfile(ctx context.Context) string {
 		return v.(string)
 	}
 	return ""
+}
+
+// GetPrincipalRole retrieves the resolved PrincipalRole from context.
+// Returns a zero-value PrincipalRole (level 0, empty strings) if not set.
+// OC-t7go: Used by audit middleware and downstream handlers to access
+// the authority metadata resolved by the PrincipalHeaders middleware.
+func GetPrincipalRole(ctx context.Context) PrincipalRole {
+	if v := ctx.Value(contextKeyPrincipalRole); v != nil {
+		return v.(PrincipalRole)
+	}
+	return PrincipalRole{}
+}
+
+// WithPrincipalRole stores a resolved PrincipalRole in the request context.
+// It also writes to the PrincipalRoleCollector if one exists, so that the
+// audit middleware (which created the collector) can read the role from
+// its own context scope after next.ServeHTTP returns.
+// OC-t7go: Set by PrincipalHeaders middleware after SPIFFE identity resolution.
+func WithPrincipalRole(ctx context.Context, role PrincipalRole) context.Context {
+	if c := GetPrincipalRoleCollector(ctx); c != nil {
+		c.Role = &role
+	}
+	return context.WithValue(ctx, contextKeyPrincipalRole, role)
+}
+
+// PrincipalRoleCollector is a mutable container that allows the PrincipalRole
+// resolved by a downstream middleware to propagate back to the audit middleware.
+// This follows the same pattern as SecurityFlagsCollector (RFA-9i2): Go's
+// context.WithValue creates child contexts invisible to parent middleware,
+// so we use a shared mutable pointer instead.
+// OC-t7go.
+type PrincipalRoleCollector struct {
+	Role *PrincipalRole
+}
+
+// GetPrincipalRoleCollector retrieves the mutable PrincipalRole collector from context.
+func GetPrincipalRoleCollector(ctx context.Context) *PrincipalRoleCollector {
+	if v := ctx.Value(contextKeyPrincipalRoleCollector); v != nil {
+		return v.(*PrincipalRoleCollector)
+	}
+	return nil
+}
+
+// WithPrincipalRoleCollector adds a mutable PrincipalRole collector to context.
+// OC-t7go: Created by audit middleware, read after next.ServeHTTP returns.
+func WithPrincipalRoleCollector(ctx context.Context, collector *PrincipalRoleCollector) context.Context {
+	return context.WithValue(ctx, contextKeyPrincipalRoleCollector, collector)
 }
