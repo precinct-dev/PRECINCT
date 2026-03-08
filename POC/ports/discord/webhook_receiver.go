@@ -72,7 +72,7 @@ func (a *Adapter) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		a.gw.AuditLog(middleware.AuditEvent{
 			Timestamp:  time.Now().UTC().Format(time.RFC3339),
 			EventType:  "discord.webhook.signature_invalid",
-			Severity:   "Warning",
+			Severity:   "Critical",
 			Action:     "webhook.inbound",
 			Result:     "denied",
 			Method:     r.Method,
@@ -119,6 +119,23 @@ func (a *Adapter) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Build SafeZoneFlags: always include status flags, and capture the
+	// inbound content so it is available for deep scan detection.
+	// Real deep scan traversal (DLP step 7, step 10) runs via internal
+	// loopback in story OC-di1n; here we record the content and mark it
+	// pending so the audit trail enables downstream detection.
+	safeZoneFlags := []string{
+		"discord_webhook_received",
+		"dlp_via_loopback_pending",
+		"deep_scan_via_loopback_pending",
+	}
+	if content != "" {
+		safeZoneFlags = append(safeZoneFlags,
+			"inbound_content_pending_deep_scan",
+			fmt.Sprintf("inbound_content:%s", content),
+		)
+	}
+
 	a.gw.AuditLog(middleware.AuditEvent{
 		Timestamp: now.Format(time.RFC3339),
 		EventType: "discord.webhook.inbound",
@@ -130,13 +147,7 @@ func (a *Adapter) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		Method:    r.Method,
 		Path:      r.URL.Path,
 		Security: &middleware.SecurityAudit{
-			SafeZoneFlags: []string{
-				// Document that DLP (step 7) and deep scan (step 10) will be applied
-				// via internal loopback in OC-di1n.
-				"discord_webhook_received",
-				"dlp_via_loopback_pending",
-				"deep_scan_via_loopback_pending",
-			},
+			SafeZoneFlags: safeZoneFlags,
 		},
 	})
 
