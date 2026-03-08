@@ -18,7 +18,10 @@ and runtime values in `docker-compose.yml`.
 6. [Configuration Files](#6-configuration-files)
 7. [OPA Policy Structure](#7-opa-policy-structure)
 8. [DLP Policy Configuration](#8-dlp-policy-configuration)
-9. [SPIFFE ID Schema](#9-spiffe-id-schema)
+9. [Escalation Thresholds](#9-escalation-thresholds)
+10. [Data Source Registry](#10-data-source-registry)
+11. [Port Adapter Environment Variables](#11-port-adapter-environment-variables)
+12. [SPIFFE ID Schema](#12-spiffe-id-schema)
 
 ---
 
@@ -154,6 +157,7 @@ export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DLP_INJECTION_POLICY` | _(empty -- uses YAML config)_ | Override DLP injection policy: `block` or `flag`. When empty, the value from `config/risk_thresholds.yaml` is used. See [DLP Policy Configuration](#8-dlp-policy-configuration) for details |
+| `UNKNOWN_DATA_SOURCE_POLICY` | `flag` | Controls handling of unregistered data sources: `"flag"` (allow with audit flag, default), `"block"` (deny with HTTP 403), `"allow"` (allow silently). Applies when a tool references a data source URI not present in the data source registry |
 
 ### Rate Limiting
 
@@ -764,7 +768,124 @@ Only `injection` has an env var override because:
 
 ---
 
-## 9. SPIFFE ID Schema
+## 9. Escalation Thresholds
+
+Escalation detection tracks cumulative destructiveness within an agent session. The
+thresholds are currently hardcoded constants in `internal/gateway/middleware/escalation.go`:
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `EscalationWarningThreshold` | `15.0` | Session score at which `escalation_warning` flag is set |
+| `EscalationCriticalThreshold` | `25.0` | Session score at which `escalation_critical` flag is set |
+| `EscalationEmergencyThreshold` | `40.0` | Session score at which `escalation_emergency` flag is set and request is denied (HTTP 403) |
+
+**Scoring formula:** `contribution = Impact x (4 - Reversibility)`
+
+Each tool action contributes to the cumulative session score. The score is persisted
+in KeyDB alongside other session state.
+
+---
+
+## 10. Data Source Registry
+
+The tool registry (`config/tool-registry.yaml`) supports a `data_sources` extension
+for external data source integrity verification. Each entry is a `DataSourceDefinition`:
+
+```yaml
+data_sources:
+  - uri: "https://example.com/dataset.json"
+    content_hash: "sha256:abc123..."
+    approved_at: "2026-03-01T00:00:00Z"
+    approved_by: "spiffe://poc.local/agents/admin/dev"
+    max_size_bytes: 10485760
+    mutable_policy: "block_on_change"  # block_on_change | flag_on_change | allow
+    refresh_ttl: "1h"
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uri` | string | External data source URI |
+| `content_hash` | string | Expected SHA-256 hash (`sha256:<hex>`) |
+| `approved_at` | timestamp | When the data source was last approved |
+| `approved_by` | string | SPIFFE ID of the approver |
+| `max_size_bytes` | integer | Maximum allowed data source size |
+| `mutable_policy` | string | `"block_on_change"`, `"flag_on_change"`, or `"allow"` |
+| `refresh_ttl` | duration | How often to re-verify the data source hash |
+
+Data source definitions are hot-reloaded via the existing `fsnotify` watcher alongside
+tool definitions.
+
+---
+
+## 11. Port Adapter Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DISCORD_PUBLIC_KEY` | _(empty)_ | Ed25519 public key (hex-encoded) for Discord webhook signature verification. Required when the Discord adapter is active |
+
+---
+
+## 12. Principal Mapping Configuration
+
+The `principal_mapping` YAML config section maps SPIFFE path prefixes to principal levels.
+This is loaded from `config/principal_mapping.yaml` or embedded in the gateway's main
+config file.
+
+**Default mapping** (derived from SPIFFE ID path segments):
+
+```yaml
+principal_mapping:
+  system: 0      # /system/ prefix -> Level 0
+  owner: 1       # /owner/ prefix -> Level 1
+  delegated: 2   # /delegated/ prefix -> Level 2
+  agents: 3      # /agents/ prefix -> Level 3
+  external: 4    # /external/ prefix -> Level 4
+  anonymous: 5   # (no match) -> Level 5
+```
+
+Each key is a SPIFFE path segment prefix. When the gateway resolves a principal from a
+SPIFFE ID (e.g., `spiffe://poc.local/agents/example/dev`), it matches the first path
+segment (`agents`) against this mapping to determine the principal level (3).
+
+Custom deployments can override this mapping to add organization-specific path prefixes
+or adjust the hierarchy. For example, adding `contractors: 3` would map
+`/contractors/` paths to Level 3 (same as agents).
+
+---
+
+## 13. Reversibility Overrides Configuration
+
+The `reversibility_overrides` YAML config section provides per-tool reversibility score
+overrides. This is loaded from `config/reversibility_overrides.yaml` or embedded in the
+gateway's main config file.
+
+**Format:**
+
+```yaml
+reversibility_overrides:
+  bash: 3          # Always irreversible regardless of action parameter
+  s3_delete: 3     # S3 delete is always irreversible
+  tavily_search: 0 # Search is always reversible
+```
+
+Each key is a tool name from `config/tool-registry.yaml`. The integer value (0-3) overrides
+the pattern-based reversibility classification for all invocations of that tool:
+
+| Score | Category |
+|-------|----------|
+| 0 | reversible |
+| 1 | costly_reversible |
+| 2 | partially_reversible |
+| 3 | irreversible |
+
+When a tool has a reversibility override, the gateway skips pattern-based classification
+(which examines action parameters for trigger patterns like `delete`, `rm`, `drop`) and
+uses the override score directly. This is useful for tools where the tool name itself
+implies a fixed reversibility level regardless of arguments.
+
+---
+
+## 14. SPIFFE ID Schema
 
 All workload identities follow the pattern defined in the Reference Architecture
 Section 4.5.
