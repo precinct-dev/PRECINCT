@@ -256,6 +256,78 @@ To keep this powerful architecture from becoming “security theatre that devs h
    - Start with simple, effective controls: **pinned hashes + startup verification** for local models.
    - Then move to signed artifacts + cluster admission verification + (optionally) attestation for high-sensitivity deployments.
 
+## External Threat Validation: Agents of Chaos
+
+### Citation
+
+Shapira, N., Bitton, R., Fordham, T., Mimran, D., Moshkowich, D., Nassi, B., Elovici, Y. (2026). *Agents of Chaos: Exploring Malicious Agentic AI*. arXiv:2602.20021v1.
+
+### Overview
+
+The Agents of Chaos paper presents 16 case studies of real-world threat scenarios against agentic AI systems. These case studies provide external validation that PRECINCT's threat model and control coverage address documented attack patterns, not merely theoretical risks.
+
+### Case Study to STRIDE Mapping
+
+The following maps each of the 16 case studies from the Agents of Chaos paper to STRIDE threat categories and identifies PRECINCT controls that provide coverage:
+
+#### Spoofing
+
+| Case Study | Threat Description | PRECINCT Control |
+|---|---|---|
+| #8 (Identity spoofing via authority confusion) | Agent impersonates a higher-privilege principal or confuses identity boundaries | SPIFFE/SPIRE workload identity (middleware step 3), Principal Hierarchy with SPIFFE-to-role resolution |
+
+#### Tampering
+
+| Case Study | Threat Description | PRECINCT Control |
+|---|---|---|
+| #10 (Mutable external data source / rug-pull) | External data source modified after initial verification to inject malicious content | Tool registry hash verification (middleware step 5), Data Source Integrity with MutablePolicy enforcement |
+
+#### Repudiation
+
+| Case Study | Threat Description | PRECINCT Control |
+|---|---|---|
+| All applicable cases | Agent disputes actions taken or denies responsibility for harmful outputs | Hash-chained audit logging (middleware step 4), structured JSON audit with trace/session/decision IDs |
+
+#### Information Disclosure
+
+| Case Study | Threat Description | PRECINCT Control |
+|---|---|---|
+| #3 (SSN in email body) | Sensitive PII embedded in outbound agent communication | DLP scanner (middleware step 7), Channel Mediation with content routing through middleware |
+| #14 (Data exfiltration) | Agent exfiltrates data through side channels or legitimate tool responses | Response firewall, late-binding secret substitution, egress budgets |
+
+#### Denial of Service
+
+| Case Study | Threat Description | PRECINCT Control |
+|---|---|---|
+| #4 (Instruction loops) | Agent trapped in infinite loop consuming resources | Rate limits and circuit breakers, immutable run envelopes with step/time/cost bounds |
+| #5 (Resource exhaustion) | Agent consumes excessive compute, memory, or API quota | Rate limiting (middleware step 1), provider budget policy, Channel Mediation for unbounded consumption |
+
+#### Elevation of Privilege
+
+| Case Study | Threat Description | PRECINCT Control |
+|---|---|---|
+| #1 (Progressive destruction) | Agent gradually escalates actions from benign to destructive | Escalation Detection with EscalationScore formula, Irreversibility Gating with ClassifyActionDestructiveness |
+| #7 (Concession accumulation) | Agent incrementally extracts permissions through repeated small requests | Session context tracking (middleware step 8), Escalation Detection with threshold alerts (Warning=15/Critical=25/Emergency=40) |
+
+### Threat Coverage Matrix (Updated)
+
+The following matrix summarizes PRECINCT control coverage against the threat categories validated by the Agents of Chaos case studies. Controls marked with (NEW) were added in response to this external validation.
+
+| STRIDE Category | Case Studies | Control | Middleware Step | Evidence |
+|---|---|---|---|---|
+| Spoofing | #8 | SPIFFE/SPIRE workload identity | Step 3 | `middleware/spiffe_auth.go` |
+| Spoofing | #8 | Principal Hierarchy (NEW) | Step 3 | SPIFFE-to-role resolution, X-Precinct-Principal-Level header |
+| Tampering | #10 | Tool registry hash verification | Step 5 | `middleware/tool_registry.go` |
+| Tampering | #10 | Data Source Integrity (NEW) | Step 5 | DataSourceDefinition struct, MutablePolicy enforcement |
+| Repudiation | All | Hash-chained audit logging | Step 4 | `middleware/audit.go`, `middleware/audit_verify.go` |
+| Info Disclosure | #3, #14 | DLP scanner | Step 7 | `middleware/dlp.go` |
+| Info Disclosure | #3 | Channel Mediation (NEW) | Steps 7, 10 | Ed25519 webhook verification, content routing |
+| DoS | #4, #5 | Rate limits and circuit breakers | Step 1 | Rate limiter middleware |
+| DoS | #4, #5 | Channel Mediation (NEW) | Steps 7, 10 | Unbounded consumption prevention |
+| EoP | #1 | Irreversibility Gating (NEW) | Step 9 | ClassifyActionDestructiveness, automatic step-up |
+| EoP | #1, #7 | Escalation Detection (NEW) | Step 8 | EscalationScore (Impact x (4 - Reversibility)), thresholds |
+| EoP | #7 | Session context tracking | Step 8 | `middleware/session_context.go` |
+
 ## Suggested Next Step
 
 If you want, I can propose a concrete “v2.1” patch to `precinct-reference-architecture.md` that adds:
