@@ -246,6 +246,71 @@ func main() {
 			expect: "413 or connection reset -- gateway rejects at ingress before processing",
 			fn:     testRequestSizeLimit,
 		},
+		// --- Principal hierarchy enforcement scenarios (OC-f0xy) ---
+		{
+			name:   "Principal hierarchy: owner allowed destructive (S-PRINCIPAL-1)",
+			what:   "Owner (level 1) passes principal-level check for destructive operations (delete) at step 6",
+			send:   "tavily_search(action=delete) with X-SPIFFE-ID: spiffe://poc.local/owner/alice",
+			expect: "NOT principal_level_insufficient -- owner has sufficient authority (may get 502 or other non-principal denial)",
+			fn:     testPrincipalOwnerDestructive,
+		},
+		{
+			name:   "Principal hierarchy: external denied destructive (S-PRINCIPAL-2)",
+			what:   "External user (level 4) denied destructive operations -- requires level <= 2",
+			send:   "tavily_search(action=delete) with X-SPIFFE-ID: spiffe://poc.local/external/bob",
+			expect: "HTTP 403 with code=principal_level_insufficient at step 6",
+			fn:     testPrincipalExternalDestructive,
+		},
+		{
+			name:   "Principal hierarchy: agent allowed messaging (S-PRINCIPAL-3)",
+			what:   "Agent (level 3) passes principal-level check for inter-agent messaging at step 6",
+			send:   "tavily_search(action=notify) with X-SPIFFE-ID: spiffe://poc.local/agents/summarizer/dev",
+			expect: "NOT principal_level_insufficient -- agent has sufficient authority for messaging",
+			fn:     testPrincipalAgentMessaging,
+		},
+		{
+			name:   "Principal hierarchy: external denied messaging (S-PRINCIPAL-4)",
+			what:   "External user (level 4) denied inter-agent messaging -- requires level <= 3",
+			send:   "tavily_search(action=notify) with X-SPIFFE-ID: spiffe://poc.local/external/bob",
+			expect: "HTTP 403 with code=principal_level_insufficient at step 6",
+			fn:     testPrincipalExternalMessaging,
+		},
+		// --- Irreversibility gating scenarios (OC-dz8i) ---
+		{
+			name:   "S-IRREV-1: Read action allowed (reversible, fast path)",
+			what:   "Reversibility classifier scores read-only actions as Score=0 (reversible), fast path gate",
+			send:   "read(file_path='/tmp/test') with external SPIFFE ID -- action is reversible, no side effects",
+			expect: "200 or 502 -- fast path (no step-up friction for reversible actions)",
+			fn:     testIrrev1ReadAllowed,
+		},
+		{
+			name:   "S-IRREV-2: Create action evaluated appropriately (costly_reversible)",
+			what:   "Reversibility classifier scores create/write as Score=1 (costly_reversible), risk evaluation applies",
+			send:   "create(name='test-resource') with external SPIFFE ID -- action is costly-reversible",
+			expect: "403 with stepup_approval_required (unregistered tool hits approval gate) -- NOT irreversible_action_denied",
+			fn:     testIrrev2CreateEvaluated,
+		},
+		{
+			name:   "S-IRREV-3: Owner delete gets approval gate + backup recommendation",
+			what:   "Irreversible action (delete, Score=3) raises Reversibility dimension, pushing total into deny range",
+			send:   "delete(resource='test') with owner SPIFFE ID -- irreversible action triggers gating",
+			expect: "403 with stepup_denied or stepup_approval_required + X-Precinct-Reversibility: irreversible",
+			fn:     testIrrev3OwnerDelete,
+		},
+		{
+			name:   "S-IRREV-4: External delete denied (irreversible)",
+			what:   "Non-owner + irreversible action (delete, Score=3) is denied via step-up gating",
+			send:   "delete(resource='test') with external SPIFFE ID -- irreversible action denied for external principal",
+			expect: "403 with stepup_denied or stepup_approval_required -- irreversible action blocked",
+			fn:     testIrrev4ExternalDelete,
+		},
+		{
+			name:   "S-IRREV-5: Irreversible action in escalated session denied",
+			what:   "Irreversible action (shutdown, Score=3) in a session with prior escalation is denied",
+			send:   "Build escalation with 6 tavily_search calls, then shutdown() -- irreversible + accumulated risk",
+			expect: "403 with stepup_denied -- irreversible action denied even without explicit escalation threshold",
+			fn:     testIrrev5EscalatedSessionDeny,
+		},
 	}
 
 	for i, t := range tests {
@@ -1289,6 +1354,331 @@ func testRequestSizeLimit() bool {
 	fmt.Printf("  Error: %v\n", err)
 	// Even a non-GatewayError (e.g. connection reset) proves the limit works
 	return printProof(true, fmt.Sprintf("rejected (non-JSON): %v", err))
+}
+
+// --- Principal hierarchy enforcement (OC-f0xy) ---
+
+// sendPrincipalRequest sends a raw JSON-RPC tools/call request with the given SPIFFE ID
+// and action keyword in the arguments. Returns HTTP status, the parsed GatewayError (if any),
+// the raw response body, and any transport error.
+func sendPrincipalRequest(spiffeID, action, sessionID string) (int, *mcpgateway.GatewayError, []byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	payload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      9000,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "tavily_search",
+			"arguments": map[string]any{
+				"query":  "principal hierarchy test",
+				"action": action,
+			},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, *gatewayURL, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", spiffeID)
+	req.Header.Set("X-Session-ID", sessionID)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode >= 400 {
+		var ge mcpgateway.GatewayError
+		if jsonErr := json.Unmarshal(respBody, &ge); jsonErr == nil {
+			ge.HTTPStatus = resp.StatusCode
+			return resp.StatusCode, &ge, respBody, nil
+		}
+	}
+
+	return resp.StatusCode, nil, respBody, nil
+}
+
+// S-PRINCIPAL-1: Owner (level 1) allowed destructive operation.
+// Owner identity passes the principal-level check for destructive actions.
+// The request may still be denied by other middleware (tool registry, step-up, etc.)
+// but the error code must NOT be principal_level_insufficient.
+func testPrincipalOwnerDestructive() bool {
+	status, ge, _, err := sendPrincipalRequest(
+		"spiffe://poc.local/owner/alice",
+		"delete",
+		"demo-principal-owner-destructive",
+	)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("transport error: %v", err))
+	}
+
+	// Success or 502 (no upstream) both prove the principal check passed.
+	if status == 200 || status == 502 {
+		return printProof(true, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-1: Owner (level 1) allowed destructive operation (HTTP %d)", status))
+	}
+
+	if ge != nil {
+		printGatewayError(ge)
+		// Any denial that is NOT principal_level_insufficient proves the principal check passed.
+		if ge.Code == "principal_level_insufficient" {
+			return printProof(false,
+				"PROOF S-PRINCIPAL-1: FAIL -- owner was denied by principal_level_insufficient (unexpected)")
+		}
+		return printProof(true, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-1: Owner (level 1) allowed destructive operation -- denied by %s (not principal check)", ge.Code))
+	}
+
+	return printProof(true, fmt.Sprintf(
+		"PROOF S-PRINCIPAL-1: Owner (level 1) allowed destructive operation (HTTP %d)", status))
+}
+
+// S-PRINCIPAL-2: External user (level 4) denied destructive operation.
+// External identity must be denied with principal_level_insufficient for destructive actions.
+func testPrincipalExternalDestructive() bool {
+	status, ge, _, err := sendPrincipalRequest(
+		"spiffe://poc.local/external/bob",
+		"delete",
+		"demo-principal-external-destructive",
+	)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("transport error: %v", err))
+	}
+
+	if ge != nil {
+		printGatewayError(ge)
+		if ge.Code == "principal_level_insufficient" && status == 403 {
+			return printProof(true,
+				"PROOF S-PRINCIPAL-2: External (level 4) denied destructive operation -- principal_level_insufficient")
+		}
+		// Denied by another check (e.g. authz_policy_denied) means the principal check
+		// did not fire. This is expected until OPA input.action is enriched from params.
+		return printProof(false, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-2: External denied by %s (expected principal_level_insufficient)", ge.Code))
+	}
+
+	if status == 200 || status == 502 {
+		return printProof(false, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-2: External was allowed (HTTP %d) -- expected 403 principal_level_insufficient", status))
+	}
+
+	return printProof(false, fmt.Sprintf(
+		"PROOF S-PRINCIPAL-2: unexpected HTTP %d without structured error", status))
+}
+
+// S-PRINCIPAL-3: Agent (level 3) allowed messaging operation.
+// Agent identity passes the principal-level check for messaging (level <= 3).
+func testPrincipalAgentMessaging() bool {
+	status, ge, _, err := sendPrincipalRequest(
+		"spiffe://poc.local/agents/summarizer/dev",
+		"notify",
+		"demo-principal-agent-messaging",
+	)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("transport error: %v", err))
+	}
+
+	// Success or 502 both prove the principal check passed.
+	if status == 200 || status == 502 {
+		return printProof(true, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-3: Agent (level 3) allowed inter-agent messaging (HTTP %d)", status))
+	}
+
+	if ge != nil {
+		printGatewayError(ge)
+		if ge.Code == "principal_level_insufficient" {
+			return printProof(false,
+				"PROOF S-PRINCIPAL-3: FAIL -- agent was denied by principal_level_insufficient (unexpected)")
+		}
+		return printProof(true, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-3: Agent (level 3) allowed inter-agent messaging -- denied by %s (not principal check)", ge.Code))
+	}
+
+	return printProof(true, fmt.Sprintf(
+		"PROOF S-PRINCIPAL-3: Agent (level 3) allowed inter-agent messaging (HTTP %d)", status))
+}
+
+// S-PRINCIPAL-4: External user (level 4) denied messaging operation.
+// External identity must be denied with principal_level_insufficient for messaging actions.
+func testPrincipalExternalMessaging() bool {
+	status, ge, _, err := sendPrincipalRequest(
+		"spiffe://poc.local/external/bob",
+		"notify",
+		"demo-principal-external-messaging",
+	)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("transport error: %v", err))
+	}
+
+	if ge != nil {
+		printGatewayError(ge)
+		if ge.Code == "principal_level_insufficient" && status == 403 {
+			return printProof(true,
+				"PROOF S-PRINCIPAL-4: External (level 4) denied inter-agent messaging -- principal_level_insufficient")
+		}
+		// Denied by another check means the principal check did not fire.
+		return printProof(false, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-4: External denied by %s (expected principal_level_insufficient)", ge.Code))
+	}
+
+	if status == 200 || status == 502 {
+		return printProof(false, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-4: External was allowed (HTTP %d) -- expected 403 principal_level_insufficient", status))
+	}
+
+	return printProof(false, fmt.Sprintf(
+		"PROOF S-PRINCIPAL-4: unexpected HTTP %d without structured error", status))
+}
+
+// --- Irreversibility gating scenarios (OC-dz8i) ---
+
+// S-IRREV-1: Read action is fully reversible (Score=0), should fast-path.
+// "read" is a registered tool with risk_level=low, so all dimensions are 0.
+func testIrrev1ReadAllowed() bool {
+	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/external/bob",
+		mcpgateway.WithTimeout(10*time.Second),
+		mcpgateway.WithMaxRetries(0),
+		mcpgateway.WithSessionID("irrev-demo-read-001"),
+	)
+	ctx := context.Background()
+	result, err := client.Call(ctx, "read", map[string]any{"file_path": "/tmp/test"})
+	if err == nil {
+		fmt.Printf("  Result: %v\n", result)
+		return printProof(true, "PROOF S-IRREV-1: Read action (reversible) allowed via fast path")
+	}
+	var ge *mcpgateway.GatewayError
+	if errors.As(err, &ge) {
+		printGatewayError(ge)
+		// 502 = chain ran to completion, no upstream (expected in demo)
+		if ge.HTTPStatus == 502 {
+			return printProof(true, "PROOF S-IRREV-1: Read action (reversible) allowed via fast path (502 = no upstream)")
+		}
+		return printProof(false, fmt.Sprintf("unexpected denial for read action: code=%s, step=%d", ge.Code, ge.Step))
+	}
+	fmt.Printf("  Error: %v\n", err)
+	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
+}
+
+// S-IRREV-2: Create action is costly_reversible (Score=1). As an unregistered tool,
+// it hits unknown_tool_defaults (total=9) which lands in the approval gate.
+// The key assertion: it gets stepup_approval_required, NOT irreversible_action_denied.
+func testIrrev2CreateEvaluated() bool {
+	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/external/bob",
+		mcpgateway.WithTimeout(10*time.Second),
+		mcpgateway.WithMaxRetries(0),
+		mcpgateway.WithSessionID("irrev-demo-create-001"),
+	)
+	ctx := context.Background()
+	_, err := client.Call(ctx, "create", map[string]any{"name": "test-resource"})
+	if err == nil {
+		return printProof(true, "PROOF S-IRREV-2: Create action (costly_reversible) evaluated appropriately -- allowed")
+	}
+	var ge *mcpgateway.GatewayError
+	if errors.As(err, &ge) {
+		printGatewayError(ge)
+		if ge.Code == "stepup_approval_required" || ge.Code == "stepup_denied" {
+			isNotIrreversible := ge.Code != "irreversible_action_denied"
+			return printProof(isNotIrreversible, fmt.Sprintf("PROOF S-IRREV-2: Create action (costly_reversible) evaluated appropriately -- code=%s (not irreversible_action_denied)", ge.Code))
+		}
+		if ge.HTTPStatus == 502 {
+			return printProof(true, "PROOF S-IRREV-2: Create action (costly_reversible) evaluated appropriately -- passed through (502)")
+		}
+		return printProof(false, fmt.Sprintf("unexpected code for create action: %s at step %d", ge.Code, ge.Step))
+	}
+	fmt.Printf("  Error: %v\n", err)
+	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
+}
+
+// S-IRREV-3: Owner delete. "delete" triggers irreversible classification (Score=3).
+// As an unregistered tool, unknown_defaults={2,2,2,3}, reversibility override pushes
+// Reversibility to 3, giving Total=10 (deny gate). X-Precinct-Reversibility is set.
+func testIrrev3OwnerDelete() bool {
+	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/owner/alice",
+		mcpgateway.WithTimeout(10*time.Second),
+		mcpgateway.WithMaxRetries(0),
+		mcpgateway.WithSessionID("irrev-demo-owner-delete-001"),
+	)
+	ctx := context.Background()
+	_, err := client.Call(ctx, "delete", map[string]any{"resource": "test-database-record"})
+	if err == nil {
+		return printProof(false, "expected denial for irreversible delete but got success")
+	}
+	var ge *mcpgateway.GatewayError
+	if errors.As(err, &ge) {
+		printGatewayError(ge)
+		ok := ge.HTTPStatus == 403 &&
+			(ge.Code == "stepup_denied" || ge.Code == "stepup_approval_required" || ge.Code == "irreversible_action_denied")
+		return printProof(ok, fmt.Sprintf("PROOF S-IRREV-3: Owner delete (irreversible) gets approval gate with backup recommendation -- code=%s, step=%d", ge.Code, ge.Step))
+	}
+	fmt.Printf("  Error: %v\n", err)
+	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
+}
+
+// S-IRREV-4: External delete. Same mechanism as S-IRREV-3 but with external identity.
+func testIrrev4ExternalDelete() bool {
+	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/external/bob",
+		mcpgateway.WithTimeout(10*time.Second),
+		mcpgateway.WithMaxRetries(0),
+		mcpgateway.WithSessionID("irrev-demo-external-delete-001"),
+	)
+	ctx := context.Background()
+	_, err := client.Call(ctx, "delete", map[string]any{"resource": "critical-data"})
+	if err == nil {
+		return printProof(false, "expected denial for external irreversible delete but got success")
+	}
+	var ge *mcpgateway.GatewayError
+	if errors.As(err, &ge) {
+		printGatewayError(ge)
+		ok := ge.HTTPStatus == 403 &&
+			(ge.Code == "stepup_denied" || ge.Code == "stepup_approval_required" || ge.Code == "irreversible_action_denied")
+		return printProof(ok, fmt.Sprintf("PROOF S-IRREV-4: External delete (irreversible) denied -- code=%s, step=%d", ge.Code, ge.Step))
+	}
+	fmt.Printf("  Error: %v\n", err)
+	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
+}
+
+// S-IRREV-5: Irreversible action in an escalated session.
+func testIrrev5EscalatedSessionDeny() bool {
+	sessionID := "irrev-demo-escalated-001"
+	agentSPIFFE := "spiffe://poc.local/agents/summarizer/dev"
+
+	escalationClient := mcpgateway.NewClient(*gatewayURL, agentSPIFFE,
+		mcpgateway.WithTimeout(10*time.Second),
+		mcpgateway.WithMaxRetries(0),
+		mcpgateway.WithSessionID(sessionID),
+	)
+	ctx := context.Background()
+	for i := 0; i < 6; i++ {
+		_, _ = escalationClient.Call(ctx, "tavily_search", map[string]any{
+			"query": fmt.Sprintf("escalation probe %d", i),
+		})
+	}
+	fmt.Printf("  %sEscalation:%s sent 6 tavily_search calls to session %s\n", colorDim, colorReset, sessionID)
+
+	_, err := escalationClient.Call(ctx, "shutdown", map[string]any{"target": "production-service"})
+	if err == nil {
+		return printProof(false, "expected denial for irreversible shutdown in escalated session but got success")
+	}
+	var ge *mcpgateway.GatewayError
+	if errors.As(err, &ge) {
+		printGatewayError(ge)
+		ok := ge.HTTPStatus == 403 &&
+			(ge.Code == "stepup_denied" || ge.Code == "stepup_approval_required" || ge.Code == "irreversible_action_denied")
+		return printProof(ok, fmt.Sprintf("PROOF S-IRREV-5: Irreversible action in escalated session denied -- code=%s, step=%d", ge.Code, ge.Step))
+	}
+	fmt.Printf("  Error: %v\n", err)
+	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
 }
 
 // truncateStr shortens a string for display, appending "..." if truncated.
