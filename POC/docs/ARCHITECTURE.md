@@ -643,6 +643,8 @@ The 13-step middleware chain order is a security invariant and does NOT change i
 
 #### 3.2.1 Principal Hierarchy Resolution
 
+> Motivated by identity and authority threats documented in arXiv:2602.20021v1 (Shapira et al., 2026 -- *Agents of Chaos*).
+
 After SPIFFE workload identity is validated (Step 3), the gateway resolves the requester's principal level from the SPIFFE ID path structure:
 
 | Level | Role | SPIFFE Path Pattern | Capabilities |
@@ -659,6 +661,8 @@ The resolved principal role is injected as HTTP headers (X-Precinct-Principal-Le
 Client-provided principal headers are stripped and overwritten by the gateway to prevent forgery.
 
 #### 3.2.2 Irreversibility Classification
+
+> Motivated by irreversible-action threats documented in arXiv:2602.20021v1 (Shapira et al., 2026 -- *Agents of Chaos*).
 
 Before step-up gating decisions (Step 9), the gateway classifies the reversibility of the requested action:
 

@@ -262,13 +262,13 @@
                   <tr>
                     <td>1</td>
                     <td>Agent Forgetting / Gradual Escalation</td>
-                    <td>Escalation score tracking (new), Rate limiting (step 11)</td>
+                    <td>Escalation score tracking (new), Irreversibility gating (new), Rate limiting (step 11)</td>
                     <td><span class="badge badge-accent">New Defense</span></td>
                   </tr>
                   <tr>
                     <td>2</td>
                     <td>Non-Owner Compliance</td>
-                    <td>OPA policy (step 6), Principal hierarchy (new)</td>
+                    <td>OPA policy (step 6), Principal hierarchy (new), Irreversibility gating (new)</td>
                     <td><span class="badge badge-warning">Upgraded</span></td>
                   </tr>
                   <tr>
@@ -371,7 +371,7 @@
                 <span class="badge badge-warning">Enhanced</span>
               </div>
               <div class="card">
-                <h3 class="mt-0">6 New Defenses</h3>
+                <h3 class="mt-0">7 New Defenses</h3>
                 <p>Novel mitigations added to address attack patterns not previously anticipated.</p>
                 <span class="badge badge-accent">Novel</span>
               </div>
@@ -456,6 +456,13 @@
                     <td>Step-Up Gating (step 9)</td>
                     <td>Audit Log (step 4), Rate Limiting (step 11)</td>
                     <td>Mass-send operations require step-up authorization. Audit logs provide forensic evidence for bias exploitation investigations. Rate limits bound the blast radius of amplification attacks.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Irreversible Action Gating</strong></td>
+                    <td>#1, #2</td>
+                    <td>Step-Up Gating (step 9)</td>
+                    <td>OPA Policy (step 6), Principal Hierarchy</td>
+                    <td>Actions classified as irreversible (Score=3: delete, shutdown, purge, wipe) are forced to the Deny gate when requested by non-owner principals (Level&nbsp;&gt;&nbsp;1) or during escalated sessions (EscalationScore&nbsp;&gt;&nbsp;15). The <code>X-Precinct-Reversibility</code> and <code>X-Precinct-Backup-Recommended</code> headers communicate classification results to downstream callers.</td>
                   </tr>
                 </tbody>
               </table>
