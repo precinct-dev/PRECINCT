@@ -45,9 +45,12 @@ type AuditEvent struct {
 
 // SecurityAudit contains security-related audit information
 type SecurityAudit struct {
-	ToolHashVerified bool           `json:"tool_hash_verified"`
-	SafeZoneFlags    []string       `json:"safezone_flags,omitempty"`
-	FrameworkRefs    *FrameworkRefs `json:"framework_refs,omitempty"`
+	ToolHashVerified      bool           `json:"tool_hash_verified"`
+	SafeZoneFlags         []string       `json:"safezone_flags,omitempty"`
+	FrameworkRefs         *FrameworkRefs `json:"framework_refs,omitempty"`
+	ReversibilityScore    int            `json:"reversibility_score,omitempty"`    // OC-h4m7: 0-3 reversibility score
+	ReversibilityCategory string         `json:"reversibility_category,omitempty"` // OC-h4m7: reversible/costly_reversible/partially_reversible/irreversible
+	BackupRecommended     bool           `json:"backup_recommended,omitempty"`     // OC-lmzm: true when pre-action snapshot recommended (Score >= 2)
 }
 
 // AuthzAudit contains authorization-related audit information
