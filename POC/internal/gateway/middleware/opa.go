@@ -238,11 +238,15 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 			sessionInput.PreviousActions = sessionData.Actions
 		}
 
+		// OC-66bi: Derive Action from request semantics instead of hardcoding "execute".
+		// Priority: (1) explicit params["action"], (2) keyword from tool name, (3) fallback "execute".
+		action := deriveAction(toolName, params)
+
 		// Build OPA input
 		input := OPAInput{
 			SPIFFEID:    GetSPIFFEID(ctx),
 			Tool:        toolName,
-			Action:      "execute",
+			Action:      action,
 			Method:      r.Method,
 			Path:        r.URL.Path,
 			Params:      params,
@@ -343,4 +347,57 @@ func isWebSocketUpgradeRequest(r *http.Request) bool {
 		return false
 	}
 	return strings.EqualFold(strings.TrimSpace(r.Header.Get("Upgrade")), "websocket")
+}
+
+// toolNamePatterns maps substrings found in tool names to the canonical OPA action
+// keyword that triggers the corresponding is_*_action rule. The value must be one
+// of the keywords recognized by the OPA policy (is_destructive_action,
+// is_data_export_action, is_messaging_action).
+//
+// Patterns include both the exact policy keywords AND common morphological
+// variants (e.g., "messaging" -> "message") so that tool names like
+// "messaging_send" correctly derive an action that fires the policy rule.
+var toolNamePatterns = []struct {
+	pattern string // substring to match in lowered tool name
+	action  string // canonical OPA action keyword to return
+}{
+	// destructive
+	{"delete", "delete"}, {"rm", "rm"}, {"remove", "remove"}, {"drop", "drop"},
+	{"reset", "reset"}, {"wipe", "wipe"}, {"shutdown", "shutdown"},
+	{"terminate", "terminate"}, {"revoke", "revoke"}, {"purge", "purge"}, {"destroy", "destroy"},
+	// data export
+	{"export", "export"}, {"dump", "dump"}, {"backup", "backup"},
+	{"extract", "extract"}, {"exfil", "exfil"},
+	// messaging (includes morphological variants; longer patterns first to avoid premature match)
+	{"messaging", "message"}, {"message", "message"},
+	{"broadcast", "broadcast"},
+	{"notification", "notify"}, {"notify", "notify"},
+	{"send_agent", "send_agent"}, {"agent_invoke", "agent_invoke"},
+}
+
+// deriveAction determines the OPA input.action from request semantics.
+// OC-66bi: Replaces the hardcoded "execute" value so principal-level rules fire.
+//
+// Priority:
+//  1. Explicit params["action"] string value
+//  2. First matching pattern found in the tool name (maps to canonical keyword)
+//  3. Fallback to "execute" (backward compatible)
+func deriveAction(toolName string, params map[string]interface{}) string {
+	// (1) Check explicit params["action"]
+	if actionVal, ok := params["action"]; ok {
+		if s, ok := actionVal.(string); ok && s != "" {
+			return s
+		}
+	}
+
+	// (2) Check tool name for known patterns
+	lower := strings.ToLower(toolName)
+	for _, p := range toolNamePatterns {
+		if strings.Contains(lower, p.pattern) {
+			return p.action
+		}
+	}
+
+	// (3) Fallback
+	return "execute"
 }
