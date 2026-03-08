@@ -859,6 +859,18 @@ func StepUpGating(
 			result.Reason = "risk score exceeds maximum threshold - denied by default"
 		}
 
+		// OC-lmzm: Set X-Precinct-Backup-Recommended advisory header when
+		// the action requires a pre-execution state snapshot (Score >= 2) AND
+		// the action is allowed. Denied actions won't execute, so no snapshot needed.
+		if rev.RequiresBackup && result.Allowed {
+			r.Header.Set("X-Precinct-Backup-Recommended", "true")
+
+			// OC-lmzm: Record authorized destructive action in session context.
+			if session != nil {
+				session.DestructiveActionsAuthorized++
+			}
+		}
+
 		// RFA-m6j.2: Set per-middleware span attributes
 		guardResultStr := ""
 		if result.GuardResult != nil {
@@ -880,6 +892,7 @@ func StepUpGating(
 			attribute.String("guard_result", guardResultStr),
 			attribute.Int("reversibility_score", rev.Score),
 			attribute.String("reversibility_category", rev.Category),
+			attribute.Bool("backup_recommended", rev.RequiresBackup && result.Allowed),
 		)
 		if result.Allowed {
 			span.SetAttributes(
@@ -910,6 +923,7 @@ func StepUpGating(
 				Security: &SecurityAudit{
 					ReversibilityScore:    rev.Score,
 					ReversibilityCategory: rev.Category,
+					BackupRecommended:     rev.RequiresBackup && result.Allowed,
 				},
 			})
 		}
