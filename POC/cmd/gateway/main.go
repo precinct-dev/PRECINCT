@@ -15,6 +15,7 @@ import (
 
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
 	gwmetrics "github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/metrics"
+	"github.com/RamXX/agentic_reference_architecture/POC/ports/discord"
 	"github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw"
 )
 
@@ -94,6 +95,7 @@ func main() {
 
 	// Register port adapters for third-party agent integrations.
 	gw.RegisterPort(openclaw.NewAdapter(gw))
+	gw.RegisterPort(discord.NewAdapter(gw))
 
 	// RFA-8z8.1: In prod mode, initialize SPIFFE mTLS before creating the server.
 	// This connects to the SPIRE Agent, obtains an X.509 SVID, and configures
