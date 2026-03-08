@@ -119,6 +119,7 @@
               <div class="sidebar-nav-title">On This Page</div>
               <ul>
                 <li><a href="#snapshot">Capability Snapshot</a></li>
+                <li><a href="#new-capabilities">Extended Capabilities</a></li>
                 <li><a href="#core-security">Core Security Controls</a></li>
                 <li><a href="#runtime-matrix">Runtime Matrix</a></li>
                 <li><a href="#integration">Integration & Platform</a></li>
@@ -130,6 +131,7 @@
               <div class="sidebar-nav-title">Related</div>
               <ul>
                 <li><a href="architecture.html">Architecture</a></li>
+                <li><a href="agents-of-chaos.html">Agents of Chaos</a></li>
                 <li><a href="case-study.html">Adapter Case Study</a></li>
                 <li><a href="for-auditors.html">For Auditors</a></li>
               </ul>
@@ -152,6 +154,7 @@
               <div class="sidebar-nav-title">On This Page</div>
               <ul>
                 <li><a href="#snapshot">Capability Snapshot</a></li>
+                <li><a href="#new-capabilities">Extended Capabilities</a></li>
                 <li><a href="#core-security">Core Security Controls</a></li>
                 <li><a href="#runtime-matrix">Runtime Matrix</a></li>
                 <li><a href="#integration">Integration & Platform</a></li>
@@ -194,6 +197,93 @@
                 <h3 class="mt-0">Live Adapter Coverage</h3>
                 <p>Reference port adapter with HTTP + WebSocket + webhook paths enforced through gateway policy.</p>
                 <span class="badge badge-default">App Integration</span>
+              </div>
+            </div>
+          </section>
+
+          <section id="new-capabilities">
+            <h2>Extended Capabilities</h2>
+            <p>
+              New defense layers inspired by the <a href="agents-of-chaos.html">Agents of Chaos</a>
+              threat research. These capabilities extend the existing 13-layer chain with targeted
+              mitigations for cross-channel manipulation, data integrity attacks, and gradual
+              escalation patterns.
+            </p>
+            <div class="card-grid card-grid-3">
+              <div class="card">
+                <h3 class="mt-0">Communication Channel Mediation</h3>
+                <p>
+                  Protocol-aware adapters for Discord and Email that route all agent communication
+                  through the gateway enforcement chain, preventing agent-to-agent bypass via
+                  unmonitored channels.
+                </p>
+                <ul>
+                  <li>Discord: <code>/discord/send</code> (outbound), <code>/discord/webhooks</code> (inbound), <code>/discord/commands</code></li>
+                  <li>Email: <code>/email/send</code> (outbound with DLP), <code>/email/read</code> (inbound, auto-classifies sensitive content)</li>
+                  <li>Prevents agent-to-agent loops and libelous mass broadcast (Case Studies #4, #11)</li>
+                </ul>
+                <a href="agents-of-chaos.html">Related threat defenses</a>
+                <span class="badge badge-accent">Channel Security</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Data Source Integrity Registry</h3>
+                <p>
+                  Content-hash verification for external data sources consumed by agents.
+                  Detects rug-pull attacks where previously trusted configuration or data
+                  sources are silently modified.
+                </p>
+                <ul>
+                  <li><code>DataSourceDefinition</code> with SHA-256 <code>content_hash</code> verification</li>
+                  <li>MutablePolicy modes: <code>block_on_change</code>, <code>flag_on_change</code>, <code>allow</code></li>
+                  <li>Detects external config corruption (Case Study #10)</li>
+                </ul>
+                <a href="gateway.html#request-processing">Gateway request processing</a>
+                <span class="badge badge-accent">Data Integrity</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Escalation Detection</h3>
+                <p>
+                  Cross-session tracking of cumulative escalation patterns. Detects gradual
+                  privilege creep where individually benign requests combine into a dangerous
+                  escalation trajectory.
+                </p>
+                <ul>
+                  <li>EscalationScore: contribution = Impact x (4 - Reversibility)</li>
+                  <li>Thresholds: Warning &ge; 15, Critical &ge; 25, Emergency &ge; 40</li>
+                  <li>Detects gradual escalation and gaslighting (Case Studies #1, #7)</li>
+                </ul>
+                <a href="agents-of-chaos.html#defense-mapping">Defense mapping</a>
+                <span class="badge badge-accent">Behavioral Analysis</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Principal Hierarchy</h3>
+                <p>
+                  Six-level trust hierarchy that maps SPIFFE identities to authorization
+                  principals, enabling owner-only operations and tiered access control
+                  based on agent classification.
+                </p>
+                <ul>
+                  <li>Levels: System &gt; Operator &gt; Trusted Agent &gt; Standard Agent &gt; Restricted Agent &gt; Unknown</li>
+                  <li>SPIFFE-to-role resolution from path patterns</li>
+                  <li>Enforces owner-only operations (Case Study #2)</li>
+                </ul>
+                <a href="architecture.html#13-layer-middleware">Middleware chain</a>
+                <span class="badge badge-warning">In Development</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Irreversibility Gating</h3>
+                <p>
+                  Automatic classification of action reversibility with step-up authorization
+                  for destructive operations. Prevents irreversible actions from executing
+                  without elevated approval.
+                </p>
+                <ul>
+                  <li>Four tiers: Low (read) / Medium (create) / High (modify) / Critical (delete)</li>
+                  <li>Automatic step-up for Critical actions</li>
+                  <li>Prevents irreversible destructive actions (Case Studies #6, #16)</li>
+                </ul>
+                <a href="gateway.html#request-processing">Step-up gating</a>
+                <span class="badge badge-warning">In Development</span>
               </div>
             </div>
           </section>

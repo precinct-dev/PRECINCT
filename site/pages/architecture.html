@@ -197,6 +197,16 @@
               It wraps around existing agent frameworks and MCP servers without requiring any modification
               to agent code, model configurations, or tool implementations.
             </p>
+            <p>
+              To extend enforcement to communication channels, PRECINCT includes
+              <strong>channel mediation adapters</strong> for Discord and Email that route all
+              agent-to-agent and agent-to-human communication through the gateway enforcement
+              chain. These adapters sit alongside the
+              <a href="case-study.html">OpenClaw reference port adapter</a> and ensure that
+              no communication channel bypasses policy evaluation, DLP scanning, or audit
+              logging -- preventing cross-channel manipulation attacks such as agent-to-agent
+              loops and libelous mass broadcast.
+            </p>
           </section>
 
           <!-- ========== The Five Governed Planes ========== -->
@@ -340,7 +350,7 @@ graph TB
                   <tr>
                     <td><code>3</code></td>
                     <td>SPIFFE Auth</td>
-                    <td>Cryptographic workload identity verification via mTLS SVID validation</td>
+                    <td>Cryptographic workload identity verification via mTLS SVID validation. Principal hierarchy metadata (System, Operator, Trusted Agent, Standard Agent, Restricted Agent, Unknown) is enriched from SPIFFE path patterns for downstream authorization decisions.</td>
                     <td>&lt;1ms</td>
                   </tr>
                   <tr>
@@ -352,7 +362,7 @@ graph TB
                   <tr>
                     <td><code>5</code></td>
                     <td>Tool Registry Verify</td>
-                    <td>SHA-256 hash validation of the target tool; detects rug-pull attacks</td>
+                    <td>SHA-256 hash validation of the target tool; detects rug-pull attacks. Extended with a <strong>Data Source Integrity Registry</strong> that verifies content hashes of external data sources and applies mutable-source policy (block_on_change / flag_on_change / allow) to detect external config corruption.</td>
                     <td>&lt;1ms</td>
                   </tr>
                   <tr>
@@ -378,13 +388,13 @@ graph TB
                   <tr>
                     <td><code>8</code></td>
                     <td>Session Context</td>
-                    <td>Cross-request risk tracking; accumulates behavior patterns per session</td>
+                    <td>Cross-request risk tracking; accumulates behavior patterns per session. Now includes <strong>escalation detection</strong> with EscalationScore tracking (contribution = Impact x (4 - Reversibility); thresholds: Warning &ge; 15, Critical &ge; 25, Emergency &ge; 40) to detect gradual privilege escalation across sessions.</td>
                     <td>&lt;0.5ms</td>
                   </tr>
                   <tr>
                     <td><code>9</code></td>
                     <td>Step-Up Gating</td>
-                    <td>Risk scoring with guard model dispatch for high-risk operations</td>
+                    <td>Risk scoring with guard model dispatch for high-risk operations. Includes <strong>irreversibility classification</strong> (ClassifyReversibility): actions scored 0-3 are classified as low/medium/high/critical; agents flagged as high-irreversibility (Score &ge; 2) are automatically sent to step-up gating for guard model review before execution.</td>
                     <td>0&ndash;500ms (conditional)</td>
                   </tr>
                   <tr>
