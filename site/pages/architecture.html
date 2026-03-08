@@ -394,7 +394,7 @@ graph TB
                   <tr>
                     <td><code>9</code></td>
                     <td>Step-Up Gating</td>
-                    <td>Risk scoring with guard model dispatch for high-risk operations</td>
+                    <td>Risk scoring with guard model dispatch for high-risk operations. Includes <strong>irreversibility classification</strong> (ClassifyReversibility): actions scored 0-3 are classified as low/medium/high/critical; agents flagged as high-irreversibility (Score &ge; 2) are automatically sent to step-up gating for guard model review before execution.</td>
                     <td>0&ndash;500ms (conditional)</td>
                   </tr>
                   <tr>
