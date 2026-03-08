@@ -578,6 +578,24 @@ The local overlay reduces resource requests/limits to fit on a laptop:
 
 **Minimum hardware:** 4 CPU cores, 8GB RAM (documented in `docs/getting-started/prerequisites.md`).
 
+### ADR-011: Why Communication Channel Mediation Addresses Agent-to-Agent Bypass
+
+**Problem:** AI agents can bypass security controls by communicating through unmonitored channels (Discord, Email, Slack) rather than the MCP gateway. An agent with access to a messaging tool could exfiltrate data, coordinate with other agents, or execute sensitive operations through side-channels that are invisible to the 13-layer middleware chain.
+
+**Decision:** Implement port adapters (see Section 3.7) that intercept all channel traffic and route it through the full 13-layer middleware chain. Each adapter translates protocol-specific requests into `PlaneRequestV2` structs, ensuring that DLP scanning, OPA policy evaluation, session context tracking, step-up gating, and all other middleware apply uniformly regardless of the communication channel.
+
+**Rationale:** Boundary enforcement at ingress (not per-framework) ensures governance applies regardless of channel. By placing mediation at the gateway perimeter, every message -- inbound or outbound -- passes through the same security controls as a direct MCP tool call. This eliminates the class of bypass attacks where agents use external channels to circumvent tool-level restrictions.
+
+**Alternatives considered:**
+- **Per-agent SDKs** -- Requires code changes in every agent framework and SDK. Agents built with new or custom frameworks would lack controls entirely. Rejected because it does not provide universal coverage.
+- **Webhook-only monitoring** -- Passively monitors inbound webhooks but misses outbound messages initiated by agents. Rejected because outbound exfiltration is the primary threat vector.
+- **Network egress filtering** -- Blocks outbound traffic at the network level. Too coarse-grained: cannot distinguish between legitimate API calls and policy-violating messages to the same endpoint. Rejected because it lacks semantic awareness of message content and intent.
+
+**Consequences:**
+- Each adapter requires approximately 800 lines of Go code to handle protocol translation, credential retrieval, and response mapping.
+- Zero changes to agent code are required -- agents call tools as normal, and the gateway intercepts at the protocol boundary.
+- Policy-as-code (OPA Rego) controls all channels uniformly through the same grant and restriction mechanisms used for MCP tool calls.
+
 ---
 
 ## 3. Component Architecture
@@ -630,6 +648,64 @@ The 13-step middleware chain order is a security invariant and does NOT change i
 | 13 | Token Substitution | OTel span added; SPIKE Nexus backend (real secret redemption) |
 
 **Security invariant (carried from Phase 1):** Token substitution MUST remain step 13 (innermost, last before proxy). No middleware between step 13 and the proxy may inspect request bodies. This ensures no middleware ever sees raw secrets.
+
+#### 3.2.1 Principal Hierarchy Resolution (Step 3 -- SPIFFE Auth)
+
+After SPIFFE identity validation, the gateway resolves a principal role from the authenticated identity using `ResolvePrincipalRole(spiffeID, trustDomain, authMethod string) PrincipalRole` in `POC/internal/gateway/middleware/principal.go`.
+
+The resolution produces a `PrincipalRole` struct:
+
+```go
+type PrincipalRole struct {
+    Level        int      // 0-5 hierarchy level
+    Role         string   // human-readable role name
+    Capabilities []string // granted capabilities
+    TrustDomain  string   // trust domain from SPIFFE ID
+    AuthMethod   string   // spiffe, mtls, or token
+}
+```
+
+The 6-level principal hierarchy:
+
+| Level | Path Prefix | Role | Description |
+|-------|-------------|------|-------------|
+| 0 | `/system/` | system | Internal system services (highest privilege) |
+| 1 | `/owner/` | owner | Platform owners and administrators |
+| 2 | `/delegated/` | delegated | Delegated authority (service accounts with scoped grants) |
+| 3 | `/agents/` | agent | AI agents and automated workloads |
+| 4 | `/external/` | external | External or third-party integrations |
+| 5 | _(default)_ | anonymous | Unrecognized identity (lowest privilege) |
+
+The resolved `PrincipalRole` is stored in the request context and made available to downstream middleware. The gateway emits the following response headers from the resolution result:
+
+- `X-Precinct-Principal-Level` -- integer 0-5
+- `X-Precinct-Principal-Role` -- string (system/owner/delegated/agent/external/anonymous)
+
+#### 3.2.2 Irreversibility Classification (Step 9 -- Step-Up Gating)
+
+Before step-up evaluation, the gateway classifies the reversibility of the requested action using `ClassifyReversibility(tool, action, params, toolDef) ActionReversibility` in `POC/internal/gateway/middleware/reversibility.go`.
+
+The classification produces an `ActionReversibility` struct:
+
+```go
+type ActionReversibility struct {
+    Score          int    // 0-3 reversibility score
+    Category       string // classification category
+    Explanation    string // human-readable rationale
+    RequiresBackup bool   // true when Score >= 2
+}
+```
+
+Reversibility scores:
+
+| Score | Category | Description | RequiresBackup |
+|-------|----------|-------------|----------------|
+| 0 | fully_reversible | Action can be trivially undone (e.g., read operations) | false |
+| 1 | recoverable | Action is reversible with standard undo mechanisms | false |
+| 2 | recoverable_with_effort | Action requires significant effort to reverse (e.g., bulk updates) | true |
+| 3 | irreversible | Action cannot be reversed (e.g., delete without backup, send email) | true |
+
+Integration with step-up gating: when `Score >= 2`, the step-up gating middleware triggers step-up evaluation. This ensures that potentially destructive or irreversible actions receive additional scrutiny before execution. The reversibility score is emitted as the `X-Precinct-Reversibility` response header, and `X-Precinct-Backup-Recommended` is set to `true` when `RequiresBackup` is true.
 
 ### 3.3 SPIKE Nexus Service
 
@@ -1095,6 +1171,7 @@ These are NOT Phase 2 scope but are architecturally preserved:
 | ADR-008 | Python CLI compliance report generator (XLSX/CSV/PDF) | P1-1 |
 | ADR-009 | Docker Compose vs K8s pattern audit (three categories) | P2-1 |
 | ADR-010 | Local K8s via Kustomize overlay with reduced resources | P1-5 |
+| ADR-011 | Communication channel mediation via port adapters addresses agent-to-agent bypass | P0-3 |
 
 ---
 

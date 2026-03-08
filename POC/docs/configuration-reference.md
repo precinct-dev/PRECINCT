@@ -157,6 +157,7 @@ export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DLP_INJECTION_POLICY` | _(empty -- uses YAML config)_ | Override DLP injection policy: `block` or `flag`. When empty, the value from `config/risk_thresholds.yaml` is used. See [DLP Policy Configuration](#8-dlp-policy-configuration) for details |
+| `UNKNOWN_DATA_SOURCE_POLICY` | `flag` | Controls handling of unregistered data sources: `"flag"` (allow with audit flag, default), `"block"` (deny with HTTP 403), `"allow"` (allow silently). Applies when a tool references a data source URI not present in the data source registry |
 
 ### Rate Limiting
 
