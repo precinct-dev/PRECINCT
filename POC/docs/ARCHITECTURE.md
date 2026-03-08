@@ -722,6 +722,51 @@ The CLI setup wizard is a shell script (`scripts/setup.sh`) that:
 
 It is invoked via `make setup`.
 
+### 3.7 Port Adapters
+
+Port adapters live in `POC/ports/` and mediate communication between external services
+and the PRECINCT middleware chain. Each adapter translates protocol-specific requests
+into `PlaneRequestV2` structs, runs them through the full middleware chain, and handles
+protocol-specific responses and credential retrieval.
+
+#### Discord Adapter (POC/ports/discord/)
+
+Routes: `/discord/send`, `/discord/webhooks`, `/discord/commands`
+
+- `/discord/send`: outbound message mediation. Parses `SendMessageRequest`, builds `PlaneRequestV2` with `tool="messaging_send"`, runs full middleware chain, redeems SPIKE token for bot credentials via `RedeemSPIKESecret()`, calls `ExecuteMessagingEgress()`.
+- `/discord/webhooks`: inbound webhook receipt. Verifies Ed25519 signature (`DISCORD_PUBLIC_KEY` env), calls `ValidateConnector()`, emits `AuditLog` event.
+- `/discord/commands`: bot command evaluation via tool plane (`tool="discord_command"`).
+
+#### Email Adapter (POC/ports/email/)
+
+Routes: `/email/send`, `/email/webhooks`, `/email/list`, `/email/read`
+
+- `/email/send`: outbound send with DLP (subject+body concatenated), mass-email detection (>10 recipients sets `mass_email="true"`), SPIKE token redemption for SMTP credentials. Recipient domain OPA enforcement via `attrs["recipient_domains"]`.
+- `/email/read`: inbound read with automatic content classification. Returns `attrs["data_classification"]="sensitive"` when content contains SSN, AWS keys, OpenAI keys, or credit card patterns. Enables exfiltration detection in session context.
+- `/email/list`: lists email metadata. `classification="standard"` (metadata only).
+- `/email/webhooks`: inbound webhook receipt.
+
+### 3.8 Data Source Integrity (tool_registry.go)
+
+`DataSourceDefinition` struct in `ToolRegistry` supports:
+
+- `URI`, `ContentHash` (`sha256:<hex>`), `ApprovedAt`, `ApprovedBy` (SPIFFE ID)
+- `MutablePolicy`: `"block_on_change"`, `"flag_on_change"`, `"allow"`
+- `RefreshTTL`, `LastVerified`
+- Hot reload via existing `fsnotify` watcher
+- `ComputeDataSourceHash(content)` returns `"sha256:<hex>"`
+- `GetDataSource(uri)` returns `(*DataSourceDefinition, bool)`
+
+### 3.9 Escalation Detection (session_context.go, escalation.go)
+
+`EscalationScore` tracks cumulative destructiveness in `AgentSession`:
+
+- `EscalationScore float64` (persisted in KeyDB)
+- `EscalationHistory []EscalationEvent`
+- `EscalationFlags []string`: `"escalation_warning"`, `"escalation_critical"`, `"escalation_emergency"`
+- Thresholds: warning=15, critical=25, emergency=40
+- Formula: `contribution = Impact x (4 - Reversibility)`
+
 ---
 
 ## 4. Security Architecture

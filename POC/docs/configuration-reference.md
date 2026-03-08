@@ -18,7 +18,10 @@ and runtime values in `docker-compose.yml`.
 6. [Configuration Files](#6-configuration-files)
 7. [OPA Policy Structure](#7-opa-policy-structure)
 8. [DLP Policy Configuration](#8-dlp-policy-configuration)
-9. [SPIFFE ID Schema](#9-spiffe-id-schema)
+9. [Escalation Thresholds](#9-escalation-thresholds)
+10. [Data Source Registry](#10-data-source-registry)
+11. [Port Adapter Environment Variables](#11-port-adapter-environment-variables)
+12. [SPIFFE ID Schema](#12-spiffe-id-schema)
 
 ---
 
@@ -764,7 +767,64 @@ Only `injection` has an env var override because:
 
 ---
 
-## 9. SPIFFE ID Schema
+## 9. Escalation Thresholds
+
+Escalation detection tracks cumulative destructiveness within an agent session. The
+thresholds are currently hardcoded constants in `internal/gateway/middleware/escalation.go`:
+
+| Constant | Value | Description |
+|----------|-------|-------------|
+| `EscalationWarningThreshold` | `15.0` | Session score at which `escalation_warning` flag is set |
+| `EscalationCriticalThreshold` | `25.0` | Session score at which `escalation_critical` flag is set |
+| `EscalationEmergencyThreshold` | `40.0` | Session score at which `escalation_emergency` flag is set and request is denied (HTTP 403) |
+
+**Scoring formula:** `contribution = Impact x (4 - Reversibility)`
+
+Each tool action contributes to the cumulative session score. The score is persisted
+in KeyDB alongside other session state.
+
+---
+
+## 10. Data Source Registry
+
+The tool registry (`config/tool-registry.yaml`) supports a `data_sources` extension
+for external data source integrity verification. Each entry is a `DataSourceDefinition`:
+
+```yaml
+data_sources:
+  - uri: "https://example.com/dataset.json"
+    content_hash: "sha256:abc123..."
+    approved_at: "2026-03-01T00:00:00Z"
+    approved_by: "spiffe://poc.local/agents/admin/dev"
+    max_size_bytes: 10485760
+    mutable_policy: "block_on_change"  # block_on_change | flag_on_change | allow
+    refresh_ttl: "1h"
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uri` | string | External data source URI |
+| `content_hash` | string | Expected SHA-256 hash (`sha256:<hex>`) |
+| `approved_at` | timestamp | When the data source was last approved |
+| `approved_by` | string | SPIFFE ID of the approver |
+| `max_size_bytes` | integer | Maximum allowed data source size |
+| `mutable_policy` | string | `"block_on_change"`, `"flag_on_change"`, or `"allow"` |
+| `refresh_ttl` | duration | How often to re-verify the data source hash |
+
+Data source definitions are hot-reloaded via the existing `fsnotify` watcher alongside
+tool definitions.
+
+---
+
+## 11. Port Adapter Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DISCORD_PUBLIC_KEY` | _(empty)_ | Ed25519 public key (hex-encoded) for Discord webhook signature verification. Required when the Discord adapter is active |
+
+---
+
+## 12. SPIFFE ID Schema
 
 All workload identities follow the pattern defined in the Reference Architecture
 Section 4.5.
