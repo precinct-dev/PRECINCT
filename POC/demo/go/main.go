@@ -246,6 +246,35 @@ func main() {
 			expect: "413 or connection reset -- gateway rejects at ingress before processing",
 			fn:     testRequestSizeLimit,
 		},
+		// --- Principal hierarchy enforcement scenarios (OC-f0xy) ---
+		{
+			name:   "Principal hierarchy: owner allowed destructive (S-PRINCIPAL-1)",
+			what:   "Owner (level 1) passes principal-level check for destructive operations (delete) at step 6",
+			send:   "tavily_search(action=delete) with X-SPIFFE-ID: spiffe://poc.local/owner/alice",
+			expect: "NOT principal_level_insufficient -- owner has sufficient authority (may get 502 or other non-principal denial)",
+			fn:     testPrincipalOwnerDestructive,
+		},
+		{
+			name:   "Principal hierarchy: external denied destructive (S-PRINCIPAL-2)",
+			what:   "External user (level 4) denied destructive operations -- requires level <= 2",
+			send:   "tavily_search(action=delete) with X-SPIFFE-ID: spiffe://poc.local/external/bob",
+			expect: "HTTP 403 with code=principal_level_insufficient at step 6",
+			fn:     testPrincipalExternalDestructive,
+		},
+		{
+			name:   "Principal hierarchy: agent allowed messaging (S-PRINCIPAL-3)",
+			what:   "Agent (level 3) passes principal-level check for inter-agent messaging at step 6",
+			send:   "tavily_search(action=notify) with X-SPIFFE-ID: spiffe://poc.local/agents/summarizer/dev",
+			expect: "NOT principal_level_insufficient -- agent has sufficient authority for messaging",
+			fn:     testPrincipalAgentMessaging,
+		},
+		{
+			name:   "Principal hierarchy: external denied messaging (S-PRINCIPAL-4)",
+			what:   "External user (level 4) denied inter-agent messaging -- requires level <= 3",
+			send:   "tavily_search(action=notify) with X-SPIFFE-ID: spiffe://poc.local/external/bob",
+			expect: "HTTP 403 with code=principal_level_insufficient at step 6",
+			fn:     testPrincipalExternalMessaging,
+		},
 	}
 
 	for i, t := range tests {
@@ -1289,6 +1318,191 @@ func testRequestSizeLimit() bool {
 	fmt.Printf("  Error: %v\n", err)
 	// Even a non-GatewayError (e.g. connection reset) proves the limit works
 	return printProof(true, fmt.Sprintf("rejected (non-JSON): %v", err))
+}
+
+// --- Principal hierarchy enforcement (OC-f0xy) ---
+
+// sendPrincipalRequest sends a raw JSON-RPC tools/call request with the given SPIFFE ID
+// and action keyword in the arguments. Returns HTTP status, the parsed GatewayError (if any),
+// the raw response body, and any transport error.
+func sendPrincipalRequest(spiffeID, action, sessionID string) (int, *mcpgateway.GatewayError, []byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	payload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      9000,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "tavily_search",
+			"arguments": map[string]any{
+				"query":  "principal hierarchy test",
+				"action": action,
+			},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("marshal payload: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, *gatewayURL, bytes.NewReader(body))
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", spiffeID)
+	req.Header.Set("X-Session-ID", sessionID)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return 0, nil, nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode >= 400 {
+		var ge mcpgateway.GatewayError
+		if jsonErr := json.Unmarshal(respBody, &ge); jsonErr == nil {
+			ge.HTTPStatus = resp.StatusCode
+			return resp.StatusCode, &ge, respBody, nil
+		}
+	}
+
+	return resp.StatusCode, nil, respBody, nil
+}
+
+// S-PRINCIPAL-1: Owner (level 1) allowed destructive operation.
+// Owner identity passes the principal-level check for destructive actions.
+// The request may still be denied by other middleware (tool registry, step-up, etc.)
+// but the error code must NOT be principal_level_insufficient.
+func testPrincipalOwnerDestructive() bool {
+	status, ge, _, err := sendPrincipalRequest(
+		"spiffe://poc.local/owner/alice",
+		"delete",
+		"demo-principal-owner-destructive",
+	)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("transport error: %v", err))
+	}
+
+	// Success or 502 (no upstream) both prove the principal check passed.
+	if status == 200 || status == 502 {
+		return printProof(true, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-1: Owner (level 1) allowed destructive operation (HTTP %d)", status))
+	}
+
+	if ge != nil {
+		printGatewayError(ge)
+		// Any denial that is NOT principal_level_insufficient proves the principal check passed.
+		if ge.Code == "principal_level_insufficient" {
+			return printProof(false,
+				"PROOF S-PRINCIPAL-1: FAIL -- owner was denied by principal_level_insufficient (unexpected)")
+		}
+		return printProof(true, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-1: Owner (level 1) allowed destructive operation -- denied by %s (not principal check)", ge.Code))
+	}
+
+	return printProof(true, fmt.Sprintf(
+		"PROOF S-PRINCIPAL-1: Owner (level 1) allowed destructive operation (HTTP %d)", status))
+}
+
+// S-PRINCIPAL-2: External user (level 4) denied destructive operation.
+// External identity must be denied with principal_level_insufficient for destructive actions.
+func testPrincipalExternalDestructive() bool {
+	status, ge, _, err := sendPrincipalRequest(
+		"spiffe://poc.local/external/bob",
+		"delete",
+		"demo-principal-external-destructive",
+	)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("transport error: %v", err))
+	}
+
+	if ge != nil {
+		printGatewayError(ge)
+		if ge.Code == "principal_level_insufficient" && status == 403 {
+			return printProof(true,
+				"PROOF S-PRINCIPAL-2: External (level 4) denied destructive operation -- principal_level_insufficient")
+		}
+		// Denied by another check (e.g. authz_policy_denied) means the principal check
+		// did not fire. This is expected until OPA input.action is enriched from params.
+		return printProof(false, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-2: External denied by %s (expected principal_level_insufficient)", ge.Code))
+	}
+
+	if status == 200 || status == 502 {
+		return printProof(false, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-2: External was allowed (HTTP %d) -- expected 403 principal_level_insufficient", status))
+	}
+
+	return printProof(false, fmt.Sprintf(
+		"PROOF S-PRINCIPAL-2: unexpected HTTP %d without structured error", status))
+}
+
+// S-PRINCIPAL-3: Agent (level 3) allowed messaging operation.
+// Agent identity passes the principal-level check for messaging (level <= 3).
+func testPrincipalAgentMessaging() bool {
+	status, ge, _, err := sendPrincipalRequest(
+		"spiffe://poc.local/agents/summarizer/dev",
+		"notify",
+		"demo-principal-agent-messaging",
+	)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("transport error: %v", err))
+	}
+
+	// Success or 502 both prove the principal check passed.
+	if status == 200 || status == 502 {
+		return printProof(true, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-3: Agent (level 3) allowed inter-agent messaging (HTTP %d)", status))
+	}
+
+	if ge != nil {
+		printGatewayError(ge)
+		if ge.Code == "principal_level_insufficient" {
+			return printProof(false,
+				"PROOF S-PRINCIPAL-3: FAIL -- agent was denied by principal_level_insufficient (unexpected)")
+		}
+		return printProof(true, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-3: Agent (level 3) allowed inter-agent messaging -- denied by %s (not principal check)", ge.Code))
+	}
+
+	return printProof(true, fmt.Sprintf(
+		"PROOF S-PRINCIPAL-3: Agent (level 3) allowed inter-agent messaging (HTTP %d)", status))
+}
+
+// S-PRINCIPAL-4: External user (level 4) denied messaging operation.
+// External identity must be denied with principal_level_insufficient for messaging actions.
+func testPrincipalExternalMessaging() bool {
+	status, ge, _, err := sendPrincipalRequest(
+		"spiffe://poc.local/external/bob",
+		"notify",
+		"demo-principal-external-messaging",
+	)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("transport error: %v", err))
+	}
+
+	if ge != nil {
+		printGatewayError(ge)
+		if ge.Code == "principal_level_insufficient" && status == 403 {
+			return printProof(true,
+				"PROOF S-PRINCIPAL-4: External (level 4) denied inter-agent messaging -- principal_level_insufficient")
+		}
+		// Denied by another check means the principal check did not fire.
+		return printProof(false, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-4: External denied by %s (expected principal_level_insufficient)", ge.Code))
+	}
+
+	if status == 200 || status == 502 {
+		return printProof(false, fmt.Sprintf(
+			"PROOF S-PRINCIPAL-4: External was allowed (HTTP %d) -- expected 403 principal_level_insufficient", status))
+	}
+
+	return printProof(false, fmt.Sprintf(
+		"PROOF S-PRINCIPAL-4: unexpected HTTP %d without structured error", status))
 }
 
 // truncateStr shortens a string for display, appending "..." if truncated.
