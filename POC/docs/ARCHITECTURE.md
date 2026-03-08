@@ -578,23 +578,15 @@ The local overlay reduces resource requests/limits to fit on a laptop:
 
 **Minimum hardware:** 4 CPU cores, 8GB RAM (documented in `docs/getting-started/prerequisites.md`).
 
-### ADR-011: Why Communication Channel Mediation Addresses Agent-to-Agent Bypass
+### ADR-011: Communication Channel Mediation
 
-**Problem:** AI agents can bypass security controls by communicating through unmonitored channels (Discord, Email, Slack) rather than the MCP gateway. An agent with access to a messaging tool could exfiltrate data, coordinate with other agents, or execute sensitive operations through side-channels that are invisible to the 13-layer middleware chain.
+**Decision**: All inbound requests from external channels (Discord, email, webhooks, queues) pass through port adapters that translate channel-specific protocols to the gateway's internal model before entering the middleware chain.
 
-**Decision:** Implement port adapters (see Section 3.7) that intercept all channel traffic and route it through the full 13-layer middleware chain. Each adapter translates protocol-specific requests into `PlaneRequestV2` structs, ensuring that DLP scanning, OPA policy evaluation, session context tracking, step-up gating, and all other middleware apply uniformly regardless of the communication channel.
+**Context**: Agents communicating through external channels (Discord bots, email assistants) could bypass identity verification if allowed to invoke tools directly via channel APIs. The channel itself becomes a trust vector.
 
-**Rationale:** Boundary enforcement at ingress (not per-framework) ensures governance applies regardless of channel. By placing mediation at the gateway perimeter, every message -- inbound or outbound -- passes through the same security controls as a direct MCP tool call. This eliminates the class of bypass attacks where agents use external channels to circumvent tool-level restrictions.
+**Rationale**: Port adapters normalize inbound requests, strip channel-specific authentication tokens, and re-establish workload identity at the gateway boundary. This prevents agent-to-agent bypass where one agent could instruct another via a side channel (e.g., a Discord message) to execute a tool that would otherwise be blocked. Each adapter enforces the same SPIFFE identity requirement as direct MCP requests.
 
-**Alternatives considered:**
-- **Per-agent SDKs** -- Requires code changes in every agent framework and SDK. Agents built with new or custom frameworks would lack controls entirely. Rejected because it does not provide universal coverage.
-- **Webhook-only monitoring** -- Passively monitors inbound webhooks but misses outbound messages initiated by agents. Rejected because outbound exfiltration is the primary threat vector.
-- **Network egress filtering** -- Blocks outbound traffic at the network level. Too coarse-grained: cannot distinguish between legitimate API calls and policy-violating messages to the same endpoint. Rejected because it lacks semantic awareness of message content and intent.
-
-**Consequences:**
-- Each adapter requires approximately 800 lines of Go code to handle protocol translation, credential retrieval, and response mapping.
-- Zero changes to agent code are required -- agents call tools as normal, and the gateway intercepts at the protocol boundary.
-- Policy-as-code (OPA Rego) controls all channels uniformly through the same grant and restriction mechanisms used for MCP tool calls.
+**Consequences**: All channel integrations require a port adapter (~800 lines each). The gateway core requires zero modifications per new channel. Security controls evolve independently of channel adapters.
 
 ---
 
@@ -649,63 +641,35 @@ The 13-step middleware chain order is a security invariant and does NOT change i
 
 **Security invariant (carried from Phase 1):** Token substitution MUST remain step 13 (innermost, last before proxy). No middleware between step 13 and the proxy may inspect request bodies. This ensures no middleware ever sees raw secrets.
 
-#### 3.2.1 Principal Hierarchy Resolution (Step 3 -- SPIFFE Auth)
+#### 3.2.1 Principal Hierarchy Resolution
 
-After SPIFFE identity validation, the gateway resolves a principal role from the authenticated identity using `ResolvePrincipalRole(spiffeID, trustDomain, authMethod string) PrincipalRole` in `POC/internal/gateway/middleware/principal.go`.
+After SPIFFE workload identity is validated (Step 3), the gateway resolves the requester's principal level from the SPIFFE ID path structure:
 
-The resolution produces a `PrincipalRole` struct:
+| Level | Role | SPIFFE Path Pattern | Capabilities |
+|-------|------|---------------------|--------------|
+| 0 | system | /system/ | execute, read, write, admin, configure |
+| 1 | owner | /owner/ | execute, read, write, configure |
+| 2 | delegated_admin | /delegated/ | execute, read, write |
+| 3 | agent | /agents/ | execute, read |
+| 4 | external_user | /external/ | read |
+| 5 | anonymous | (no match) | (none) |
 
-```go
-type PrincipalRole struct {
-    Level        int      // 0-5 hierarchy level
-    Role         string   // human-readable role name
-    Capabilities []string // granted capabilities
-    TrustDomain  string   // trust domain from SPIFFE ID
-    AuthMethod   string   // spiffe, mtls, or token
-}
-```
+The resolved principal role is injected as HTTP headers (X-Precinct-Principal-Level, X-Precinct-Principal-Role, X-Precinct-Principal-Capabilities, X-Precinct-Auth-Method) into the proxied request, enabling downstream frameworks to implement role-aware behavior.
 
-The 6-level principal hierarchy:
+Client-provided principal headers are stripped and overwritten by the gateway to prevent forgery.
 
-| Level | Path Prefix | Role | Description |
-|-------|-------------|------|-------------|
-| 0 | `/system/` | system | Internal system services (highest privilege) |
-| 1 | `/owner/` | owner | Platform owners and administrators |
-| 2 | `/delegated/` | delegated | Delegated authority (service accounts with scoped grants) |
-| 3 | `/agents/` | agent | AI agents and automated workloads |
-| 4 | `/external/` | external | External or third-party integrations |
-| 5 | _(default)_ | anonymous | Unrecognized identity (lowest privilege) |
+#### 3.2.2 Irreversibility Classification
 
-The resolved `PrincipalRole` is stored in the request context and made available to downstream middleware. The gateway emits the following response headers from the resolution result:
+Before step-up gating decisions (Step 9), the gateway classifies the reversibility of the requested action:
 
-- `X-Precinct-Principal-Level` -- integer 0-5
-- `X-Precinct-Principal-Role` -- string (system/owner/delegated/agent/external/anonymous)
+| Score | Category | Trigger Patterns | RequiresBackup |
+|-------|----------|-----------------|----------------|
+| 3 | irreversible | delete, rm, drop, reset, wipe, shutdown, terminate, revoke, purge, destroy | true |
+| 2 | partially_reversible | modify, update, overwrite, chmod, chown, rename, replace, patch | true |
+| 1 | costly_reversible | create, send, post, publish, write, insert, upload | false |
+| 0 | reversible | read, list, search, get, health, status, ping, describe | false |
 
-#### 3.2.2 Irreversibility Classification (Step 9 -- Step-Up Gating)
-
-Before step-up evaluation, the gateway classifies the reversibility of the requested action using `ClassifyReversibility(tool, action, params, toolDef) ActionReversibility` in `POC/internal/gateway/middleware/reversibility.go`.
-
-The classification produces an `ActionReversibility` struct:
-
-```go
-type ActionReversibility struct {
-    Score          int    // 0-3 reversibility score
-    Category       string // classification category
-    Explanation    string // human-readable rationale
-    RequiresBackup bool   // true when Score >= 2
-}
-```
-
-Reversibility scores:
-
-| Score | Category | Description | RequiresBackup |
-|-------|----------|-------------|----------------|
-| 0 | fully_reversible | Action can be trivially undone (e.g., read operations) | false |
-| 1 | recoverable | Action is reversible with standard undo mechanisms | false |
-| 2 | recoverable_with_effort | Action requires significant effort to reverse (e.g., bulk updates) | true |
-| 3 | irreversible | Action cannot be reversed (e.g., delete without backup, send email) | true |
-
-Integration with step-up gating: when `Score >= 2`, the step-up gating middleware triggers step-up evaluation. This ensures that potentially destructive or irreversible actions receive additional scrutiny before execution. The reversibility score is emitted as the `X-Precinct-Reversibility` response header, and `X-Precinct-Backup-Recommended` is set to `true` when `RequiresBackup` is true.
+Irreversible actions (Score=3) by non-owner principals (Level > 1) are forced to the Approval gate. Irreversible actions during escalated sessions (EscalationScore > 15) are forced to Deny. The classification result is propagated via X-Precinct-Reversibility and X-Precinct-Backup-Recommended headers.
 
 ### 3.3 SPIKE Nexus Service
 
