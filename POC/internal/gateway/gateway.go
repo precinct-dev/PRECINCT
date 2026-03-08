@@ -73,6 +73,13 @@ type Gateway struct {
 
 // New creates a new gateway instance
 func New(cfg *Config) (*Gateway, error) {
+	// OC-3ch6: Default trust domain to "poc.local" when not set (mirrors ConfigFromEnv).
+	// Without this, PrincipalHeaders resolves all identities as anonymous (trust domain
+	// mismatch), which the principal_level_acceptable OPA rule correctly denies.
+	if cfg.SPIFFETrustDomain == "" {
+		cfg.SPIFFETrustDomain = "poc.local"
+	}
+
 	enforcementProfile, err := resolveEnforcementProfile(cfg)
 	if err != nil {
 		return nil, err
@@ -602,9 +609,10 @@ func (g *Gateway) Handler() http.Handler {
 		toolHashRefresher,
 		middleware.WithObservedHashFailClosed(failClosedObservedHash),
 	) // 5
-	handler = middleware.AuditLog(handler, g.auditor)                            // 4
-	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                // 3
-	handler = middleware.BodyCapture(handler)                                    // 2
+	handler = middleware.AuditLog(handler, g.auditor)                                                // 4
+	handler = middleware.PrincipalHeaders(handler, g.config.SPIFFETrustDomain, g.config.SPIFFEMode) // 3b: OC-t7go
+	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                  // 3
+	handler = middleware.BodyCapture(handler)                                                       // 2
 	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
 	handler = middleware.RequestMetrics(handler)                                 // 0 - outermost: record request_total with status code
 	handler = middleware.RuntimeProfile(handler, g.config.SPIFFEMode, g.config.EnforcementProfile)
