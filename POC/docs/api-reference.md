@@ -326,6 +326,18 @@ before upstream proxy forwarding:
 
 ---
 
+## Proxied Request Headers
+
+The gateway injects advisory headers into proxied requests forwarded to the upstream MCP server.
+These headers are set by the middleware chain and provide security context to the agent framework.
+
+| Header | Type | Set When | Description |
+|--------|------|----------|-------------|
+| `X-Precinct-Reversibility` | string | Always (for tool calls) | Reversibility category of the action: `reversible`, `costly_reversible`, `partially_reversible`, or `irreversible` |
+| `X-Precinct-Backup-Recommended` | boolean string | `RequiresBackup=true` AND action allowed | Set to `"true"` when the action requires a pre-execution state snapshot (reversibility Score >= 2). Agent frameworks should capture current state before executing. Absent for reversible actions or denied requests. |
+
+---
+
 ## SPIFFE ID Schema
 
 The gateway uses SPIFFE (Secure Production Identity Framework for Everyone) identities
