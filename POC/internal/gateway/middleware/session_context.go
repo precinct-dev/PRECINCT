@@ -31,7 +31,16 @@ type AgentSession struct {
 	DataClassifications []string
 	RiskScore           float64
 	Flags               []string
+	EscalationScore              float64 // OC-h4m7: cumulative escalation score for session risk tracking
+	DestructiveActionsAuthorized int     // OC-lmzm: count of authorized actions that required backup (Score >= 2)
 }
+
+// Escalation threshold constants (OC-h4m7)
+const (
+	EscalationWarningThreshold  float64 = 15
+	EscalationCriticalThreshold float64 = 25
+	EscalationEmergencyThreshold float64 = 40
+)
 
 // ToolAction represents a single tool invocation
 type ToolAction struct {
