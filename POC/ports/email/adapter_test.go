@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -15,12 +16,24 @@ func TestAdapter_Name(t *testing.T) {
 }
 
 func TestAdapter_TryServeHTTP_Claims_Email_Paths(t *testing.T) {
-	a := NewAdapter(nil)
+	// /email/send requires a non-nil gateway (it is implemented).
+	// Stub paths (webhooks, list, read) work with nil.
+	mock := newAllowMock()
+	a := NewAdapter(mock)
 
 	paths := []string{"/email/send", "/email/webhooks", "/email/list", "/email/read"}
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, p, nil)
+			var body *strings.Reader
+			if p == "/email/send" {
+				// Provide a valid email body so handleSend doesn't panic on nil body.
+				body = strings.NewReader(`{"to":["a@b.com"],"subject":"S","body":"B"}`)
+			} else {
+				body = strings.NewReader("")
+			}
+			req := httptest.NewRequest(http.MethodPost, p, body)
+			req.Header.Set("Content-Type", "application/json")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://test/agent")
 			rr := httptest.NewRecorder()
 			if !a.TryServeHTTP(rr, req) {
 				t.Fatalf("TryServeHTTP(%s) returned false, want true", p)
@@ -44,6 +57,9 @@ func TestAdapter_TryServeHTTP_Ignores_Other_Paths(t *testing.T) {
 	}
 }
 
+// TestAdapter_StubHandlers_Return_501_JSON verifies that stub handlers
+// (webhooks, list, read) still return 501. /email/send is excluded because
+// it is now implemented (OC-0lx3).
 func TestAdapter_StubHandlers_Return_501_JSON(t *testing.T) {
 	a := NewAdapter(nil)
 
@@ -51,7 +67,6 @@ func TestAdapter_StubHandlers_Return_501_JSON(t *testing.T) {
 		path      string
 		operation string
 	}{
-		{"/email/send", "messaging_send"},
 		{"/email/webhooks", "email_webhook"},
 		{"/email/list", "email_list"},
 		{"/email/read", "email_read"},
