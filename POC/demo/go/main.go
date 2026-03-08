@@ -1604,25 +1604,60 @@ func testIrrev2CreateEvaluated() bool {
 // As an unregistered tool, unknown_defaults={2,2,2,3}, reversibility override pushes
 // Reversibility to 3, giving Total=10 (deny gate). X-Precinct-Reversibility is set.
 func testIrrev3OwnerDelete() bool {
-	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/owner/alice",
-		mcpgateway.WithTimeout(10*time.Second),
-		mcpgateway.WithMaxRetries(0),
-		mcpgateway.WithSessionID("irrev-demo-owner-delete-001"),
-	)
-	ctx := context.Background()
-	_, err := client.Call(ctx, "delete", map[string]any{"resource": "test-database-record"})
-	if err == nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	payload := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      9003,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "delete",
+			"arguments": map[string]any{"resource": "test-database-record"},
+		},
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("marshal payload: %v", err))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, *gatewayURL, bytes.NewReader(body))
+	if err != nil {
+		return printProof(false, fmt.Sprintf("create request: %v", err))
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/owner/alice")
+	req.Header.Set("X-Session-ID", "irrev-demo-owner-delete-001")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return printProof(false, fmt.Sprintf("request failed: %v", err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+
+	reversibility := resp.Header.Get("X-Precinct-Reversibility")
+	backupRec := resp.Header.Get("X-Precinct-Backup-Recommended")
+	fmt.Printf("  X-Precinct-Reversibility: %q\n", reversibility)
+	fmt.Printf("  X-Precinct-Backup-Recommended: %q\n", backupRec)
+
+	if resp.StatusCode < 400 {
 		return printProof(false, "expected denial for irreversible delete but got success")
 	}
-	var ge *mcpgateway.GatewayError
-	if errors.As(err, &ge) {
-		printGatewayError(ge)
-		ok := ge.HTTPStatus == 403 &&
+
+	var ge mcpgateway.GatewayError
+	if jsonErr := json.Unmarshal(respBody, &ge); jsonErr == nil {
+		ge.HTTPStatus = resp.StatusCode
+		printGatewayError(&ge)
+		statusOK := ge.HTTPStatus == 403 &&
 			(ge.Code == "stepup_denied" || ge.Code == "stepup_approval_required" || ge.Code == "irreversible_action_denied")
-		return printProof(ok, fmt.Sprintf("PROOF S-IRREV-3: Owner delete (irreversible) gets approval gate with backup recommendation -- code=%s, step=%d", ge.Code, ge.Step))
+		headersOK := reversibility == "irreversible" && backupRec == "true"
+		ok := statusOK && headersOK
+		return printProof(ok, fmt.Sprintf("PROOF S-IRREV-3: Owner delete (irreversible) gets approval gate with backup recommendation -- code=%s, step=%d, reversibility=%s, backup=%s", ge.Code, ge.Step, reversibility, backupRec))
 	}
-	fmt.Printf("  Error: %v\n", err)
-	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
+
+	return printProof(false, fmt.Sprintf("unexpected response: status=%d body=%s", resp.StatusCode, string(respBody)))
 }
 
 // S-IRREV-4: External delete. Same mechanism as S-IRREV-3 but with external identity.
