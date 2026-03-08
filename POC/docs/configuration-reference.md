@@ -825,7 +825,67 @@ tool definitions.
 
 ---
 
-## 12. SPIFFE ID Schema
+## 12. Principal Mapping Configuration
+
+The `principal_mapping` YAML config section maps SPIFFE path prefixes to principal levels.
+This is loaded from `config/principal_mapping.yaml` or embedded in the gateway's main
+config file.
+
+**Default mapping** (derived from SPIFFE ID path segments):
+
+```yaml
+principal_mapping:
+  system: 0      # /system/ prefix -> Level 0
+  owner: 1       # /owner/ prefix -> Level 1
+  delegated: 2   # /delegated/ prefix -> Level 2
+  agents: 3      # /agents/ prefix -> Level 3
+  external: 4    # /external/ prefix -> Level 4
+  anonymous: 5   # (no match) -> Level 5
+```
+
+Each key is a SPIFFE path segment prefix. When the gateway resolves a principal from a
+SPIFFE ID (e.g., `spiffe://poc.local/agents/example/dev`), it matches the first path
+segment (`agents`) against this mapping to determine the principal level (3).
+
+Custom deployments can override this mapping to add organization-specific path prefixes
+or adjust the hierarchy. For example, adding `contractors: 3` would map
+`/contractors/` paths to Level 3 (same as agents).
+
+---
+
+## 13. Reversibility Overrides Configuration
+
+The `reversibility_overrides` YAML config section provides per-tool reversibility score
+overrides. This is loaded from `config/reversibility_overrides.yaml` or embedded in the
+gateway's main config file.
+
+**Format:**
+
+```yaml
+reversibility_overrides:
+  bash: 3          # Always irreversible regardless of action parameter
+  s3_delete: 3     # S3 delete is always irreversible
+  tavily_search: 0 # Search is always reversible
+```
+
+Each key is a tool name from `config/tool-registry.yaml`. The integer value (0-3) overrides
+the pattern-based reversibility classification for all invocations of that tool:
+
+| Score | Category |
+|-------|----------|
+| 0 | reversible |
+| 1 | costly_reversible |
+| 2 | partially_reversible |
+| 3 | irreversible |
+
+When a tool has a reversibility override, the gateway skips pattern-based classification
+(which examines action parameters for trigger patterns like `delete`, `rm`, `drop`) and
+uses the override score directly. This is useful for tools where the tool name itself
+implies a fixed reversibility level regardless of arguments.
+
+---
+
+## 14. SPIFFE ID Schema
 
 All workload identities follow the pattern defined in the Reference Architecture
 Section 4.5.

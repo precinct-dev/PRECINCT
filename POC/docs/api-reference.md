@@ -352,17 +352,17 @@ before upstream proxy forwarding:
 
 ### Response Headers
 
-| Header | Description |
-|--------|-------------|
-| `X-Precinct-Data-Classification` | `"sensitive"` or `"standard"` (email read operations) |
-| `X-Precinct-Escalation-Score` | Current session escalation score |
-| `X-Precinct-Escalation-Flag` | `"escalation_warning"`, `"escalation_critical"`, `"escalation_emergency"` |
-| `X-Precinct-Principal-Level` | Integer 0-5, SPIFFE identity hierarchy level (0=system, 5=anonymous) |
-| `X-Precinct-Principal-Role` | String: `system`, `owner`, `delegated`, `agent`, `external`, or `anonymous` |
-| `X-Precinct-Principal-Capabilities` | Comma-separated list of granted capabilities for the resolved principal |
-| `X-Precinct-Auth-Method` | Authentication method used: `spiffe`, `mtls`, or `token` |
-| `X-Precinct-Reversibility` | Integer 0-3, action reversibility score (0=fully reversible, 3=irreversible) |
-| `X-Precinct-Backup-Recommended` | Boolean, `true` when reversibility Score >= 2 |
+The gateway injects the following headers into proxied responses:
+
+| Header | Type | Description |
+|--------|------|-------------|
+| `X-Precinct-Principal-Level` | integer | Authority level (0=system, 5=anonymous) |
+| `X-Precinct-Principal-Role` | string | Role name (owner, agent, external_user, etc.) |
+| `X-Precinct-Principal-Capabilities` | string (comma-sep) | Authorized capabilities (e.g., "execute,read,write") |
+| `X-Precinct-Auth-Method` | string | `mtls_svid` (prod) or `header_declared` (dev) |
+| `X-Precinct-Reversibility` | string | reversible, costly_reversible, partially_reversible, irreversible |
+| `X-Precinct-Backup-Recommended` | boolean string | `"true"` if Score >= 2 |
+| `X-Precinct-Escalation-Score` | float | Session escalation score (0.0+) |
 
 ---
 
@@ -511,8 +511,8 @@ Complete catalog of all 25 error codes defined in `internal/gateway/middleware/e
 | `authz_policy_denied` | 6 | 403 | `opa_policy` | OPA policy explicitly denied access to this tool | Check OPA policy grants for this agent/tool combination |
 | `authz_no_matching_grant` | 6 | 403 | `opa_policy` | No OPA grant matches this agent and tool combination | Add a grant in the OPA policy for this SPIFFE ID and tool |
 | `authz_tool_not_found` | 6 | 403 | `opa_policy` | The tool was not found in OPA policy data | Add the tool to the OPA data document |
-| `principal_level_insufficient` | 6 | 403 | `opa_policy` | Request denied: SPIFFE identity does not have sufficient principal level for this operation | Ensure the caller's SPIFFE ID maps to a principal level with adequate privileges for the requested tool |
-| `irreversible_action_denied` | 9 | 403 | `step_up_gating` | Request denied: action classified as irreversible (Score >= 2) and step-up authorization is required | Obtain step-up authorization or human approval before executing irreversible actions |
+| `principal_level_insufficient` | 6 | 403 | `opa_policy` | Requester's principal level too low for this action | Ensure the caller's SPIFFE ID maps to a principal level with adequate privileges for the requested tool |
+| `irreversible_action_denied` | 9 | 403 | `step_up_gating` | Irreversible action denied: non-owner + escalated session | Obtain step-up authorization or human approval before executing irreversible actions |
 | `dlp_credentials_detected` | 7 | 403 | `dlp_scan` | Credentials (API keys, passwords, tokens) detected in request payload. **Always blocked** -- this is a security invariant | Use `$SPIKE{ref:...}` token references instead of embedding secrets |
 | `dlp_injection_blocked` | 7 | 403 | `dlp_scan` | Prompt injection patterns detected and blocked by DLP policy | Remove injection patterns from the request. Policy configurable via `DLP_INJECTION_POLICY` env var (`block` or `flag`) |
 | `dlp_pii_blocked` | 7 | 403 | `dlp_scan` | Personally identifiable information detected and blocked by DLP policy | Remove PII from the request or adjust DLP policy in `risk_thresholds.yaml` |
