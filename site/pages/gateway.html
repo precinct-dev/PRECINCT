@@ -382,6 +382,16 @@ sequenceDiagram
               cumulative risk indicators. If an agent's behavior pattern resembles known
               exfiltration or lateral movement patterns, the session risk score is elevated.
             </p>
+            <p>
+              Layer 8 now includes <strong>EscalationScore tracking</strong> that detects gradual
+              privilege escalation across sessions. Each action's escalation contribution is
+              calculated as Impact x (4 - Reversibility). The cumulative score is evaluated
+              against three thresholds: Warning (&ge; 15), Critical (&ge; 25), and
+              Emergency (&ge; 40). When the Emergency threshold is reached, the request is
+              denied with <code>escalation_emergency</code>. The current escalation score is
+              propagated via the <code>X-Precinct-Escalation-Score</code> response header for
+              downstream observability.
+            </p>
 
             <h3>7. Step-Up Gating (Layer 9)</h3>
             <p>
@@ -389,6 +399,14 @@ sequenceDiagram
               model to evaluate whether the operation should proceed. The guard model receives the
               full request context and returns an independent risk assessment. If the risk exceeds
               the configured threshold, the request is denied with <code>stepup_required</code>.
+            </p>
+            <p>
+              Step-up gating now incorporates <strong>irreversibility classification</strong> as
+              an input signal. Actions are classified into four tiers: Low (read), Medium (create),
+              High (modify), and Critical (delete/destroy). Critical-tier actions automatically
+              trigger step-up evaluation regardless of the current risk score. The data
+              classification tier is propagated via the <code>X-Precinct-Data-Classification</code>
+              response header.
             </p>
 
             <h3>8. Deep Scan (Layer 10)</h3>
@@ -487,6 +505,52 @@ sequenceDiagram
                     <td><code>tool_hash_mismatch</code></td>
                     <td>5 (Tool Registry)</td>
                     <td>The tool's current hash does not match its registered hash. A rug-pull attack is suspected. The tool must be re-verified and re-registered.</td>
+                  </tr>
+                  <tr>
+                    <td><code>escalation_emergency</code></td>
+                    <td>8 (Session Context)</td>
+                    <td>The cumulative escalation score has reached the Emergency threshold (&ge; 40). The session is considered compromised by gradual escalation and further requests are denied (HTTP 403).</td>
+                  </tr>
+                  <tr>
+                    <td><code>data_source_hash_mismatch</code></td>
+                    <td>5 (Tool Registry)</td>
+                    <td>An external data source's content hash does not match its registered hash and the mutable policy is set to <code>block_on_change</code>. The data source may have been tampered with (HTTP 403).</td>
+                  </tr>
+                  <tr>
+                    <td><code>discord_signature_invalid</code></td>
+                    <td>3 (SPIFFE Auth) / Channel Mediation</td>
+                    <td>An inbound Discord webhook request failed signature verification. The request did not originate from a verified Discord endpoint (HTTP 401).</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Diagnostic Response Headers</h3>
+            <p>
+              The gateway propagates diagnostic metadata via response headers to support
+              downstream observability and policy decisions. These headers are included on
+              responses that traverse the relevant middleware layers.
+            </p>
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">PRECINCT Gateway diagnostic response headers</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Header</th>
+                    <th scope="col">Source Layer</th>
+                    <th scope="col">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>X-Precinct-Escalation-Score</code></td>
+                    <td>8 (Session Context)</td>
+                    <td>The cumulative escalation score for the current session after processing this request. Numeric value; compare against Warning (15), Critical (25), Emergency (40) thresholds.</td>
+                  </tr>
+                  <tr>
+                    <td><code>X-Precinct-Data-Classification</code></td>
+                    <td>9 (Step-Up Gating)</td>
+                    <td>The irreversibility classification tier assigned to this action: <code>low</code>, <code>medium</code>, <code>high</code>, or <code>critical</code>.</td>
                   </tr>
                 </tbody>
               </table>
