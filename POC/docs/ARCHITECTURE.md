@@ -578,6 +578,16 @@ The local overlay reduces resource requests/limits to fit on a laptop:
 
 **Minimum hardware:** 4 CPU cores, 8GB RAM (documented in `docs/getting-started/prerequisites.md`).
 
+### ADR-011: Communication Channel Mediation
+
+**Decision**: All inbound requests from external channels (Discord, email, webhooks, queues) pass through port adapters that translate channel-specific protocols to the gateway's internal model before entering the middleware chain.
+
+**Context**: Agents communicating through external channels (Discord bots, email assistants) could bypass identity verification if allowed to invoke tools directly via channel APIs. The channel itself becomes a trust vector.
+
+**Rationale**: Port adapters normalize inbound requests, strip channel-specific authentication tokens, and re-establish workload identity at the gateway boundary. This prevents agent-to-agent bypass where one agent could instruct another via a side channel (e.g., a Discord message) to execute a tool that would otherwise be blocked. Each adapter enforces the same SPIFFE identity requirement as direct MCP requests.
+
+**Consequences**: All channel integrations require a port adapter (~800 lines each). The gateway core requires zero modifications per new channel. Security controls evolve independently of channel adapters.
+
 ---
 
 ## 3. Component Architecture
@@ -630,6 +640,36 @@ The 13-step middleware chain order is a security invariant and does NOT change i
 | 13 | Token Substitution | OTel span added; SPIKE Nexus backend (real secret redemption) |
 
 **Security invariant (carried from Phase 1):** Token substitution MUST remain step 13 (innermost, last before proxy). No middleware between step 13 and the proxy may inspect request bodies. This ensures no middleware ever sees raw secrets.
+
+#### 3.2.1 Principal Hierarchy Resolution
+
+After SPIFFE workload identity is validated (Step 3), the gateway resolves the requester's principal level from the SPIFFE ID path structure:
+
+| Level | Role | SPIFFE Path Pattern | Capabilities |
+|-------|------|---------------------|--------------|
+| 0 | system | /system/ | execute, read, write, admin, configure |
+| 1 | owner | /owner/ | execute, read, write, configure |
+| 2 | delegated_admin | /delegated/ | execute, read, write |
+| 3 | agent | /agents/ | execute, read |
+| 4 | external_user | /external/ | read |
+| 5 | anonymous | (no match) | (none) |
+
+The resolved principal role is injected as HTTP headers (X-Precinct-Principal-Level, X-Precinct-Principal-Role, X-Precinct-Principal-Capabilities, X-Precinct-Auth-Method) into the proxied request, enabling downstream frameworks to implement role-aware behavior.
+
+Client-provided principal headers are stripped and overwritten by the gateway to prevent forgery.
+
+#### 3.2.2 Irreversibility Classification
+
+Before step-up gating decisions (Step 9), the gateway classifies the reversibility of the requested action:
+
+| Score | Category | Trigger Patterns | RequiresBackup |
+|-------|----------|-----------------|----------------|
+| 3 | irreversible | delete, rm, drop, reset, wipe, shutdown, terminate, revoke, purge, destroy | true |
+| 2 | partially_reversible | modify, update, overwrite, chmod, chown, rename, replace, patch | true |
+| 1 | costly_reversible | create, send, post, publish, write, insert, upload | false |
+| 0 | reversible | read, list, search, get, health, status, ping, describe | false |
+
+Irreversible actions (Score=3) by non-owner principals (Level > 1) are forced to the Approval gate. Irreversible actions during escalated sessions (EscalationScore > 15) are forced to Deny. The classification result is propagated via X-Precinct-Reversibility and X-Precinct-Backup-Recommended headers.
 
 ### 3.3 SPIKE Nexus Service
 
@@ -721,6 +761,51 @@ The CLI setup wizard is a shell script (`scripts/setup.sh`) that:
 5. Optionally runs `docker compose up -d` and post-startup smoke test.
 
 It is invoked via `make setup`.
+
+### 3.7 Port Adapters
+
+Port adapters live in `POC/ports/` and mediate communication between external services
+and the PRECINCT middleware chain. Each adapter translates protocol-specific requests
+into `PlaneRequestV2` structs, runs them through the full middleware chain, and handles
+protocol-specific responses and credential retrieval.
+
+#### Discord Adapter (POC/ports/discord/)
+
+Routes: `/discord/send`, `/discord/webhooks`, `/discord/commands`
+
+- `/discord/send`: outbound message mediation. Parses `SendMessageRequest`, builds `PlaneRequestV2` with `tool="messaging_send"`, runs full middleware chain, redeems SPIKE token for bot credentials via `RedeemSPIKESecret()`, calls `ExecuteMessagingEgress()`.
+- `/discord/webhooks`: inbound webhook receipt. Verifies Ed25519 signature (`DISCORD_PUBLIC_KEY` env), calls `ValidateConnector()`, emits `AuditLog` event.
+- `/discord/commands`: bot command evaluation via tool plane (`tool="discord_command"`).
+
+#### Email Adapter (POC/ports/email/)
+
+Routes: `/email/send`, `/email/webhooks`, `/email/list`, `/email/read`
+
+- `/email/send`: outbound send with DLP (subject+body concatenated), mass-email detection (>10 recipients sets `mass_email="true"`), SPIKE token redemption for SMTP credentials. Recipient domain OPA enforcement via `attrs["recipient_domains"]`.
+- `/email/read`: inbound read with automatic content classification. Returns `attrs["data_classification"]="sensitive"` when content contains SSN, AWS keys, OpenAI keys, or credit card patterns. Enables exfiltration detection in session context.
+- `/email/list`: lists email metadata. `classification="standard"` (metadata only).
+- `/email/webhooks`: inbound webhook receipt.
+
+### 3.8 Data Source Integrity (tool_registry.go)
+
+`DataSourceDefinition` struct in `ToolRegistry` supports:
+
+- `URI`, `ContentHash` (`sha256:<hex>`), `ApprovedAt`, `ApprovedBy` (SPIFFE ID)
+- `MutablePolicy`: `"block_on_change"`, `"flag_on_change"`, `"allow"`
+- `RefreshTTL`, `LastVerified`
+- Hot reload via existing `fsnotify` watcher
+- `ComputeDataSourceHash(content)` returns `"sha256:<hex>"`
+- `GetDataSource(uri)` returns `(*DataSourceDefinition, bool)`
+
+### 3.9 Escalation Detection (session_context.go, escalation.go)
+
+`EscalationScore` tracks cumulative destructiveness in `AgentSession`:
+
+- `EscalationScore float64` (persisted in KeyDB)
+- `EscalationHistory []EscalationEvent`
+- `EscalationFlags []string`: `"escalation_warning"`, `"escalation_critical"`, `"escalation_emergency"`
+- Thresholds: warning=15, critical=25, emergency=40
+- Formula: `contribution = Impact x (4 - Reversibility)`
 
 ---
 
@@ -1050,6 +1135,7 @@ These are NOT Phase 2 scope but are architecturally preserved:
 | ADR-008 | Python CLI compliance report generator (XLSX/CSV/PDF) | P1-1 |
 | ADR-009 | Docker Compose vs K8s pattern audit (three categories) | P2-1 |
 | ADR-010 | Local K8s via Kustomize overlay with reduced resources | P1-5 |
+| ADR-011 | Communication channel mediation via port adapters addresses agent-to-agent bypass | P0-3 |
 
 ---
 
