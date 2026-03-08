@@ -294,16 +294,17 @@ func TestAdapter_HandleCommand_MissingCommand(t *testing.T) {
 	}
 }
 
-// --- Webhook stub still returns 501 (untouched by this story) ---
+// --- Webhook without valid signature returns 401 ---
 
-func TestAdapter_HandleWebhook_Returns_501(t *testing.T) {
+func TestAdapter_HandleWebhook_NoSignature_Returns_401(t *testing.T) {
 	a := newTestAdapter()
-	req := httptest.NewRequest(http.MethodPost, "/discord/webhooks", nil)
+	req := httptest.NewRequest(http.MethodPost, "/discord/webhooks", strings.NewReader(`{}`))
 	rr := httptest.NewRecorder()
 	a.TryServeHTTP(rr, req)
 
-	if rr.Code != http.StatusNotImplemented {
-		t.Errorf("/discord/webhooks status = %d, want %d", rr.Code, http.StatusNotImplemented)
+	// Without DISCORD_PUBLIC_KEY or valid signature, should fail closed with 401.
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("/discord/webhooks no-sig status = %d, want %d", rr.Code, http.StatusUnauthorized)
 	}
 }
 

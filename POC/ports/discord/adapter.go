@@ -118,11 +118,7 @@ func (a *Adapter) handleSend(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleWebhook is a stub for inbound webhook event processing.
-// Will be implemented in story OC-q8yz.
-func (a *Adapter) handleWebhook(w http.ResponseWriter, _ *http.Request) {
-	http.Error(w, "not implemented", http.StatusNotImplemented)
-}
+// handleWebhook is implemented in webhook_receiver.go.
 
 // handleCommand evaluates a bot slash-command request against the tool plane.
 // Actual command execution is deferred to story OC-q8yz.
