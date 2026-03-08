@@ -3,8 +3,8 @@
 
 PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools
 
-Document version: 1.2  
-Date: 2026-02-11  
+Document version: 1.3
+Date: 2026-03-07
 Audience: Security architecture, audit, legal, risk, platform leadership
 
 ---
@@ -69,6 +69,12 @@ Representative implementation evidence:
 - K8s admission for signed/digest-pinned images: `POC/infra/eks/admission/constraints/enforce-image-signature.yaml`, `POC/infra/eks/admission/constraints/enforce-image-digest.yaml`
 - Compliance taxonomy and generator: `POC/tools/compliance/control_taxonomy.yaml`, `POC/tools/compliance/generate.py`
 - GDPR ROPA and deletion workflow: `POC/docs/compliance/gdpr-article-30-ropa.md`, `POC/internal/gateway/middleware/gdpr_delete.go`
+- Channel mediation (Ed25519 webhook verification): `POC/internal/gateway/middleware/dlp.go`, `POC/internal/gateway/middleware/deep_scan.go`
+- Data source integrity (hash verification): `POC/internal/gateway/middleware/tool_registry.go`, DataSourceDefinition struct
+- Escalation detection and scoring: `POC/internal/gateway/middleware/session_context.go`, EscalationScore formula
+- Principal hierarchy (SPIFFE-to-role): `POC/internal/gateway/middleware/spiffe_auth.go`, X-Precinct-Principal-Level header
+- Irreversibility gating: `POC/internal/gateway/middleware/step_up_gating.go`, ClassifyActionDestructiveness taxonomy
+- External threat validation: Shapira et al. (2026), *Agents of Chaos*, arXiv:2602.20021v1
 
 ---
 
@@ -239,6 +245,73 @@ Residual gaps:
 
 - JIT approval workflow and reviewer-accountability controls need standardized implementation.
 - Delegation-chain modeling for complex multi-agent subject/actor flows needs maturity.
+
+### 5.7 New Controls (Agents of Chaos Threat Validation)
+
+The following five controls were added to address threat patterns validated by the Agents of Chaos paper (Shapira et al., 2026, arXiv:2602.20021v1), which documents 16 case studies of real-world agentic AI attacks.
+
+#### 5.7.1 Channel Mediation
+
+Threat addressed: Prompt injection via unmediated channels (Case Study #3, #4, #5); unbounded resource consumption.
+
+Controls:
+
+- Ed25519 webhook signature verification for all inbound event channels
+- Message content routing through middleware pipeline (DLP step 7 + deep scan step 10)
+- All external channel content treated as untrusted and scanned before agent ingestion
+
+STRIDE mapping: Information Disclosure, Denial of Service
+
+#### 5.7.2 Data Source Integrity
+
+Threat addressed: External data poisoning and rug-pull attacks (Case Study #10); mutable data sources changing after initial verification.
+
+Controls:
+
+- Hash verification per DataSourceDefinition struct at tool registry level (middleware step 5)
+- MutablePolicy enforcement: data sources declare mutability; mutable sources trigger re-verification on each access
+- Digest logging for all external data fetches
+
+STRIDE mapping: Tampering
+
+#### 5.7.3 Escalation Detection
+
+Threat addressed: Progressive concession accumulation (Case Study #7); gradual privilege escalation through repeated benign-appearing requests.
+
+Controls:
+
+- EscalationScore formula: Impact x (4 - Reversibility)
+- Three-tier threshold system: Warning=15, Critical=25, Emergency=40
+- RecordEscalation() tracks cumulative session score in middleware step 8 (session context)
+- Threshold breaches trigger alerts and automatic policy tightening
+
+STRIDE mapping: Elevation of Privilege
+
+#### 5.7.4 Principal Hierarchy
+
+Threat addressed: Identity spoofing via authority confusion (Case Study #8); agent impersonating higher-privilege principals.
+
+Controls:
+
+- SPIFFE-to-role resolution in middleware step 3 (SPIFFE auth)
+- X-Precinct-Principal-Level metadata enrichment header injected by gateway
+- OPA policy decisions incorporate principal level for least-privilege enforcement
+- Role hierarchy prevents lateral or vertical movement without explicit attestation
+
+STRIDE mapping: Spoofing, Elevation of Privilege
+
+#### 5.7.5 Irreversibility Gating
+
+Threat addressed: Progressive destruction (Case Study #1); agents executing irreversible actions without adequate oversight.
+
+Controls:
+
+- ClassifyActionDestructiveness taxonomy categorizes actions by reversibility
+- Automatic step-up authentication required for critical/irreversible action classifications (middleware step 9)
+- Actions classified as irreversible require human-in-the-loop approval or elevated capability token
+- Audit log records destructiveness classification and gating decision for every action
+
+STRIDE mapping: Elevation of Privilege
 
 ---
 
