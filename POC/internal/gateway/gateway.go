@@ -73,6 +73,13 @@ type Gateway struct {
 
 // New creates a new gateway instance
 func New(cfg *Config) (*Gateway, error) {
+	// OC-3ch6: Default trust domain to "poc.local" when not set (mirrors ConfigFromEnv).
+	// Without this, PrincipalHeaders resolves all identities as anonymous (trust domain
+	// mismatch), which the principal_level_acceptable OPA rule correctly denies.
+	if cfg.SPIFFETrustDomain == "" {
+		cfg.SPIFFETrustDomain = "poc.local"
+	}
+
 	enforcementProfile, err := resolveEnforcementProfile(cfg)
 	if err != nil {
 		return nil, err

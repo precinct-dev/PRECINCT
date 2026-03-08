@@ -29,6 +29,7 @@ type principalMapping struct {
 // Order matters: first match wins (though prefixes are non-overlapping).
 var principalMappings = []principalMapping{
 	{"system/", 0, "system", []string{"admin", "read", "write", "execute", "delegate"}},
+	{"gateways/", 0, "system", []string{"admin", "read", "write", "execute", "delegate"}}, // OC-3ch6: gateway identities are system-level
 	{"owner/", 1, "owner", []string{"admin", "read", "write", "execute", "delegate"}},
 	{"delegated/", 2, "delegated_admin", []string{"read", "write", "execute", "delegate"}},
 	{"agents/", 3, "agent", []string{"read", "write", "execute"}},
