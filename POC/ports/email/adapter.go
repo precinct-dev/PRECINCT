@@ -61,8 +61,8 @@ func stubError(w http.ResponseWriter, operation string) {
 
 // All handlers are stubs returning 501 -- implemented in future stories.
 
-func (a *Adapter) handleSend(w http.ResponseWriter, _ *http.Request) {
-	stubError(w, "messaging_send")
+func (a *Adapter) handleSend(w http.ResponseWriter, r *http.Request) {
+	a.handleSendImpl(w, r)
 }
 
 func (a *Adapter) handleWebhook(w http.ResponseWriter, _ *http.Request) {
