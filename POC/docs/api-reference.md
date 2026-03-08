@@ -16,7 +16,9 @@ to the upstream MCP server.
    - [POST / -- Main JSON-RPC Endpoint](#post----main-json-rpc-endpoint)
    - [POST /data/dereference -- Response Firewall Handle Dereference](#post-datadereference----response-firewall-handle-dereference)
    - [GET /health -- Health Check](#get-health----health-check)
+   - [Port Adapter Endpoints](#port-adapter-endpoints)
 2. [Required Headers](#required-headers)
+   - [Response Headers](#response-headers)
 3. [SPIFFE ID Schema](#spiffe-id-schema)
 4. [JSON-RPC 2.0 Wire Format](#json-rpc-20-wire-format)
 5. [Error Response Envelope](#error-response-envelope)
@@ -201,6 +203,30 @@ Contract details and lifecycle semantics are defined in
 
 ---
 
+### Port Adapter Endpoints
+
+Port adapters translate external protocol requests into `PlaneRequestV2` structs and
+run them through the full middleware chain.
+
+#### Discord Adapter Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/discord/send` | Send Discord message (DLP-scanned, SPIKE token redeemed) |
+| POST | `/discord/webhooks` | Receive Discord webhook (Ed25519 verified) |
+| POST | `/discord/commands` | Execute Discord bot command (tool plane evaluation) |
+
+#### Email Adapter Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/email/send` | Send email (DLP-scanned subject+body, mass-send detection) |
+| POST | `/email/webhooks` | Receive email webhook |
+| GET/POST | `/email/list` | List email metadata |
+| POST | `/email/read` | Read email content (auto-classified) |
+
+---
+
 ### Approval Capability Admin Endpoints
 
 High-risk tool/model operations can use short-lived bounded approval capabilities:
@@ -323,6 +349,14 @@ before upstream proxy forwarding:
 - In `SPIFFE_MODE=dev` (default), `X-SPIFFE-ID` is accepted as a plain header.
 - In `SPIFFE_MODE=prod`, the SPIFFE ID is extracted from the mTLS client certificate and the header is ignored.
 - The `X-Session-ID` must be a valid UUID. The session context middleware uses it to track data flow across requests for exfiltration detection.
+
+### Response Headers
+
+| Header | Description |
+|--------|-------------|
+| `X-Precinct-Data-Classification` | `"sensitive"` or `"standard"` (email read operations) |
+| `X-Precinct-Escalation-Score` | Current session escalation score |
+| `X-Precinct-Escalation-Flag` | `"escalation_warning"`, `"escalation_critical"`, `"escalation_emergency"` |
 
 ---
 
@@ -498,6 +532,20 @@ Complete catalog of all 25 error codes defined in `internal/gateway/middleware/e
 | `mcp_transport_failed` | proxy | 502 | `mcp_transport` | Transport-level failure (connection refused, timeout, TLS error) | Ensure the upstream MCP server is running and accessible |
 | `mcp_request_failed` | proxy | 502 | `mcp_transport` | The upstream MCP server returned a JSON-RPC error | Check the upstream MCP server logs for the root cause |
 | `mcp_invalid_response` | proxy | 502 | `mcp_transport` | The upstream MCP server returned a malformed or oversized response | Verify the MCP server returns valid JSON-RPC 2.0 responses within `MAX_REQUEST_SIZE_BYTES` |
+
+### Data Source and Escalation Errors
+
+| Code | Step | HTTP | Middleware | Description | Remediation |
+|------|------|------|------------|-------------|-------------|
+| `data_source_hash_mismatch` | 5 | 403 | `tool_registry_verify` | External data source content does not match registered hash | Re-register the data source with the correct content hash, or investigate potential tampering |
+| `unregistered_data_source` | 5 | 403 | `tool_registry_verify` | Data source URI not in registry | Register the data source in `config/tool-registry.yaml` |
+| `escalation_emergency` | 8 | 403 | `session_context` | Session escalation score exceeds emergency threshold | Review session action history; reduce destructive operations or start a new session |
+
+### Port Adapter Errors
+
+| Code | Step | HTTP | Middleware | Description | Remediation |
+|------|------|------|------------|-------------|-------------|
+| `discord_signature_invalid` | N/A | 401 | Port | Discord webhook Ed25519 signature verification failed | Verify `DISCORD_PUBLIC_KEY` env var matches the Discord application's public key |
 
 ---
 
