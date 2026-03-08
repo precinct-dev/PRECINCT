@@ -517,6 +517,21 @@ sequenceDiagram
                     <td>An external data source's content hash does not match its registered hash and the mutable policy is set to <code>block_on_change</code>. The data source may have been tampered with (HTTP 403).</td>
                   </tr>
                   <tr>
+                    <td><code>unregistered_data_source</code></td>
+                    <td>5 (Tool Registry)</td>
+                    <td>The requested data source is not registered in the Data Source Integrity Registry. Only registered data sources may be accessed (HTTP 403).</td>
+                  </tr>
+                  <tr>
+                    <td><code>principal_level_insufficient</code></td>
+                    <td>6 (OPA Policy)</td>
+                    <td>The caller's principal authority level is below the minimum threshold required by the target operation's policy. Elevation or delegation is required (HTTP 403).</td>
+                  </tr>
+                  <tr>
+                    <td><code>irreversible_action_denied</code></td>
+                    <td>9 (Step-Up Gating)</td>
+                    <td>An irreversible action (reversibility score &ge; 2) was blocked pending step-up authorization. The guard model or human operator must approve before the action can proceed (HTTP 403).</td>
+                  </tr>
+                  <tr>
                     <td><code>discord_signature_invalid</code></td>
                     <td>3 (SPIFFE Auth) / Channel Mediation</td>
                     <td>An inbound Discord webhook request failed signature verification. The request did not originate from a verified Discord endpoint (HTTP 401).</td>
@@ -551,6 +566,26 @@ sequenceDiagram
                     <td><code>X-Precinct-Data-Classification</code></td>
                     <td>9 (Step-Up Gating)</td>
                     <td>The irreversibility classification tier assigned to this action: <code>low</code>, <code>medium</code>, <code>high</code>, or <code>critical</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>X-Precinct-Principal-Level</code></td>
+                    <td>3 (SPIFFE Auth)</td>
+                    <td>Integer (0-5) representing the principal authority level resolved from SPIFFE path patterns. 5 = System, 4 = Operator, 3 = Trusted Agent, 2 = Standard Agent, 1 = Restricted Agent, 0 = Unknown.</td>
+                  </tr>
+                  <tr>
+                    <td><code>X-Precinct-Principal-Role</code></td>
+                    <td>3 (SPIFFE Auth)</td>
+                    <td>String representing the resolved principal role: <code>system</code>, <code>owner</code>, <code>delegated_admin</code>, <code>agent</code>, <code>external_user</code>, or <code>anonymous</code>.</td>
+                  </tr>
+                  <tr>
+                    <td><code>X-Precinct-Reversibility</code></td>
+                    <td>9 (Step-Up Gating)</td>
+                    <td>Integer (0-3) representing the action reversibility score from ClassifyReversibility. 0 = fully reversible, 3 = irreversible. Actions with score &ge; 2 trigger automatic step-up gating.</td>
+                  </tr>
+                  <tr>
+                    <td><code>X-Precinct-Backup-Recommended</code></td>
+                    <td>9 (Step-Up Gating)</td>
+                    <td>Boolean indicating whether a pre-action snapshot is recommended before executing this operation. Set to <code>true</code> for actions with reversibility score &ge; 2 or impact score &ge; 3.</td>
                   </tr>
                 </tbody>
               </table>
