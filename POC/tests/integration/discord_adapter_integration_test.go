@@ -8,14 +8,63 @@
 package integration
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 	"github.com/RamXX/agentic_reference_architecture/POC/ports/discord"
 )
+
+// integrationMockGateway satisfies gateway.PortGatewayServices with minimal
+// behaviour: EvaluateToolRequest returns allow, WriteGatewayError writes a
+// proper JSON error, everything else is a no-op.
+type integrationMockGateway struct{}
+
+var _ gateway.PortGatewayServices = (*integrationMockGateway)(nil)
+
+func (m *integrationMockGateway) BuildModelPlaneRequest(_ *http.Request, _ map[string]any) gateway.PlaneRequestV2 {
+	return gateway.PlaneRequestV2{}
+}
+func (m *integrationMockGateway) EvaluateModelPlaneDecision(_ *http.Request, _ gateway.PlaneRequestV2) (gateway.Decision, gateway.ReasonCode, int, map[string]any) {
+	return "", "", 0, nil
+}
+func (m *integrationMockGateway) ExecuteModelEgress(_ context.Context, _ map[string]any, _ map[string]any, _ string) (*gateway.ModelEgressResult, error) {
+	return nil, nil
+}
+func (m *integrationMockGateway) ShouldApplyPolicyIntentProjection() bool { return false }
+func (m *integrationMockGateway) EvaluateToolRequest(_ gateway.PlaneRequestV2) gateway.ToolPlaneEvalResult {
+	return gateway.ToolPlaneEvalResult{
+		Decision:   gateway.DecisionAllow,
+		Reason:     gateway.ReasonToolAllow,
+		HTTPStatus: http.StatusOK,
+	}
+}
+func (m *integrationMockGateway) ExecuteMessagingEgress(_ context.Context, _ map[string]string, _ []byte, _ string) (*gateway.MessagingEgressResult, error) {
+	return nil, nil
+}
+func (m *integrationMockGateway) RedeemSPIKESecret(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+func (m *integrationMockGateway) LogPlaneDecision(_ *http.Request, _ gateway.PlaneDecisionV2, _ int) {
+}
+func (m *integrationMockGateway) AuditLog(_ middleware.AuditEvent) {}
+func (m *integrationMockGateway) WriteGatewayError(w http.ResponseWriter, _ *http.Request, httpCode int, errorCode string, message string, _ string, _ gateway.ReasonCode, _ map[string]any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(httpCode)
+	_ = json.NewEncoder(w).Encode(map[string]string{"code": errorCode, "message": message})
+}
+func (m *integrationMockGateway) ValidateAndConsumeApproval(_ string, _ middleware.ApprovalScope) (*middleware.ApprovalCapabilityClaims, error) {
+	return nil, nil
+}
+func (m *integrationMockGateway) HasApprovalService() bool                       { return false }
+func (m *integrationMockGateway) ValidateConnector(_ string, _ string) (bool, string) {
+	return true, ""
+}
 
 // buildDiscordChain constructs a middleware chain with real SPIFFE auth
 // followed by the discord adapter dispatch. This exercises the real
@@ -23,7 +72,7 @@ import (
 func buildDiscordChain(t *testing.T) http.Handler {
 	t.Helper()
 
-	adapter := discord.NewAdapter(nil) // stub handlers don't call gateway services
+	adapter := discord.NewAdapter(&integrationMockGateway{})
 
 	// Terminal: dispatch to the discord adapter. If the adapter does not claim
 	// the path, return 404 (simulating gateway fallthrough behavior).
@@ -65,7 +114,8 @@ func TestDiscordAdapter_SPIFFEAuth_Denial(t *testing.T) {
 func TestDiscordAdapter_SPIFFEAuth_Passthrough(t *testing.T) {
 	handler := buildDiscordChain(t)
 
-	req := httptest.NewRequest(http.MethodPost, "/discord/send", strings.NewReader(`{}`))
+	req := httptest.NewRequest(http.MethodPost, "/discord/send",
+		strings.NewReader(`{"channel_id":"123","content":"hello"}`))
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
 
@@ -84,6 +134,14 @@ func TestDiscordAdapter_SPIFFEAuth_Passthrough(t *testing.T) {
 func TestDiscordAdapter_AllEndpoints_Behind_SPIFFE(t *testing.T) {
 	handler := buildDiscordChain(t)
 
+	// Valid request bodies per endpoint so requests pass contract validation
+	// and reach the 501 stub (send and commands validate required fields).
+	validBodies := map[string]string{
+		"/discord/send":     `{"channel_id":"123","content":"hello"}`,
+		"/discord/webhooks": `{}`,
+		"/discord/commands": `{"command":"ping"}`,
+	}
+
 	endpoints := []string{"/discord/send", "/discord/webhooks", "/discord/commands"}
 
 	for _, ep := range endpoints {
@@ -100,7 +158,8 @@ func TestDiscordAdapter_AllEndpoints_Behind_SPIFFE(t *testing.T) {
 		})
 
 		t.Run("with_spiffe_"+ep, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPost, ep, strings.NewReader(`{}`))
+			body := validBodies[ep]
+			req := httptest.NewRequest(http.MethodPost, ep, strings.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
 
