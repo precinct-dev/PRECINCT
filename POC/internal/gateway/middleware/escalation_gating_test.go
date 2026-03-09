@@ -805,3 +805,146 @@ func TestComputeRiskScore_EscalationBackwardCompatible(t *testing.T) {
 		t.Errorf("zero escalation should match no-session: noSession=%+v zeroEsc=%+v", scoreNoSession, scoreZeroEsc)
 	}
 }
+
+// --- OC-axk7: Integration test for E2E escalation detection demo scenario ---
+
+// TestEscalationDetection_DemoScenario verifies the exact escalation progression
+// used by the demo scenario (S-ESC-1..5). Each step builds on the previous
+// session state. This test validates the full session context + step-up gating
+// chain behavior without mocking.
+func TestEscalationDetection_DemoScenario(t *testing.T) {
+	registry := testRegistry()
+	allowlist := defaultAllowlist()
+	config := defaultRiskConfig()
+	guardClient := &mockGuardClient{injectionProb: 0.0, jailbreakProb: 0.0}
+
+	// Create shared session context (used by session context middleware).
+	sc := NewSessionContext(NewInMemoryStore())
+	sessionID := "test-esc-demo-001"
+	spiffeID := "spiffe://poc.local/owner/alice"
+
+	// Build a handler chain: session context (step 8) -> step-up gating (step 9) -> OK handler.
+	nextOK := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	stepUpHandler := StepUpGating(nextOK, guardClient, allowlist, config, registry, nil)
+	fullHandler := SessionContextMiddleware(stepUpHandler, sc)
+
+	makeRequest := func(toolName string, args map[string]interface{}) *httptest.ResponseRecorder {
+		body := createTestMCPBody("tools/call", map[string]interface{}{
+			"name":      toolName,
+			"arguments": args,
+		})
+		req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
+		req.Header.Set("Content-Type", "application/json")
+		ctx := WithRequestBody(req.Context(), body)
+		ctx = WithSPIFFEID(ctx, spiffeID)
+		ctx = WithSessionID(ctx, sessionID)
+		// Set principal level=1 (owner) for consistent behavior.
+		ctx = WithPrincipalRole(ctx, PrincipalRole{Level: 1, Role: "owner"})
+		// Create a SecurityFlagsCollector so escalation flags are captured.
+		collector := &SecurityFlagsCollector{}
+		ctx = WithFlagsCollector(ctx, collector)
+		req = req.WithContext(ctx)
+
+		rr := httptest.NewRecorder()
+		fullHandler.ServeHTTP(rr, req)
+		return rr
+	}
+
+	// ---------------------------------------------------------------
+	// S-ESC-1: tavily_search with action=read.
+	// tavily_search is external -> impact=2 at session context step 8.
+	// "search" keyword matches rev Score=0. Contribution=2*(4-0)=8.
+	// At step 9: params["action"]="read" -> Score=0, no reversibility override.
+	// Base: I=1,R=1,E=2,N=0=4 (step_up). No guard -> allowed.
+	// ---------------------------------------------------------------
+	rr := makeRequest("tavily_search", map[string]interface{}{
+		"query": "read patient records", "action": "read",
+	})
+	if rr.Code != http.StatusOK {
+		t.Errorf("S-ESC-1: expected 200, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	session := sc.GetOrCreateSession(spiffeID, sessionID)
+	if session.EscalationScore != 8 {
+		t.Errorf("S-ESC-1: expected escalation=8, got %f", session.EscalationScore)
+	}
+
+	// ---------------------------------------------------------------
+	// S-ESC-2: tavily_search (no destructive action).
+	// Contribution=8, cumulative=16. Crosses Warning (15).
+	// escalation_warning flag should be set.
+	// ---------------------------------------------------------------
+	rr = makeRequest("tavily_search", map[string]interface{}{
+		"query": "redact names from memory",
+	})
+	if rr.Code != http.StatusOK {
+		t.Errorf("S-ESC-2: expected 200, got %d", rr.Code)
+	}
+	if session.EscalationScore != 16 {
+		t.Errorf("S-ESC-2: expected escalation=16, got %f", session.EscalationScore)
+	}
+	if !containsFlag(session.EscalationFlags, "escalation_warning") {
+		t.Errorf("S-ESC-2: expected escalation_warning flag, got %v", session.EscalationFlags)
+	}
+
+	// ---------------------------------------------------------------
+	// S-ESC-3: tavily_search with action=delete.
+	// Contribution=8 at step 8, cumulative=24.
+	// At step 9: "delete" in params -> Score=3.
+	// applyReversibilityOverrides: Score=3, EscalationScore(24)>Warning(15) -> forceMinTotal(10).
+	// Gate=deny. HTTP 403.
+	// ---------------------------------------------------------------
+	rr = makeRequest("tavily_search", map[string]interface{}{
+		"query": "delete old records", "action": "delete",
+	})
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("S-ESC-3: expected 403, got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if session.EscalationScore != 24 {
+		t.Errorf("S-ESC-3: expected escalation=24, got %f", session.EscalationScore)
+	}
+
+	// ---------------------------------------------------------------
+	// S-ESC-5 (executed 4th): tavily_search with action=read.
+	// Contribution=8, cumulative=32. Crosses Critical (25).
+	// At step 9: action=read -> Score=0. No reversibility override.
+	// applyEscalationOverrides: 32>=Critical -> +3 Impact. I=1+3=3(cap).
+	// Total = 3+1+2+0 = 6 (step_up). No guard -> allowed.
+	// ---------------------------------------------------------------
+	rr = makeRequest("tavily_search", map[string]interface{}{
+		"query": "read system status", "action": "read",
+	})
+	if rr.Code != http.StatusOK {
+		t.Errorf("S-ESC-5: expected 200 (read survives Critical), got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if session.EscalationScore != 32 {
+		t.Errorf("S-ESC-5: expected escalation=32, got %f", session.EscalationScore)
+	}
+	if !containsFlag(session.EscalationFlags, "escalation_critical") {
+		t.Errorf("S-ESC-5: expected escalation_critical flag, got %v", session.EscalationFlags)
+	}
+
+	// ---------------------------------------------------------------
+	// S-ESC-4 (executed 5th): tavily_search with action=shutdown.
+	// Contribution=8, cumulative=40. Crosses Emergency (40).
+	// At step 9: Emergency override -> all dims=3, total=12. Gate=deny.
+	// ---------------------------------------------------------------
+	rr = makeRequest("tavily_search", map[string]interface{}{
+		"query": "shutdown all services", "action": "shutdown",
+	})
+	if rr.Code != http.StatusForbidden {
+		t.Errorf("S-ESC-4: expected 403 (Emergency deny), got %d (body: %s)", rr.Code, rr.Body.String())
+	}
+	if session.EscalationScore != 40 {
+		t.Errorf("S-ESC-4: expected escalation=40, got %f", session.EscalationScore)
+	}
+	if !containsFlag(session.EscalationFlags, "escalation_emergency") {
+		t.Errorf("S-ESC-4: expected escalation_emergency flag, got %v", session.EscalationFlags)
+	}
+
+	// Verify final escalation history has 5 entries (all 5 calls contributed).
+	if len(session.EscalationHistory) != 5 {
+		t.Errorf("expected 5 escalation history entries, got %d", len(session.EscalationHistory))
+	}
+}
