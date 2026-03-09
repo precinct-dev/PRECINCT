@@ -1970,6 +1970,10 @@ func (g *Gateway) dlpPolicy() middleware.DLPPolicy {
 	if g.config.DLPInjectionPolicy == "block" || g.config.DLPInjectionPolicy == "flag" {
 		p.Injection = g.config.DLPInjectionPolicy
 	}
+	// OC-di1n: DLP_PII_POLICY env var overrides dlp.pii YAML config.
+	if g.config.DLPPIIPolicy == "block" || g.config.DLPPIIPolicy == "flag" {
+		p.PII = g.config.DLPPIIPolicy
+	}
 	return p
 }
 

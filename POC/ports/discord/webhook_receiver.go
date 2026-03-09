@@ -119,21 +119,62 @@ func (a *Adapter) handleWebhook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Build SafeZoneFlags: always include status flags, and capture the
-	// inbound content so it is available for deep scan detection.
-	// Real deep scan traversal (DLP step 7, step 10) runs via internal
-	// loopback in story OC-di1n; here we record the content and mark it
-	// pending so the audit trail enables downstream detection.
+	// OC-di1n: Internal DLP scan for inbound webhook content.
+	// This implements the internal loopback for DLP/injection detection
+	// on inbound Discord messages, completing the story that was deferred
+	// from the initial webhook implementation.
 	safeZoneFlags := []string{
 		"discord_webhook_received",
-		"dlp_via_loopback_pending",
-		"deep_scan_via_loopback_pending",
 	}
+
 	if content != "" {
-		safeZoneFlags = append(safeZoneFlags,
-			"inbound_content_pending_deep_scan",
-			fmt.Sprintf("inbound_content:%s", content),
-		)
+		// Run DLP scan on inbound content.
+		scanResult := a.gw.ScanContent(content)
+
+		if scanResult.HasSuspicious {
+			// Injection detected in inbound webhook content -- deny.
+			safeZoneFlags = append(safeZoneFlags, "inbound_injection_detected")
+			a.gw.AuditLog(middleware.AuditEvent{
+				Timestamp:  now.Format(time.RFC3339),
+				EventType:  "discord.webhook.injection_blocked",
+				Severity:   "Critical",
+				SessionID:  runID,
+				SPIFFEID:   "spiffe://poc.local/webhooks/discord",
+				Action:     "webhook.inbound",
+				Result:     "denied",
+				Method:     r.Method,
+				Path:       r.URL.Path,
+				StatusCode: http.StatusForbidden,
+				Security: &middleware.SecurityAudit{
+					SafeZoneFlags: append(safeZoneFlags, scanResult.Flags...),
+				},
+			})
+
+			slog.Warn("discord webhook injection blocked",
+				"event_type", event.Type,
+				"content_length", len(content),
+				"flags", scanResult.Flags,
+				"run_id", runID)
+
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"code":            middleware.ErrDeepScanBlocked,
+				"message":         "Inbound webhook content contains injection pattern",
+				"middleware":      "deep_scan",
+				"middleware_step": 10,
+			})
+			return
+		}
+
+		if scanResult.HasCredentials {
+			safeZoneFlags = append(safeZoneFlags, "inbound_credentials_detected")
+		}
+		if scanResult.HasPII {
+			safeZoneFlags = append(safeZoneFlags, "inbound_pii_detected")
+		}
+		safeZoneFlags = append(safeZoneFlags, "dlp_scan_completed")
+		safeZoneFlags = append(safeZoneFlags, scanResult.Flags...)
 	}
 
 	a.gw.AuditLog(middleware.AuditEvent{

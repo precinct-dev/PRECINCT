@@ -25,10 +25,14 @@ func TestAdapter_TryServeHTTP_Claims_Email_Paths(t *testing.T) {
 	for _, p := range paths {
 		t.Run(p, func(t *testing.T) {
 			var body *strings.Reader
-			if p == "/email/send" {
+			switch p {
+			case "/email/send":
 				// Provide a valid email body so handleSend doesn't panic on nil body.
 				body = strings.NewReader(`{"to":["a@b.com"],"subject":"S","body":"B"}`)
-			} else {
+			case "/email/read":
+				// Provide a valid email read request body.
+				body = strings.NewReader(`{"message_id":"test-123"}`)
+			default:
 				body = strings.NewReader("")
 			}
 			req := httptest.NewRequest(http.MethodPost, p, body)
@@ -58,8 +62,8 @@ func TestAdapter_TryServeHTTP_Ignores_Other_Paths(t *testing.T) {
 }
 
 // TestAdapter_StubHandlers_Return_501_JSON verifies that stub handlers
-// (webhooks, list, read) still return 501. /email/send is excluded because
-// it is now implemented (OC-0lx3).
+// (webhooks, list) still return 501. /email/send and /email/read are
+// excluded because they are now implemented (OC-0lx3, OC-di1n).
 func TestAdapter_StubHandlers_Return_501_JSON(t *testing.T) {
 	a := NewAdapter(nil)
 
@@ -69,7 +73,6 @@ func TestAdapter_StubHandlers_Return_501_JSON(t *testing.T) {
 	}{
 		{"/email/webhooks", "email_webhook"},
 		{"/email/list", "email_list"},
-		{"/email/read", "email_read"},
 	}
 
 	for _, tc := range tests {
