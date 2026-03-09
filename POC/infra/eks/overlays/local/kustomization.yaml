@@ -66,8 +66,10 @@ configMapGenerator:
       - ui_csp_policy.rego=gateway-config/ui_csp_policy.rego
       - exfiltration.rego=gateway-config/exfiltration.rego
       - context_policy.rego=gateway-config/context_policy.rego
+      - principal_policy.rego=gateway-config/principal_policy.rego
       - tool_grants.yaml=gateway-config/tool_grants.yaml
       - ui_capability_grants.yaml=gateway-config/ui_capability_grants.yaml
+      - risk_thresholds.yaml=gateway-config/risk_thresholds.yaml
       - extensions-demo-k8s.yaml=gateway-config/extensions-demo-k8s.yaml
 
 generatorOptions:
@@ -164,7 +166,7 @@ patches:
                   - name: SPIKE_NEXUS_URL
                     value: "https://spike-nexus.spike-system.svc.cluster.local:8443"
                   - name: OTEL_EXPORTER_OTLP_ENDPOINT
-                    value: "host.docker.internal:4317"
+                    value: "otel-collector.observability.svc.cluster.local:4317"
                   - name: OTEL_SERVICE_NAME
                     value: "mcp-security-gateway"
                   - name: GROQ_API_KEY

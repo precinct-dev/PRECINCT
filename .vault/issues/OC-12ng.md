@@ -9,10 +9,10 @@ parent: OC-kd8y
 created_at: 2026-03-08T02:40:01Z
 created_by: ramirosalas
 updated_at: 2026-03-08T03:45:08Z
-content_hash: "sha256:ad996489fc93bd4775b1e8493cd0aff8a46fac12d2360a6a78d829067d14b0b2"
+content_hash: "sha256:3c1839033ea36d740497fd267fdbf702a9db7be89b6b1e82eadd5633209616b0"
 closed_at: 2026-03-08T03:45:08Z
 close_reason: "Accepted: Escalation score tracking with time-window decay, all 3 threshold flags, and SecurityFlagsCollector propagation wired into session middleware. 11 tests executed (8 unit + 2 serialization + 1 middleware integration), all pass."
-led_to: [OC-d77k]
+led_to: [OC-d77k, OC-axk7]
 ---
 
 ## Description
@@ -137,6 +137,6 @@ None identified
 
 ## Links
 - Parent: [[OC-kd8y]]
-- Led to: [[OC-d77k]]
+- Led to: [[OC-d77k]], [[OC-axk7]]
 
 ## Comments

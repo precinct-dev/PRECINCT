@@ -1,17 +1,18 @@
 ---
 id: OC-66bi
 title: "OPA input.action hardcoded to 'execute' -- principal-level rules for destructive/messaging actions never fire end-to-end"
-status: in_progress
+status: closed
 priority: 0
 type: bug
 parent: OC-qkal
 created_at: 2026-03-08T07:40:16Z
 created_by: ramirosalas
-updated_at: 2026-03-08T07:40:57Z
-content_hash: "sha256:939f440de8ebe4992958e64327d997872ae434af97528b40ecd602dec905b33c"
-blocks: [OC-f0xy]
+updated_at: 2026-03-08T17:35:04Z
+content_hash: "sha256:7bba1cab32f684881deaf04f8443f5797df8a09c43488c91e56c06ccc04ca324"
 related: [OC-3ch6]
 follows: [OC-3ch6]
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -79,11 +80,10 @@ None identified
 
 
 ## History
-- 2026-03-08T07:40:57Z auto-follows: linked to predecessor OC-3ch6
+- 2026-03-08T17:35:04Z dep_removed: no_longer_blocks OC-f0xy
 
 ## Links
 - Parent: [[OC-qkal]]
-- Blocks: [[OC-f0xy]]
 - Related: [[OC-3ch6]]
 - Follows: [[OC-3ch6]]
 

@@ -152,7 +152,9 @@ scripts/                  Setup and operational scripts
 | `make observability-down` | Stop both observability backends (preserves data) |
 | `make observability-reset` | Destroy all observability backend data |
 | **Kubernetes** | |
-| `make k8s-up` | Deploy to local K8s (Docker Desktop) |
+| `make k8s-up` | Deploy to local K8s (Docker Desktop; syncs config, builds, deploys) |
+| `make k8s-sync-config` | Sync K8s overlay gateway config from canonical config/ source |
+| `make k8s-check-config` | Check K8s overlay gateway config for drift (CI use) |
 | `make k8s-opensearch-up` | Deploy local K8s stack plus OpenSearch observability extension |
 | `make k8s-opensearch-down` | Remove OpenSearch extension resources from local K8s deployment |
 | `make k8s-down` | Tear down local K8s deployment |

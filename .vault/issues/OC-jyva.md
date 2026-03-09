@@ -1,16 +1,17 @@
 ---
 id: OC-jyva
 title: "New Site Page -- Threat Defense: Agents of Chaos"
-status: in_progress
+status: closed
 priority: 1
 type: task
 labels: [agents-of-chaos, documentation, delivered]
 parent: OC-mfwm
 created_at: 2026-03-08T02:45:36Z
 created_by: ramirosalas
-updated_at: 2026-03-08T03:47:13Z
-content_hash: "sha256:58c0a7e53d6f9c4b5b389e7273f62c32b967af3ee6e260daefe1471b5c7c731d"
-blocks: [OC-74k5]
+updated_at: 2026-03-08T17:35:04Z
+content_hash: "sha256:a961b3f709cd1f9cccfa1924ca1302c06c21a69624f368388ccd977046381cb8"
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -108,10 +109,9 @@ None identified
 
 
 ## History
-- 2026-03-08T03:44:29Z status: open -> in_progress
+- 2026-03-08T17:35:04Z dep_removed: no_longer_blocks OC-74k5
 
 ## Links
 - Parent: [[OC-mfwm]]
-- Blocks: [[OC-74k5]]
 
 ## Comments

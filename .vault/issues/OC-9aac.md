@@ -1,16 +1,19 @@
 ---
 id: OC-9aac
 title: "E2E Demo Scenario -- Rug-Pull Detection on External Data"
-status: open
+status: closed
 priority: 1
 type: task
-labels: [agents-of-chaos, data-source-integrity]
+labels: [agents-of-chaos, data-source-integrity, accepted, delivered]
 parent: OC-yrwz
 created_at: 2026-03-08T02:39:24Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:39:24Z
-content_hash: "sha256:548a9a33f5760ba58bfb3329dc9d5f8ea732fbd6bc0dfe75e70d4778c401aeef"
-blocked_by: [OC-cqj0, OC-am3w]
+updated_at: 2026-03-09T02:02:22Z
+content_hash: "sha256:4c848c45171020f3011d7e9af2b67de6145a6ac5d1a6b3cd07da082a851e3173"
+was_blocked_by: [OC-cqj0, OC-am3w]
+follows: [OC-cqj0, OC-am3w, OC-4zrf]
+closed_at: 2026-03-09T02:02:22Z
+close_reason: "All 5 ACs verified. Integration test with real httptest.Server. Gateway wiring included."
 ---
 
 ## Description
@@ -83,10 +86,11 @@ None identified
 
 
 ## History
-- 2026-03-08T02:39:30Z dep_added: blocked_by OC-am3w
+- 2026-03-09T02:02:22Z status: in_progress -> closed
 
 ## Links
 - Parent: [[OC-yrwz]]
-- Blocked by: [[OC-cqj0]], [[OC-am3w]]
+- Was blocked by: [[OC-cqj0]], [[OC-am3w]]
+- Follows: [[OC-cqj0]], [[OC-am3w]], [[OC-4zrf]]
 
 ## Comments

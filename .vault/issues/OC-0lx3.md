@@ -9,12 +9,12 @@ parent: OC-0esa
 created_at: 2026-03-08T02:36:27Z
 created_by: ramirosalas
 updated_at: 2026-03-08T03:22:35Z
-content_hash: "sha256:6fb21b18bc4f2021476feda66b34ac1b387aaa22eefb8cbd3cbf12f2e6f78f96"
+content_hash: "sha256:49babcbe1a24cd124319f133dabba36e77e3ffcdf12fd5d59e34c8affa975564"
 was_blocked_by: [OC-tbd4]
 follows: [OC-tbd4]
 closed_at: 2026-03-08T03:22:35Z
 close_reason: "Accepted: Email outbound send with DLP, mass-email detection, SPIKE redemption, and recipient policy"
-led_to: [OC-cbzc]
+led_to: [OC-cbzc, OC-di1n]
 ---
 
 ## Description
@@ -111,6 +111,6 @@ COMPLETED: Implemented handleSend with DLP, OPA, SPIKE, mass-email detection. Al
 - Parent: [[OC-0esa]]
 - Was blocked by: [[OC-tbd4]]
 - Follows: [[OC-tbd4]]
-- Led to: [[OC-cbzc]]
+- Led to: [[OC-cbzc]], [[OC-di1n]]
 
 ## Comments

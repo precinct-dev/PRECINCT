@@ -83,11 +83,12 @@ make up
 ```
 
 This command:
-1. Ensures `phoenix-observability-network` exists (auto-starts Phoenix when missing)
-2. Builds all container images from source
-3. Starts all services with dependency ordering
-4. Waits for all health checks to pass (`--wait --wait-timeout 180`)
-5. Registers SPIRE workload entries via `make register-spire`
+1. Creates `.env` from `.env.example` if it does not exist (set `GROQ_API_KEY` in `.env` for deep scan)
+2. Ensures `phoenix-observability-network` exists (auto-starts Phoenix when missing)
+3. Builds all container images from source
+4. Starts all services with dependency ordering
+5. Waits for all health checks to pass (`--wait --wait-timeout 180`)
+6. Registers SPIRE workload entries via `make register-spire`
 
 The full startup sequence takes 1-3 minutes depending on hardware. The `--wait` flag ensures the command does not return until every service reports healthy.
 
@@ -220,16 +221,30 @@ make k8s-down
 
 ### What `make k8s-up` Does
 
-1. Starts a local registry (`registry:2` on port 5050) and connects it to the `kind` network
-2. Builds gateway, mock-mcp-server, spire-agent-wrapper, and spike-keeper images
-3. Tags and pushes all images to `localhost:5050`
-4. Installs OPA Gatekeeper and sigstore policy-controller CRDs
-5. Applies the Kustomize local overlay (`infra/eks/overlays/local/`) in two passes:
-   - Pass 1: Namespaces, CRDs, services
+1. **Syncs K8s gateway config** from the canonical `config/` source to `infra/eks/overlays/local/gateway-config/` (prevents drift between Compose and K8s)
+2. Starts a local registry (`registry:2` on port 5050) and connects it to the `kind` network
+3. Builds gateway, mock-mcp-server, spire-agent-wrapper, spike-keeper, and content-scanner images
+4. Tags and pushes all images to `localhost:5050`
+5. Installs OPA Gatekeeper and sigstore policy-controller CRDs
+6. Applies the Kustomize local overlay (`infra/eks/overlays/local/`) in two passes:
+   - Pass 1: Namespaces, CRDs, services (ConstraintTemplates only)
    - Pass 2: Constraints, policies (after Gatekeeper processes ConstraintTemplates)
-6. Generates TLS certs for the policy-controller webhook
-7. Waits for all rollouts: SPIRE server/agent, SPIKE keeper/nexus/bootstrap/seeder, KeyDB, MCP server, gateway
-8. Registers SPIRE workload entries via `make k8s-register-spire`
+7. Generates TLS certs for the policy-controller webhook
+8. Waits for all rollouts: SPIRE server/agent, SPIKE keeper/nexus/bootstrap/seeder, KeyDB, MCP server, gateway
+9. Registers SPIRE workload entries via `make k8s-register-spire`
+
+### Config Sync Between Compose and K8s
+
+The K8s overlay requires local copies of config files (Kustomize `configMapGenerator` only supports relative paths). These copies are synced automatically by `make k8s-up` from the canonical source in `config/`.
+
+To manually sync or check for drift:
+
+```bash
+make k8s-sync-config    # Copy canonical config/ files to K8s overlay
+make k8s-check-config   # Check for drift without modifying (CI use)
+```
+
+The only K8s-specific file is `extensions-demo-k8s.yaml` (uses cluster DNS instead of Docker Compose hostnames).
 
 To include OpenSearch in local K8s, apply the extension overlay:
 
@@ -344,7 +359,12 @@ records into OpenSearch (`precinct-audit-*`) via Fluent Bit.
 
 **Symptom:** Services fail to start or mTLS handshakes fail after a previous unclean shutdown.
 
-**Fix:** Clear SPIRE data directories for a clean restart:
+**Fix:** `make clean` now clears SPIRE data directories automatically. For a fresh restart:
+```bash
+make clean && make up
+```
+
+Or manually clear the state:
 ```bash
 rm -rf data/spire-server/ data/spire-agent/
 make down && make up
@@ -691,7 +711,9 @@ workflow continuity, but that is not equivalent evidence for cloud release sign-
 | `make observability-up` | Start both observability backends (Phoenix + OpenSearch) |
 | `make observability-down` | Stop both observability backends (preserves data) |
 | `make observability-reset` | Destroy all observability backend data |
-| `make k8s-up` | Deploy full stack to local K8s |
+| `make k8s-up` | Deploy full stack to local K8s (syncs config, builds, deploys) |
+| `make k8s-sync-config` | Sync K8s overlay gateway config from canonical config/ source |
+| `make k8s-check-config` | Check K8s overlay gateway config for drift (CI use) |
 | `make k8s-opensearch-up` | Deploy local K8s stack plus OpenSearch observability extension |
 | `make k8s-opensearch-down` | Remove OpenSearch extension resources from local K8s deployment |
 | `make k8s-down` | Teardown local K8s deployment |

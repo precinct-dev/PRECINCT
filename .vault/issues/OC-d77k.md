@@ -1,18 +1,20 @@
 ---
 id: OC-d77k
 title: "Step-Up Gating Integration with Escalation Score"
-status: in_progress
+status: closed
 priority: 1
 type: task
-labels: [agents-of-chaos, escalation-detection, delivered]
+labels: [agents-of-chaos, escalation-detection, delivered, accepted]
 parent: OC-kd8y
 created_at: 2026-03-08T02:40:26Z
 created_by: ramirosalas
-updated_at: 2026-03-09T00:12:56Z
-content_hash: "sha256:19911ebea2bf032e948661461454fdd9cc4520f59bf465711e04cf4047ff2945"
-blocks: [OC-axk7]
+updated_at: 2026-03-09T00:30:41Z
+content_hash: "sha256:8004cd363daafc8959d0a1dbbe624b925d00484e04d00959153ad7302b75c6a3"
 was_blocked_by: [OC-12ng, OC-pgxd]
 follows: [OC-12ng, OC-pgxd]
+closed_at: 2026-03-09T00:30:41Z
+close_reason: "Accepted: escalation score integration with step-up gating fully delivered -- applyEscalationOverrides() in ComputeRiskScore() implements Critical(+3 Impact) and Emergency(all dims=3) overrides, RecordActionWithContext() computes and persists escalation contributions, threshold-crossing flags propagate to SecurityFlagsCollector, audit events include escalation_score and escalation_state, 21 tests pass including 2 real integration tests"
+led_to: [OC-axk7]
 ---
 
 ## Description
@@ -105,12 +107,12 @@ None identified
 
 
 ## History
-- 2026-03-09T00:12:56Z status: in_progress -> in_progress
+- 2026-03-09T00:30:41Z dep_removed: no_longer_blocks OC-axk7
 
 ## Links
 - Parent: [[OC-kd8y]]
-- Blocks: [[OC-axk7]]
 - Was blocked by: [[OC-12ng]], [[OC-pgxd]]
 - Follows: [[OC-12ng]], [[OC-pgxd]]
+- Led to: [[OC-axk7]]
 
 ## Comments

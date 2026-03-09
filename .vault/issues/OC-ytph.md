@@ -1,18 +1,19 @@
 ---
 id: OC-ytph
 title: "Action Reversibility Taxonomy and Classifier"
-status: in_progress
+status: closed
 priority: 2
 type: task
 labels: [agents-of-chaos, irreversibility, delivered]
 parent: OC-xbmj
 created_at: 2026-03-08T02:43:47Z
 created_by: ramirosalas
-updated_at: 2026-03-08T04:27:42Z
-content_hash: "sha256:6c7a8a13841a953a8d29735479399e742bf1942c401c75e29c56c7cd613b3c93"
-blocks: [OC-h4m7, OC-lmzm, OC-dz8i]
+updated_at: 2026-03-08T17:35:05Z
+content_hash: "sha256:eb730a7f767b92821807d903da64fbe6c6869c0f4504c8b6062da5987df7a7a7"
 was_blocked_by: [OC-pgxd]
 follows: [OC-pgxd]
+closed_at: 2026-03-08T17:35:05Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -105,11 +106,10 @@ None identified
 
 
 ## History
-- 2026-03-08T04:25:35Z status: in_progress -> in_progress
+- 2026-03-08T17:35:05Z dep_removed: no_longer_blocks OC-dz8i
 
 ## Links
 - Parent: [[OC-xbmj]]
-- Blocks: [[OC-h4m7]], [[OC-lmzm]], [[OC-dz8i]]
 - Was blocked by: [[OC-pgxd]]
 - Follows: [[OC-pgxd]]
 

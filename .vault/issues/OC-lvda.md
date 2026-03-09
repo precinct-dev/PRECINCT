@@ -1,15 +1,17 @@
 ---
 id: OC-lvda
 title: "Update Security and Compliance Documentation"
-status: in_progress
+status: closed
 priority: 1
 type: task
 labels: [agents-of-chaos, documentation, delivered]
 parent: OC-mfwm
 created_at: 2026-03-08T02:46:54Z
 created_by: ramirosalas
-updated_at: 2026-03-08T04:13:18Z
+updated_at: 2026-03-08T17:35:04Z
 content_hash: "sha256:027a535ec232cb1292f61fa1d291a3253746ac0e3960c6ecfcbe8c869f6f8c63"
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -93,7 +95,7 @@ None identified
 COMPLETED: All 4 documentation files updated with Agents of Chaos coverage. Commit 1923e10 pushed to story/OC-lvda.
 
 ## History
-- 2026-03-08T04:08:21Z status: in_progress -> in_progress
+- 2026-03-08T17:35:04Z status: in_progress -> closed
 
 ## Links
 - Parent: [[OC-mfwm]]

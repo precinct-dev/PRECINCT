@@ -1,14 +1,16 @@
 ---
 id: OC-xbmj
 title: "Irreversibility Classification and Gating"
-status: open
+status: closed
 priority: 2
 type: epic
 created_at: 2026-03-08T02:33:25Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:33:53Z
+updated_at: 2026-03-08T17:35:05Z
 content_hash: "sha256:c92c3c677e33cd35ec469cdbf840b2e8031f7896e98147b40f863efa3336c6b5"
 labels: [agents-of-chaos, irreversibility]
+closed_at: 2026-03-08T17:35:05Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -63,7 +65,7 @@ None identified
 
 
 ## History
-
+- 2026-03-08T17:35:05Z status: open -> closed
 
 ## Links
 

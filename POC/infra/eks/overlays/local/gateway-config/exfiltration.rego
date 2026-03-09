@@ -16,7 +16,7 @@ exfiltration_risk if {
     prev_action.resource_classification == "sensitive"
 
     # Check if current action targets external destination
-    input.action.tool in ["email_send", "http_request", "file_upload", "webhook_call"]
+    input.action.tool in ["email_send", "http_request", "file_upload", "webhook_call", "messaging_send"]
     input.action.destination_external == true
 }
 

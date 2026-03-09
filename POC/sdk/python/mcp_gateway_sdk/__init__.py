@@ -18,7 +18,7 @@ Usage:
         client.close()
 """
 
-from .client import GatewayClient
+from .client import CallResult, GatewayClient, ResponseMeta
 from .errors import GatewayError
 from .runtime import (
     build_dspy_gateway_lm,
@@ -31,8 +31,10 @@ from .runtime import (
 )
 
 __all__ = [
+    "CallResult",
     "GatewayClient",
     "GatewayError",
+    "ResponseMeta",
     "build_dspy_gateway_lm",
     "build_spike_token_ref",
     "configure_dspy_gateway_lms",

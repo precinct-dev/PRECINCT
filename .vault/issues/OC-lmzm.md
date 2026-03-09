@@ -1,17 +1,18 @@
 ---
 id: OC-lmzm
 title: "Pre-Action State Snapshot Recommendation"
-status: open
+status: closed
 priority: 2
 type: task
 labels: [agents-of-chaos, irreversibility]
 parent: OC-xbmj
 created_at: 2026-03-08T02:44:34Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:44:34Z
-content_hash: "sha256:20766c8bba265593be897b4189dae3683bfa14ae0df5127125c76faefa20b9de"
-blocked_by: [OC-ytph, OC-h4m7]
-blocks: [OC-dz8i]
+updated_at: 2026-03-08T17:35:05Z
+content_hash: "sha256:42a98dda01bc7b97aa88d26dd099b0179e1b567197183f1077b1615897e88d83"
+was_blocked_by: [OC-h4m7, OC-ytph]
+closed_at: 2026-03-08T17:35:05Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -83,11 +84,10 @@ None identified
 
 
 ## History
-- 2026-03-08T02:45:05Z dep_added: blocks OC-dz8i
+- 2026-03-08T17:35:05Z dep_removed: was_blocked_by OC-ytph
 
 ## Links
 - Parent: [[OC-xbmj]]
-- Blocks: [[OC-dz8i]]
-- Blocked by: [[OC-ytph]], [[OC-h4m7]]
+- Was blocked by: [[OC-h4m7]], [[OC-ytph]]
 
 ## Comments

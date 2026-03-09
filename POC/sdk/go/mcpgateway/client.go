@@ -214,6 +214,124 @@ func (c *GatewayClient) CallModelChat(ctx context.Context, req ModelChatRequest)
 	return out, nil
 }
 
+// ResponseMeta holds security-relevant metadata from gateway response headers.
+// These headers are set by the gateway middleware chain and provide advisory
+// signals that agent frameworks can use for safer decision-making.
+type ResponseMeta struct {
+	// Reversibility is the action classification: "reversible", "costly_reversible",
+	// "partially_reversible", or "irreversible". Empty if not classified.
+	Reversibility string
+
+	// BackupRecommended is true when the gateway recommends taking a state
+	// snapshot before proceeding (set for partially_reversible and irreversible actions).
+	BackupRecommended bool
+
+	// PrincipalLevel is the numeric hierarchy level (0=system, 1=owner, 2=delegated,
+	// 3=agent, 4=external, 5=anonymous). -1 if not set.
+	PrincipalLevel int
+
+	// PrincipalRole is the resolved role name (e.g. "owner", "agent", "external_user").
+	PrincipalRole string
+
+	// PrincipalCapabilities lists the capabilities granted to this principal.
+	PrincipalCapabilities []string
+
+	// AuthMethod is how the caller was authenticated (e.g. "mtls_svid", "header_declared").
+	AuthMethod string
+
+	// RawHeaders provides access to all response headers for forward-compatibility.
+	RawHeaders http.Header
+}
+
+// CallResult wraps a successful tool call result together with response metadata.
+// Use [GatewayClient.CallWithMetadata] to obtain this.
+type CallResult struct {
+	// Result is the JSON-RPC result (same value returned by [GatewayClient.Call]).
+	Result any
+
+	// Meta contains security-relevant response headers from the gateway.
+	Meta ResponseMeta
+}
+
+// parseResponseMeta extracts gateway advisory headers from an HTTP response.
+func parseResponseMeta(h http.Header) ResponseMeta {
+	meta := ResponseMeta{
+		Reversibility:  h.Get("X-Precinct-Reversibility"),
+		PrincipalRole:  h.Get("X-Precinct-Principal-Role"),
+		AuthMethod:     h.Get("X-Precinct-Auth-Method"),
+		PrincipalLevel: -1,
+		RawHeaders:     h,
+	}
+
+	if v := h.Get("X-Precinct-Backup-Recommended"); v == "true" {
+		meta.BackupRecommended = true
+	}
+
+	if v := h.Get("X-Precinct-Principal-Level"); v != "" {
+		var level int
+		if _, err := fmt.Sscanf(v, "%d", &level); err == nil {
+			meta.PrincipalLevel = level
+		}
+	}
+
+	if v := h.Get("X-Precinct-Principal-Capabilities"); v != "" {
+		for _, cap := range strings.Split(v, ",") {
+			if trimmed := strings.TrimSpace(cap); trimmed != "" {
+				meta.PrincipalCapabilities = append(meta.PrincipalCapabilities, trimmed)
+			}
+		}
+	}
+
+	return meta
+}
+
+// CallWithMetadata is like [Call] but also returns gateway response metadata
+// (reversibility classification, principal hierarchy, backup recommendations).
+//
+// This is useful when your agent needs to inspect advisory headers to make
+// informed decisions -- for example, prompting for confirmation before
+// irreversible actions or adjusting behavior based on principal level.
+//
+//	cr, err := client.CallWithMetadata(ctx, "delete_resource", params)
+//	if err != nil { ... }
+//	if cr.Meta.BackupRecommended {
+//	    // take a snapshot before proceeding
+//	}
+//	fmt.Println("reversibility:", cr.Meta.Reversibility)
+func (c *GatewayClient) CallWithMetadata(ctx context.Context, methodOrTool string, params map[string]any) (*CallResult, error) {
+	var lastErr *GatewayError
+
+	for attempt := 0; attempt <= c.maxRetries; attempt++ {
+		result, meta, err := c.doCallWithMeta(ctx, methodOrTool, params)
+		if err == nil {
+			return &CallResult{Result: result, Meta: meta}, nil
+		}
+
+		ge, ok := err.(*GatewayError)
+		if !ok {
+			return nil, err
+		}
+
+		if ge.HTTPStatus != http.StatusServiceUnavailable {
+			// Non-retryable: attach metadata even on error
+			ge.ResponseMeta = meta
+			return nil, ge
+		}
+
+		lastErr = ge
+		if attempt < c.maxRetries {
+			backoff := c.backoffBase * (1 << uint(attempt))
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-c.sleepChan(backoff):
+			}
+		}
+	}
+
+	return nil, lastErr
+}
+
 // jsonRPCRequest is the MCP JSON-RPC request envelope.
 type jsonRPCRequest struct {
 	JSONRPC string         `json:"jsonrpc"`
@@ -310,6 +428,85 @@ func isProtocolMethod(methodOrTool string) bool {
 	// Any method with a namespace separator is treated as protocol-level
 	// (tools/list, tools/call, resources/read, prompts/list, etc.).
 	return strings.Contains(methodOrTool, "/")
+}
+
+// doCallWithMeta is like doCall but also returns the parsed response metadata.
+func (c *GatewayClient) doCallWithMeta(ctx context.Context, methodOrTool string, params map[string]any) (any, ResponseMeta, error) {
+	method := methodOrTool
+	effectiveParams := params
+
+	if !isProtocolMethod(methodOrTool) {
+		if params == nil {
+			params = map[string]any{}
+		}
+		method = "tools/call"
+		effectiveParams = map[string]any{
+			"name":      methodOrTool,
+			"arguments": params,
+		}
+	}
+
+	reqBody := jsonRPCRequest{
+		JSONRPC: "2.0",
+		Method:  method,
+		Params:  effectiveParams,
+		ID:      c.nextID(),
+	}
+
+	payload, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, ResponseMeta{}, fmt.Errorf("mcpgateway: failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.url, bytes.NewReader(payload))
+	if err != nil {
+		return nil, ResponseMeta{}, fmt.Errorf("mcpgateway: failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", c.spiffeID)
+	req.Header.Set("X-Session-ID", c.sessionID)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, ResponseMeta{}, fmt.Errorf("mcpgateway: request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, ResponseMeta{}, fmt.Errorf("mcpgateway: failed to read response: %w", err)
+	}
+
+	meta := parseResponseMeta(resp.Header)
+
+	if resp.StatusCode >= 400 {
+		ge := parseGatewayError(resp.StatusCode, body)
+		ge.ResponseMeta = meta
+		return nil, meta, ge
+	}
+
+	var rpcResp jsonRPCResponse
+	if err := json.Unmarshal(body, &rpcResp); err != nil {
+		return nil, meta, &GatewayError{
+			Code:       "invalid_response",
+			Message:    fmt.Sprintf("invalid JSON response (HTTP %d): %s", resp.StatusCode, truncate(string(body), 200)),
+			HTTPStatus: resp.StatusCode,
+		}
+	}
+
+	if rpcResp.Error != nil {
+		msg := "unknown error"
+		if m, ok := rpcResp.Error["message"]; ok {
+			msg = fmt.Sprintf("%v", m)
+		}
+		return nil, meta, &GatewayError{
+			Code:       "jsonrpc_error",
+			Message:    fmt.Sprintf("JSON-RPC error: %s", msg),
+			HTTPStatus: resp.StatusCode,
+		}
+	}
+
+	return rpcResp.Result, meta, nil
 }
 
 func (c *GatewayClient) doCall(ctx context.Context, methodOrTool string, params map[string]any) (any, error) {

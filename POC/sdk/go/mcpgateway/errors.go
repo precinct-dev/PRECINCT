@@ -49,6 +49,10 @@ type GatewayError struct {
 	// HTTPStatus is the HTTP status code from the gateway response.
 	// Not serialized to JSON -- it comes from the HTTP layer, not the body.
 	HTTPStatus int `json:"-"`
+
+	// ResponseMeta contains gateway advisory headers from the response.
+	// Only populated when using [GatewayClient.CallWithMetadata].
+	ResponseMeta ResponseMeta `json:"-"`
 }
 
 // Error implements the error interface.

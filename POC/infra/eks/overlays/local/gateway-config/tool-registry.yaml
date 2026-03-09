@@ -1,3 +1,4 @@
+# NOTE: Modifying this file requires running 'make attestation-resign' to update signature files.
 # Tool Registry Configuration - RFA-qq0.5, RFA-qq0.6
 # Defines MCP tools with SHA-256 hashes for poisoning detection
 # Each tool is identified by name and verified via SHA-256 hash
@@ -149,6 +150,72 @@ tools:
     risk_level: "low"
     requires_step_up: false
     required_scope: "tools.s3.read"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  # Messaging Send - External messaging platform egress (RFA-1fui, RFA-np7t)
+  - name: "messaging_send"
+    description: "Send a message to an external messaging platform"
+    hash: "1dc9c71022964b63ff5b47c255027b261c65b6372a8fb0fb96936790052e7520"  # SHA-256 (RFA-1fui)
+    input_schema:
+      type: "object"
+      required: ["platform", "recipient", "message"]
+      properties:
+        platform:
+          type: "string"
+          enum: ["whatsapp", "telegram", "slack"]
+        recipient:
+          type: "string"
+        message:
+          type: "string"
+    allowed_destinations:
+      - "graph.facebook.com"
+      - "*.facebook.com"
+      - "api.telegram.org"
+      - "slack.com"
+      - "*.slack.com"
+      - "messaging-sim"
+    risk_level: "high"
+    requires_step_up: true
+    required_scope: "tools.messaging.send"
+
+  # Messaging Status - Check delivery status (RFA-np7t)
+  - name: "messaging_status"
+    description: "Check delivery status of a previously sent message"
+    hash: "8e1c7daf8ea3082bb96522f8158c80ea4aa077f8148d3452132c10ef6d18f759"  # SHA-256 (RFA-np7t)
+    input_schema:
+      type: "object"
+      required: ["platform", "message_id"]
+      properties:
+        platform:
+          type: "string"
+          enum: ["whatsapp", "telegram", "slack"]
+        message_id:
+          type: "string"
+    allowed_destinations:
+      - "graph.facebook.com"
+      - "*.facebook.com"
+      - "api.telegram.org"
+      - "slack.com"
+      - "*.slack.com"
+      - "messaging-sim"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.messaging.status"
+
+  # Rug-pull demo tool - used only to prove gateway-owned hash verification works
+  # by intentionally serving a mismatched tools/list definition from the demo MCP server.
+  - name: "rugpull_demo_tool"
+    description: "Rug-pull demo tool (approved baseline)"
+    hash: "9aa4392ccf90373738659b1f427d4919d85093999fe190ff075c521a4d6c513e"  # SHA-256 (RFA-6fse.4)
+    input_schema:
+      type: "object"
+      required: ["msg"]
+      properties:
+        msg:
+          type: "string"
+          description: "Message to echo"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.demo.rugpull"  # RFA-0gr: dynamic scope for SPIKE tokens
 
 # Hash computation reference:
 # For each tool, the hash is computed as:

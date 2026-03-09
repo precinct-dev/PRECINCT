@@ -1,18 +1,18 @@
 ---
 id: OC-h4m7
 title: "Automatic Step-Up for Irreversible Actions"
-status: open
+status: closed
 priority: 2
 type: task
 labels: [agents-of-chaos, irreversibility]
 parent: OC-xbmj
 created_at: 2026-03-08T02:44:14Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:44:14Z
-content_hash: "sha256:77eec71bf61906ded7304cf23ff501f74079744cd78a678febb6f4a7eb755f63"
-blocked_by: [OC-ytph, OC-70gv]
-blocks: [OC-lmzm, OC-dz8i]
-was_blocked_by: [OC-12ng]
+updated_at: 2026-03-08T17:35:04Z
+content_hash: "sha256:4753c638b1e1a687f45c925434f67cd8d69247b89040fbb6e91914696fe0ff5e"
+was_blocked_by: [OC-12ng, OC-70gv, OC-ytph]
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -105,12 +105,10 @@ None identified
 
 
 ## History
-- 2026-03-08T03:45:08Z dep_removed: was_blocked_by OC-12ng
+- 2026-03-08T17:35:05Z dep_removed: was_blocked_by OC-ytph
 
 ## Links
 - Parent: [[OC-xbmj]]
-- Blocks: [[OC-lmzm]], [[OC-dz8i]]
-- Blocked by: [[OC-ytph]], [[OC-70gv]]
-- Was blocked by: [[OC-12ng]]
+- Was blocked by: [[OC-12ng]], [[OC-70gv]], [[OC-ytph]]
 
 ## Comments

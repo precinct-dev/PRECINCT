@@ -1,15 +1,17 @@
 ---
 id: OC-v1yl
 title: "Update Reference Architecture Document"
-status: in_progress
+status: closed
 priority: 1
 type: task
 labels: [agents-of-chaos, documentation, delivered]
 parent: OC-mfwm
 created_at: 2026-03-08T02:46:13Z
 created_by: ramirosalas
-updated_at: 2026-03-08T03:54:44Z
+updated_at: 2026-03-08T17:35:04Z
 content_hash: "sha256:06bec602a5f6c8ae86afb461e230e44b950a3910ab00711c59cd907677829f5a"
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -95,7 +97,7 @@ None identified
 
 
 ## History
-- 2026-03-08T03:52:05Z status: open -> in_progress
+- 2026-03-08T17:35:04Z status: in_progress -> closed
 
 ## Links
 - Parent: [[OC-mfwm]]

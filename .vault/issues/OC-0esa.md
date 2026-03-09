@@ -1,14 +1,16 @@
 ---
 id: OC-0esa
 title: "Communication Channel Mediation Adapters"
-status: open
+status: closed
 priority: 0
 type: epic
 created_at: 2026-03-08T02:31:46Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:33:50Z
+updated_at: 2026-03-08T17:35:04Z
 content_hash: "sha256:e49e2fb1736fcc13f38ee4fe91f36993f71e2455f7f0ca51b6626707c6a987dc"
 labels: [agents-of-chaos, channel-mediation]
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -70,7 +72,7 @@ None identified
 
 
 ## History
-
+- 2026-03-08T17:35:04Z status: open -> closed
 
 ## Links
 

@@ -1,14 +1,16 @@
 ---
 id: OC-yrwz
 title: "Data Source Integrity Registry"
-status: open
+status: closed
 priority: 1
 type: epic
 created_at: 2026-03-08T02:32:10Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:33:51Z
+updated_at: 2026-03-09T01:45:23Z
 content_hash: "sha256:66ff5c906b7bf5e2b816a1543565781181bade33905074231939559f1152c25c"
 labels: [agents-of-chaos, data-source-integrity]
+closed_at: 2026-03-09T01:45:23Z
+close_reason: "All stories accepted"
 ---
 
 ## Description
@@ -63,7 +65,7 @@ None identified
 
 
 ## History
-
+- 2026-03-09T01:45:23Z status: open -> closed
 
 ## Links
 

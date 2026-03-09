@@ -36,13 +36,26 @@ allow := {
     "allow": true,
     "reason": "allowed"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     path_allowed(input.tool, input.params)
     destination_allowed(input.tool, input.params)
     step_up_satisfied(input.tool, input.step_up_token)
     session_risk_acceptable
+    principal_level_acceptable
+}
+
+# True when at least one grant matches the caller SPIFFE ID.
+matching_grant_exists if {
+    some grant in tool_grants
+    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
+}
+
+# True when any matching grant authorizes the requested tool.
+tool_authorized_for_spiffe(tool) if {
+    some grant in tool_grants
+    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
+    tool_authorized(tool, grant.allowed_tools)
 }
 
 # RFA-qq0.15: Session risk check
@@ -138,9 +151,24 @@ destination_allowed(tool, params) if {
     not contains(params.command, "http")
 }
 
+destination_allowed("messaging_send", dest) if {
+    # messaging_send - only allowed to messaging-sim (POC)
+    dest == "messaging-sim"
+}
+
+destination_allowed("messaging_send", params) if {
+    # messaging_send - allow when params is not a string (object/map form)
+    not is_string(params)
+}
+
+destination_allowed("messaging_status", params) if {
+    # messaging_status - read-only status check, always allowed
+    true
+}
+
 destination_allowed(tool, params) if {
     # Other tools - default deny external egress unless explicitly allowed
-    not tool in ["tavily_search", "read", "grep", "bash"]
+    not tool in ["tavily_search", "read", "grep", "bash", "messaging_send", "messaging_status"]
     # Would check against tool registry allowed_destinations
     false
 }
@@ -185,25 +213,23 @@ allow := {
     "allow": false,
     "reason": "no_matching_grant"
 } if {
-    count([grant | some grant in tool_grants; spiffe_matches(input.spiffe_id, grant.spiffe_pattern)]) == 0
+    not matching_grant_exists
 }
 
 allow := {
     "allow": false,
     "reason": "tool_not_authorized"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    not tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    not tool_authorized_for_spiffe(input.tool)
 }
 
 allow := {
     "allow": false,
     "reason": "path_denied"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     not path_allowed(input.tool, input.params)
 }
 
@@ -211,9 +237,8 @@ allow := {
     "allow": false,
     "reason": "destination_denied"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     path_allowed(input.tool, input.params)
     not destination_allowed(input.tool, input.params)
 }
@@ -222,9 +247,8 @@ allow := {
     "allow": false,
     "reason": "step_up_required"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     path_allowed(input.tool, input.params)
     destination_allowed(input.tool, input.params)
     not step_up_satisfied(input.tool, input.step_up_token)
@@ -234,13 +258,78 @@ allow := {
     "allow": false,
     "reason": "session_risk_too_high"
 } if {
-    some grant in tool_grants
-    spiffe_matches(input.spiffe_id, grant.spiffe_pattern)
-    tool_authorized(input.tool, grant.allowed_tools)
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
     path_allowed(input.tool, input.params)
     destination_allowed(input.tool, input.params)
     step_up_satisfied(input.tool, input.step_up_token)
     not session_risk_acceptable
+}
+
+
+# OC-3ch6: Principal level insufficient for requested operation
+allow := {
+    "allow": false,
+    "reason": "principal_level_insufficient"
+} if {
+    matching_grant_exists
+    tool_authorized_for_spiffe(input.tool)
+    path_allowed(input.tool, input.params)
+    destination_allowed(input.tool, input.params)
+    step_up_satisfied(input.tool, input.step_up_token)
+    session_risk_acceptable
+    not principal_level_acceptable
+}
+
+# ============================================================================
+# OC-3ch6: Principal-aware authorization rules
+# ============================================================================
+
+default principal_level_acceptable := true
+
+principal_level_acceptable := false if {
+    input.principal != null
+    input.principal.level > 2
+    is_destructive_action
+}
+
+principal_level_acceptable := false if {
+    input.principal != null
+    input.principal.level > 1
+    is_data_export_action
+}
+
+principal_level_acceptable := false if {
+    input.principal != null
+    input.principal.level > 3
+    is_messaging_action
+}
+
+principal_level_acceptable := false if {
+    input.principal != null
+    input.principal.level == 5
+    input.path != "/health"
+}
+
+is_destructive_action if {
+    action := lower(input.action)
+    keywords := ["delete", "rm", "remove", "drop", "reset", "wipe", "shutdown", "terminate", "revoke", "purge", "destroy"]
+    keyword := keywords[_]
+    contains(action, keyword)
+}
+
+is_data_export_action if {
+    action := lower(input.action)
+    keywords := ["export", "dump", "backup", "extract", "exfil"]
+    keyword := keywords[_]
+    contains(action, keyword)
+}
+
+is_messaging_action if {
+    action := lower(input.action)
+    keywords := ["message", "notify", "broadcast", "send_agent", "agent_invoke"]
+    keyword := keywords[_]
+    contains(action, keyword)
 }
 
 # RFA-qq0.19: Poisoning pattern detection

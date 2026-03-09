@@ -9,11 +9,12 @@ parent: OC-0esa
 created_at: 2026-03-08T02:35:25Z
 created_by: ramirosalas
 updated_at: 2026-03-08T04:30:08Z
-content_hash: "sha256:e3ffe679925b86b2a038af0fd2dda9926618a3119c79e8adfaf83cbb36799fb0"
+content_hash: "sha256:68e892be2a060cf8b297ee3e88ce635ee68d8d08f7c99644eaacf2b8c072989f"
 was_blocked_by: [OC-cbzc]
 follows: [OC-cbzc]
 closed_at: 2026-03-08T04:30:06Z
 close_reason: "Accepted: all 9 ACs satisfied. Ed25519 verification, Critical severity on invalid sig (AC2 fix), ValidateConnector wiring, SafeZoneFlags injection content capture with pending_deep_scan marker (AC9 fix). 21 tests pass, 0 skipped."
+led_to: [OC-di1n]
 ---
 
 ## Description
@@ -101,6 +102,7 @@ None identified
 - Parent: [[OC-0esa]]
 - Was blocked by: [[OC-cbzc]]
 - Follows: [[OC-cbzc]]
+- Led to: [[OC-di1n]]
 
 ## Comments
 

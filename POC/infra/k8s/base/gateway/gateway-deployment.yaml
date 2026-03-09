@@ -171,6 +171,11 @@ spec:
               mountPath: /config/guard-artifact.bin.sig
               subPath: guard-artifact.bin.sig
               readOnly: true
+            # Risk thresholds for step-up gating rubric
+            - name: config-registry
+              mountPath: /config/risk_thresholds.yaml
+              subPath: risk_thresholds.yaml
+              readOnly: true
             # Writable tmp directory for audit logs and runtime data
             - name: gateway-tmp
               mountPath: /tmp
@@ -206,6 +211,8 @@ spec:
                 path: exfiltration.rego
               - key: context_policy.rego
                 path: context_policy.rego
+              - key: principal_policy.rego
+                path: principal_policy.rego
               - key: tool_grants.yaml
                 path: tool_grants.yaml
               - key: ui_capability_grants.yaml
@@ -232,6 +239,8 @@ spec:
                 path: guard-artifact.bin
               - key: guard-artifact.bin.sig
                 path: guard-artifact.bin.sig
+              - key: risk_thresholds.yaml
+                path: risk_thresholds.yaml
             optional: false
         # Writable tmp for audit logs and runtime data
         - name: gateway-tmp

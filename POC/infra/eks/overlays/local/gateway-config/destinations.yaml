@@ -23,3 +23,13 @@ allowed_destinations:
   # Example: GitHub API for code operations
   - "api.github.com"
   - "*.github.com"
+
+  # Messaging simulator (RFA-1fui)
+  - "messaging-sim"
+
+  # Production messaging domains (RFA-np7t)
+  - "graph.facebook.com"
+  - "*.facebook.com"
+  - "api.telegram.org"
+  - "slack.com"
+  - "*.slack.com"

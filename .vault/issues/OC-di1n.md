@@ -1,16 +1,19 @@
 ---
 id: OC-di1n
 title: "E2E Demo Scenarios for Communication Channel Adapters"
-status: open
+status: closed
 priority: 0
 type: task
-labels: [agents-of-chaos, channel-mediation]
+labels: [agents-of-chaos, channel-mediation, delivered, accepted]
 parent: OC-0esa
 created_at: 2026-03-08T02:37:27Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:37:27Z
-content_hash: "sha256:c04c7ebebbd796e964bf3f732a31ba719d05d6504e70ff4478b63f90a6ecced1"
+updated_at: 2026-03-09T01:03:25Z
+content_hash: "sha256:1545703abc5f4babe78fa471d1dd7b6ad84d94935b8812b2e33d5b44fe4f8be4"
 was_blocked_by: [OC-0lx3, OC-94gu, OC-o3xl, OC-q8yz]
+follows: [OC-0lx3, OC-94gu, OC-o3xl, OC-q8yz, OC-cbzc]
+closed_at: 2026-03-09T01:03:25Z
+close_reason: "Accepted: All 6 channel mediation demo scenarios implemented (S-DISCORD-DLP, S-DISCORD-RATE, S-EMAIL-DLP, S-EMAIL-MASS, S-DISCORD-INJECT, S-EMAIL-EXFIL) with PROOF lines, DLP_PII_POLICY env var wired end-to-end, ScanContent interface added to PortGatewayServices, mass email threshold enforced at >10 recipients, integrated into make demo-compose"
 ---
 
 ## Description
@@ -113,10 +116,11 @@ None identified
 
 
 ## History
-- 2026-03-08T04:30:06Z dep_removed: was_blocked_by OC-q8yz
+- 2026-03-09T01:03:25Z status: in_progress -> closed
 
 ## Links
 - Parent: [[OC-0esa]]
 - Was blocked by: [[OC-0lx3]], [[OC-94gu]], [[OC-o3xl]], [[OC-q8yz]]
+- Follows: [[OC-0lx3]], [[OC-94gu]], [[OC-o3xl]], [[OC-q8yz]], [[OC-cbzc]]
 
 ## Comments
