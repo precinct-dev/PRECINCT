@@ -98,6 +98,37 @@ func (a *Adapter) handleSendImpl(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
+	// 5b. OC-di1n: Mass email step-up check. When recipient count exceeds
+	// the threshold, require step-up approval before policy evaluation.
+	if totalRecipients > massEmailThreshold {
+		traceID, decisionID := gateway.GetDecisionCorrelationIDs(r, envelope)
+		a.gw.LogPlaneDecision(r, gateway.PlaneDecisionV2{
+			Decision:   gateway.DecisionDeny,
+			ReasonCode: gateway.ReasonCode(middleware.ErrStepUpApprovalRequired),
+			Envelope:   envelope,
+			TraceID:    traceID,
+			DecisionID: decisionID,
+			Metadata: map[string]any{
+				"email_route":     pathSend,
+				"recipient_count": totalRecipients,
+				"mass_email":      true,
+				"reason":          "mass email requires step-up approval",
+			},
+		}, http.StatusForbidden)
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusForbidden)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code":            middleware.ErrStepUpApprovalRequired,
+			"message":         fmt.Sprintf("Mass email to %d recipients requires step-up approval", totalRecipients),
+			"middleware":      "step_up_gating",
+			"middleware_step": 9,
+			"decision_id":    decisionID,
+			"trace_id":       traceID,
+		})
+		return
+	}
+
 	// 6. Evaluate tool request through policy engine (DLP, OPA, step-up).
 	result := a.gw.EvaluateToolRequest(planeReq)
 	if result.Decision != gateway.DecisionAllow {
