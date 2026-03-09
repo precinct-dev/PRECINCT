@@ -855,17 +855,17 @@ func (g *Gateway) handleLoopCheck(w http.ResponseWriter, r *http.Request) {
 	if policy == nil {
 		policy = newLoopPlanePolicyEngine()
 	}
-	eval := policy.evaluate(req)
+	decision, reason, httpStatus, metadata := policy.evaluate(req, decisionID, traceID, time.Now().UTC())
 	resp := PlaneDecisionV2{
-		Decision:   eval.Decision,
-		ReasonCode: eval.Reason,
+		Decision:   decision,
+		ReasonCode: reason,
 		Envelope:   req.Envelope,
 		TraceID:    traceID,
 		DecisionID: decisionID,
-		Metadata:   eval.Metadata,
+		Metadata:   metadata,
 	}
-	g.logPlaneDecision(r, resp, eval.HTTPStatus)
+	g.logPlaneDecision(r, resp, httpStatus)
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(eval.HTTPStatus)
+	w.WriteHeader(httpStatus)
 	_ = json.NewEncoder(w).Encode(resp)
 }
