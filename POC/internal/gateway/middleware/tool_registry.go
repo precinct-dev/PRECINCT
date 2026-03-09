@@ -160,6 +160,22 @@ type RegisteredUIResource struct {
 	ScanResult    *UIScanResult  `json:"scan_result" yaml:"scan_result"`       // Static analysis at approval time
 }
 
+// DataSourceDefinition represents an external data source registered in the tool registry.
+// Each data source is identified by URI and verified via SHA-256 content hash.
+// Implements rug-pull detection for external data sources (Case Study #10 of
+// 'Agents of Chaos', arXiv:2602.20021v1).
+// OC-cqj0: Data Source Integrity Registry.
+type DataSourceDefinition struct {
+	URI           string        `yaml:"uri" json:"uri"`                         // e.g., "https://gist.github.com/..."
+	ContentHash   string        `yaml:"content_hash" json:"content_hash"`       // SHA-256 of approved content ("sha256:" prefix + hex)
+	ApprovedAt    time.Time     `yaml:"approved_at" json:"approved_at"`         // when the content was approved
+	ApprovedBy    string        `yaml:"approved_by" json:"approved_by"`         // SPIFFE ID of approver
+	MaxSizeBytes  int64         `yaml:"max_size_bytes" json:"max_size_bytes"`   // max allowed content size (0 = no limit)
+	MutablePolicy string       `yaml:"mutable_policy" json:"mutable_policy"`   // "block_on_change", "flag_on_change", "allow"
+	RefreshTTL    time.Duration `yaml:"refresh_ttl" json:"refresh_ttl"`         // how often to re-verify
+	LastVerified  time.Time     `yaml:"last_verified" json:"last_verified"`     // last successful verification
+}
+
 // uiResourceKey returns the map key for a UI resource: "server|resourceURI".
 // This composite key ensures uniqueness across servers.
 func uiResourceKey(server, resourceURI string) string {
@@ -170,16 +186,19 @@ func uiResourceKey(server, resourceURI string) string {
 type ToolRegistryConfig struct {
 	Tools       []ToolDefinition       `yaml:"tools"`
 	UIResources []RegisteredUIResource `yaml:"ui_resources"`
+	DataSources []DataSourceDefinition `yaml:"data_sources"` // OC-cqj0: external data source registrations
 }
 
 // ToolRegistry manages tool verification with hash checking and UI resource verification.
 // RFA-j2d.5: Extended with uiResources map for UI resource hash verification.
 // RFA-dh9: Protected by sync.RWMutex for concurrent-safe reads during hot-reload.
 // RFA-lo1.4: Added publicKey for cosign-blob attestation on hot-reload.
+// OC-cqj0: Extended with dataSources map for external data source integrity verification.
 type ToolRegistry struct {
 	mu          sync.RWMutex
 	tools       map[string]ToolDefinition       // tool_name -> definition
 	uiResources map[string]RegisteredUIResource // "server|resourceURI" -> registration
+	dataSources map[string]DataSourceDefinition  // uri -> definition (OC-cqj0)
 	configPath  string                          // path to YAML config file (for Watch)
 	publicKey   ed25519.PublicKey               // RFA-lo1.4: Ed25519 public key for signature verification (nil = dev mode)
 }
@@ -190,6 +209,7 @@ type ToolRegistry struct {
 type ToolRegistryReloadResult struct {
 	ToolCount       int
 	UIResourceCount int
+	DataSourceCount int  // OC-cqj0: number of registered data sources
 	CosignVerified  bool
 }
 
@@ -199,6 +219,7 @@ func NewToolRegistry(configPath string) (*ToolRegistry, error) {
 	registry := &ToolRegistry{
 		tools:       make(map[string]ToolDefinition),
 		uiResources: make(map[string]RegisteredUIResource),
+		dataSources: make(map[string]DataSourceDefinition),
 		configPath:  configPath,
 	}
 
@@ -237,11 +258,17 @@ func (tr *ToolRegistry) loadConfig(configPath string) error {
 		key := uiResourceKey(res.Server, res.ResourceURI)
 		newUIResources[key] = res
 	}
+	// OC-cqj0: Build data sources map keyed by URI
+	newDataSources := make(map[string]DataSourceDefinition, len(config.DataSources))
+	for _, ds := range config.DataSources {
+		newDataSources[ds.URI] = ds
+	}
 
 	// Atomic swap under write lock
 	tr.mu.Lock()
 	tr.tools = newTools
 	tr.uiResources = newUIResources
+	tr.dataSources = newDataSources
 	tr.mu.Unlock()
 
 	return nil
@@ -453,14 +480,21 @@ func (tr *ToolRegistry) Reload() (ToolRegistryReloadResult, error) {
 		key := uiResourceKey(res.Server, res.ResourceURI)
 		newUIResources[key] = res
 	}
+	// OC-cqj0: Build data sources map keyed by URI
+	newDataSources := make(map[string]DataSourceDefinition, len(config.DataSources))
+	for _, ds := range config.DataSources {
+		newDataSources[ds.URI] = ds
+	}
 
 	tr.mu.Lock()
 	tr.tools = newTools
 	tr.uiResources = newUIResources
+	tr.dataSources = newDataSources
 	tr.mu.Unlock()
 
 	result.ToolCount = len(newTools)
 	result.UIResourceCount = len(newUIResources)
+	result.DataSourceCount = len(newDataSources)
 	return result, nil
 }
 
@@ -490,7 +524,7 @@ func (tr *ToolRegistry) reloadWithAttestation() {
 	if result.CosignVerified {
 		slog.Info("tool-registry signature verification passed", "path", tr.configPath)
 	}
-	slog.Info("tool-registry reload successful", "tools", result.ToolCount, "ui_resources", result.UIResourceCount)
+	slog.Info("tool-registry reload successful", "tools", result.ToolCount, "ui_resources", result.UIResourceCount, "data_sources", result.DataSourceCount)
 }
 
 // VerifyTool checks if a tool is allowed and matches expected hash
@@ -655,6 +689,36 @@ func (tr *ToolRegistry) UIResourceCount() int {
 	tr.mu.RLock()
 	defer tr.mu.RUnlock()
 	return len(tr.uiResources)
+}
+
+// GetDataSource returns the registered data source definition for a given URI.
+// OC-cqj0: Used for lookup during data source integrity verification.
+func (tr *ToolRegistry) GetDataSource(uri string) (*DataSourceDefinition, bool) {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
+	ds, exists := tr.dataSources[uri]
+	if !exists {
+		return nil, false
+	}
+	return &ds, true
+}
+
+// DataSourceCount returns the number of registered data sources.
+// Useful for diagnostics and testing.
+// OC-cqj0: Parallels ToolCount() and UIResourceCount().
+func (tr *ToolRegistry) DataSourceCount() int {
+	tr.mu.RLock()
+	defer tr.mu.RUnlock()
+	return len(tr.dataSources)
+}
+
+// ComputeDataSourceHash computes the SHA-256 hash of data source content.
+// Returns the hash in "sha256:" prefix + hex-encoded digest format.
+// This is the canonical hash computation for data source registration.
+// OC-cqj0: Used during onboarding to compute the baseline hash stored in the registry.
+func ComputeDataSourceHash(content []byte) string {
+	hash := sha256.Sum256(content)
+	return "sha256:" + hex.EncodeToString(hash[:])
 }
 
 // RegisterUIResource adds or updates a UI resource registration programmatically.
