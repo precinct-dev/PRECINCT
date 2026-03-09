@@ -1,16 +1,18 @@
 ---
 id: OC-cqj0
 title: "DataSourceDefinition Struct and Registry Extension"
-status: in_progress
+status: closed
 priority: 1
 type: task
-labels: [agents-of-chaos, data-source-integrity]
+labels: [agents-of-chaos, data-source-integrity, delivered, accepted]
 parent: OC-yrwz
 created_at: 2026-03-08T02:38:06Z
 created_by: ramirosalas
-updated_at: 2026-03-09T00:13:36Z
-content_hash: "sha256:dd22b777cf5627db7974c7f41b7fe7cdc4f8a49b85fb86147726b3d82842b1a9"
-blocks: [OC-am3w, OC-4zrf, OC-9aac]
+updated_at: 2026-03-09T00:27:11Z
+content_hash: "sha256:662aef31c204913d0782ce7142a3227f3a8bf5863a6ea53db52dfd7511d36221"
+closed_at: 2026-03-09T00:27:11Z
+close_reason: "Accepted: DataSourceDefinition struct, registry extension, GetDataSource(), ComputeDataSourceHash(), hot-reload, and Ed25519 attestation all implemented and verified. 17 tests pass, race detector clean, no skips."
+led_to: [OC-am3w, OC-9aac, OC-4zrf]
 ---
 
 ## Description
@@ -110,10 +112,10 @@ None identified
 
 
 ## History
-- 2026-03-09T00:13:27Z status: in_progress -> in_progress
+- 2026-03-09T00:27:11Z dep_removed: no_longer_blocks OC-9aac
 
 ## Links
 - Parent: [[OC-yrwz]]
-- Blocks: [[OC-am3w]], [[OC-4zrf]], [[OC-9aac]]
+- Led to: [[OC-am3w]], [[OC-9aac]], [[OC-4zrf]]
 
 ## Comments

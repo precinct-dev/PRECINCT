@@ -1,17 +1,18 @@
 ---
 id: OC-dz8i
 title: "E2E Demo Scenario -- Irreversibility Gating"
-status: open
+status: closed
 priority: 2
 type: task
 labels: [agents-of-chaos, irreversibility]
 parent: OC-xbmj
 created_at: 2026-03-08T02:44:58Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:44:58Z
-content_hash: "sha256:319f8120613448946b2140af30614fbbdeb62e155993f4de25f364534bdfee09"
-blocked_by: [OC-ytph, OC-h4m7, OC-lmzm, OC-70gv]
-was_blocked_by: [OC-12ng]
+updated_at: 2026-03-08T17:35:04Z
+content_hash: "sha256:8bbcfdf7fa7bdcd18dff04b0b5a4f02ad52b786244b2ecbc933959f5b07e030e"
+was_blocked_by: [OC-12ng, OC-70gv, OC-h4m7, OC-lmzm, OC-ytph]
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -104,11 +105,10 @@ None identified
 
 
 ## History
-- 2026-03-08T03:45:08Z dep_removed: was_blocked_by OC-12ng
+- 2026-03-08T17:35:05Z dep_removed: was_blocked_by OC-ytph
 
 ## Links
 - Parent: [[OC-xbmj]]
-- Blocked by: [[OC-ytph]], [[OC-h4m7]], [[OC-lmzm]], [[OC-70gv]]
-- Was blocked by: [[OC-12ng]]
+- Was blocked by: [[OC-12ng]], [[OC-70gv]], [[OC-h4m7]], [[OC-lmzm]], [[OC-ytph]]
 
 ## Comments

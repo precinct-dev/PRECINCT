@@ -15,7 +15,7 @@ import httpx
 # Add SDK to path so we can import without installing
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "sdk", "python"))
 
-from mcp_gateway_sdk import GatewayClient, GatewayError  # noqa: E402
+from mcp_gateway_sdk import CallResult, GatewayClient, GatewayError, ResponseMeta  # noqa: E402
 
 DSPY_SPIFFE = "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 
@@ -798,6 +798,247 @@ def test_request_size_limit(url: str) -> bool:
         client.close()
 
 
+# --- Principal hierarchy enforcement (OC-f0xy) ---
+
+def _send_principal_request(
+    gateway_url: str, spiffe_id: str, action: str, session_id: str,
+) -> tuple[int, GatewayError | None, bytes]:
+    """Send a raw JSON-RPC tools/call with the given SPIFFE ID and action keyword."""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 9000,
+        "method": "tools/call",
+        "params": {
+            "name": "tavily_search",
+            "arguments": {"query": "principal hierarchy test", "action": action},
+        },
+    }
+    with httpx.Client(timeout=10.0) as hc:
+        resp = hc.post(
+            gateway_url,
+            json=payload,
+            headers={
+                "Content-Type": "application/json",
+                "X-SPIFFE-ID": spiffe_id,
+                "X-Session-ID": session_id,
+            },
+        )
+    body = resp.content
+    if resp.status_code >= 400:
+        try:
+            data = resp.json()
+            if isinstance(data, dict):
+                ge = GatewayError.from_response(resp.status_code, data)
+                return resp.status_code, ge, body
+        except Exception:
+            pass
+    return resp.status_code, None, body
+
+
+def test_principal_owner_destructive(url: str) -> bool:
+    """S-PRINCIPAL-1: Owner (level 1) allowed destructive operation."""
+    status, ge, _ = _send_principal_request(
+        url, "spiffe://poc.local/owner/alice", "delete", "demo-principal-owner-destructive",
+    )
+    if ge:
+        print_gateway_error(ge)
+        if ge.code == "principal_level_insufficient":
+            return print_proof(False,
+                "PROOF S-PRINCIPAL-1: FAIL -- owner was denied by principal_level_insufficient (unexpected)")
+        return print_proof(True,
+            f"PROOF S-PRINCIPAL-1: Owner (level 1) allowed destructive operation -- denied by {ge.code} (not principal check)")
+    return print_proof(True,
+        f"PROOF S-PRINCIPAL-1: Owner (level 1) allowed destructive operation (HTTP {status})")
+
+
+def test_principal_external_destructive(url: str) -> bool:
+    """S-PRINCIPAL-2: External user (level 4) denied destructive operation."""
+    status, ge, _ = _send_principal_request(
+        url, "spiffe://poc.local/external/bob", "delete", "demo-principal-external-destructive",
+    )
+    if ge:
+        print_gateway_error(ge)
+        if ge.code == "principal_level_insufficient" and status == 403:
+            return print_proof(True,
+                "PROOF S-PRINCIPAL-2: External (level 4) denied destructive operation -- principal_level_insufficient")
+        return print_proof(False,
+            f"PROOF S-PRINCIPAL-2: External denied by {ge.code} (expected principal_level_insufficient)")
+    if status < 400:
+        return print_proof(False,
+            f"PROOF S-PRINCIPAL-2: External was allowed (HTTP {status}) -- expected 403 principal_level_insufficient")
+    return print_proof(False,
+        f"PROOF S-PRINCIPAL-2: unexpected HTTP {status} without structured error")
+
+
+def test_principal_agent_messaging(url: str) -> bool:
+    """S-PRINCIPAL-3: Agent (level 3) allowed messaging operation."""
+    status, ge, _ = _send_principal_request(
+        url, "spiffe://poc.local/agents/summarizer/dev", "notify", "demo-principal-agent-messaging",
+    )
+    if ge:
+        print_gateway_error(ge)
+        if ge.code == "principal_level_insufficient":
+            return print_proof(False,
+                "PROOF S-PRINCIPAL-3: FAIL -- agent was denied by principal_level_insufficient (unexpected)")
+        return print_proof(True,
+            f"PROOF S-PRINCIPAL-3: Agent (level 3) allowed inter-agent messaging -- denied by {ge.code} (not principal check)")
+    return print_proof(True,
+        f"PROOF S-PRINCIPAL-3: Agent (level 3) allowed inter-agent messaging (HTTP {status})")
+
+
+def test_principal_external_messaging(url: str) -> bool:
+    """S-PRINCIPAL-4: External user (level 4) denied messaging operation."""
+    status, ge, _ = _send_principal_request(
+        url, "spiffe://poc.local/external/bob", "notify", "demo-principal-external-messaging",
+    )
+    if ge:
+        print_gateway_error(ge)
+        if ge.code == "principal_level_insufficient" and status == 403:
+            return print_proof(True,
+                "PROOF S-PRINCIPAL-4: External (level 4) denied inter-agent messaging -- principal_level_insufficient")
+        return print_proof(False,
+            f"PROOF S-PRINCIPAL-4: External denied by {ge.code} (expected principal_level_insufficient)")
+    if status < 400:
+        return print_proof(False,
+            f"PROOF S-PRINCIPAL-4: External was allowed (HTTP {status}) -- expected 403 principal_level_insufficient")
+    return print_proof(False,
+        f"PROOF S-PRINCIPAL-4: unexpected HTTP {status} without structured error")
+
+
+# --- Irreversibility gating scenarios (OC-dz8i) ---
+
+def test_irrev1_read_allowed(url: str) -> bool:
+    """S-IRREV-1: Read action (reversible, Score=0) fast-pathed."""
+    client = GatewayClient(
+        url=url, spiffe_id="spiffe://poc.local/external/bob",
+        timeout=10.0, max_retries=0, session_id="irrev-demo-read-001",
+    )
+    try:
+        result = client.call("tavily_search", query="reversibility classification test", action="read")
+        print(f"  Result: {result}")
+        return print_proof(True, "PROOF S-IRREV-1: Read action (reversible) allowed via fast path")
+    except GatewayError as e:
+        print_gateway_error(e)
+        if e.http_status == 502:
+            return print_proof(True, "PROOF S-IRREV-1: Read action (reversible) allowed via fast path (502 = no upstream)")
+        return print_proof(False, f"unexpected denial for read action: code={e.code}, step={e.step}")
+    finally:
+        client.close()
+
+
+def test_irrev2_create_evaluated(url: str) -> bool:
+    """S-IRREV-2: Create action (costly_reversible, Score=1) evaluated appropriately."""
+    client = GatewayClient(
+        url=url, spiffe_id="spiffe://poc.local/external/bob",
+        timeout=10.0, max_retries=0, session_id="irrev-demo-create-001",
+    )
+    try:
+        client.call("tavily_search", query="reversibility create test", action="create")
+        return print_proof(True, "PROOF S-IRREV-2: Create action (costly_reversible) evaluated appropriately -- allowed")
+    except GatewayError as e:
+        print_gateway_error(e)
+        if e.http_status == 502:
+            return print_proof(True, "PROOF S-IRREV-2: Create action (costly_reversible) evaluated appropriately -- passed through (502)")
+        if e.code != "irreversible_action_denied":
+            return print_proof(True,
+                f"PROOF S-IRREV-2: Create action (costly_reversible) evaluated appropriately -- code={e.code} (not irreversible_action_denied)")
+        return print_proof(False, f"unexpected code for create action: {e.code} at step {e.step}")
+    finally:
+        client.close()
+
+
+def test_irrev3_owner_delete(url: str) -> bool:
+    """S-IRREV-3: Owner delete gets approval gate + backup recommendation headers.
+
+    Uses call_with_metadata() to read advisory headers through the SDK (no raw HTTP).
+    """
+    client = GatewayClient(
+        url=url, spiffe_id="spiffe://poc.local/owner/alice",
+        timeout=10.0, max_retries=0, session_id="irrev-demo-owner-delete-001",
+    )
+    try:
+        cr = client.call_with_metadata("tavily_search", query="irreversible delete test", action="delete")
+        reversibility = cr.meta.reversibility
+        backup_rec = cr.meta.backup_recommended
+        status = 200
+    except GatewayError as e:
+        print_gateway_error(e)
+        meta = getattr(e, "response_meta", None)
+        if meta:
+            reversibility = meta.reversibility
+            backup_rec = meta.backup_recommended
+        else:
+            reversibility = ""
+            backup_rec = False
+        status = e.http_status
+    finally:
+        client.close()
+
+    print(f"  X-Precinct-Reversibility: {reversibility!r}")
+    print(f"  X-Precinct-Backup-Recommended: {backup_rec!r}")
+
+    headers_ok = reversibility == "irreversible" and backup_rec
+    return print_proof(headers_ok,
+        f"PROOF S-IRREV-3: Owner delete classified as irreversible, advisory headers set -- "
+        f"reversibility={reversibility}, backup={backup_rec}, status={status}")
+
+
+def test_irrev4_external_delete(url: str) -> bool:
+    """S-IRREV-4: External delete denied (irreversible or principal_level_insufficient)."""
+    client = GatewayClient(
+        url=url, spiffe_id="spiffe://poc.local/external/bob",
+        timeout=10.0, max_retries=0, session_id="irrev-demo-external-delete-001",
+    )
+    try:
+        client.call("tavily_search", query="irreversible delete external test", action="delete")
+        return print_proof(False, "expected denial for external irreversible delete but got success")
+    except GatewayError as e:
+        print_gateway_error(e)
+        ok = e.http_status == 403 and e.code in (
+            "stepup_denied", "stepup_approval_required",
+            "irreversible_action_denied", "principal_level_insufficient",
+        )
+        return print_proof(ok,
+            f"PROOF S-IRREV-4: External delete (irreversible) denied -- code={e.code}, step={e.step}")
+    finally:
+        client.close()
+
+
+def test_irrev5_escalated_session_deny(url: str) -> bool:
+    """S-IRREV-5: Irreversible action in escalated session denied."""
+    session_id = "irrev-demo-escalated-001"
+    agent_spiffe = "spiffe://poc.local/agents/summarizer/dev"
+
+    escalation_client = GatewayClient(
+        url=url, spiffe_id=agent_spiffe,
+        timeout=10.0, max_retries=0, session_id=session_id,
+    )
+    try:
+        # Build escalation with 6 tavily_search calls
+        for i in range(6):
+            try:
+                escalation_client.call("tavily_search", query=f"escalation probe {i}")
+            except Exception:
+                pass
+        print(f"  {DIM}Escalation:{RESET} sent 6 tavily_search calls to session {session_id}")
+
+        # Now send irreversible action (shutdown)
+        try:
+            escalation_client.call("tavily_search", query="irreversible shutdown test", action="shutdown")
+            return print_proof(False,
+                "expected denial for irreversible shutdown in escalated session but got success")
+        except GatewayError as e:
+            print_gateway_error(e)
+            ok = e.http_status == 403 and e.code in (
+                "stepup_denied", "stepup_approval_required",
+                "irreversible_action_denied", "principal_level_insufficient",
+            )
+            return print_proof(ok,
+                f"PROOF S-IRREV-5: Irreversible action in escalated session denied -- code={e.code}, step={e.step}")
+    finally:
+        escalation_client.close()
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="PRECINCT Gateway -- Python SDK Demo")
     parser.add_argument("--gateway-url", default="http://localhost:9090",
@@ -1008,6 +1249,71 @@ def main() -> None:
             send="read(file_path=<11 MB of 'A's>) -- 11 MB payload exceeds 10 MB limit",
             expect="413 or connection reset -- gateway rejects at ingress before processing",
             fn=test_request_size_limit,
+        ),
+        # --- Principal hierarchy enforcement scenarios (OC-f0xy) ---
+        TestCase(
+            name="Principal hierarchy: owner allowed destructive (S-PRINCIPAL-1)",
+            what="Owner (level 1) passes principal-level check for destructive operations (delete) at step 6",
+            send="tavily_search(action=delete) with X-SPIFFE-ID: spiffe://poc.local/owner/alice",
+            expect="NOT principal_level_insufficient -- owner has sufficient authority (may get 502 or other non-principal denial)",
+            fn=test_principal_owner_destructive,
+        ),
+        TestCase(
+            name="Principal hierarchy: external denied destructive (S-PRINCIPAL-2)",
+            what="External user (level 4) denied destructive operations -- requires level <= 2",
+            send="tavily_search(action=delete) with X-SPIFFE-ID: spiffe://poc.local/external/bob",
+            expect="HTTP 403 with code=principal_level_insufficient at step 6",
+            fn=test_principal_external_destructive,
+        ),
+        TestCase(
+            name="Principal hierarchy: agent allowed messaging (S-PRINCIPAL-3)",
+            what="Agent (level 3) passes principal-level check for inter-agent messaging at step 6",
+            send="tavily_search(action=notify) with X-SPIFFE-ID: spiffe://poc.local/agents/summarizer/dev",
+            expect="NOT principal_level_insufficient -- agent has sufficient authority for messaging",
+            fn=test_principal_agent_messaging,
+        ),
+        TestCase(
+            name="Principal hierarchy: external denied messaging (S-PRINCIPAL-4)",
+            what="External user (level 4) denied inter-agent messaging -- requires level <= 3",
+            send="tavily_search(action=notify) with X-SPIFFE-ID: spiffe://poc.local/external/bob",
+            expect="HTTP 403 with code=principal_level_insufficient at step 6",
+            fn=test_principal_external_messaging,
+        ),
+        # --- Irreversibility gating scenarios (OC-dz8i) ---
+        TestCase(
+            name="S-IRREV-1: Read action allowed (reversible, fast path)",
+            what="Reversibility classifier scores read-only actions as Score=0 (reversible), fast path gate",
+            send="read(file_path='/tmp/test') with external SPIFFE ID -- action is reversible, no side effects",
+            expect="200 or 502 -- fast path (no step-up friction for reversible actions)",
+            fn=test_irrev1_read_allowed,
+        ),
+        TestCase(
+            name="S-IRREV-2: Create action evaluated appropriately (costly_reversible)",
+            what="Reversibility classifier scores create/write as Score=1 (costly_reversible), risk evaluation applies",
+            send="create(name='test-resource') with external SPIFFE ID -- action is costly-reversible",
+            expect="403 with stepup_approval_required (unregistered tool hits approval gate) -- NOT irreversible_action_denied",
+            fn=test_irrev2_create_evaluated,
+        ),
+        TestCase(
+            name="S-IRREV-3: Owner delete gets approval gate + backup recommendation",
+            what="Irreversible action (delete, Score=3) raises Reversibility dimension, pushing total into deny range",
+            send="delete(resource='test') with owner SPIFFE ID -- irreversible action triggers gating",
+            expect="403 with stepup_denied or stepup_approval_required + X-Precinct-Reversibility: irreversible",
+            fn=test_irrev3_owner_delete,
+        ),
+        TestCase(
+            name="S-IRREV-4: External delete denied (irreversible)",
+            what="Non-owner + irreversible action (delete, Score=3) is denied via step-up gating",
+            send="delete(resource='test') with external SPIFFE ID -- irreversible action denied for external principal",
+            expect="403 with stepup_denied or stepup_approval_required -- irreversible action blocked",
+            fn=test_irrev4_external_delete,
+        ),
+        TestCase(
+            name="S-IRREV-5: Irreversible action in escalated session denied",
+            what="Irreversible action (shutdown, Score=3) in a session with prior escalation is denied",
+            send="Build escalation with 6 tavily_search calls, then shutdown() -- irreversible + accumulated risk",
+            expect="403 with stepup_denied -- irreversible action denied even without explicit escalation threshold",
+            fn=test_irrev5_escalated_session_deny,
         ),
     ]
 

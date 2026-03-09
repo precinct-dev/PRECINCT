@@ -1,16 +1,17 @@
 ---
 id: OC-70gv
 title: "Principal Role Resolution from SPIFFE Identity"
-status: in_progress
+status: closed
 priority: 2
 type: task
 labels: [agents-of-chaos, principal-hierarchy]
 parent: OC-qkal
 created_at: 2026-03-08T02:42:00Z
 created_by: ramirosalas
-updated_at: 2026-03-08T04:30:17Z
-content_hash: "sha256:2646a3c35c9346ed326590638f532bb106762330e815bc187a3ef3257c2aeb2b"
-blocks: [OC-t7go, OC-3ch6, OC-f0xy, OC-h4m7, OC-dz8i]
+updated_at: 2026-03-08T17:35:04Z
+content_hash: "sha256:373909489c478482ace65dac14c135d16b1b3da110cd65180e14253c9e7ebf80"
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -112,10 +113,9 @@ None identified
 
 
 ## History
-- 2026-03-08T04:30:17Z status: in_progress -> in_progress
+- 2026-03-08T17:35:04Z dep_removed: no_longer_blocks OC-dz8i
 
 ## Links
 - Parent: [[OC-qkal]]
-- Blocks: [[OC-t7go]], [[OC-3ch6]], [[OC-f0xy]], [[OC-h4m7]], [[OC-dz8i]]
 
 ## Comments

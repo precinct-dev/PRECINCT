@@ -910,6 +910,190 @@ func TestIntegration_AuthDenial(t *testing.T) {
 	}
 }
 
+// --- Unit Tests: CallWithMetadata ---
+
+func TestCallWithMetadata_ReturnsResponseMeta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Precinct-Reversibility", "irreversible")
+		w.Header().Set("X-Precinct-Backup-Recommended", "true")
+		w.Header().Set("X-Precinct-Principal-Level", "1")
+		w.Header().Set("X-Precinct-Principal-Role", "owner")
+		w.Header().Set("X-Precinct-Principal-Capabilities", "read,write,delete")
+		w.Header().Set("X-Precinct-Auth-Method", "mtls_svid")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(jsonRPCResponse{
+			JSONRPC: "2.0",
+			Result:  map[string]any{"status": "ok"},
+			ID:      float64(1),
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "spiffe://test/owner/alice", WithHTTPClient(srv.Client()))
+	cr, err := c.CallWithMetadata(context.Background(), "delete_resource", map[string]any{"id": "abc"})
+	if err != nil {
+		t.Fatalf("CallWithMetadata failed: %v", err)
+	}
+
+	if cr.Meta.Reversibility != "irreversible" {
+		t.Errorf("Reversibility = %q, want %q", cr.Meta.Reversibility, "irreversible")
+	}
+	if !cr.Meta.BackupRecommended {
+		t.Error("BackupRecommended should be true")
+	}
+	if cr.Meta.PrincipalLevel != 1 {
+		t.Errorf("PrincipalLevel = %d, want 1", cr.Meta.PrincipalLevel)
+	}
+	if cr.Meta.PrincipalRole != "owner" {
+		t.Errorf("PrincipalRole = %q, want %q", cr.Meta.PrincipalRole, "owner")
+	}
+	if len(cr.Meta.PrincipalCapabilities) != 3 {
+		t.Errorf("PrincipalCapabilities = %v, want 3 items", cr.Meta.PrincipalCapabilities)
+	}
+	if cr.Meta.AuthMethod != "mtls_svid" {
+		t.Errorf("AuthMethod = %q, want %q", cr.Meta.AuthMethod, "mtls_svid")
+	}
+
+	// Result should still be accessible
+	resultMap, ok := cr.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("Result type = %T, want map", cr.Result)
+	}
+	if resultMap["status"] != "ok" {
+		t.Errorf("Result.status = %v, want 'ok'", resultMap["status"])
+	}
+}
+
+func TestCallWithMetadata_ErrorIncludesResponseMeta(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Precinct-Reversibility", "irreversible")
+		w.Header().Set("X-Precinct-Backup-Recommended", "true")
+		w.Header().Set("X-Precinct-Principal-Level", "4")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(403)
+		json.NewEncoder(w).Encode(GatewayError{
+			Code:    "irreversible_action_denied",
+			Message: "Irreversible action denied for external principal",
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "spiffe://test/external/bob", WithHTTPClient(srv.Client()))
+	_, err := c.CallWithMetadata(context.Background(), "delete_resource", map[string]any{"id": "abc"})
+
+	var ge *GatewayError
+	if !errors.As(err, &ge) {
+		t.Fatalf("expected *GatewayError, got %T: %v", err, err)
+	}
+	if ge.Code != "irreversible_action_denied" {
+		t.Errorf("Code = %q, want %q", ge.Code, "irreversible_action_denied")
+	}
+	if ge.ResponseMeta.Reversibility != "irreversible" {
+		t.Errorf("ResponseMeta.Reversibility = %q, want %q", ge.ResponseMeta.Reversibility, "irreversible")
+	}
+	if ge.ResponseMeta.PrincipalLevel != 4 {
+		t.Errorf("ResponseMeta.PrincipalLevel = %d, want 4", ge.ResponseMeta.PrincipalLevel)
+	}
+	if !ge.ResponseMeta.BackupRecommended {
+		t.Error("ResponseMeta.BackupRecommended should be true")
+	}
+}
+
+func TestCallWithMetadata_NoHeaders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(jsonRPCResponse{
+			JSONRPC: "2.0",
+			Result:  "ok",
+			ID:      float64(1),
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "spiffe://test", WithHTTPClient(srv.Client()))
+	cr, err := c.CallWithMetadata(context.Background(), "read", map[string]any{"path": "/tmp"})
+	if err != nil {
+		t.Fatalf("CallWithMetadata failed: %v", err)
+	}
+
+	// Default values when no headers present
+	if cr.Meta.Reversibility != "" {
+		t.Errorf("Reversibility = %q, want empty", cr.Meta.Reversibility)
+	}
+	if cr.Meta.BackupRecommended {
+		t.Error("BackupRecommended should be false when header absent")
+	}
+	if cr.Meta.PrincipalLevel != -1 {
+		t.Errorf("PrincipalLevel = %d, want -1 (unset)", cr.Meta.PrincipalLevel)
+	}
+}
+
+func TestCallWithMetadata_Retries503(t *testing.T) {
+	var attempts atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := attempts.Add(1)
+		if n <= 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(503)
+			json.NewEncoder(w).Encode(GatewayError{Code: "circuit_open"})
+			return
+		}
+		w.Header().Set("X-Precinct-Reversibility", "reversible")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(jsonRPCResponse{
+			JSONRPC: "2.0",
+			Result:  "ok",
+			ID:      float64(1),
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL, "spiffe://test",
+		WithHTTPClient(srv.Client()),
+		WithMaxRetries(3),
+		WithBackoffBase(1*time.Millisecond),
+		withSleepFunc(func(d time.Duration) {}),
+	)
+
+	cr, err := c.CallWithMetadata(context.Background(), "read", nil)
+	if err != nil {
+		t.Fatalf("CallWithMetadata failed: %v", err)
+	}
+	if cr.Meta.Reversibility != "reversible" {
+		t.Errorf("Reversibility = %q, want %q", cr.Meta.Reversibility, "reversible")
+	}
+}
+
+func TestParseResponseMeta(t *testing.T) {
+	h := http.Header{}
+	h.Set("X-Precinct-Reversibility", "costly_reversible")
+	h.Set("X-Precinct-Backup-Recommended", "false")
+	h.Set("X-Precinct-Principal-Level", "3")
+	h.Set("X-Precinct-Principal-Role", "agent")
+	h.Set("X-Precinct-Principal-Capabilities", "read, execute")
+	h.Set("X-Precinct-Auth-Method", "header_declared")
+
+	meta := parseResponseMeta(h)
+	if meta.Reversibility != "costly_reversible" {
+		t.Errorf("Reversibility = %q", meta.Reversibility)
+	}
+	if meta.BackupRecommended {
+		t.Error("BackupRecommended should be false")
+	}
+	if meta.PrincipalLevel != 3 {
+		t.Errorf("PrincipalLevel = %d, want 3", meta.PrincipalLevel)
+	}
+	if meta.PrincipalRole != "agent" {
+		t.Errorf("PrincipalRole = %q, want agent", meta.PrincipalRole)
+	}
+	if len(meta.PrincipalCapabilities) != 2 {
+		t.Errorf("PrincipalCapabilities = %v, want 2 items", meta.PrincipalCapabilities)
+	}
+	if meta.AuthMethod != "header_declared" {
+		t.Errorf("AuthMethod = %q, want header_declared", meta.AuthMethod)
+	}
+}
+
 // --- Unit Tests: Edge Cases ---
 
 func TestCall_NilParams(t *testing.T) {

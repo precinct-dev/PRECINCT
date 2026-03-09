@@ -47,6 +47,10 @@ help: ## Show available targets
 .PHONY: compose-verify compose-bootstrap-verify
 
 up: compose-verify ## Start Docker Compose stack (waits for all services healthy)
+	@if [ ! -f .env ]; then \
+		echo "Creating .env from .env.example (set GROQ_API_KEY for deep scan)..."; \
+		cp .env.example .env; \
+	fi
 	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
 		echo "phoenix-observability-network not found; starting Phoenix stack..."; \
 		$(MAKE) phoenix-up; \
@@ -84,11 +88,13 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 down: ## Stop Docker Compose stack
 	docker compose down
 
-clean: ## Full cleanup (containers, volumes, build artifacts, logs)
+clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
 	docker compose down -v
 	-docker compose -f docker-compose.phoenix.yml down -v >/dev/null 2>&1 || true
 	-docker compose -f docker-compose.opensearch.yml down -v >/dev/null 2>&1 || true
 	rm -rf build/sbom/ build/bin/
+	@echo "Clearing SPIRE data directories (stale SVIDs prevent clean restart)..."
+	rm -rf data/spire-server/ data/spire-agent/
 	@if [ -f .beads/daemon.log ]; then \
 		: > .beads/daemon.log; \
 	fi
@@ -257,13 +263,21 @@ demo-cli: ## Run all CLI demos (agw CLI, operate, compliance, repave, upgrade)
 # 6. Kubernetes (k8s-up, k8s-down, k8s-validate)
 # ===========================================================================
 
-.PHONY: k8s-up k8s-down k8s-validate k8s-opensearch-up k8s-opensearch-down
+.PHONY: k8s-up k8s-down k8s-validate k8s-opensearch-up k8s-opensearch-down k8s-sync-config k8s-check-config
+
+k8s-sync-config: ## Sync K8s overlay gateway config from canonical config/ source
+	@bash scripts/k8s-sync-gateway-config.sh --sync
+
+k8s-check-config: ## Check K8s overlay gateway config for drift (CI use)
+	@bash scripts/k8s-sync-gateway-config.sh --check
 
 k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@if ! kubectl cluster-info 2>/dev/null | grep -q 'Kubernetes control plane'; then \
 		echo "ERROR: No Kubernetes cluster. Enable in Docker Desktop: Settings -> Kubernetes"; \
 		exit 1; \
 	fi
+	@echo "Syncing K8s gateway config from canonical source..."
+	@bash scripts/k8s-sync-gateway-config.sh --sync
 	$(MAKE) k8s-registry
 	@echo "Building and pushing local images..."
 	docker build -f docker/Dockerfile.gateway -t mcp-security-gateway:latest .
@@ -368,6 +382,8 @@ k8s-opensearch-down: ## Remove only OpenSearch extension resources from local K8
 	@-kubectl delete -k infra/eks/observability/opensearch --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
 
 k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first)
+	@echo "Checking K8s gateway config for drift..."
+	@bash scripts/k8s-sync-gateway-config.sh --check
 	@set -e; \
 	overlays="local local-opensearch dev staging prod"; \
 	for o in $$overlays; do \

@@ -1682,53 +1682,48 @@ func testIrrev2CreateEvaluated() bool {
 // X-Precinct-Backup-Recommended as advisory response headers so the caller knows
 // the action is irreversible. Owner (level=1) passes OPA and step-up; the
 // advisory headers prove the classification is in effect.
+//
+// Uses CallWithMetadata to read advisory headers through the SDK (no raw HTTP).
 func testIrrev3OwnerDelete() bool {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
+	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/owner/alice",
+		mcpgateway.WithTimeout(10*time.Second),
+		mcpgateway.WithMaxRetries(0),
+		mcpgateway.WithSessionID("irrev-demo-owner-delete-001"),
+	)
+	ctx := context.Background()
 
-	payload := map[string]any{
-		"jsonrpc": "2.0",
-		"id":      9003,
-		"method":  "tools/call",
-		"params": map[string]any{
-			"name": "tavily_search",
-			"arguments": map[string]any{
-				"query":  "irreversible delete test",
-				"action": "delete",
-			},
-		},
-	}
-	body, err := json.Marshal(payload)
+	cr, err := client.CallWithMetadata(ctx, "tavily_search", map[string]any{
+		"query":  "irreversible delete test",
+		"action": "delete",
+	})
+
+	var reversibility string
+	var backupRec bool
+	var status int
+
 	if err != nil {
-		return printProof(false, fmt.Sprintf("marshal payload: %v", err))
+		var ge *mcpgateway.GatewayError
+		if errors.As(err, &ge) {
+			printGatewayError(ge)
+			reversibility = ge.ResponseMeta.Reversibility
+			backupRec = ge.ResponseMeta.BackupRecommended
+			status = ge.HTTPStatus
+		} else {
+			return printProof(false, fmt.Sprintf("unexpected error: %v", err))
+		}
+	} else {
+		reversibility = cr.Meta.Reversibility
+		backupRec = cr.Meta.BackupRecommended
+		status = 200
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, *gatewayURL, bytes.NewReader(body))
-	if err != nil {
-		return printProof(false, fmt.Sprintf("create request: %v", err))
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/owner/alice")
-	req.Header.Set("X-Session-ID", "irrev-demo-owner-delete-001")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return printProof(false, fmt.Sprintf("request failed: %v", err))
-	}
-	defer resp.Body.Close()
-	_, _ = io.ReadAll(resp.Body) // drain body
-
-	reversibility := resp.Header.Get("X-Precinct-Reversibility")
-	backupRec := resp.Header.Get("X-Precinct-Backup-Recommended")
 	fmt.Printf("  X-Precinct-Reversibility: %q\n", reversibility)
-	fmt.Printf("  X-Precinct-Backup-Recommended: %q\n", backupRec)
+	fmt.Printf("  X-Precinct-Backup-Recommended: %v\n", backupRec)
 
-	// Owner (level=1) is trusted: step-up gating allows after guard check.
-	// The advisory headers are set unconditionally once the action is classified.
-	headersOK := reversibility == "irreversible" && backupRec == "true"
+	headersOK := reversibility == "irreversible" && backupRec
 	return printProof(headersOK, fmt.Sprintf(
-		"PROOF S-IRREV-3: Owner delete classified as irreversible, advisory headers set -- reversibility=%s, backup=%s, status=%d",
-		reversibility, backupRec, resp.StatusCode))
+		"PROOF S-IRREV-3: Owner delete classified as irreversible, advisory headers set -- reversibility=%s, backup=%v, status=%d",
+		reversibility, backupRec, status))
 }
 
 // S-IRREV-4: External delete. Uses tavily_search with params["action"]="delete"

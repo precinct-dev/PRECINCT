@@ -53,6 +53,8 @@ class GatewayError(Exception):
         self.remediation = remediation
         self.docs_url = docs_url
         self.http_status = http_status
+        #: Response metadata (populated by call_with_metadata). Defaults to None.
+        self.response_meta = None
         super().__init__(self.message or self.code or f"HTTP {self.http_status}")
 
     @classmethod

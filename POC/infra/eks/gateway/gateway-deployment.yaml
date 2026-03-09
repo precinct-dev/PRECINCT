@@ -179,6 +179,11 @@ spec:
               mountPath: /config/extensions-demo-k8s.yaml
               subPath: extensions-demo-k8s.yaml
               readOnly: true
+            # Risk thresholds for step-up gating rubric
+            - name: config-registry
+              mountPath: /config/risk_thresholds.yaml
+              subPath: risk_thresholds.yaml
+              readOnly: true
             # Writable tmp directory for audit logs and runtime data
             - name: gateway-tmp
               mountPath: /tmp
@@ -242,6 +247,8 @@ spec:
                 path: guard-artifact.bin.sig
               - key: extensions-demo-k8s.yaml
                 path: extensions-demo-k8s.yaml
+              - key: risk_thresholds.yaml
+                path: risk_thresholds.yaml
             optional: false
         # Writable tmp for audit logs and runtime data
         - name: gateway-tmp

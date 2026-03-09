@@ -1,17 +1,21 @@
 ---
 id: OC-4zrf
 title: "OPA Policy for Data Source Access Control"
-status: in_progress
+status: closed
 priority: 1
 type: task
-labels: [agents-of-chaos, data-source-integrity]
+labels: [agents-of-chaos, data-source-integrity, delivered, accepted]
 parent: OC-yrwz
 created_at: 2026-03-08T02:39:03Z
 created_by: ramirosalas
-updated_at: 2026-03-09T01:05:53Z
-content_hash: "sha256:01f79cdd6dadc1d5c523078432c6c85bf81740d61dd305dd7b9e129f2972f490"
-blocked_by: [OC-cqj0]
+updated_at: 2026-03-09T01:34:38Z
+content_hash: "sha256:340428e84c36da822a5b42a7498155aff648c9907a1246a0426201e92807fdc8"
 related: [OC-am3w]
+was_blocked_by: [OC-cqj0]
+follows: [OC-cqj0]
+closed_at: 2026-03-09T01:34:38Z
+close_reason: "Accepted: DataSourceInput struct, OPAInput.DataSource field, data_source_policy.rego, grants YAML, DataSourcePolicyEvaluator interface, EvaluateDataSourcePolicy method, and 19 tests (all passing) delivered. Integration test uses real OPA engine with no mocks. Glob matching for SPIFFE/URI patterns verified correct. Library-scoped per epic design -- wiring happens in OC-am3w."
+led_to: [OC-9aac]
 ---
 
 ## Description
@@ -126,14 +130,16 @@ None identified
 
 
 ## Notes
-COMPLETED: Codebase study -- opa.go, opa_engine.go, existing policies, error_codes, tool_registry.go. IN PROGRESS: Implementation. NEXT: Add DataSourceInput/struct, create policy rego, add EvaluateDataSourcePolicy to OPAEngine, write tests.
+
 
 ## History
-- 2026-03-09T01:05:53Z status: open -> in_progress
+- 2026-03-09T01:34:38Z status: in_progress -> closed
 
 ## Links
 - Parent: [[OC-yrwz]]
-- Blocked by: [[OC-cqj0]]
+- Was blocked by: [[OC-cqj0]]
 - Related: [[OC-am3w]]
+- Follows: [[OC-cqj0]]
+- Led to: [[OC-9aac]]
 
 ## Comments

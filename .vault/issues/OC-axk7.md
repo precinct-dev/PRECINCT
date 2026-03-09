@@ -1,18 +1,19 @@
 ---
 id: OC-axk7
 title: "E2E Demo Scenario -- Escalation Detection"
-status: in_progress
+status: closed
 priority: 1
 type: task
-labels: [agents-of-chaos, escalation-detection]
+labels: [agents-of-chaos, escalation-detection, delivered, accepted]
 parent: OC-kd8y
 created_at: 2026-03-08T02:41:24Z
 created_by: ramirosalas
-updated_at: 2026-03-09T01:05:30Z
-content_hash: "sha256:ea21be8bd3a24a801dea839111ce0b34ce622c02f1b8246826e9d1da72d7feda"
-blocked_by: [OC-d77k]
-was_blocked_by: [OC-12ng, OC-pgxd]
-follows: [OC-12ng, OC-pgxd]
+updated_at: 2026-03-09T01:31:57Z
+content_hash: "sha256:01dd35a5723e01cef10a60993277ed979c1e3fac1302ce219b8107bc12b639a9"
+was_blocked_by: [OC-12ng, OC-pgxd, OC-d77k]
+follows: [OC-12ng, OC-pgxd, OC-d77k]
+closed_at: 2026-03-09T01:31:57Z
+close_reason: "Accepted: E2E escalation detection demo scenario fully implemented. All 5 PROOF lines present (S-ESC-1..5). Integration test passes with exact score progression (8->16->24->32->40). Warning flag verified at cumulative=16, delete blocked at 24, read survives Critical at 32, shutdown denied at Emergency 40. Integrated into demo test table."
 ---
 
 ## Description
@@ -108,12 +109,11 @@ None identified
 
 
 ## History
-- 2026-03-09T01:05:30Z auto-follows: linked to predecessor OC-pgxd
+- 2026-03-09T01:31:57Z status: in_progress -> closed
 
 ## Links
 - Parent: [[OC-kd8y]]
-- Blocked by: [[OC-d77k]]
-- Was blocked by: [[OC-12ng]], [[OC-pgxd]]
-- Follows: [[OC-12ng]], [[OC-pgxd]]
+- Was blocked by: [[OC-12ng]], [[OC-pgxd]], [[OC-d77k]]
+- Follows: [[OC-12ng]], [[OC-pgxd]], [[OC-d77k]]
 
 ## Comments

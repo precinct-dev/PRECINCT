@@ -1,0 +1,9 @@
+# nd runtime state -- do not track
+# Issues are the system of record and ARE tracked in git
+.nd.yaml
+.vlt.lock
+.trash/
+.guard/
+.piv-loop-state.json
+.piv-loop-snapshot.json
+.dispatcher-state.json

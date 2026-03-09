@@ -1,14 +1,16 @@
 ---
 id: OC-qkal
 title: "Principal Hierarchy Metadata Enrichment"
-status: open
+status: closed
 priority: 2
 type: epic
 created_at: 2026-03-08T02:33:01Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:33:53Z
+updated_at: 2026-03-08T17:35:05Z
 content_hash: "sha256:85b53e17942db7e9263c6e53d1246bb91e2cb1a258c592e718032936a19153c6"
 labels: [agents-of-chaos, principal-hierarchy]
+closed_at: 2026-03-08T17:35:05Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -66,7 +68,7 @@ None identified
 
 
 ## History
-
+- 2026-03-08T17:35:05Z status: open -> closed
 
 ## Links
 

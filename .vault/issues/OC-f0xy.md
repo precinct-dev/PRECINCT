@@ -1,16 +1,18 @@
 ---
 id: OC-f0xy
 title: "E2E Demo Scenario -- Principal Hierarchy Enforcement"
-status: open
+status: closed
 priority: 2
 type: task
 labels: [agents-of-chaos, principal-hierarchy]
 parent: OC-qkal
 created_at: 2026-03-08T02:43:12Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:43:12Z
-content_hash: "sha256:8e10451771562a7c3f97824ccdec04cf61b8efc2eceba2417d7e280fe9dbf4f8"
-blocked_by: [OC-70gv, OC-t7go, OC-3ch6]
+updated_at: 2026-03-08T17:35:04Z
+content_hash: "sha256:fcb0d117a121d1c07fc12cc9f46584a4b0cec9da013db24ce1d6f4e4fef040ff"
+was_blocked_by: [OC-3ch6, OC-70gv, OC-t7go]
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -95,10 +97,10 @@ None identified
 
 
 ## History
-- 2026-03-08T02:43:16Z dep_added: blocked_by OC-3ch6
+- 2026-03-08T17:35:05Z dep_removed: was_blocked_by OC-t7go
 
 ## Links
 - Parent: [[OC-qkal]]
-- Blocked by: [[OC-70gv]], [[OC-t7go]], [[OC-3ch6]]
+- Was blocked by: [[OC-3ch6]], [[OC-70gv]], [[OC-t7go]]
 
 ## Comments

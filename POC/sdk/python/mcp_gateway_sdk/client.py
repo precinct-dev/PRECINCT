@@ -24,6 +24,7 @@ import json
 import logging
 import time
 import uuid
+from dataclasses import dataclass, field
 from typing import Any, Optional
 
 import httpx
@@ -36,6 +37,82 @@ logger = logging.getLogger("mcp_gateway_sdk")
 _DEFAULT_MAX_RETRIES = 3
 _DEFAULT_BACKOFF_BASE = 1.0  # seconds
 _DEFAULT_TIMEOUT = 30.0  # seconds
+
+
+@dataclass
+class ResponseMeta:
+    """Security-relevant metadata from gateway response headers.
+
+    These headers are set by the gateway middleware chain and provide
+    advisory signals that agent frameworks can use for safer decisions.
+
+    Example::
+
+        result = client.call_with_metadata("delete_resource", id="abc")
+        if result.meta.backup_recommended:
+            snapshot_state()  # take backup before irreversible action
+        print(f"reversibility: {result.meta.reversibility}")
+    """
+
+    #: Action classification: "reversible", "costly_reversible",
+    #: "partially_reversible", or "irreversible". Empty if not classified.
+    reversibility: str = ""
+
+    #: True when the gateway recommends a state snapshot before proceeding.
+    backup_recommended: bool = False
+
+    #: Numeric hierarchy level (0=system .. 5=anonymous). -1 if not set.
+    principal_level: int = -1
+
+    #: Resolved role name (e.g. "owner", "agent", "external_user").
+    principal_role: str = ""
+
+    #: Capabilities granted to this principal.
+    principal_capabilities: list[str] = field(default_factory=list)
+
+    #: How the caller was authenticated (e.g. "mtls_svid", "header_declared").
+    auth_method: str = ""
+
+    #: All response headers for forward-compatibility.
+    raw_headers: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class CallResult:
+    """Wraps a successful tool call result together with response metadata.
+
+    Returned by :meth:`GatewayClient.call_with_metadata`.
+    """
+
+    #: The JSON-RPC result (same value returned by :meth:`GatewayClient.call`).
+    result: Any = None
+
+    #: Security-relevant response headers from the gateway.
+    meta: ResponseMeta = field(default_factory=ResponseMeta)
+
+
+def _parse_response_meta(headers: httpx.Headers) -> ResponseMeta:
+    """Extract gateway advisory headers from an HTTP response."""
+    caps_raw = headers.get("x-precinct-principal-capabilities", "")
+    caps = [c.strip() for c in caps_raw.split(",") if c.strip()] if caps_raw else []
+
+    level = -1
+    level_raw = headers.get("x-precinct-principal-level", "")
+    if level_raw:
+        try:
+            level = int(level_raw)
+        except ValueError:
+            pass
+
+    return ResponseMeta(
+        reversibility=headers.get("x-precinct-reversibility", ""),
+        backup_recommended=headers.get("x-precinct-backup-recommended", "") == "true",
+        principal_level=level,
+        principal_role=headers.get("x-precinct-principal-role", ""),
+        principal_capabilities=caps,
+        auth_method=headers.get("x-precinct-auth-method", ""),
+        raw_headers=dict(headers),
+    )
 
 
 class GatewayClient:
@@ -153,6 +230,32 @@ class GatewayClient:
             if span:
                 span.end()
 
+    def call_with_metadata(self, tool_name: str, **params: Any) -> CallResult:
+        """Call a tool and return both the result and gateway response metadata.
+
+        Like :meth:`call`, but wraps the return in a :class:`CallResult` that
+        includes advisory headers (reversibility, principal hierarchy, etc.).
+
+        This is useful when your agent needs to inspect gateway signals to make
+        informed decisions -- for example, prompting for confirmation before
+        irreversible actions.
+
+        Args:
+            tool_name: MCP tool name.
+            **params:  Keyword arguments passed as MCP ``params.arguments``.
+
+        Returns:
+            :class:`CallResult` with ``.result`` and ``.meta``.
+
+        Raises:
+            GatewayError: On denial. The error's ``.response_meta`` is also populated.
+        """
+        return self._call_rpc_with_retry_meta(
+            method="tools/call",
+            params={"name": tool_name, "arguments": params},
+            display_name=tool_name,
+        )
+
     def call_rpc(self, method: str, params: Optional[dict[str, Any]] = None) -> Any:
         """Call a raw MCP JSON-RPC method through the gateway.
 
@@ -222,6 +325,97 @@ class GatewayClient:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _call_rpc_with_retry_meta(
+        self, *, method: str, params: dict[str, Any], display_name: str,
+    ) -> CallResult:
+        """Execute JSON-RPC call with retry, returning CallResult with metadata."""
+        last_exc: Optional[GatewayError] = None
+        for attempt in range(self.max_retries + 1):
+            try:
+                return self._do_call_with_meta(method, params)
+            except GatewayError as exc:
+                if exc.http_status != 503:
+                    raise
+
+                last_exc = exc
+                if attempt < self.max_retries:
+                    backoff = self.backoff_base * (2 ** attempt)
+                    logger.warning(
+                        "RPC %s returned 503 (attempt %d/%d). Retrying in %.1fs.",
+                        display_name, attempt + 1, self.max_retries + 1, backoff,
+                    )
+                    time.sleep(backoff)
+
+        assert last_exc is not None
+        raise last_exc
+
+    def _do_call_with_meta(self, method: str, params: dict[str, Any]) -> CallResult:
+        """Execute a single MCP JSON-RPC call, returning result + metadata."""
+        payload = {
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params,
+            "id": self._next_id(),
+        }
+        headers = {
+            "Content-Type": "application/json",
+            "X-SPIFFE-ID": self.spiffe_id,
+            "X-Session-ID": self.session_id,
+        }
+
+        resp = self._client.post(self.url, json=payload, headers=headers)
+        meta = _parse_response_meta(resp.headers)
+
+        if resp.status_code >= 400:
+            self._raise_gateway_error_with_meta(resp, meta)
+
+        try:
+            body = resp.json()
+        except Exception:
+            raise GatewayError(
+                code="invalid_response",
+                message=f"Invalid JSON response (HTTP {resp.status_code}): "
+                        f"{resp.text[:200]}",
+                http_status=resp.status_code,
+            )
+
+        if "error" in body:
+            err = body["error"]
+            msg = err.get("message", str(err)) if isinstance(err, dict) else str(err)
+            raise GatewayError(
+                code="jsonrpc_error",
+                message=f"JSON-RPC error: {msg}",
+                http_status=resp.status_code,
+            )
+
+        return CallResult(result=body.get("result", body), meta=meta)
+
+    def _raise_gateway_error_with_meta(
+        self, resp: httpx.Response, meta: ResponseMeta,
+    ) -> None:
+        """Parse gateway error and raise GatewayError with response_meta populated."""
+        try:
+            body = resp.json()
+            if isinstance(body, dict):
+                exc = GatewayError.from_response(resp.status_code, body)
+                exc.response_meta = meta
+                raise exc
+            exc = GatewayError(
+                code="unknown", message=str(body), http_status=resp.status_code,
+            )
+            exc.response_meta = meta
+            raise exc
+        except GatewayError:
+            raise
+        except Exception:
+            exc = GatewayError(
+                code="unknown",
+                message=resp.text[:200] if resp.text else f"HTTP {resp.status_code}",
+                http_status=resp.status_code,
+            )
+            exc.response_meta = meta
+            raise exc
 
     def _next_id(self) -> int:
         self._request_id += 1

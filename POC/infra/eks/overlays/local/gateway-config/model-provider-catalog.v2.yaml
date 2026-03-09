@@ -1,3 +1,4 @@
+# NOTE: Modifying this file requires running 'make attestation-resign' to update signature files.
 version: "v2.0.0"
 
 providers:

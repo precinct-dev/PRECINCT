@@ -1,17 +1,18 @@
 ---
 id: OC-3ch6
 title: "OPA Policy Extensions for Principal-Aware Authorization"
-status: open
+status: closed
 priority: 2
 type: task
 labels: [agents-of-chaos, principal-hierarchy]
 parent: OC-qkal
 created_at: 2026-03-08T02:42:52Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:42:52Z
-content_hash: "sha256:8b9e028d0baee9c83aed8ea7485ad5bbf345c0a1c95c0aaec78d5ecacc4dd340"
-blocked_by: [OC-70gv, OC-t7go]
-blocks: [OC-f0xy]
+updated_at: 2026-03-08T17:35:04Z
+content_hash: "sha256:340d1930c13f5290a61e7f1a972f94f27149d9aa2c6b24adb386f3329989eb75"
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
+was_blocked_by: [OC-70gv, OC-t7go]
 ---
 
 ## Description
@@ -148,11 +149,10 @@ None identified
 
 
 ## History
-- 2026-03-08T02:43:16Z dep_added: blocks OC-f0xy
+- 2026-03-08T17:35:05Z dep_removed: was_blocked_by OC-t7go
 
 ## Links
 - Parent: [[OC-qkal]]
-- Blocks: [[OC-f0xy]]
-- Blocked by: [[OC-70gv]], [[OC-t7go]]
+- Was blocked by: [[OC-70gv]], [[OC-t7go]]
 
 ## Comments

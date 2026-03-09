@@ -20,8 +20,10 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     """Mock gateway simulating the unified JSON error envelope."""
 
     # Class-level config -- tests set these before making requests.
-    response_mode = "normal"  # normal | deny_403 | deny_503 | deny_401 | deny_429
+    response_mode = "normal"  # normal | deny_403 | deny_503 | deny_401 | deny_429 | deny_403_irreversible | normal_with_meta
     call_log: list[dict] = []
+    # Extra response headers to inject (set by tests).
+    extra_response_headers: dict[str, str] = {}
 
     @staticmethod
     def _extract_tool(request_data: dict) -> tuple[str, dict]:
@@ -92,6 +94,17 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             })
             return
 
+        if MockGatewayHandler.response_mode == "deny_403_irreversible":
+            self._send_json(403, {
+                "code": "irreversible_action_denied",
+                "message": "Irreversible action denied for external principal",
+                "middleware": "step_up_gating",
+                "middleware_step": 9,
+                "decision_id": "dec-test-irrev",
+                "trace_id": "trace-test-irrev",
+            })
+            return
+
         if MockGatewayHandler.response_mode == "deny_429":
             self._send_json(429, {
                 "code": "ratelimit_exceeded",
@@ -139,6 +152,8 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
     def _send_json(self, status: int, body: dict) -> None:
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        for k, v in MockGatewayHandler.extra_response_headers.items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(json.dumps(body).encode())
 
@@ -154,6 +169,7 @@ def mock_gateway():
     """
     MockGatewayHandler.response_mode = "normal"
     MockGatewayHandler.call_log = []
+    MockGatewayHandler.extra_response_headers = {}
     server = HTTPServer(("127.0.0.1", 0), MockGatewayHandler)
     port = server.server_address[1]
     thread = threading.Thread(target=server.serve_forever, daemon=True)

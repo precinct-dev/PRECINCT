@@ -1,18 +1,21 @@
 ---
 id: OC-am3w
 title: "Data Source Verification Middleware Logic"
-status: in_progress
+status: closed
 priority: 1
 type: task
-labels: [agents-of-chaos, data-source-integrity, delivered]
+labels: [agents-of-chaos, data-source-integrity, delivered, accepted]
 parent: OC-yrwz
 created_at: 2026-03-08T02:38:37Z
 created_by: ramirosalas
-updated_at: 2026-03-09T00:34:18Z
-content_hash: "sha256:c5a1117011ebf83716b5721f81cf6ed2884d7e805adf3603d4d47f5ce4a2d5e6"
-blocked_by: [OC-cqj0]
+updated_at: 2026-03-09T00:58:42Z
+content_hash: "sha256:58ce2fa2d7f021a6e3a3a1865895e2ca14b86c7a89d3c525c316e715b5437449"
 related: [OC-4zrf]
-blocks: [OC-9aac]
+was_blocked_by: [OC-cqj0]
+follows: [OC-cqj0]
+closed_at: 2026-03-09T00:58:42Z
+close_reason: "Accepted: VerifyDataSource() implements all 11 ACs -- hash match/mismatch with all three MutablePolicy branches, UnknownDataSourcePolicy (flag/block/allow), RefreshTTL caching, SecurityFlagsCollector integration, structured audit logging with URI+hashes, two new error codes. 32 tests pass including real-HTTP integration test (TestIntegration_DataSource_RugPullWithHTTPServer). pvg verify false positive on pre-existing containsPoisoningPattern sentinel return (not a stub). Gateway wiring deferred to OC-9aac per story scope."
+led_to: [OC-9aac]
 ---
 
 ## Description
@@ -107,12 +110,13 @@ None identified
 COMPLETED: VerifyDataSource implementation with hash comparison, mutable policy (block_on_change/flag_on_change/allow), RefreshTTL caching, unknown source policy, middleware wiring, error codes, config env var. 11 unit tests + 4 integration tests all passing. Pre-existing gateway test failures (TestEnforcementProfile_StrictStartupPassesWithStrongApprovalSigningKey, TestMCPTransportHTTPClient_StrictRequiresSPIFFETLS) unrelated to this change.
 
 ## History
-- 2026-03-09T00:34:18Z status: in_progress -> in_progress
+- 2026-03-09T00:58:42Z dep_removed: no_longer_blocks OC-9aac
 
 ## Links
 - Parent: [[OC-yrwz]]
-- Blocks: [[OC-9aac]]
-- Blocked by: [[OC-cqj0]]
+- Was blocked by: [[OC-cqj0]]
 - Related: [[OC-4zrf]]
+- Follows: [[OC-cqj0]]
+- Led to: [[OC-9aac]]
 
 ## Comments

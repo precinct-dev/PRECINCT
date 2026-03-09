@@ -1,17 +1,18 @@
 ---
 id: OC-t7go
 title: "Request Enrichment with Principal Metadata Headers"
-status: open
+status: closed
 priority: 2
 type: task
 labels: [agents-of-chaos, principal-hierarchy]
 parent: OC-qkal
 created_at: 2026-03-08T02:42:27Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:42:27Z
-content_hash: "sha256:0672a5eadc864e7ad63adc1015bf2d8c7d39c2645fb097eb6cbc93caf1684477"
-blocked_by: [OC-70gv]
-blocks: [OC-3ch6, OC-f0xy]
+updated_at: 2026-03-08T17:35:05Z
+content_hash: "sha256:899b8c5fc5307f87e42464bd28f46a89cbf0a08c48fd447e2d218b0a9fdd5f0f"
+was_blocked_by: [OC-70gv]
+closed_at: 2026-03-08T17:35:05Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -92,11 +93,10 @@ None identified
 
 
 ## History
-- 2026-03-08T02:43:16Z dep_added: blocks OC-f0xy
+- 2026-03-08T17:35:05Z dep_removed: no_longer_blocks OC-f0xy
 
 ## Links
 - Parent: [[OC-qkal]]
-- Blocks: [[OC-3ch6]], [[OC-f0xy]]
-- Blocked by: [[OC-70gv]]
+- Was blocked by: [[OC-70gv]]
 
 ## Comments

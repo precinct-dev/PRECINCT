@@ -1,8 +1,13 @@
-# Capability Registry v2 (Phase 3)
+# Capability Registry V2 (Phase 3)
 #
-# Note: This is a deliberate copy rather than a reference to POC/config/ to
-# avoid kustomize path restrictions. Keep in sync with:
-#   POC/config/capability-registry-v2.yaml
+# This registry is enforced by /v1/tool/execute and binds capability IDs to:
+# - adapter protocol policy
+# - tool allowlists
+# - action/resource authorization
+# - optional step-up requirements for high-risk operations
+#
+# K8s and Compose both mount this same file path. Keep it stable and review
+# changes as part of controlled RuleOps/PolicyOps lifecycle.
 version: v2
 
 capabilities:
@@ -42,6 +47,7 @@ capabilities:
           - bash
         require_step_up: true
 
+  # Example model-plane provider entry (OpenAI-compatible). Not yet enforced.
   - id: model.groq.openai_compat
     kind: model
     protocol: openai

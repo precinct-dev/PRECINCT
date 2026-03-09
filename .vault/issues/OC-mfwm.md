@@ -1,14 +1,16 @@
 ---
 id: OC-mfwm
 title: "Documentation, Site, and Agents of Chaos Response"
-status: open
+status: closed
 priority: 1
 type: epic
 created_at: 2026-03-08T02:33:46Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:33:54Z
+updated_at: 2026-03-08T17:35:04Z
 content_hash: "sha256:a7abbceafa9c544d5eee94aa434640535543dc0f9727536f747195fa089f8959"
 labels: [agents-of-chaos, documentation]
+closed_at: 2026-03-08T17:35:04Z
+close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."
 ---
 
 ## Description
@@ -66,7 +68,7 @@ None identified
 
 
 ## History
-
+- 2026-03-08T17:35:04Z status: open -> closed
 
 ## Links
 
