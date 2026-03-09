@@ -31,8 +31,21 @@ type AgentSession struct {
 	DataClassifications []string
 	RiskScore           float64
 	Flags               []string
-	EscalationScore              float64 // OC-h4m7: cumulative escalation score for session risk tracking
-	DestructiveActionsAuthorized int     // OC-lmzm: count of authorized actions that required backup (Score >= 2)
+	EscalationScore              float64           // OC-h4m7: cumulative escalation score for session risk tracking
+	EscalationHistory            []EscalationEvent  // OC-d77k: ordered history of escalation-contributing actions
+	EscalationFlags              []string           // OC-d77k: threshold-crossing flags (e.g., "escalation_critical")
+	DestructiveActionsAuthorized int                // OC-lmzm: count of authorized actions that required backup (Score >= 2)
+}
+
+// EscalationEvent records a single action's contribution to the session escalation score.
+// OC-d77k: Created by RecordAction when a tool action has non-zero escalation contribution.
+type EscalationEvent struct {
+	Timestamp     time.Time `json:"timestamp"`
+	Tool          string    `json:"tool"`
+	ImpactScore   int       `json:"impact_score"`
+	Reversibility int       `json:"reversibility"`
+	Contribution  float64   `json:"contribution"`
+	CumulativeAt  float64   `json:"cumulative_at"`
 }
 
 // Escalation threshold constants (OC-h4m7)
@@ -95,9 +108,20 @@ func (sc *SessionContext) GetOrCreateSession(spiffeID, sessionID string) *AgentS
 // RecordAction adds a tool action to the session and persists it via the store.
 // The store handles action list persistence. Session metadata (risk score,
 // classifications) is updated in-memory first, then persisted.
+//
+// OC-d77k: After recording the action, computes escalation contribution based
+// on the tool's impact and reversibility. Destructive actions (high impact,
+// low reversibility) contribute more to the escalation score. When threshold
+// crossings are detected, escalation flags are added and the SecurityFlagsCollector
+// is updated (if available in the provided context).
 func (sc *SessionContext) RecordAction(session *AgentSession, action ToolAction) {
-	ctx := context.Background()
+	sc.RecordActionWithContext(context.Background(), session, action)
+}
 
+// RecordActionWithContext is like RecordAction but accepts a context for
+// SecurityFlagsCollector propagation. OC-d77k: The context is used to
+// propagate escalation threshold crossing flags upstream to the audit middleware.
+func (sc *SessionContext) RecordActionWithContext(ctx context.Context, session *AgentSession, action ToolAction) {
 	// Update data classifications (in-memory, then persisted via SaveSession)
 	if action.Classification != "" && !contains(session.DataClassifications, action.Classification) {
 		session.DataClassifications = append(session.DataClassifications, action.Classification)
@@ -105,6 +129,32 @@ func (sc *SessionContext) RecordAction(session *AgentSession, action ToolAction)
 
 	// Accumulate risk score
 	session.RiskScore += computeActionRisk(action)
+
+	// OC-d77k: Compute escalation contribution from this action.
+	// Classify reversibility of the tool action to get impact and reversibility scores.
+	rev := ClassifyReversibility(action.Tool, action.Tool, nil, nil)
+	impact := computeImpactFromAction(action)
+	contribution := float64(impact) * float64(4-rev.Score)
+	prevScore := session.EscalationScore
+
+	if contribution > 0 {
+		session.EscalationScore += contribution
+		event := EscalationEvent{
+			Timestamp:     action.Timestamp,
+			Tool:          action.Tool,
+			ImpactScore:   impact,
+			Reversibility: rev.Score,
+			Contribution:  contribution,
+			CumulativeAt:  session.EscalationScore,
+		}
+		session.EscalationHistory = append(session.EscalationHistory, event)
+	}
+
+	// OC-d77k: Check for threshold crossings and add escalation flags.
+	collector := GetFlagsCollector(ctx)
+	checkEscalationThreshold(session, prevScore, EscalationWarningThreshold, "escalation_warning", collector)
+	checkEscalationThreshold(session, prevScore, EscalationCriticalThreshold, "escalation_critical", collector)
+	checkEscalationThreshold(session, prevScore, EscalationEmergencyThreshold, "escalation_emergency", collector)
 
 	// Persist action to store. For InMemoryStore, this modifies session.Actions
 	// directly via the stored pointer. For KeyDB, this writes to a Redis LIST.
@@ -122,6 +172,81 @@ func (sc *SessionContext) RecordAction(session *AgentSession, action ToolAction)
 	// Persist updated session metadata (risk score, classifications, flags)
 	if err := sc.store.SaveSession(ctx, session.SPIFFEID, session.ID, session); err != nil {
 		slog.Error("session store save session error", "error", err)
+	}
+}
+
+// checkEscalationThreshold checks if a threshold was crossed by this action
+// and adds the appropriate flag to the session and collector.
+// OC-d77k: Only fires once per threshold per session (idempotent).
+func checkEscalationThreshold(session *AgentSession, prevScore, threshold float64, flag string, collector *SecurityFlagsCollector) {
+	if session.EscalationScore >= threshold && prevScore < threshold {
+		if !containsFlag(session.EscalationFlags, flag) {
+			session.EscalationFlags = append(session.EscalationFlags, flag)
+		}
+		if collector != nil {
+			collector.Append(flag)
+		}
+	}
+}
+
+// containsFlag checks if a string slice contains a given flag.
+func containsFlag(flags []string, flag string) bool {
+	for _, f := range flags {
+		if f == flag {
+			return true
+		}
+	}
+	return false
+}
+
+// computeImpactFromAction derives an impact score (0-3) from a ToolAction.
+// This mirrors the computeImpact function used in step-up gating but operates
+// on action metadata rather than tool definitions.
+// OC-d77k: Used for escalation contribution calculation.
+func computeImpactFromAction(action ToolAction) int {
+	impact := 0
+
+	// External targets have higher impact
+	if action.ExternalTarget {
+		impact = 2
+	}
+
+	// Sensitive data access increases impact
+	switch action.Classification {
+	case "sensitive":
+		if impact < 3 {
+			impact = 3
+		}
+	case "confidential":
+		if impact < 2 {
+			impact = 2
+		}
+	case "internal":
+		if impact < 1 {
+			impact = 1
+		}
+	}
+
+	return impact
+}
+
+// EscalationState returns the current escalation state label for a session.
+// OC-d77k: Used for audit enrichment.
+//
+//	"normal":    EscalationScore < Warning (15)
+//	"warning":   Warning (15) <= EscalationScore < Critical (25)
+//	"critical":  Critical (25) <= EscalationScore < Emergency (40)
+//	"emergency": EscalationScore >= Emergency (40)
+func EscalationState(score float64) string {
+	switch {
+	case score >= EscalationEmergencyThreshold:
+		return "emergency"
+	case score >= EscalationCriticalThreshold:
+		return "critical"
+	case score >= EscalationWarningThreshold:
+		return "warning"
+	default:
+		return "normal"
 	}
 }
 
