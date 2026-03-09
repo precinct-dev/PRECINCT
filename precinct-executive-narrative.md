@@ -34,14 +34,17 @@ It governs the five planes that define modern agentic systems:
 
 It also adds explicit controls for:
 
-- RLM-style execution patterns
-- Context engineering admission invariants
+- RLM-style execution patterns (implemented: per-lineage governance with depth/subcall/budget limits and UASGS bypass prevention)
+- Context engineering admission invariants (implemented: all four invariants plus memory tier governance with four tiers)
 - Provider cost/latency/availability policy and deterministic fallback behavior
-- DLP RuleOps as a governed control plane
+- DLP RuleOps as a governed control plane (implemented: full create/validate/approve/sign/promote/rollback lifecycle)
 - HIPAA prompt-safety profile for regulated workloads (`prod_regulated_hipaa`)
 - Explicit production enforcement profiles (`prod_standard`, `prod_regulated_hipaa`)
+- CLI tool adapter with shell injection prevention (implemented: command allowlists, denied-arg-token detection)
+- Ingress connector envelope with replay detection and SHA256 content-addressing (implemented)
+- Loop governor with full 8-state machine, operator halt, and admin API (implemented)
 
-This is not cosmetic renaming. It is a meaningful expansion of enterprise control coverage.
+This is not cosmetic renaming. It is a meaningful expansion of enterprise control coverage, now backed by implemented and tested controls.
 
 ---
 
@@ -201,13 +204,21 @@ From this repository and POC implementation:
 - Hash-chained audit events and evidence generation patterns exist.
 - Local-to-Kubernetes deployment continuity is proven.
 
-Phase 3 builds on this base instead of replacing it.
+Phase 3 capabilities are now implemented and tested:
+
+- **RLM Governance Engine**: per-lineage state tracking with depth limits (default max 6), subcall budgets (default max 64), cost unit accounting (default max 128), and UASGS bypass prevention that denies unmediated subcalls.
+- **Loop Governor Full State Machine**: 8 governance states (CREATED, RUNNING, WAITING_APPROVAL, COMPLETED, HALTED_POLICY, HALTED_BUDGET, HALTED_PROVIDER_UNAVAILABLE, HALTED_OPERATOR) with all 8 immutable limits enforced (steps, tool calls, model calls, wall time, egress bytes, model cost, provider failovers, risk score) and immutable limit tampering detection.
+- **Loop Admin API**: per-run observability (`GET /admin/loop/runs/<id>`), operator halt (`POST /admin/loop/runs/<id>/halt`), and audit logging for all admin operations.
+- **Context Memory Tiering**: four tiers (ephemeral, session, long_term, regulated) with DLP classification enforcement for long-term writes and step-up requirements for regulated tier reads.
+- **CLI Tool Adapter**: shell injection prevention through command allowlists, max-args enforcement, and denied-arg-token detection for dangerous shell metacharacters.
+- **Ingress Connector Envelope**: canonical parsing with SPIFFE source principal authentication, SHA256 payload content-addressing, replay detection with 30-minute nonce TTL, and freshness validation with 10-minute window.
+- **Go SDK and Python SDK**: SPIKE token builder utilities for gateway-mediated model and tool egress.
 
 ---
 
 ## Remaining Gaps Decision Makers Should Track Closely
 
-The architecture now includes the core scaffolding needed for production defensibility. Remaining risk is execution-focused:
+The architecture now includes implemented controls across all five governed planes. Phase 3 control planes are no longer scaffolding; they are implemented with reason-code-complete enforcement. Remaining risk is operational:
 
 1. Sustained verification of mandatory controls (`prod_standard`, `prod_regulated_hipaa`) and drift detection.
 2. Connector certification ownership and 24x7 support model for ingress diversity.
@@ -216,7 +227,7 @@ The architecture now includes the core scaffolding needed for production defensi
 5. HIPAA legal-operational uplift (BAA, safeguard mappings, training/sanction workflows, breach process).
 6. Proactive policy guidance to agents so violations are reduced before runtime enforcement.
 7. Governance patterns for dynamic/discovered capabilities in browser-facing agent ecosystems.
-8. A unified cross-plane emergency stop posture with clear activation authority and recovery criteria.
+8. Operator halt authority and recovery criteria are now implemented via admin API; cross-plane emergency stop coordination remains to be operationalized.
 
 This is the right kind of gap profile: operational hardening, not missing architecture.
 

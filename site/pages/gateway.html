@@ -318,6 +318,52 @@ sequenceDiagram
                     <td><code>/health</code></td>
                     <td>Health check endpoint. Returns the gateway's readiness status including upstream connectivity and middleware chain availability.</td>
                   </tr>
+                  <tr>
+                    <td colspan="3"><strong>Control Plane Endpoints</strong></td>
+                  </tr>
+                  <tr>
+                    <td><code>POST</code></td>
+                    <td><code>/v1/ingress/admit</code></td>
+                    <td>Ingress plane admission. Validates canonical connector envelopes: SPIFFE source principal matching, SHA-256 payload content-addressing, replay detection with 30-minute nonce TTL, and 10-minute freshness windows.</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST</code></td>
+                    <td><code>/v1/context/admit</code></td>
+                    <td>Context plane admission. Enforces memory tier classification (ephemeral/session/long_term/regulated), provenance validation, DLP classification for long_term writes, step-up for regulated reads, and minimum-necessary invariants.</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST</code></td>
+                    <td><code>/v1/model/call</code></td>
+                    <td>Model egress plane. Evaluates model provider authorization, data residency constraints, HIPAA-aware prompt safety, and provider budget tracking.</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST</code></td>
+                    <td><code>/v1/tool/execute</code></td>
+                    <td>Tool plane execution. Evaluates capability registry, protocol adapter rules, CLI shell-injection prevention (command allowlist, max-args, denied-arg-tokens), and step-up requirements.</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST</code></td>
+                    <td><code>/v1/loop/check</code></td>
+                    <td>Loop plane boundary check. Full 8-state governance state machine with immutable budget limits across 8 dimensions (steps, tool calls, model calls, wall time, egress bytes, model cost, provider failovers, risk score). Supports operator halt and provider unavailability events.</td>
+                  </tr>
+                  <tr>
+                    <td colspan="3"><strong>Admin Endpoints</strong></td>
+                  </tr>
+                  <tr>
+                    <td><code>GET</code></td>
+                    <td><code>/admin/loop/runs</code></td>
+                    <td>List all loop runs with state, usage, and limits. Sorted by last update time.</td>
+                  </tr>
+                  <tr>
+                    <td><code>GET</code></td>
+                    <td><code>/admin/loop/runs/&lt;id&gt;</code></td>
+                    <td>Per-run detail including governance state, halt reason, immutable limits, and usage snapshot.</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST</code></td>
+                    <td><code>/admin/loop/runs/&lt;id&gt;/halt</code></td>
+                    <td>Operator halt (human kill switch). Transitions a running loop to HALTED_OPERATOR state. Returns 409 if already terminal. All halt operations are audit-logged.</td>
+                  </tr>
                 </tbody>
               </table>
             </div>

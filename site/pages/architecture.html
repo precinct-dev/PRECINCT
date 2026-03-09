@@ -247,12 +247,27 @@ graph TB
             </div>
 
             <ol>
-              <li><strong>LLM / Model Egress Plane:</strong> Governs which models agents may call, what data may be sent to them, and where model inference may occur. Enforces data residency constraints and model allow-lists.</li>
-              <li><strong>Context / Memory Plane:</strong> Governs the memory lifecycle of agent sessions. Controls what context may be persisted, how long it lives, and ensures provenance metadata is attached to all stored context.</li>
-              <li><strong>Tool Plane:</strong> Governs MCP and non-MCP tool execution. Every tool invocation is authorized against policy, and every tool binary is verified against its registered cryptographic hash.</li>
-              <li><strong>Control Loop Plane:</strong> Governs execution pattern boundaries. Sets recursion limits, step budgets, and timeout constraints to prevent unbounded agent loops and runaway execution.</li>
-              <li><strong>Ingress / Event Plane:</strong> Governs inbound triggers: webhooks, message queues, and external events. Normalizes event formats and validates that inbound payloads conform to expected schemas.</li>
+              <li><strong>LLM / Model Egress Plane:</strong> Governs which models agents may call, what data may be sent to them, and where model inference may occur. Enforces data residency constraints, model allow-lists, and HIPAA-aware prompt safety with minimum-necessary data handling.</li>
+              <li><strong>Context / Memory Plane:</strong> Governs the memory lifecycle of agent sessions with four-tier classification: <em>ephemeral</em>, <em>session</em>, <em>long_term</em> (writes require clean DLP classification), and <em>regulated</em> (reads require step-up authorization). Controls what context may be persisted and ensures provenance metadata is attached to all stored context.</li>
+              <li><strong>Tool Plane:</strong> Governs MCP and non-MCP tool execution. Every tool invocation is authorized against a capability registry with protocol-specific adapters. The CLI adapter enforces command allowlists, max-args limits, and denied-arg-token detection (blocking shell injection via <code>;</code>, <code>&amp;&amp;</code>, <code>||</code>, <code>|</code>, <code>$(</code>, <code>`</code>, <code>&gt;</code>, <code>&lt;</code>).</li>
+              <li><strong>Control Loop Plane:</strong> Governs execution pattern boundaries with a full 8-state governance state machine (CREATED, RUNNING, WAITING_APPROVAL, COMPLETED, HALTED_POLICY, HALTED_BUDGET, HALTED_PROVIDER_UNAVAILABLE, HALTED_OPERATOR). Enforces immutable budget limits across 8 dimensions: steps, tool calls, model calls, wall time, egress bytes, model cost, provider failovers, and risk score. Supports operator halt (human kill switch) and provider unavailability handling.</li>
+              <li><strong>Ingress / Event Plane:</strong> Governs inbound triggers with canonical connector envelope validation. Enforces SPIFFE source principal matching, SHA-256 payload content-addressing, replay detection with composite nonce keys and 30-minute TTL, and 10-minute freshness windows. Supports webhook and queue connector types.</li>
             </ol>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Cross-Cutting: RLM Governance Engine
+              </div>
+              <p>
+                In addition to the five governed planes, the gateway includes a <strong>Recursive Lineage
+                Manager (RLM)</strong> governance engine that tracks multi-agent lineage across nested subcalls.
+                RLM operates as a cross-cutting layer activated via <code>execution_mode=rlm</code> on any
+                plane request. It enforces three configurable limits per lineage: max depth (default 6),
+                max subcalls (default 64), and max budget units (default 128). Subcalls that lack UASGS
+                mediation markers are denied to prevent governance bypass.
+              </p>
+            </div>
           </section>
 
           <!-- ========== Core Components ========== -->

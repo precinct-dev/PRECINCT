@@ -7,3 +7,6 @@
 .piv-loop-state.json
 .piv-loop-snapshot.json
 .dispatcher-state.json
+
+# Issues are the system of record; use `nd archive` for git-committable snapshots
+issues/

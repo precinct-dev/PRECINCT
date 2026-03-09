@@ -43,6 +43,28 @@ Go and Python SDKs are provided for agent integration.
 | 12 | Circuit Breaker | Per-tool circuit breaker (closed/open/half-open states) |
 | 13 | Token Substitution | SPIKE late-binding secret injection (MUST be innermost -- security invariant) |
 
+### Control Plane Endpoints (Phase 3)
+
+The gateway exposes per-plane control endpoints for framework-agnostic governance:
+
+| Endpoint | Plane | Function |
+|----------|-------|----------|
+| `POST /v1/ingress/admit` | Ingress | Canonical envelope validation, SPIFFE source principal matching, SHA-256 payload content-addressing, replay detection (30min nonce TTL) |
+| `POST /v1/context/admit` | Context | Memory tier enforcement (ephemeral/session/long_term/regulated), provenance validation, DLP classification |
+| `POST /v1/model/call` | Model | Provider authorization, data residency, HIPAA-aware prompt safety, budget tracking |
+| `POST /v1/tool/execute` | Tool | Capability registry, CLI shell-injection prevention (command allowlist, max-args, denied-arg-tokens), step-up |
+| `POST /v1/loop/check` | Loop | 8-state governance state machine, 8-dimension immutable budget limits, operator halt, provider unavailability |
+
+### Multi-Agent Governance
+
+- **RLM Governance Engine**: Cross-cutting lineage tracking with depth (max 6), subcall (max 64), and budget-unit (max 128) limits. UASGS bypass prevention.
+- **Loop State Machine**: 8 states (CREATED, RUNNING, WAITING_APPROVAL, COMPLETED, HALTED_POLICY, HALTED_BUDGET, HALTED_PROVIDER_UNAVAILABLE, HALTED_OPERATOR)
+- **Loop Admin API**: `GET /admin/loop/runs`, `GET /admin/loop/runs/<id>`, `POST /admin/loop/runs/<id>/halt` (operator kill switch)
+- **CLI Tool Adapter**: Shell injection prevention via command allowlists, max-args, denied-arg-token detection (`;`, `&&`, `||`, `|`, `$(`, `` ` ``, `>`, `<`)
+- **Context Memory Tiering**: Four-tier classification with DLP enforcement for `long_term` writes and step-up for `regulated` reads
+- **Ingress Connector Envelope**: SPIFFE principal matching, SHA-256 content-addressing, replay detection with composite nonce key + 30min TTL
+- **Go SDK SPIKE Token Builder**: `BuildSPIKETokenRef` and `BuildSPIKETokenRefWithScope` functions matching the Python SDK
+
 Supporting infrastructure:
 
 - **SPIRE** -- SPIFFE identity for all workloads (mTLS-ready)

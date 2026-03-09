@@ -143,7 +143,7 @@
           </div>
           <div class="stat-divider" aria-hidden="true"></div>
           <div class="stat-item">
-            <span class="stat-value">5</span>
+            <span class="stat-value">5+RLM</span>
             <span class="stat-label">Governed Planes</span>
           </div>
           <div class="stat-divider" aria-hidden="true"></div>
@@ -336,10 +336,11 @@
                 <polyline points="2 12 12 17 22 12"/>
               </svg>
             </div>
-            <h3>Five Governed Planes</h3>
+            <h3>Five Governed Planes + RLM</h3>
             <p>
-              Model, Tool, Context, Loop, and Ingress, each with its own policy
-              domain. This enables fine-grained governance without monolithic, one-size-fits-all rules.
+              Model, Tool, Context, Loop, and Ingress planes each with their own policy
+              domain, plus a cross-cutting RLM (Recursive Lineage Manager) governance engine
+              for multi-agent orchestration.
             </p>
           </div>
 
@@ -354,6 +355,21 @@
               First-class SDK support in both Python and Go. Agents integrate with the
               PRECINCT gateway using idiomatic libraries that handle SPIFFE identity,
               error mapping, and structured logging automatically.
+            </p>
+          </div>
+
+          <div class="innovation-card">
+            <div class="innovation-icon" aria-hidden="true">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+              </svg>
+            </div>
+            <h3>Multi-Agent Governance</h3>
+            <p>
+              The RLM Governance Engine tracks multi-agent lineage across nested subcalls,
+              enforcing depth limits, subcall budgets, and budget-unit accounting. A full
+              loop state machine with operator halt provides a human kill switch for
+              runaway agent loops.
             </p>
           </div>
 
@@ -375,7 +391,7 @@
         <div class="card-grid card-grid-4">
           <div class="card">
             <h3 class="mt-0">Runtime Enforcement</h3>
-            <p>13-layer chain with policy, DLP, session context, step-up, deep scan, rate limiting, and late-binding token substitution.</p>
+            <p>13-layer chain with policy, DLP, memory tiering, CLI shell-injection prevention, step-up, deep scan, rate limiting, and late-binding token substitution.</p>
           </div>
           <div class="card">
             <h3 class="mt-0">Identity &amp; Secrets</h3>

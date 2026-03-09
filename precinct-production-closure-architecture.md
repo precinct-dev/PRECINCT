@@ -130,21 +130,35 @@ Provide signed, governed lifecycle for rulesets and related security artifacts.
 
 Enforce all mandatory context invariants at gateway boundary.
 
+### Status: IMPLEMENTED
+
+The context admission engine is fully implemented in `evaluateContextInvariants()` (`POC/internal/gateway/phase3_runtime_helpers.go`). All four invariants are enforced, plus context memory tiering.
+
 ### Required input contract
 
 1. context source metadata (origin + connector id)
 2. validation evidence (scanner outputs + verifier references)
 3. provenance block (source URI, hash, fetch time, trust class)
 4. classification and minimization metadata
+5. memory tier classification (ephemeral/session/long_term/regulated)
 
 ### Decision outputs
 
 - `CONTEXT_ALLOW`
+- `CONTEXT_SCHEMA_INVALID` (invalid memory tier)
 - `CONTEXT_NO_SCAN_NO_SEND`
-- `CONTEXT_NO_PROVENANCE_NO_PERSIST`
-- `CONTEXT_NO_VERIFICATION_NO_LOAD`
-- `CONTEXT_MINIMUM_NECESSARY_VIOLATION`
 - `CONTEXT_PROMPT_INJECTION_UNSAFE`
+- `CONTEXT_DLP_CLASSIFICATION_REQUIRED`
+- `CONTEXT_DLP_CLASSIFICATION_DENIED`
+- `CONTEXT_MEMORY_READ_STEP_UP_REQUIRED` (regulated tier read)
+- `CONTEXT_MEMORY_WRITE_DENIED` (long_term write without clean DLP, or missing provenance)
+
+### Memory tier governance
+
+- `ephemeral`: default tier, no additional restrictions
+- `session`: standard validation applies
+- `long_term`: writes require `dlp_classification=clean`
+- `regulated`: reads require step-up approval (DecisionStepUp)
 
 ### Portability
 
@@ -159,19 +173,27 @@ Enforce all mandatory context invariants at gateway boundary.
 
 Move `/v1/tool/execute` from placeholder to enforced capability boundary.
 
+### Status: IMPLEMENTED
+
+The tool plane governance engine is fully implemented in `toolPlanePolicyEngine` (`POC/internal/gateway/phase3_plane_stubs.go`).
+
 ### Controls
 
-1. Capability registry v2 binding for tool execution.
-2. Adapter protocol policy (`mcp`, `http`, `cli`, etc.) with allowlists.
-3. Action-level authorization and argument schema validation.
-4. Step-up requirement for irreversible/high-impact actions.
+1. Capability registry v2 binding for tool execution (YAML-configurable via `capabilityRegistryV2` schema).
+2. Adapter protocol policy (`mcp`, `http`, `cli`, `email`, `discord`) with per-capability allowlists.
+3. Action-level authorization with resource matching and per-action tool allowlists.
+4. Step-up requirement for irreversible/high-impact actions (per-action `require_step_up` flag).
+5. CLI tool adapter with shell injection prevention: command allowlists, max-args enforcement, and denied-arg-token detection (`;`, `&&`, `||`, `|`, `$(`, `` ` ``, `>`, `<`).
 
 ### Decision outputs
 
 - `TOOL_ALLOW`
+- `TOOL_SCHEMA_INVALID`
 - `TOOL_CAPABILITY_DENIED`
 - `TOOL_ADAPTER_UNSUPPORTED`
 - `TOOL_ACTION_DENIED`
+- `TOOL_CLI_COMMAND_DENIED` (CLI adapter: command not in allowlist)
+- `TOOL_CLI_ARGS_DENIED` (CLI adapter: args exceed max or contain denied tokens)
 - `TOOL_STEP_UP_REQUIRED`
 
 ---
@@ -182,23 +204,110 @@ Move `/v1/tool/execute` from placeholder to enforced capability boundary.
 
 External immutable limits for autonomous loops.
 
+### Status: IMPLEMENTED
+
+The loop governor is fully implemented as `loopPlanePolicyEngine` (`POC/internal/gateway/phase3_loop_plane.go`) with an admin API for observability and operator halt (`POC/internal/gateway/admin_phase3.go`).
+
 ### Enforced limits
 
 1. max steps
 2. max tool calls
 3. max model calls
-4. max wall time
+4. max wall time (ms)
 5. max egress bytes
-6. max model cost
+6. max model cost (USD)
 7. max provider failovers
 8. max risk score
 
+### 8-state governance machine
+
+`CREATED` -> `RUNNING` -> `COMPLETED` (terminal)
+`RUNNING` -> `WAITING_APPROVAL` -> `RUNNING` (approval granted)
+`RUNNING` -> `HALTED_POLICY` (terminal, risk score exceeded)
+`RUNNING` -> `HALTED_BUDGET` (terminal, any budget limit exceeded)
+`RUNNING` -> `HALTED_PROVIDER_UNAVAILABLE` (terminal)
+Any non-terminal -> `HALTED_OPERATOR` (terminal, via admin API or event)
+
 ### Technical design
 
-1. durable per-run counters
-2. deterministic halting decisions
-3. reason-code complete responses
-4. audit correlation for every loop boundary check
+1. durable per-run counters (`loopRunRecord` with usage snapshots)
+2. deterministic halting decisions with immutable limit tampering detection (`LOOP_LIMITS_IMMUTABLE_VIOLATION`)
+3. reason-code complete responses (15 distinct reason codes)
+4. audit correlation for every loop boundary check (decision_id, trace_id)
+5. admin API: `GET /admin/loop/runs` (list), `GET /admin/loop/runs/<id>` (detail), `POST /admin/loop/runs/<id>/halt` (operator halt)
+6. all admin operations emit audit events via `logLoopAdminEvent`
+
+---
+
+## 3.5.1 RLM Governance Engine
+
+### Purpose
+
+Govern multi-agent lineage tracking, subcall budgets, and UASGS bypass prevention for RLM-style execution patterns.
+
+### Status: IMPLEMENTED
+
+The RLM governance engine is fully implemented as `rlmGovernanceEngine` (`POC/internal/gateway/phase3_rlm.go`).
+
+### Controls
+
+1. Per-lineage state tracking with cumulative resource accounting (`rlmLineageState`).
+2. Depth limits: maximum nesting depth for recursive agent calls.
+3. Subcall budgets: maximum number of subcalls per lineage.
+4. Budget units: maximum cost units per lineage with per-call cost accounting.
+5. UASGS bypass prevention: subcalls without `uasgs_mediated=true` are denied with `RLM_BYPASS_DENIED`.
+6. Default limits: max_depth=6, max_subcalls=64, max_budget_units=128 (configurable per-request).
+
+### Decision outputs
+
+- `RLM_ALLOW`
+- `RLM_SCHEMA_INVALID`
+- `RLM_BYPASS_DENIED` (subcall without UASGS mediation)
+- `RLM_HALT_MAX_DEPTH` (HTTP 429)
+- `RLM_HALT_MAX_SUBCALLS` (HTTP 429)
+- `RLM_HALT_MAX_SUBCALL_BUDGET` (HTTP 429)
+
+### Integration
+
+RLM governance is evaluated for every model plane request when `execution_mode=rlm`. The engine runs before model plane policy evaluation; RLM denial short-circuits the request. RLM metadata (lineage_id, depth, budget remaining) is included in all model plane responses when active.
+
+---
+
+## 3.5.2 Ingress Connector Envelope Engine
+
+### Purpose
+
+Canonical connector envelope validation with structured replay detection, source principal authentication, and SHA256 payload content-addressing.
+
+### Status: IMPLEMENTED
+
+The ingress connector envelope engine is fully implemented as `ingressPlanePolicyEngine` (`POC/internal/gateway/phase3_ingress_plane.go`).
+
+### Controls
+
+1. Canonical envelope parsing: connector_type (webhook/queue), source_id, source_principal, event_id, nonce, event_timestamp, payload.
+2. Source principal authentication: source_principal must match ActorSPIFFEID.
+3. Freshness validation: 10-minute past/future window.
+4. Replay detection: composite nonce key (tenant|connector_type|source_id|event_id|nonce) with 30-minute TTL and automatic eviction.
+5. SHA256 payload content-addressing: deterministic `ingress://payload/<hex>` reference with raw payload stripped from response.
+6. Step-up support: `requires_step_up=true` yields DecisionStepUp.
+
+### Decision outputs
+
+- `INGRESS_ALLOW` (with payload_ref and payload_size_bytes)
+- `INGRESS_SCHEMA_INVALID`
+- `INGRESS_REPLAY_DETECTED` (HTTP 409)
+- `INGRESS_FRESHNESS_STALE` (DecisionQuarantine, HTTP 202)
+- `INGRESS_SOURCE_UNAUTHENTICATED` (HTTP 401)
+- `INGRESS_STEP_UP_REQUIRED` (HTTP 202)
+
+---
+
+## 3.5.3 Go SDK SPIKE Token Builder
+
+### Status: IMPLEMENTED
+
+The Go SDK provides `BuildSPIKETokenRef` and `BuildSPIKETokenRefWithScope` functions (`POC/sdk/go/mcpgateway/spike_token.go`) that produce Bearer SPIKE token reference strings compatible with the Python SDK format: `Bearer $SPIKE{ref:<ref>,exp:<exp>}` with optional scope qualifier.
 
 ---
 
