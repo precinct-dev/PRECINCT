@@ -80,6 +80,7 @@ func (m *mockGatewayServices) ValidateAndConsumeApproval(_ string, _ middleware.
 }
 func (m *mockGatewayServices) HasApprovalService() bool                       { return false }
 func (m *mockGatewayServices) ValidateConnector(_, _ string) (bool, string)   { return true, "" }
+func (m *mockGatewayServices) ScanContent(_ string) middleware.ScanResult    { return middleware.ScanResult{} }
 
 // newAllowMock returns a mock that allows all tool requests and returns a
 // successful egress result.
@@ -163,7 +164,7 @@ func TestHandleSend_DLPBlocking(t *testing.T) {
 }
 
 // TestHandleSend_MassEmail verifies that sending to more than massEmailThreshold
-// recipients sets the mass_email attribute to "true".
+// recipients triggers step-up approval required (OC-di1n).
 func TestHandleSend_MassEmail(t *testing.T) {
 	mock := newAllowMock()
 	adapter := NewAdapter(mock)
@@ -181,16 +182,18 @@ func TestHandleSend_MassEmail(t *testing.T) {
 	rr := httptest.NewRecorder()
 	adapter.handleSendImpl(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status = %d, want %d (body: %s)", rr.Code, http.StatusOK, rr.Body.String())
+	// OC-di1n: mass email should require step-up approval.
+	if rr.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d (body: %s)", rr.Code, http.StatusForbidden, rr.Body.String())
 	}
 
-	attrs := mock.lastPlaneReq.Policy.Attributes
-	if attrs["mass_email"] != "true" {
-		t.Fatalf("mass_email = %v, want true", attrs["mass_email"])
+	var resp map[string]any
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
 	}
-	if attrs["recipient_count"] != "15" {
-		t.Fatalf("recipient_count = %v, want 15", attrs["recipient_count"])
+	code, _ := resp["code"].(string)
+	if code != middleware.ErrStepUpApprovalRequired {
+		t.Fatalf("code = %q, want %q", code, middleware.ErrStepUpApprovalRequired)
 	}
 }
 

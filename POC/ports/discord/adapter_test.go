@@ -60,6 +60,9 @@ func (m *mockGatewayServices) HasApprovalService() bool                       { 
 func (m *mockGatewayServices) ValidateConnector(_ string, _ string) (bool, string) {
 	return true, ""
 }
+func (m *mockGatewayServices) ScanContent(_ string) middleware.ScanResult {
+	return middleware.ScanResult{}
+}
 
 var _ gateway.PortGatewayServices = (*mockGatewayServices)(nil)
 

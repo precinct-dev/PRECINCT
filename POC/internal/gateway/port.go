@@ -48,6 +48,9 @@ type PortGatewayServices interface {
 
 	// Connector conformance
 	ValidateConnector(connectorID, signature string) (bool, string)
+
+	// Content scanning (OC-di1n: exposes DLP scanner to port adapters)
+	ScanContent(content string) middleware.ScanResult
 }
 
 // ModelEgressResult is the exported version of modelEgressResult for use by port adapters.
