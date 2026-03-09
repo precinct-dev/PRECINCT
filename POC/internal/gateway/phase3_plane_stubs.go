@@ -638,6 +638,59 @@ func defaultToolCapabilityRules() map[string]toolCapabilityRule {
 				},
 			},
 		},
+		// OC-di1n: Email channel mediation capability.
+		"tool.messaging.email": {
+			CapabilityID: "tool.messaging.email",
+			Protocol:     "email",
+			Adapters: map[string]struct{}{
+				"email": {},
+			},
+			AllowTools: map[string]struct{}{
+				"messaging_send":   {},
+				"messaging_status": {},
+			},
+			Actions: []toolActionRule{
+				{
+					Action: "tool.invoke",
+					Resources: map[string]struct{}{
+						"messaging_send":   {},
+						"messaging_status": {},
+					},
+					AllowedTools: map[string]struct{}{
+						"messaging_send":   {},
+						"messaging_status": {},
+					},
+				},
+			},
+		},
+		// OC-di1n: Discord channel mediation capability.
+		"tool.messaging.discord": {
+			CapabilityID: "tool.messaging.discord",
+			Protocol:     "discord",
+			Adapters: map[string]struct{}{
+				"discord": {},
+			},
+			AllowTools: map[string]struct{}{
+				"messaging_send":   {},
+				"discord_command":  {},
+			},
+			Actions: []toolActionRule{
+				{
+					Action:    "messaging_send",
+					Resources: map[string]struct{}{},
+					AllowedTools: map[string]struct{}{
+						"messaging_send": {},
+					},
+				},
+				{
+					Action:    "discord_command",
+					Resources: map[string]struct{}{},
+					AllowedTools: map[string]struct{}{
+						"discord_command": {},
+					},
+				},
+			},
+		},
 	}
 }
 
