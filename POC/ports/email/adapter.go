@@ -73,8 +73,8 @@ func (a *Adapter) handleList(w http.ResponseWriter, _ *http.Request) {
 	stubError(w, "email_list")
 }
 
-func (a *Adapter) handleRead(w http.ResponseWriter, _ *http.Request) {
-	stubError(w, "email_read")
+func (a *Adapter) handleRead(w http.ResponseWriter, r *http.Request) {
+	a.handleReadImpl(w, r)
 }
 
 // Compile-time check.
