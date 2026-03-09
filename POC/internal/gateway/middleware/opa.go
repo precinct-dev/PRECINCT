@@ -36,6 +36,16 @@ type PrincipalInput struct {
 	Capabilities []string `json:"capabilities"`
 }
 
+// DataSourceInput represents data source metadata for OPA policy evaluation.
+// OC-4zrf: Enables identity-based access control for registered data sources,
+// mutable source admin gating, and high-risk session blocking for unregistered URIs.
+type DataSourceInput struct {
+	URI            string `json:"uri"`
+	Registered     bool   `json:"registered"`
+	MutablePolicy  string `json:"mutable_policy"`
+	ContentChanged bool   `json:"content_changed"`
+}
+
 // OPAInput represents input to OPA policy evaluation
 type OPAInput struct {
 	SPIFFEID    string                 `json:"spiffe_id"`
@@ -46,8 +56,9 @@ type OPAInput struct {
 	Params      map[string]interface{} `json:"params"`
 	StepUpToken string                 `json:"step_up_token"`
 	Session     SessionInput           `json:"session"`
-	UI          *UIInput               `json:"ui,omitempty"`        // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
-	Principal   *PrincipalInput        `json:"principal,omitempty"` // OC-3ch6: principal authority for level-based access control
+	UI          *UIInput               `json:"ui,omitempty"`         // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
+	Principal   *PrincipalInput        `json:"principal,omitempty"`  // OC-3ch6: principal authority for level-based access control
+	DataSource  *DataSourceInput       `json:"data_source,omitempty"` // OC-4zrf: data source access control
 }
 
 // SessionInput represents session data for OPA evaluation
