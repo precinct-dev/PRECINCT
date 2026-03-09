@@ -119,6 +119,15 @@ func (g *Gateway) ValidateConnector(connectorID, signature string) (bool, string
 	return allowed, reason
 }
 
+// ScanContent delegates to the DLP scanner, exposing it to port adapters
+// for inbound content scanning (OC-di1n).
+func (g *Gateway) ScanContent(content string) middleware.ScanResult {
+	if g.dlpScanner == nil {
+		return middleware.ScanResult{}
+	}
+	return g.dlpScanner.Scan(content)
+}
+
 // RegisterPort adds a PortAdapter to the gateway's dispatch chain.
 func (g *Gateway) RegisterPort(adapter PortAdapter) {
 	g.portAdapters = append(g.portAdapters, adapter)

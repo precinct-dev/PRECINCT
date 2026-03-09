@@ -601,6 +601,7 @@ services:
       # Demo determinism: ensure deep scan is enabled (non-empty key) without requiring real credentials.
       - GUARD_API_KEY=demo-guard-key  # RFA-6fse.3: deterministic, dummy key
       - DLP_INJECTION_POLICY=${DLP_INJECTION_POLICY:-}  # RFA-sd7: Override DLP injection policy ("block" or "flag", default: use YAML config)
+      - DLP_PII_POLICY=${DLP_PII_POLICY:-block}  # OC-di1n: Block PII (SSN, etc.) by default for channel mediation demo scenarios
       - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}    # RFA-8ak: Demo-friendly rate limit (code default 600 is too generous for burst test)
       - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}  # RFA-8ak: Small burst bucket so 200-call test triggers 429 quickly
       - MESSAGING_PLATFORM_ENDPOINT_WHATSAPP=http://messaging-sim:8090/v1/messages
