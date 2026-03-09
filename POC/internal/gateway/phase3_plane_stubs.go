@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
 	"strconv"
@@ -405,13 +406,16 @@ type capabilityRegistryV2 struct {
 }
 
 type capabilityRegistryEntry struct {
-	ID             string                  `yaml:"id"`
-	Kind           string                  `yaml:"kind"`
-	Protocol       string                  `yaml:"protocol"`
-	Server         string                  `yaml:"server"`
-	Allowlist      []string                `yaml:"allowlist"`
-	Adapters       []string                `yaml:"adapters"`
-	ActionPolicies []toolActionPolicyEntry `yaml:"action_policies"`
+	ID              string                  `yaml:"id"`
+	Kind            string                  `yaml:"kind"`
+	Protocol        string                  `yaml:"protocol"`
+	Server          string                  `yaml:"server"`
+	Allowlist       []string                `yaml:"allowlist"`
+	Adapters        []string                `yaml:"adapters"`
+	ActionPolicies  []toolActionPolicyEntry `yaml:"action_policies"`
+	AllowedCommands []string                `yaml:"allowed_commands"`
+	MaxArgs         int                     `yaml:"max_args"`
+	DeniedArgTokens []string                `yaml:"denied_arg_tokens"`
 }
 
 type toolActionPolicyEntry struct {
@@ -422,11 +426,14 @@ type toolActionPolicyEntry struct {
 }
 
 type toolCapabilityRule struct {
-	CapabilityID string
-	Protocol     string
-	Adapters     map[string]struct{}
-	AllowTools   map[string]struct{}
-	Actions      []toolActionRule
+	CapabilityID    string
+	Protocol        string
+	Adapters        map[string]struct{}
+	AllowTools      map[string]struct{}
+	Actions         []toolActionRule
+	AllowedCommands map[string]struct{}
+	MaxArgs         int
+	DeniedArgTokens []string
 }
 
 type toolActionRule struct {
@@ -548,12 +555,29 @@ func (t *toolPlanePolicyEngine) loadRulesFromFile() error {
 			})
 		}
 
+		allowedCommands := make(map[string]struct{})
+		for _, cmd := range entry.AllowedCommands {
+			if v := strings.ToLower(strings.TrimSpace(cmd)); v != "" {
+				allowedCommands[v] = struct{}{}
+			}
+		}
+
+		deniedArgTokens := make([]string, 0, len(entry.DeniedArgTokens))
+		for _, tok := range entry.DeniedArgTokens {
+			if tok != "" {
+				deniedArgTokens = append(deniedArgTokens, tok)
+			}
+		}
+
 		rules[capabilityID] = toolCapabilityRule{
-			CapabilityID: capabilityID,
-			Protocol:     protocol,
-			Adapters:     adapterSet,
-			AllowTools:   allowTools,
-			Actions:      actionRules,
+			CapabilityID:    capabilityID,
+			Protocol:        protocol,
+			Adapters:        adapterSet,
+			AllowTools:      allowTools,
+			Actions:         actionRules,
+			AllowedCommands: allowedCommands,
+			MaxArgs:         entry.MaxArgs,
+			DeniedArgTokens: deniedArgTokens,
 		}
 	}
 
@@ -600,6 +624,15 @@ func defaultToolCapabilityRules() map[string]toolCapabilityRule {
 			AllowTools: map[string]struct{}{
 				"bash": struct{}{},
 			},
+			AllowedCommands: map[string]struct{}{
+				"ls":   {},
+				"echo": {},
+				"cat":  {},
+				"grep": {},
+				"bash": {},
+			},
+			MaxArgs:         10,
+			DeniedArgTokens: []string{";", "&&", "||", "|", "$(", "`", ">", "<"},
 			Actions: []toolActionRule{
 				{
 					Action: "tool.execute",
@@ -765,6 +798,42 @@ func (t *toolPlanePolicyEngine) evaluate(req PlaneRequestV2) toolPlaneEvalResult
 		}
 	}
 
+	// CLI protocol adapter: enforce command allowlist, arg count, and denied tokens.
+	if adapter == "cli" {
+		command := strings.TrimSpace(getStringAttr(attrs, "command", ""))
+		if command == "" {
+			resultMetadata["cli_error"] = "command is required for cli protocol"
+			return deny(ReasonToolSchemaInvalid, resultMetadata)
+		}
+		if strings.Contains(command, " ") {
+			resultMetadata["cli_error"] = "command must be a single token (no spaces)"
+			resultMetadata["command"] = command
+			return deny(ReasonToolSchemaInvalid, resultMetadata)
+		}
+		command = strings.ToLower(command)
+		resultMetadata["command"] = command
+
+		args := parseStringSlice(attrs["args"])
+		resultMetadata["args_count"] = len(args)
+
+		if len(rule.AllowedCommands) > 0 {
+			if _, allowed := rule.AllowedCommands[command]; !allowed {
+				resultMetadata["allowed_commands"] = sortedStringSet(rule.AllowedCommands)
+				return deny(ReasonToolCLICommandDenied, resultMetadata)
+			}
+		}
+
+		if rule.MaxArgs > 0 && len(args) > rule.MaxArgs {
+			resultMetadata["max_args"] = rule.MaxArgs
+			return deny(ReasonToolCLIArgsDenied, resultMetadata)
+		}
+
+		if hasDeniedCLIArgToken(args, rule.DeniedArgTokens) {
+			resultMetadata["denied_arg_tokens"] = rule.DeniedArgTokens
+			return deny(ReasonToolCLIArgsDenied, resultMetadata)
+		}
+	}
+
 	matchedAction := false
 	matchedActionAndResource := false
 	for _, actionRule := range rule.Actions {
@@ -852,5 +921,64 @@ func sortStrings(values []string) {
 				values[i], values[j] = values[j], values[i]
 			}
 		}
+	}
+}
+
+// hasDeniedCLIArgToken scans CLI arguments for denied shell-injection tokens.
+// If deniedTokens is empty, the default set is used: ; && || | $( ` > <
+func hasDeniedCLIArgToken(args, deniedTokens []string) bool {
+	tokens := deniedTokens
+	if len(tokens) == 0 {
+		tokens = []string{";", "&&", "||", "|", "$(", "`", ">", "<"}
+	}
+	for _, arg := range args {
+		for _, token := range tokens {
+			if token == "" {
+				continue
+			}
+			if strings.Contains(arg, token) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// parseStringSlice coerces a raw attribute value into a []string.
+// Handles nil, []string, []any, and single string inputs.
+func parseStringSlice(raw any) []string {
+	switch v := raw.(type) {
+	case nil:
+		return nil
+	case []string:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			trimmed := strings.TrimSpace(item)
+			if trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	case []any:
+		out := make([]string, 0, len(v))
+		for _, item := range v {
+			trimmed := strings.TrimSpace(fmt.Sprintf("%v", item))
+			if trimmed != "" {
+				out = append(out, trimmed)
+			}
+		}
+		return out
+	case string:
+		trimmed := strings.TrimSpace(v)
+		if trimmed == "" {
+			return nil
+		}
+		return []string{trimmed}
+	default:
+		trimmed := strings.TrimSpace(fmt.Sprintf("%v", raw))
+		if trimmed == "" {
+			return nil
+		}
+		return []string{trimmed}
 	}
 }
