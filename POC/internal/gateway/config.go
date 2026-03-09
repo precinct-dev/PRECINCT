@@ -92,6 +92,12 @@ type Config struct {
 	// Path to extension registry YAML for pluggable extension slots.
 	// When empty, no extension slots are activated (zero overhead).
 	ExtensionRegistryPath string
+	// UnknownDataSourcePolicy controls behavior when a tool call references an
+	// external data source URI not registered in the tool registry.
+	// Values: "flag" (default, allow + flag), "block" (deny), "allow" (silent).
+	// OC-am3w: Data Source Verification Middleware Logic.
+	UnknownDataSourcePolicy string
+
 	// Explicit SPIFFE identity allowlist for upstream mTLS peer pinning.
 	// When empty in strict profiles, secure defaults are applied.
 	UpstreamAuthzAllowedSPIFFEIDs []string
@@ -351,6 +357,7 @@ func ConfigFromEnv() *Config {
 		ModelPolicyIntentPrependEnabled: modelPolicyIntentPrependEnabled,
 		ProfileMetadataExportPath:       strings.TrimSpace(os.Getenv("PROFILE_METADATA_EXPORT_PATH")),
 		EnforcementControlOverrides:     true,
+		UnknownDataSourcePolicy:         getEnvOrDefault("UNKNOWN_DATA_SOURCE_POLICY", "flag"),
 		ExtensionRegistryPath:           getEnvOrDefault("EXTENSION_REGISTRY_PATH", ""),
 		DemoRugpullAdminEnabled:         demoRugpullAdminEnabled,
 		AdminAuthzAllowedSPIFFEIDs:      adminAuthzAllowedSPIFFEIDs,
