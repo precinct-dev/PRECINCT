@@ -1,14 +1,14 @@
 ---
 id: OC-4zrf
 title: "OPA Policy for Data Source Access Control"
-status: open
+status: in_progress
 priority: 1
 type: task
 labels: [agents-of-chaos, data-source-integrity]
 parent: OC-yrwz
 created_at: 2026-03-08T02:39:03Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:39:03Z
+updated_at: 2026-03-09T01:05:53Z
 content_hash: "sha256:01f79cdd6dadc1d5c523078432c6c85bf81740d61dd305dd7b9e129f2972f490"
 blocked_by: [OC-cqj0]
 related: [OC-am3w]
@@ -126,10 +126,10 @@ None identified
 
 
 ## Notes
-
+COMPLETED: Codebase study -- opa.go, opa_engine.go, existing policies, error_codes, tool_registry.go. IN PROGRESS: Implementation. NEXT: Add DataSourceInput/struct, create policy rego, add EvaluateDataSourcePolicy to OPAEngine, write tests.
 
 ## History
-- 2026-03-08T02:39:30Z dep_added: blocked_by OC-cqj0
+- 2026-03-09T01:05:53Z status: open -> in_progress
 
 ## Links
 - Parent: [[OC-yrwz]]

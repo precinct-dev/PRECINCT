@@ -27,15 +27,23 @@ type OPAEngineConfig struct {
 
 // OPAEngine handles embedded OPA policy evaluation
 type OPAEngine struct {
-	policyDir       string
-	runtimeCfg      OPAEngineConfig
-	query           *rego.PreparedEvalQuery
-	contextQuery    *rego.PreparedEvalQuery  // RFA-xwc: query for mcp.context policy
-	uiPolicyQueries *uiPolicyPreparedQueries // RFA-j2d.7: queries for mcp.ui.policy rules
-	policyCount     int
-	mu              sync.RWMutex
-	watcher         *fsnotify.Watcher
-	stopChan        chan struct{}
+	policyDir            string
+	runtimeCfg           OPAEngineConfig
+	query                *rego.PreparedEvalQuery
+	contextQuery         *rego.PreparedEvalQuery           // RFA-xwc: query for mcp.context policy
+	uiPolicyQueries      *uiPolicyPreparedQueries          // RFA-j2d.7: queries for mcp.ui.policy rules
+	dataSourcePolicyQuery *dataSourcePolicyPreparedQueries  // OC-4zrf: queries for precinct.data_source policy
+	policyCount          int
+	mu                   sync.RWMutex
+	watcher              *fsnotify.Watcher
+	stopChan             chan struct{}
+}
+
+// dataSourcePolicyPreparedQueries holds compiled queries for data source policy rules.
+// OC-4zrf: Each query evaluates a single rule in the precinct.data_source package.
+type dataSourcePolicyPreparedQueries struct {
+	allow rego.PreparedEvalQuery
+	deny  rego.PreparedEvalQuery
 }
 
 // OPAEngineReloadResult captures metadata from a policy reload operation.
@@ -234,11 +242,43 @@ func (e *OPAEngine) loadPolicies() error {
 		}
 	}
 
+	// OC-4zrf: Compile data source policy (precinct.data_source allow/deny rules).
+	// Data source policy is optional -- if the policy file is not present,
+	// EvaluateDataSourcePolicy returns a safe default (deny all).
+	var dsQueries *dataSourcePolicyPreparedQueries
+	dsRules := []struct {
+		name  string
+		query string
+	}{
+		{"allow", "data.precinct.data_source.allow"},
+		{"deny", "data.precinct.data_source.deny"},
+	}
+	compiledDSQueries := make([]rego.PreparedEvalQuery, len(dsRules))
+	dsCompileOK := true
+	for i, rule := range dsRules {
+		ruleOpts := append(regoOpts, rego.Query(rule.query))
+		r := rego.New(ruleOpts...)
+		p, compileErr := r.PrepareForEval(ctx)
+		if compileErr != nil {
+			slog.Warn("failed to compile data source policy rule, using defaults", "rule", rule.name, "error", compileErr)
+			dsCompileOK = false
+			break
+		}
+		compiledDSQueries[i] = p
+	}
+	if dsCompileOK {
+		dsQueries = &dataSourcePolicyPreparedQueries{
+			allow: compiledDSQueries[0],
+			deny:  compiledDSQueries[1],
+		}
+	}
+
 	// Atomically update queries
 	e.mu.Lock()
 	e.query = &prepared
 	e.contextQuery = contextQueryPtr
 	e.uiPolicyQueries = uiQueries
+	e.dataSourcePolicyQuery = dsQueries
 	e.policyCount = 0
 	for _, file := range files {
 		if file.IsDir() {
@@ -437,6 +477,81 @@ func evalBoolRule(ctx context.Context, query *rego.PreparedEvalQuery, opts ...re
 // Satisfied by OPAEngine.
 type UIPolicyEvaluator interface {
 	EvaluateUIPolicy(input UIPolicyInput) (UIPolicyResult, error)
+}
+
+// DataSourcePolicyResult captures the outcome of data source policy evaluation.
+// OC-4zrf: Returned by EvaluateDataSourcePolicy.
+type DataSourcePolicyResult struct {
+	Allowed     bool     // true if the data source access is permitted
+	DenyReasons []string // reasons for denial (from deny[msg] rules)
+}
+
+// DataSourcePolicyEvaluator interface for data source policy evaluation.
+// OC-4zrf: Satisfied by OPAEngine.
+type DataSourcePolicyEvaluator interface {
+	EvaluateDataSourcePolicy(input OPAInput) (DataSourcePolicyResult, error)
+}
+
+// EvaluateDataSourcePolicy evaluates the data source policy (precinct.data_source).
+// OC-4zrf: Returns allow/deny with reasons. Fails closed if policy is not loaded.
+func (e *OPAEngine) EvaluateDataSourcePolicy(input OPAInput) (DataSourcePolicyResult, error) {
+	e.mu.RLock()
+	queries := e.dataSourcePolicyQuery
+	e.mu.RUnlock()
+
+	result := DataSourcePolicyResult{}
+
+	if queries == nil {
+		// Fail closed if no data source policy loaded
+		result.DenyReasons = append(result.DenyReasons, "data_source_policy_not_loaded")
+		return result, nil
+	}
+
+	ctx := context.Background()
+	evalInput := rego.EvalInput(input)
+
+	// Evaluate allow rule
+	allowed, err := evalBoolRule(ctx, &queries.allow, evalInput)
+	if err != nil {
+		slog.Error("OPA data source policy evaluation error", "rule", "allow", "error", err)
+		result.DenyReasons = append(result.DenyReasons, "data_source_policy_evaluation_error")
+		return result, nil
+	}
+
+	// Evaluate deny rules (set of string reasons)
+	denyResults, err := queries.deny.Eval(ctx, evalInput)
+	if err != nil {
+		slog.Error("OPA data source policy evaluation error", "rule", "deny", "error", err)
+		result.DenyReasons = append(result.DenyReasons, "data_source_policy_evaluation_error")
+		return result, nil
+	}
+
+	// Collect deny reasons from the deny[msg] set
+	var denyReasons []string
+	if len(denyResults) > 0 && len(denyResults[0].Expressions) > 0 {
+		switch v := denyResults[0].Expressions[0].Value.(type) {
+		case []interface{}:
+			for _, item := range v {
+				if s, ok := item.(string); ok {
+					denyReasons = append(denyReasons, s)
+				}
+			}
+		}
+	}
+
+	// Decision: allowed if allow==true AND no deny reasons
+	if allowed && len(denyReasons) == 0 {
+		result.Allowed = true
+	} else {
+		result.Allowed = false
+		if len(denyReasons) > 0 {
+			result.DenyReasons = denyReasons
+		} else if !allowed {
+			result.DenyReasons = append(result.DenyReasons, "data_source_access_denied")
+		}
+	}
+
+	return result, nil
 }
 
 // startWatcher starts file system watcher for hot-reload
