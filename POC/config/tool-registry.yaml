@@ -293,3 +293,37 @@ ui_resources:
       dangerous_pattern: false
       script_count: 1
       external_refs: 0
+
+# OC-cqj0: Data Source Integrity Registry
+# Every external data source must be registered with a content hash baseline.
+# The gateway verifies content hashes to detect rug-pull attacks on data sources
+# (Case Study #10 of 'Agents of Chaos', arXiv:2602.20021v1).
+#
+# Data source hash computation:
+# "sha256:" + hex(SHA-256(raw content bytes))
+#
+# mutable_policy values:
+#   "block_on_change" -- block access when content hash changes (default, most secure)
+#   "flag_on_change"  -- allow access but emit critical audit event on hash change
+#   "allow"           -- no hash verification (for truly dynamic content)
+#
+# refresh_ttl: how often the gateway should re-verify the data source content hash.
+
+data_sources:
+  # Example: External knowledge base document
+  - uri: "https://gist.github.com/example/abc123/raw"
+    content_hash: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    approved_at: "2026-03-01T00:00:00Z"
+    approved_by: "spiffe://poc.local/admin/security"
+    max_size_bytes: 1048576
+    mutable_policy: "block_on_change"
+    refresh_ttl: 1h
+
+  # Example: Shared configuration endpoint
+  - uri: "https://config.internal.example.com/agent-policies.json"
+    content_hash: "sha256:a948904f2f0f479b8f8564e9e89dfdd84b6b0e57f32ead2bda6c507b0fc98933"
+    approved_at: "2026-02-15T08:30:00Z"
+    approved_by: "spiffe://poc.local/admin/ops"
+    max_size_bytes: 524288
+    mutable_policy: "flag_on_change"
+    refresh_ttl: 30m
