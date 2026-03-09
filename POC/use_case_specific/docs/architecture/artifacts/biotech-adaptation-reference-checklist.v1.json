@@ -1,0 +1,112 @@
+{
+  "schema_version": "biotech.adaptation.reference.v1",
+  "profile": "small_sensitive_biotech",
+  "k8s_first_baseline": {
+    "required": true,
+    "commands": [
+      "make -C POC -n k8s-up",
+      "make -C POC k8s-validate",
+      "make -C POC k8s-runtime-campaign",
+      "bash POC/tests/e2e/validate_setup_time.sh k8s --dry-run",
+      "bash POC/tests/validate_deployment_patterns.sh"
+    ],
+    "evidence_artifacts": [
+      "docs/architecture/artifacts/k8s-runtime-validation-report.v2.4.json",
+      "docs/architecture/artifacts/compose-backport-decision-ledger.v2.4.json",
+      "docs/compliance/immutable-audit-evidence-path.md"
+    ]
+  },
+  "minimum_architecture_controls": [
+    {
+      "control_id": "INV-01",
+      "name": "verified_workload_identity",
+      "required": true
+    },
+    {
+      "control_id": "INV-02",
+      "name": "policy_before_execution",
+      "required": true
+    },
+    {
+      "control_id": "INV-03",
+      "name": "request_response_dlp",
+      "required": true
+    },
+    {
+      "control_id": "INV-04",
+      "name": "tamper_evident_audit_chain",
+      "required": true
+    },
+    {
+      "control_id": "INV-05",
+      "name": "immutable_audit_retention",
+      "required": true
+    },
+    {
+      "control_id": "INV-06",
+      "name": "secret_non_exposure",
+      "required": true
+    },
+    {
+      "control_id": "INV-07",
+      "name": "stateful_session_risk_controls",
+      "required": true
+    },
+    {
+      "control_id": "INV-08",
+      "name": "tool_registry_integrity",
+      "required": true
+    },
+    {
+      "control_id": "INV-09",
+      "name": "segmentation_and_egress_boundary",
+      "required": true
+    },
+    {
+      "control_id": "INV-10",
+      "name": "runtime_hardening_profile",
+      "required": true
+    },
+    {
+      "control_id": "INV-11",
+      "name": "supply_chain_admission_gate",
+      "required": true
+    },
+    {
+      "control_id": "INV-12",
+      "name": "encryption_in_transit_and_at_rest",
+      "required": true
+    }
+  ],
+  "non_k8s_adaptation_checklist": {
+    "inv_01_to_inv_12_mapped": true,
+    "missing_primitives_have_compensating_controls": true,
+    "runtime_classes_preserved": true,
+    "production_claims_use_k8s_authoritative_evidence": true,
+    "model_egress_remains_governed": true,
+    "signed_image_gates_remain_required": true
+  },
+  "walkthrough_examples": {
+    "positive": {
+      "outcome": "accepted",
+      "reasons": [
+        "k8s production baseline preserved",
+        "non-k8s marked evaluation-only where controls are compose-limited",
+        "compensating controls documented and evidenced"
+      ]
+    },
+    "negative": {
+      "outcome": "rejected",
+      "violated_invariants": [
+        "INV-05",
+        "INV-09",
+        "INV-11"
+      ],
+      "reasons": [
+        "mutable-only audit retention used for production claims",
+        "unrestricted egress introduced",
+        "image-signature admission controls removed"
+      ]
+    }
+  }
+}

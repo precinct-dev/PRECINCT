@@ -1,0 +1,4 @@
+[PASS] managed-cloud prerequisite assets exist
+[PASS] managed-cloud contract doc includes required sections
+[PASS] handoff template structure is valid
+[FAIL] preflight failure must mention MANAGED_K8S_CONTEXT

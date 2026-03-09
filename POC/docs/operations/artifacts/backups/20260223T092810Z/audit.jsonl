@@ -1,0 +1,40 @@
+mcp-security-gateway  | 2026-02-23T09:21:06.090332752Z 2026/02/23 09:21:06 INFO OPA policies loaded successfully policy_dir=/config/opa
+mcp-security-gateway  | 2026-02-23T09:21:06.181127919Z 2026/02/23 09:21:06 INFO SPIKE Nexus mTLS: using client SVID svid_id=spiffe://poc.local/gateways/mcp-security-gateway/dev
+mcp-security-gateway  | 2026-02-23T09:21:06.181165586Z 2026/02/23 09:21:06 INFO SPIKE Nexus: mTLS configured via SPIRE X509Source
+mcp-security-gateway  | 2026-02-23T09:21:06.223796294Z 2026/02/23 09:21:06 WARN SPIKE key fetch attempt failed attempt=1 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:08.228435378Z 2026/02/23 09:21:08 WARN SPIKE key fetch attempt failed attempt=2 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:10.232570629Z 2026/02/23 09:21:10 WARN SPIKE key fetch attempt failed attempt=3 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:12.237698172Z 2026/02/23 09:21:12 WARN SPIKE key fetch attempt failed attempt=4 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:14.239536173Z 2026/02/23 09:21:14 WARN SPIKE key fetch attempt failed attempt=5 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:16.243873674Z 2026/02/23 09:21:16 WARN SPIKE key fetch attempt failed attempt=6 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:18.248525925Z 2026/02/23 09:21:18 WARN SPIKE key fetch attempt failed attempt=7 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:20.256065717Z 2026/02/23 09:21:20 WARN SPIKE key fetch attempt failed attempt=8 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:22.261861552Z 2026/02/23 09:21:22 WARN SPIKE key fetch attempt failed attempt=9 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:24.263921136Z 2026/02/23 09:21:24 WARN SPIKE key fetch attempt failed attempt=10 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:26.266406262Z 2026/02/23 09:21:26 WARN SPIKE key fetch attempt failed attempt=11 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:28.271718846Z 2026/02/23 09:21:28 WARN SPIKE key fetch attempt failed attempt=12 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:30.277418764Z 2026/02/23 09:21:30 WARN SPIKE key fetch attempt failed attempt=13 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:32.287847500Z 2026/02/23 09:21:32 WARN SPIKE key fetch attempt failed attempt=14 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:34.295162668Z 2026/02/23 09:21:34 WARN SPIKE key fetch attempt failed attempt=15 max=15 error="SPIKE Nexus returned status 500: {\"data\":null,\"err\":\"api_internal_error\"}"
+mcp-security-gateway  | 2026-02-23T09:21:34.295230710Z 2026/02/23 09:21:34 WARN failed to load guard model API key from SPIKE after all attempts, falling back to env attempts=15
+mcp-security-gateway  | 2026-02-23T09:21:34.295234460Z 2026/02/23 09:21:34 INFO guard model endpoint switched to real Groq API
+mcp-security-gateway  | 2026-02-23T09:21:34.307845835Z 2026/02/23 09:21:34 INFO destination allowlist loaded path=/config/destinations.yaml entries=10 api.groq.com_allowed=true
+mcp-security-gateway  | 2026-02-23T09:21:34.312758710Z 2026/02/23 09:21:34 WARN tool-registry hot-reload enabled WITHOUT attestation, unsigned updates will be accepted
+mcp-security-gateway  | 2026-02-23T09:21:34.312792085Z 2026/02/23 09:21:34 INFO tool-registry watching for changes path=/config/tool-registry.yaml attestation=DISABLED
+mcp-security-gateway  | 2026-02-23T09:21:34.314464043Z 2026/02/23 09:21:34 INFO extension-registry watching for changes path=/config/extensions-demo.yaml
+mcp-security-gateway  | 2026-02-23T09:21:34.314494335Z 2026/02/23 09:21:34 INFO spiffe mode configured mode=dev
+mcp-security-gateway  | 2026-02-23T09:21:34.314496710Z 2026/02/23 09:21:34 INFO enforcement profile configured profile=dev mediation_gate=true hipaa_prompt_safety_gate=true
+mcp-security-gateway  | 2026-02-23T09:21:34.322236585Z 2026/02/23 09:21:34 {"timestamp":"2026-02-23T09:21:34Z","session_id":"","decision_id":"","trace_id":"","spiffe_id":"","action":"model.provider_catalog.load","result":"status=pass version=v2.0.0 digest=6e6b44b416027e500f7c6c7a5abce4f55787c637058912a55dd2405558dbb9d3 signature_verified=false path=/config/model-provider-catalog.v2.yaml","method":"","path":"","prev_hash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","bundle_digest":"76c0035df71a3e00d871d814638e798e5d1f8b581f44b0577746d96fd3743619","registry_digest":"839592bae946e7a3516f24b8f9586fe6a748550a738f294632db32b9edf033a4"}
+mcp-security-gateway  | 2026-02-23T09:21:34.323862501Z 2026/02/23 09:21:34 Starting PRECINCT Gateway (HTTP) on port 9090
+mcp-security-gateway  | 2026-02-23T09:21:34.323882043Z 2026/02/23 09:21:34 Upstream MCP server: http://mock-mcp-server:8082
+mcp-security-gateway  | 2026-02-23T09:21:34.323953376Z 2026/02/23 09:21:34 OPA policy directory: /config/opa
+mcp-security-gateway  | 2026-02-23T09:27:00.771586833Z 2026/02/23 09:27:00 failed to upload metrics: context deadline exceeded: rpc error: code = DeadlineExceeded desc = context deadline exceeded while waiting for connections to become ready
+mcp-security-gateway  | 2026-02-23T09:27:20.772680676Z 2026/02/23 09:27:20 failed to upload metrics: context deadline exceeded: rpc error: code = DeadlineExceeded desc = context deadline exceeded while waiting for connections to become ready
+mcp-security-gateway  | 2026-02-23T09:27:30.769779375Z 2026/02/23 09:27:30 failed to upload metrics: exporter export timeout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses
+mcp-security-gateway  | 2026-02-23T09:27:40.770734213Z 2026/02/23 09:27:40 failed to upload metrics: exporter export timeout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses
+mcp-security-gateway  | 2026-02-23T09:27:50.769726634Z 2026/02/23 09:27:50 failed to upload metrics: exporter export timeout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses
+mcp-security-gateway  | 2026-02-23T09:28:00.779032125Z 2026/02/23 09:28:00 failed to upload metrics: exporter export timeout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses
+mcp-security-gateway  | 2026-02-23T09:28:10.771798463Z 2026/02/23 09:28:10 failed to upload metrics: exporter export timeout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses
+mcp-security-gateway  | 2026-02-23T09:28:20.779272009Z 2026/02/23 09:28:20 failed to upload metrics: exporter export timeout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses
+mcp-security-gateway  | 2026-02-23T09:28:30.773177291Z 2026/02/23 09:28:30 failed to upload metrics: exporter export timeout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses
+mcp-security-gateway  | 2026-02-23T09:28:40.770719879Z 2026/02/23 09:28:40 failed to upload metrics: exporter export timeout: rpc error: code = Unavailable desc = name resolver error: produced zero addresses

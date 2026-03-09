@@ -1,0 +1,4 @@
+ Container mcp-security-gateway Restarting 
+ Container mcp-security-gateway Started 
+[PASS] OpenClaw incident/rollback drill completed
+[INFO] report: /Users/ramirosalas/workspace/agentic_reference_architecture/POC/docs/operations/artifacts/openclaw-operations-drill-latest.json

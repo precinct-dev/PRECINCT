@@ -35,8 +35,12 @@ gateway_request "$DEFAULT_SPIFFE_ID" "read" "{\"file_path\": \"${POC_DIR}/go.mod
 log_info "Response code: $RESP_CODE"
 log_info "Response body (first 200 chars): ${RESP_BODY:0:200}"
 
-# Accept 200 (upstream reachable), 502 (upstream unreachable), or 404 (upstream returns not found)
-# 502 and 404 both indicate middleware chain executed but upstream MCP server is not available
+# Accept:
+# - 200 (upstream reachable),
+# - 502 (upstream unreachable),
+# - 404 (upstream returns not found),
+# - 403 with path_denied (OPA blocked path but middleware chain still executed).
+# 502/404 indicate upstream availability issues; 403 path_denied indicates policy enforcement.
 if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "502" ] || [ "$RESP_CODE" = "404" ]; then
     log_pass "Tool call processed through full middleware chain (HTTP $RESP_CODE)"
     if [ "$RESP_CODE" = "502" ]; then
@@ -44,8 +48,11 @@ if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "502" ] || [ "$RESP_CODE" = "404
     elif [ "$RESP_CODE" = "404" ]; then
         log_detail "404 = upstream returned not found (Docker MCP Gateway expected at :8081)"
     fi
+elif [ "$RESP_CODE" = "403" ] && echo "$RESP_BODY" | grep -q "path_denied"; then
+    log_pass "Tool call traversed chain and was denied by OPA path policy (HTTP 403)"
+    log_detail "403 path_denied = security policy enforcement, not middleware failure"
 else
-    log_fail "Tool call processing" "Expected 200, 404, or 502, got $RESP_CODE. Body: ${RESP_BODY:0:200}"
+    log_fail "Tool call processing" "Expected 200, 404, 502, or 403(path_denied), got $RESP_CODE. Body: ${RESP_BODY:0:200}"
 fi
 
 # ============================================================

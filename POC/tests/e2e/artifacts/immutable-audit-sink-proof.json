@@ -1,0 +1,23 @@
+{
+  "schema_version": "audit.immutable_sink.v1",
+  "generated_at": "2026-02-13T11:32:23Z",
+  "kustomize_target": "infra/eks/observability",
+  "immutable_sink_verification": {
+    "configmap_present": true,
+    "object_lock_mode": "COMPLIANCE",
+    "retention_days": 90,
+    "hash_chain_enabled": true,
+    "irsa_annotation_present": true,
+    "required_correlation_fields_present": true
+  },
+  "status": "pass",
+  "compose_fallback_boundary": {
+    "immutable_worm_storage_supported": false,
+    "compensating_controls_required": [
+      "hash_chain_verification",
+      "off_host_log_shipping",
+      "restricted_audit_file_permissions",
+      "tamper_evidence_export_attestation"
+    ]
+  }
+}

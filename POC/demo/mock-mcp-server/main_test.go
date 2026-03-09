@@ -250,19 +250,23 @@ func TestToolsList(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected tools array in result")
 	}
-	if len(tools) != 3 {
-		t.Fatalf("Expected 3 tools, got %d", len(tools))
+	if len(tools) != 6 {
+		t.Fatalf("Expected 6 tools, got %d", len(tools))
 	}
 
-	// Verify tool names
-	var toolNames []string
+	// Verify required tool names are present.
+	toolNames := map[string]bool{}
 	for _, tool := range tools {
 		toolMap, _ := tool.(map[string]any)
 		name, _ := toolMap["name"].(string)
-		toolNames = append(toolNames, name)
+		toolNames[name] = true
 	}
-	if toolNames[0] != "tavily_search" || toolNames[1] != "echo" || toolNames[2] != "render-analytics" {
-		t.Errorf("Expected tools [tavily_search, echo, render-analytics], got %v", toolNames)
+
+	required := []string{"tavily_search", "read", "grep", "bash", "echo", "render-analytics"}
+	for _, name := range required {
+		if !toolNames[name] {
+			t.Errorf("Expected tools/list to include %q, got %v", name, toolNames)
+		}
 	}
 }
 

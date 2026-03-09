@@ -1,0 +1,12 @@
+mcp-security-gateway  | 2026-02-22T00:51:44.500139335Z 2026/02/22 00:51:44 INFO OPA policies loaded successfully policy_dir=/config/opa
+mcp-security-gateway  | 2026-02-22T00:51:44.514979002Z 2026/02/22 00:51:44 INFO destination allowlist loaded path=/config/destinations.yaml entries=10 api.groq.com_allowed=true
+mcp-security-gateway  | 2026-02-22T00:51:44.567596418Z 2026/02/22 00:51:44 INFO SPIKE Nexus mTLS: using client SVID svid_id=spiffe://poc.local/gateways/mcp-security-gateway/dev
+mcp-security-gateway  | 2026-02-22T00:51:44.567608252Z 2026/02/22 00:51:44 INFO SPIKE Nexus: mTLS configured via SPIRE X509Source
+mcp-security-gateway  | 2026-02-22T00:51:44.567897960Z 2026/02/22 00:51:44 WARN tool-registry hot-reload enabled WITHOUT attestation, unsigned updates will be accepted
+mcp-security-gateway  | 2026-02-22T00:51:44.567903002Z 2026/02/22 00:51:44 INFO tool-registry watching for changes path=/config/tool-registry.yaml attestation=DISABLED
+mcp-security-gateway  | 2026-02-22T00:51:44.567904335Z 2026/02/22 00:51:44 INFO spiffe mode configured mode=dev
+mcp-security-gateway  | 2026-02-22T00:51:44.567905377Z 2026/02/22 00:51:44 INFO enforcement profile configured profile=dev mediation_gate=true hipaa_prompt_safety_gate=true
+mcp-security-gateway  | 2026-02-22T00:51:44.569809418Z 2026/02/22 00:51:44 {"timestamp":"2026-02-22T00:51:44Z","session_id":"","decision_id":"","trace_id":"","spiffe_id":"","action":"model.provider_catalog.load","result":"status=pass version=v2.0.0 digest=6e6b44b416027e500f7c6c7a5abce4f55787c637058912a55dd2405558dbb9d3 signature_verified=false path=/config/model-provider-catalog.v2.yaml","method":"","path":"","prev_hash":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855","bundle_digest":"76c0035df71a3e00d871d814638e798e5d1f8b581f44b0577746d96fd3743619","registry_digest":"839592bae946e7a3516f24b8f9586fe6a748550a738f294632db32b9edf033a4"}
+mcp-security-gateway  | 2026-02-22T00:51:44.571158585Z 2026/02/22 00:51:44 Starting PRECINCT Gateway (HTTP) on port 9090
+mcp-security-gateway  | 2026-02-22T00:51:44.571166127Z 2026/02/22 00:51:44 Upstream MCP server: http://mock-mcp-server:8082
+mcp-security-gateway  | 2026-02-22T00:51:44.571167627Z 2026/02/22 00:51:44 OPA policy directory: /config/opa

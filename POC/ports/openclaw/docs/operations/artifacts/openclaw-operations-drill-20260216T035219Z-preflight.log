@@ -1,0 +1,10 @@
+[PASS] mcp-security-gateway production-intent image + provenance policy wiring validated
+[PASS] spire-token-generator production-intent image + provenance policy wiring validated
+[PASS] spire-entry-registrar production-intent image + provenance policy wiring validated
+[PASS] spire-agent production-intent image + provenance policy wiring validated
+[PASS] spike-nexus production-intent image + provenance policy wiring validated
+[PASS] spike-keeper-1 production-intent image + provenance policy wiring validated
+[PASS] mock-mcp-server production-intent image + provenance policy wiring validated
+[PASS] mock-guard-model production-intent image + provenance policy wiring validated
+[INFO] Signature verification skipped (set COMPOSE_PROD_VERIFY_SIGNATURE=1 to enforce live cosign checks).
+[PASS] Compose production-intent supply-chain preflight passed

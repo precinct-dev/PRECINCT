@@ -1,0 +1,614 @@
+[36m==> Pre-flight checks[0m
+[32mOK:  All prerequisites found (docker)[0m
+[36m==> Building Go SDK demo image[0m
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 295B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/golang:1.24-alpine
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/alpine:3.21
+#3 DONE 0.0s
+
+#4 [internal] load .dockerignore
+#4 transferring context: 5.36kB done
+#4 DONE 0.0s
+
+#5 [build 1/5] FROM docker.io/library/golang:1.24-alpine
+#5 DONE 0.0s
+
+#6 [stage-1 1/2] FROM docker.io/library/alpine:3.21
+#6 DONE 0.0s
+
+#7 [internal] load build context
+#7 transferring context: 616B 0.0s done
+#7 DONE 0.0s
+
+#8 [build 2/5] WORKDIR /src
+#8 CACHED
+
+#9 [build 4/5] COPY demo/go/ ./
+#9 CACHED
+
+#10 [build 5/5] RUN go mod tidy && go build -o /demo .
+#10 CACHED
+
+#11 [build 3/5] COPY sdk/go/ /sdk/go/
+#11 CACHED
+
+#12 [stage-1 2/2] COPY --from=build /demo /demo
+#12 CACHED
+
+#13 exporting to image
+#13 exporting layers done
+#13 writing image sha256:e734da13fa48517a297173196615a3dd8649fd96dbb40ddcc3df9d0d5cfbf483 done
+#13 naming to docker.io/library/demo-go-sdk done
+#13 DONE 0.0s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/jbao99oxdexenxdwvec0prc71
+[36m==> Building Python SDK demo image[0m
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 320B done
+#1 DONE 0.0s
+
+#2 [internal] load metadata for docker.io/library/python:3.13-slim
+#2 DONE 0.0s
+
+#3 [internal] load .dockerignore
+#3 transferring context: 5.36kB done
+#3 DONE 0.0s
+
+#4 [1/5] FROM docker.io/library/python:3.13-slim
+#4 DONE 0.0s
+
+#5 [internal] load build context
+#5 transferring context: 131.35kB done
+#5 DONE 0.0s
+
+#6 [4/5] COPY sdk/python/mcp_gateway_sdk/ /sdk/python/mcp_gateway_sdk/
+#6 CACHED
+
+#7 [3/5] RUN pip install --no-cache-dir httpx>=0.28.0
+#7 CACHED
+
+#8 [2/5] WORKDIR /app
+#8 CACHED
+
+#9 [5/5] COPY demo/python/demo.py ./demo.py
+#9 CACHED
+
+#10 exporting to image
+#10 exporting layers done
+#10 writing image sha256:cbea4cfc54cc0713ad29078df8724b90f7753c1ce35d89f1a1b76b220265595d done
+#10 naming to docker.io/library/demo-python-sdk done
+#10 DONE 0.0s
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/q2elotudrhd629ezog4ythpnf
+[32mOK:  Demo images built[0m
+[36m==> === Cycle 1 ===[0m
+[36m==> Checking Phoenix observability stack[0m
+[32mOK:  Phoenix stack is running (traces will be collected)[0m
+[36m==> GROQ_API_KEY: not configured (guard model will use mock)[0m
+[36m==> Guard model mode: mock (deterministic)[0m
+[36m==> Resetting SPIKE Nexus state for deterministic compose demo (local-only)[0m
+[36m==> Starting Docker Compose stack[0m
+[PASS] No third-party services use :latest
+[PASS] All third-party services are digest-pinned (@sha256:...)
+[PASS] All compose Dockerfile FROM references are digest-pinned (@sha256:...)
+
+compose-verify: PASS
+Building and starting services (waiting for all health checks)...
+ Image spire-agent-wrapper:latest Building 
+ Image poc-mock-guard-model Building 
+ Image poc-content-scanner Building 
+ Image spike-keeper:latest Building 
+ Image spike-nexus:latest Building 
+ Image mcp-security-gateway:latest Building 
+ Image poc-mock-mcp-server Building 
+ Image spire-token-generator:latest Building 
+ Image poc-spike-bootstrap:latest Building 
+#1 [internal] load local bake definitions
+#1 reading from stdin 5.04kB done
+#1 DONE 0.0s
+
+#2 [mock-mcp-server internal] load build definition from Dockerfile
+#2 transferring dockerfile: 499B done
+#2 DONE 0.0s
+
+#3 [mock-guard-model internal] load build definition from Dockerfile
+#3 transferring dockerfile: 441B done
+#3 DONE 0.0s
+
+#4 [mcp-security-gateway internal] load build definition from Dockerfile.gateway
+#4 transferring dockerfile: 2.06kB done
+#4 DONE 0.0s
+
+#5 [spire-token-generator internal] load build definition from Dockerfile.token-generator
+#5 transferring dockerfile: 667B done
+#5 DONE 0.0s
+
+#6 [spike-keeper-1 internal] load build definition from Dockerfile.spike-keeper
+#6 transferring dockerfile: 1.80kB done
+#6 DONE 0.0s
+
+#7 [spike-nexus internal] load build definition from Dockerfile.spike-nexus
+#7 transferring dockerfile: 1.98kB done
+#7 DONE 0.0s
+
+#8 [content-scanner internal] load build definition from Dockerfile
+#8 transferring dockerfile: 460B done
+#8 DONE 0.0s
+
+#9 [spire-token-generator internal] load metadata for ghcr.io/spiffe/spire-server:1.10.0@sha256:26daa394b3bfbc9dcadc734e9b110ce7ac5f2e1fe16050eb4418772280748b5e
+#9 DONE 0.0s
+
+#10 [spike-bootstrap internal] load build definition from Dockerfile.spike-bootstrap
+#10 transferring dockerfile: 1.77kB done
+#10 DONE 0.0s
+
+#11 [content-scanner internal] load metadata for docker.io/library/alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709
+#11 DONE 0.0s
+
+#12 [content-scanner internal] load metadata for docker.io/library/golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191
+#12 DONE 0.0s
+
+#13 [mcp-security-gateway internal] load metadata for gcr.io/distroless/static-debian12:nonroot@sha256:cba10d7abd3e203428e86f5b2d7fd5eb7d8987c387864ae4996cf97191b33764
+#13 DONE 0.0s
+
+#14 [spike-bootstrap internal] load metadata for ghcr.io/spiffe/spike-bootstrap:0.8.0@sha256:9a726930d6ae8ed67279d0cb19c219f14ebe3c84b30251774eb2b34ce5adc537
+#14 DONE 0.0s
+
+#15 [spike-nexus internal] load metadata for docker.io/library/golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f
+#15 DONE 0.0s
+
+#16 [spire-agent internal] load build definition from Dockerfile.spire-agent
+#16 transferring dockerfile: 696B done
+#16 DONE 0.0s
+
+#17 [mock-mcp-server internal] load .dockerignore
+#17 transferring context: 2B done
+#17 DONE 0.0s
+
+#18 [mcp-security-gateway internal] load .dockerignore
+#18 transferring context: 5.36kB done
+#18 DONE 0.0s
+
+#19 [content-scanner internal] load .dockerignore
+#19 transferring context: 2B done
+#19 DONE 0.0s
+
+#20 [content-scanner build 1/5] FROM docker.io/library/golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191
+#20 DONE 0.0s
+
+#21 [content-scanner stage-1 1/3] FROM docker.io/library/alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709
+#21 DONE 0.0s
+
+#22 [spike-bootstrap stage-1 1/2] FROM ghcr.io/spiffe/spike-bootstrap:0.8.0@sha256:9a726930d6ae8ed67279d0cb19c219f14ebe3c84b30251774eb2b34ce5adc537
+#22 DONE 0.0s
+
+#23 [mcp-security-gateway builder 1/7] FROM docker.io/library/golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f
+#23 DONE 0.0s
+
+#24 [mcp-security-gateway stage-1 1/4] FROM gcr.io/distroless/static-debian12:nonroot@sha256:cba10d7abd3e203428e86f5b2d7fd5eb7d8987c387864ae4996cf97191b33764
+#24 DONE 0.0s
+
+#25 [mock-mcp-server internal] load build context
+#25 transferring context: 54B done
+#25 DONE 0.0s
+
+#26 [content-scanner internal] load build context
+#26 transferring context: 213B done
+#26 DONE 0.0s
+
+#27 [mock-mcp-server build 3/5] COPY go.mod ./
+#27 CACHED
+
+#28 [mock-mcp-server build 4/5] COPY main.go ./
+#28 CACHED
+
+#29 [mock-mcp-server build 5/5] RUN go build -o /mock-mcp-server .
+#29 CACHED
+
+#30 [mock-mcp-server stage-1 3/3] COPY --from=build /mock-mcp-server /mock-mcp-server
+#30 CACHED
+
+#31 [content-scanner stage-1 2/3] RUN adduser -D -u 10001 app
+#31 CACHED
+
+#32 [content-scanner build 4/4] RUN go build -o /out/content-scanner .
+#32 CACHED
+
+#33 [content-scanner build 3/4] COPY . .
+#33 CACHED
+
+#34 [content-scanner build 2/5] WORKDIR /src
+#34 CACHED
+
+#35 [content-scanner stage-1 3/3] COPY --from=build /out/content-scanner /usr/local/bin/content-scanner
+#35 CACHED
+
+#36 [content-scanner] exporting to image
+#36 exporting layers done
+#36 writing image sha256:ff05129c9a34846e9ca94e1e13672f9d76f364092f16e588ec724548e8ee82fa done
+#36 naming to docker.io/library/poc-content-scanner
+#36 naming to docker.io/library/poc-content-scanner done
+#36 DONE 0.0s
+
+#37 [mock-mcp-server] exporting to image
+#37 exporting layers done
+#37 writing image sha256:17d641aee26f85f3b65d6e81a1eaf33e4333a933e937178623e04e0966339e90 done
+#37 naming to docker.io/library/poc-mock-mcp-server done
+#37 DONE 0.0s
+
+#38 [content-scanner] resolving provenance for metadata file
+#38 DONE 0.0s
+
+#39 [mock-mcp-server] resolving provenance for metadata file
+#39 DONE 0.0s
+
+#40 [mcp-security-gateway internal] load build context
+#40 ...
+
+#18 [spire-token-generator internal] load .dockerignore
+#18 transferring context: 5.36kB done
+#18 DONE 0.0s
+
+#23 [mock-guard-model builder 1/7] FROM docker.io/library/golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f
+#23 DONE 0.0s
+
+#41 [spire-token-generator internal] load metadata for docker.io/library/busybox:1.36@sha256:b9598f8c98e24d0ad42c1742c32516772c3aa2151011ebaf639089bd18c605b8
+#41 DONE 0.6s
+
+#42 [spire-token-generator spire 1/1] FROM ghcr.io/spiffe/spire-server:1.10.0@sha256:26daa394b3bfbc9dcadc734e9b110ce7ac5f2e1fe16050eb4418772280748b5e
+#42 DONE 0.0s
+
+#43 [spire-token-generator stage-1 1/4] FROM docker.io/library/busybox:1.36@sha256:b9598f8c98e24d0ad42c1742c32516772c3aa2151011ebaf639089bd18c605b8
+#43 DONE 0.0s
+
+#44 [mock-guard-model internal] load metadata for docker.io/library/alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805
+#44 DONE 0.7s
+
+#45 [mock-guard-model internal] load .dockerignore
+#45 transferring context: 2B done
+#45 DONE 0.0s
+
+#46 [mock-guard-model stage-1 1/3] FROM docker.io/library/alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805
+#46 DONE 0.0s
+
+#47 [mock-guard-model internal] load build context
+#47 transferring context: 84B done
+#47 DONE 0.0s
+
+#48 [mock-guard-model build 2/4] WORKDIR /src
+#48 CACHED
+
+#49 [mock-guard-model build 3/4] COPY . .
+#49 CACHED
+
+#50 [mock-guard-model stage-1 2/3] RUN adduser -D -u 10001 app
+#50 CACHED
+
+#51 [mock-guard-model build 4/4] RUN go build -o /out/mock-guard .
+#51 CACHED
+
+#52 [mock-guard-model stage-1 3/3] COPY --from=build /out/mock-guard /usr/local/bin/mock-guard
+#52 CACHED
+
+#53 [mock-guard-model] exporting to image
+#53 exporting layers done
+#53 writing image sha256:937c413d4bfbd0aa020ae2d0d303dc468dde96c1247573e402a3265b6e1da576 done
+#53 naming to docker.io/library/poc-mock-guard-model done
+#53 DONE 0.0s
+
+#40 [mcp-security-gateway internal] load build context
+#40 ...
+
+#18 [spike-nexus internal] load .dockerignore
+#18 transferring context: 5.36kB done
+#18 DONE 0.0s
+
+#23 [spike-nexus builder 1/7] FROM docker.io/library/golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f
+#23 DONE 0.0s
+
+#54 [spike-keeper-1 internal] load metadata for ghcr.io/spiffe/spike-keeper:0.8.0@sha256:ff6515ee37aabd1ace606a8d95129b716dc7ced2976de5a30dae7dc80f5b2c83
+#54 DONE 0.7s
+
+#55 [spike-nexus internal] load metadata for ghcr.io/spiffe/spike-nexus:0.8.0@sha256:564f32a4952cc0a9a93276f2c6d96f906f1de0085abb01c8d4937ac10519233d
+#55 DONE 0.7s
+
+#56 [spike-keeper-1 stage-1 1/2] FROM ghcr.io/spiffe/spike-keeper:0.8.0@sha256:ff6515ee37aabd1ace606a8d95129b716dc7ced2976de5a30dae7dc80f5b2c83
+#56 DONE 0.0s
+
+#57 [spike-nexus stage-1 1/3] FROM ghcr.io/spiffe/spike-nexus:0.8.0@sha256:564f32a4952cc0a9a93276f2c6d96f906f1de0085abb01c8d4937ac10519233d
+#57 DONE 0.0s
+
+#58 [mock-guard-model] resolving provenance for metadata file
+#58 DONE 0.0s
+
+#40 [spike-nexus internal] load build context
+#40 transferring context: 112.02MB 0.9s done
+#40 DONE 0.9s
+
+#59 [spire-token-generator internal] load build context
+#59 transferring context: 80B 0.2s done
+#59 DONE 0.3s
+
+#60 [spire-token-generator stage-1 2/4] COPY --from=spire /opt/spire/bin/spire-server /opt/spire/bin/spire-server
+#60 CACHED
+
+#61 [spire-token-generator stage-1 3/4] COPY scripts/generate-spire-token.sh /generate-token.sh
+#61 CACHED
+
+#62 [spire-token-generator stage-1 4/4] RUN chmod +x /generate-token.sh
+#62 CACHED
+
+#63 [spire-token-generator] exporting to image
+#63 exporting layers done
+#63 writing image sha256:91768b9486b3c23f0c18cc627426b3e2baacc0638fa9007941a21b169c7c5502 done
+#63 naming to docker.io/library/spire-token-generator:latest done
+#63 DONE 0.0s
+
+#64 [spire-token-generator] resolving provenance for metadata file
+#64 DONE 0.0s
+
+#65 [spike-keeper-1 builder 4/7] COPY go.mod go.sum ./
+#65 CACHED
+
+#66 [spike-keeper-1 builder 3/7] WORKDIR /build
+#66 CACHED
+
+#67 [spike-keeper-1 builder 2/7] RUN apk add --no-cache ca-certificates git
+#67 CACHED
+
+#68 [mcp-security-gateway builder 3/7] WORKDIR /build
+#68 CACHED
+
+#69 [mcp-security-gateway builder 2/7] RUN apk add --no-cache     ca-certificates     git
+#69 CACHED
+
+#70 [mcp-security-gateway builder 4/7] COPY go.mod go.sum ./
+#70 CACHED
+
+#71 [spike-keeper-1 builder 5/7] RUN go mod download && go mod verify
+#71 CACHED
+
+#72 [mcp-security-gateway builder 5/7] RUN go mod download && go mod verify
+#72 CACHED
+
+#73 [spike-keeper-1 builder 6/7] COPY . .
+#73 DONE 0.6s
+
+#18 [spire-agent internal] load .dockerignore
+#18 transferring context: 5.36kB done
+#18 DONE 0.0s
+
+#74 [mcp-security-gateway builder 6/7] COPY . .
+#74 DONE 0.6s
+
+#75 [spire-agent internal] load metadata for ghcr.io/spiffe/spire-agent:1.10.0@sha256:6ce32791b34165305fbdf2fbbf3931fd2163a9c02bdef8fc63833d53ef5572cb
+#75 DONE 1.5s
+
+#76 [spire-agent spire 1/1] FROM ghcr.io/spiffe/spire-agent:1.10.0@sha256:6ce32791b34165305fbdf2fbbf3931fd2163a9c02bdef8fc63833d53ef5572cb
+#76 DONE 0.0s
+
+#43 [spire-agent stage-1 1/5] FROM docker.io/library/busybox:1.36@sha256:b9598f8c98e24d0ad42c1742c32516772c3aa2151011ebaf639089bd18c605b8
+#43 DONE 0.0s
+
+#77 [spire-agent internal] load build context
+#77 transferring context: 1.43kB done
+#77 DONE 0.0s
+
+#78 [spire-agent stage-1 3/5] COPY scripts/spire-agent-wrapper.sh /entrypoint-wrapper.sh
+#78 CACHED
+
+#79 [spire-agent stage-1 2/5] COPY --from=spire /opt/spire/bin/spire-agent /opt/spire/bin/spire-agent
+#79 CACHED
+
+#80 [spire-agent stage-1 4/5] RUN chmod +x /entrypoint-wrapper.sh
+#80 CACHED
+
+#81 [spire-agent stage-1 5/5] WORKDIR /opt/spire
+#81 CACHED
+
+#82 [spire-agent] exporting to image
+#82 exporting layers done
+#82 writing image sha256:7b76ee9d6a78ac622e5d5cc8b1526820b12e1ce7643fbde17cb94a62cdf251f0 done
+#82 naming to docker.io/library/spire-agent-wrapper:latest done
+#82 DONE 0.0s
+
+#83 [spire-agent] resolving provenance for metadata file
+#83 DONE 0.0s
+
+#84 [mcp-security-gateway builder 7/7] RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build     -ldflags="-s -w"     -trimpath     -o /build/gateway     ./cmd/gateway
+#84 ...
+
+#85 [spike-bootstrap builder 7/7] RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build     -ldflags="-s -w"     -trimpath     -o /build/bootstrap-guard     ./cmd/bootstrap-guard
+#85 DONE 3.0s
+
+#86 [spike-keeper-1 builder 7/7] RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build     -ldflags="-s -w"     -trimpath     -o /build/tcp-healthcheck     ./cmd/tcp-healthcheck
+#86 DONE 3.2s
+
+#87 [spike-nexus builder 7/8] RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build     -ldflags="-s -w"     -trimpath     -o /build/mtls-healthcheck     ./cmd/mtls-healthcheck
+#87 ...
+
+#88 [spike-bootstrap stage-1 2/2] COPY --from=builder /build/bootstrap-guard /usr/local/bin/bootstrap-guard
+#88 CACHED
+
+#89 [spike-bootstrap] exporting to image
+#89 exporting layers done
+#89 writing image sha256:ddfa35b6943487d3ff9043bc6533d6438b6e8aea85fd8c9902c5776efd09412c done
+#89 naming to docker.io/library/poc-spike-bootstrap:latest done
+#89 DONE 0.0s
+
+#90 [spike-keeper-1 stage-1 2/2] COPY --from=builder /build/tcp-healthcheck /usr/local/bin/tcp-healthcheck
+#90 CACHED
+
+#91 [spike-bootstrap] resolving provenance for metadata file
+#91 DONE 0.0s
+
+#92 [spike-keeper-1] exporting to image
+#92 exporting layers done
+#92 writing image sha256:2326999e74ddbb03999ef30587c89304d3e47d48b1abfed0fffc6c77ef95e027 done
+#92 naming to docker.io/library/spike-keeper:latest done
+#92 DONE 0.0s
+
+#87 [spike-nexus builder 7/8] RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build     -ldflags="-s -w"     -trimpath     -o /build/mtls-healthcheck     ./cmd/mtls-healthcheck
+#87 ...
+
+#93 [spike-keeper-1] resolving provenance for metadata file
+#93 DONE 0.0s
+
+#84 [mcp-security-gateway builder 7/7] RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build     -ldflags="-s -w"     -trimpath     -o /build/gateway     ./cmd/gateway
+#84 ...
+
+#87 [spike-nexus builder 7/8] RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build     -ldflags="-s -w"     -trimpath     -o /build/mtls-healthcheck     ./cmd/mtls-healthcheck
+#87 DONE 7.5s
+
+#94 [spike-nexus builder 8/8] RUN mkdir -p /spike-data && chown 1000:1000 /spike-data
+#94 DONE 0.3s
+
+#84 [mcp-security-gateway builder 7/7] RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build     -ldflags="-s -w"     -trimpath     -o /build/gateway     ./cmd/gateway
+#84 ...
+
+#95 [spike-nexus stage-1 2/3] COPY --from=builder /build/mtls-healthcheck /usr/local/bin/mtls-healthcheck
+#95 CACHED
+
+#96 [spike-nexus stage-1 3/3] COPY --from=builder --chown=1000:1000 /spike-data /opt/spike/data
+#96 CACHED
+
+#97 [spike-nexus] exporting to image
+#97 exporting layers done
+#97 writing image sha256:c3214c13e2932b988f8379b16b32beafd41ea662022f7c54def855cfa7769862 done
+#97 naming to docker.io/library/spike-nexus:latest done
+#97 DONE 0.0s
+
+#98 [spike-nexus] resolving provenance for metadata file
+#98 DONE 0.0s
+
+#84 [mcp-security-gateway builder 7/7] RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build     -ldflags="-s -w"     -trimpath     -o /build/gateway     ./cmd/gateway
+#84 DONE 9.3s
+
+#99 [mcp-security-gateway stage-1 2/4] WORKDIR /app
+#99 CACHED
+
+#100 [mcp-security-gateway stage-1 3/4] COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+#100 CACHED
+
+#101 [mcp-security-gateway stage-1 4/4] COPY --from=builder /build/gateway /app/gateway
+#101 CACHED
+
+#102 [mcp-security-gateway] exporting to image
+#102 exporting layers done
+#102 writing image sha256:c9f6e244b85efac1ba4609dfc6ba7992f5c24758a2e7d53ecbd9f5762b877dbc done
+#102 naming to docker.io/library/mcp-security-gateway:latest done
+#102 DONE 0.0s
+
+#103 [mcp-security-gateway] resolving provenance for metadata file
+#103 DONE 0.0s
+ Image spire-token-generator:latest Built 
+ Image spire-agent-wrapper:latest Built 
+ Image spike-nexus:latest Built 
+ Image poc-mock-mcp-server Built 
+ Image poc-spike-bootstrap:latest Built 
+ Image mcp-security-gateway:latest Built 
+ Image spike-keeper:latest Built 
+ Image poc-content-scanner Built 
+ Image poc-mock-guard-model Built 
+ Network agentic-security-network Creating 
+ Network agentic-security-network Created 
+ Network agentic-security-data-plane Creating 
+ Network agentic-security-data-plane Created 
+ Network agentic-security-control-plane Creating 
+ Network agentic-security-control-plane Created 
+ Network agentic-security-secrets-plane Creating 
+ Network agentic-security-secrets-plane Created 
+ Network agentic-security-tool-plane Creating 
+ Network agentic-security-tool-plane Created 
+ Volume keydb-certs Creating 
+ Volume keydb-certs Created 
+ Volume spire-agent-socket Creating 
+ Volume spire-agent-socket Created 
+ Volume spire-join-token Creating 
+ Volume spire-join-token Created 
+ Volume spire-server-socket Creating 
+ Volume spire-server-socket Created 
+ Volume spike-nexus-data Creating 
+ Volume spike-nexus-data Created 
+ Volume keydb-data Creating 
+ Volume keydb-data Created 
+time="2026-02-26T07:58:20-08:00" level=warning msg="Found orphan containers ([phoenix otel-collector]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container mock-guard-model Creating 
+ Container keydb Creating 
+ Container content-scanner Creating 
+ Container spire-server Creating 
+ Container mock-mcp-server Creating 
+ Container mock-mcp-server Created 
+ Container content-scanner Created 
+ Container spire-server Created 
+ Container spire-token-generator Creating 
+ Container mock-guard-model Created 
+ Container keydb Created 
+ Container spire-token-generator Created 
+ Container spire-agent Creating 
+ Container spire-agent Created 
+ Container spire-entry-registrar Creating 
+ Container spire-entry-registrar Created 
+ Container spike-keeper-1 Creating 
+ Container spike-keeper-1 Created 
+ Container spike-nexus Creating 
+ Container spike-nexus Created 
+ Container spike-bootstrap Creating 
+ Container spike-bootstrap Created 
+ Container spike-secret-seeder Creating 
+ Container spike-secret-seeder Created 
+ Container mcp-security-gateway Creating 
+ Container mcp-security-gateway Created 
+ Container mock-guard-model Starting 
+ Container keydb Starting 
+ Container content-scanner Starting 
+ Container spire-server Starting 
+ Container mock-mcp-server Starting 
+ Container mock-guard-model Started 
+ Container mock-mcp-server Started 
+ Container spire-server Started 
+ Container spire-server Waiting 
+ Container keydb Started 
+ Container content-scanner Started 
+ Container spire-server Error dependency spire-server failed to start
+dependency failed to start: container spire-server exited (1)
+WARN: docker compose --wait timed out. Checking core service readiness...
+  Not ready: keydb (state=running health=starting)
+  Not ready: mcp-security-gateway (state= health=)
+  Not ready: mock-guard-model (state=running health=starting)
+  Not ready: mock-mcp-server (state=running health=starting)
+  Not ready: spire-server (state= health=)
+  Not ready: spire-agent (state= health=)
+  Not ready: spike-nexus (state= health=)
+  Not ready: spike-keeper-1 (state= health=)
+Attempting gateway-only recovery after compose dependency timeout...
+Waiting up to 60s for core services to become healthy...
+ERROR: Compose startup failed and required services are not ready.
+  Not ready: mcp-security-gateway (state=running health=unhealthy)
+  Not ready: spire-server (state= health=)
+  Not ready: spire-agent (state= health=)
+  Not ready: spike-nexus (state= health=)
+  Not ready: spike-keeper-1 (state= health=)
+NAME                   IMAGE                                                                                   COMMAND                  SERVICE                CREATED              STATUS                          PORTS
+content-scanner        poc-content-scanner                                                                     "/usr/local/bin/cont…"   content-scanner        About a minute ago   Up About a minute (healthy)     8085/tcp
+keydb                  eqalpha/keydb@sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac   "docker-entrypoint.s…"   keydb                  About a minute ago   Up About a minute (healthy)     6379-6380/tcp
+mcp-security-gateway   mcp-security-gateway:latest                                                             "/app/gateway"           mcp-security-gateway   About a minute ago   Up About a minute (unhealthy)   0.0.0.0:9090->9090/tcp, [::]:9090->9090/tcp
+mock-guard-model       poc-mock-guard-model                                                                    "/usr/local/bin/mock…"   mock-guard-model       About a minute ago   Up About a minute (healthy)     8080/tcp
+mock-mcp-server        poc-mock-mcp-server                                                                     "/mock-mcp-server"       mock-mcp-server        About a minute ago   Up About a minute (healthy)     8082/tcp
+otel-collector         otel/opentelemetry-collector-contrib:latest                                             "/otelcol-contrib --…"   otel-collector         3 days ago           Up 3 days                       0.0.0.0:4317-4318->4317-4318/tcp, [::]:4317-4318->4317-4318/tcp, 0.0.0.0:13133->13133/tcp, [::]:13133->13133/tcp
+phoenix                arizephoenix/phoenix:latest                                                             "/usr/bin/python3.11…"   phoenix                3 days ago           Up 3 days (healthy)             0.0.0.0:6006->6006/tcp, [::]:6006->6006/tcp
+make[2]: *** [up] Error 1
+[36m==> Clearing rate-limit keys and restarting gateway[0m
+[36m==> Waiting for gateway health at http://localhost:9090/health (timeout: 60s)[0m
+..............................
+[31mERROR: Gateway did not become healthy within 60s[0m
+make[1]: *** [demo-compose] Error 1

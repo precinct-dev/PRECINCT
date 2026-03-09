@@ -1,0 +1,135 @@
+[INFO] upstream baseline
+main
+5d40d47501c19465761f503ebb12667b83eea84f
+2026-02-16T18:09:49Z refactor(test): reduce dispatch-from-config setup duplication
+[INFO] upstream HTTP surface refs
+docs/gateway/openresponses-http-api.md:11:OpenClaw’s Gateway can serve an OpenResponses-compatible `POST /v1/responses` endpoint.
+docs/gateway/openresponses-http-api.md:15:- `POST /v1/responses`
+docs/gateway/tools-invoke-http-api.md:13:- `POST /tools/invoke`
+docs/gateway/configuration-reference.md:1983:- `gateway.tools.deny`: extra tool names blocked for HTTP `POST /tools/invoke` (extends default deny list).
+src/gateway/tools-invoke-http.test.ts:232:describe("POST /tools/invoke", () => {
+src/gateway/server.impl.ts:135:   * If false, do not serve `POST /v1/responses` (OpenResponses API).
+[INFO] upstream WS surface refs
+src/gateway/server/ws-connection/message-handler.ts:2:import type { WebSocket } from "ws";
+src/gateway/server/ws-connection/message-handler.ts:7:import type { GatewayWsClient } from "../ws-types.js";
+src/gateway/server/ws-connection/message-handler.ts:26:import { rawDataToString } from "../../../infra/ws.js";
+src/gateway/server/ws-connection/message-handler.ts:33:import { authorizeGatewayConnect, isLocalDirectRequest } from "../../auth.js";
+src/gateway/server/ws-connection/message-handler.ts:38:import { checkBrowserOrigin } from "../../origin-check.js";
+src/gateway/server/ws-connection/message-handler.ts:41:  type ConnectParams,
+src/gateway/server/ws-connection/message-handler.ts:47:  validateConnectParams,
+src/gateway/server/ws-connection/message-handler.ts:53:import { formatForLog, logWs } from "../../ws-log.js";
+src/gateway/server/ws-connection/message-handler.ts:57:  getHealthCache,
+src/gateway/server/ws-connection/message-handler.ts:58:  getHealthVersion,
+src/gateway/server/ws-connection/message-handler.ts:60:  refreshGatewayHealthSnapshot,
+src/gateway/server/ws-connection/message-handler.ts:61:} from "../health-state.js";
+src/gateway/server/ws-connection/message-handler.ts:68:export function attachGatewayWsMessageHandler(params: {
+src/gateway/server/ws-connection/message-handler.ts:69:  socket: WebSocket;
+src/gateway/server/ws-connection/message-handler.ts:79:  connectNonce: string;
+src/gateway/server/ws-connection/message-handler.ts:91:  getClient: () => GatewayWsClient | null;
+src/gateway/server/ws-connection/message-handler.ts:92:  setClient: (next: GatewayWsClient) => void;
+src/gateway/server/ws-connection/message-handler.ts:93:  setHandshakeState: (state: "pending" | "connected" | "failed") => void;
+src/gateway/server/ws-connection/message-handler.ts:97:  logHealth: SubsystemLogger;
+src/gateway/server/ws-connection/message-handler.ts:98:  logWsControl: SubsystemLogger;
+src/gateway/server/ws-connection/message-handler.ts:111:    connectNonce,
+src/gateway/server/ws-connection/message-handler.ts:128:    logHealth,
+src/gateway/server/ws-connection/message-handler.ts:129:    logWsControl,
+src/gateway/server/ws-connection/message-handler.ts:137:  // the connection as local. This prevents auth bypass when running behind a reverse
+src/gateway/server/ws-connection/message-handler.ts:138:  // proxy without proper configuration - the proxy's loopback connection would otherwise
+src/gateway/server/ws-connection/message-handler.ts:156:    logWsControl.warn(
+src/gateway/server/ws-connection/message-handler.ts:158:        "Connection will not be treated as local. " +
+src/gateway/server/ws-connection/message-handler.ts:163:    logWsControl.warn(
+src/gateway/server/ws-connection/message-handler.ts:164:      "Loopback connection with non-local Host header. " +
+src/gateway/server/ws-connection/message-handler.ts:170:  const isWebchatConnect = (p: ConnectParams | null | undefined) => isWebchatClient(p?.client);
+src/gateway/server/ws-connection/message-handler.ts:204:        // { type:"req", method:"connect", params: ConnectParams }.
+src/gateway/server/ws-connection/message-handler.ts:208:          parsed.method !== "connect" ||
+src/gateway/server/ws-connection/message-handler.ts:209:          !validateConnectParams(parsed.params)
+src/gateway/server/ws-connection/message-handler.ts:212:            ? parsed.method === "connect"
+src/gateway/server/ws-connection/message-handler.ts:213:              ? `invalid connect params: ${formatValidationErrors(validateConnectParams.errors)}`
+src/gateway/server/ws-connection/message-handler.ts:214:              : "invalid handshake: first request must be connect"
+src/gateway/server/ws-connection/message-handler.ts:232:            logWsControl.warn(
+src/gateway/server/ws-connection/message-handler.ts:246:        const connectParams = frame.params as ConnectParams;
+src/gateway/server/ws-connection/message-handler.ts:247:        const clientLabel = connectParams.client.displayName ?? connectParams.client.id;
+src/gateway/server/ws-connection/message-handler.ts:250:        const { minProtocol, maxProtocol } = connectParams;
+src/gateway/server/ws-connection/message-handler.ts:253:          logWsControl.warn(
+src/gateway/server/ws-connection/message-handler.ts:254:            `protocol mismatch conn=${connId} remote=${remoteAddr ?? "?"} client=${clientLabel} ${connectParams.client.mode} v${connectParams.client.version}`,
+src/gateway/server/ws-connection/message-handler.ts:260:            client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:261:            clientDisplayName: connectParams.client.displayName,
+src/gateway/server/ws-connection/message-handler.ts:262:            mode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:263:            version: connectParams.client.version,
+src/gateway/server/ws-connection/message-handler.ts:277:        const roleRaw = connectParams.role ?? "operator";
+src/gateway/server/ws-connection/message-handler.ts:283:            client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:284:            clientDisplayName: connectParams.client.displayName,
+src/gateway/server/ws-connection/message-handler.ts:285:            mode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:286:            version: connectParams.client.version,
+src/gateway/server/ws-connection/message-handler.ts:300:        let scopes = Array.isArray(connectParams.scopes) ? connectParams.scopes : [];
+src/gateway/server/ws-connection/message-handler.ts:301:        connectParams.role = role;
+src/gateway/server/ws-connection/message-handler.ts:302:        connectParams.scopes = scopes;
+src/gateway/server/ws-connection/message-handler.ts:304:        const isControlUi = connectParams.client.id === GATEWAY_CLIENT_IDS.CONTROL_UI;
+src/gateway/server/ws-connection/message-handler.ts:305:        const isWebchat = isWebchatConnect(connectParams);
+src/gateway/server/ws-connection/message-handler.ts:307:          const originCheck = checkBrowserOrigin({
+src/gateway/server/ws-connection/message-handler.ts:320:              client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:321:              clientDisplayName: connectParams.client.displayName,
+src/gateway/server/ws-connection/message-handler.ts:322:              mode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:323:              version: connectParams.client.version,
+src/gateway/server/ws-connection/message-handler.ts:336:        const deviceRaw = connectParams.device;
+src/gateway/server/ws-connection/message-handler.ts:338:        const hasTokenAuth = Boolean(connectParams.auth?.token);
+src/gateway/server/ws-connection/message-handler.ts:339:        const hasPasswordAuth = Boolean(connectParams.auth?.password);
+src/gateway/server/ws-connection/message-handler.ts:348:        const hasDeviceTokenCandidate = Boolean(connectParams.auth?.token && device);
+src/gateway/server/ws-connection/message-handler.ts:349:        let authResult: GatewayAuthResult = await authorizeGatewayConnect({
+src/gateway/server/ws-connection/message-handler.ts:351:          connectAuth: connectParams.auth,
+src/gateway/server/ws-connection/message-handler.ts:382:          ? await authorizeGatewayConnect({
+src/gateway/server/ws-connection/message-handler.ts:384:              connectAuth: connectParams.auth,
+src/gateway/server/ws-connection/message-handler.ts:397:          logWsControl.warn(
+src/gateway/server/ws-connection/message-handler.ts:398:            `unauthorized conn=${connId} remote=${remoteAddr ?? "?"} client=${clientLabel} ${connectParams.client.mode} v${connectParams.client.version} reason=${failedAuth.reason ?? "unknown"}`,
+src/gateway/server/ws-connection/message-handler.ts:400:          const authProvided: AuthProvidedKind = connectParams.auth?.token
+src/gateway/server/ws-connection/message-handler.ts:402:            : connectParams.auth?.password
+src/gateway/server/ws-connection/message-handler.ts:409:            client: connectParams.client,
+src/gateway/server/ws-connection/message-handler.ts:416:            client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:417:            clientDisplayName: connectParams.client.displayName,
+src/gateway/server/ws-connection/message-handler.ts:418:            mode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:419:            version: connectParams.client.version,
+src/gateway/server/ws-connection/message-handler.ts:432:            connectParams.scopes = scopes;
+src/gateway/server/ws-connection/message-handler.ts:440:              client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:441:              clientDisplayName: connectParams.client.displayName,
+src/gateway/server/ws-connection/message-handler.ts:442:              mode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:443:              version: connectParams.client.version,
+src/gateway/server/ws-connection/message-handler.ts:455:          // Allow shared-secret authenticated connections (e.g., control-ui) to skip device identity
+src/gateway/server/ws-connection/message-handler.ts:463:              client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:464:              clientDisplayName: connectParams.client.displayName,
+src/gateway/server/ws-connection/message-handler.ts:465:              mode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:466:              version: connectParams.client.version,
+src/gateway/server/ws-connection/message-handler.ts:484:              client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:504:              client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:522:              client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:534:          if (providedNonce && providedNonce !== connectNonce) {
+src/gateway/server/ws-connection/message-handler.ts:538:              client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:552:            clientId: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:553:            clientMode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:557:            token: connectParams.auth?.token ?? null,
+src/gateway/server/ws-connection/message-handler.ts:565:              client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:581:              clientId: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:582:              clientMode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:586:              token: connectParams.auth?.token ?? null,
+src/gateway/server/ws-connection/message-handler.ts:604:              client: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:618:        if (!authOk && connectParams.auth?.token && device) {
+src/gateway/server/ws-connection/message-handler.ts:633:              token: connectParams.auth.token,
+src/gateway/server/ws-connection/message-handler.ts:658:              displayName: connectParams.client.displayName,
+src/gateway/server/ws-connection/message-handler.ts:659:              platform: connectParams.client.platform,
+src/gateway/server/ws-connection/message-handler.ts:660:              clientId: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:661:              clientMode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:752:              displayName: connectParams.client.displayName,
+src/gateway/server/ws-connection/message-handler.ts:753:              platform: connectParams.client.platform,
+src/gateway/server/ws-connection/message-handler.ts:754:              clientId: connectParams.client.id,
+src/gateway/server/ws-connection/message-handler.ts:755:              clientMode: connectParams.client.mode,
+src/gateway/server/ws-connection/message-handler.ts:770:            platform: connectParams.client.platform,
+src/gateway/server/ws-connection/message-handler.ts:771:            deviceFamily: connectParams.client.deviceFamily,
+src/gateway/server/ws-connection/message-handler.ts:773:          const declared = Array.isArray(connectParams.commands) ? connectParams.commands : [];
+src/gateway/server/ws-connection/message-handler.ts:777:          connectParams.commands = filtered;
+src/gateway/server/ws-connection/message-handler.ts:780:        const shouldTrackPresence = !isGatewayCliClient(connectParams.client);
+src/gateway/server/ws-connection/message-handler.ts:781:        const clientId = connectParams.client.id;
+src/gateway/server/ws-connection/message-handler.ts:782:        const instanceId = connectParams.client.instanceId;
+src/gateway/server/ws-connection/message-handler.ts:785:        logWs("in", "connect", {
+src/gateway/server/ws-connection/message-handler.ts:787:          client: connectParams.client.id,
+[INFO] wrapper compatibility docs
+docs/architecture/openclaw-ws-compatibility-matrix-2026-02-16.md:1:# OpenClaw WS Compatibility Matrix (2026-02-16)
+docs/architecture/openclaw-http-compatibility-matrix-2026-02-16.md:1:# OpenClaw HTTP Compatibility Matrix (2026-02-16)

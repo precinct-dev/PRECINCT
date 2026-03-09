@@ -1,0 +1,6 @@
+[PASS] required documents exist
+[PASS] playbook includes required sections
+[PASS] tradeoff matrix and invariants are explicit
+[PASS] compose and k8s validation gates are documented
+[PASS] cross-document links to playbook are present
+[PASS] App integration strategy docs validation passed

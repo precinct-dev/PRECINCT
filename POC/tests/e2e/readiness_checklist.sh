@@ -29,19 +29,19 @@ fi
 # 1c. SPIRE entries exist for gateway and agents
 SPIRE_ENTRIES=$(docker compose exec -T spire-server /opt/spire/bin/spire-server entry show 2>/dev/null || echo "")
 
-if echo "$SPIRE_ENTRIES" | grep -q "mcp-security-gateway"; then
+if [[ "$SPIRE_ENTRIES" == *"mcp-security-gateway"* ]]; then
     log_pass "SPIRE entry exists for mcp-security-gateway"
 else
     log_fail "SPIRE gateway entry" "No SPIRE entry found for mcp-security-gateway"
 fi
 
-if echo "$SPIRE_ENTRIES" | grep -q "dspy-researcher"; then
+if [[ "$SPIRE_ENTRIES" == *"dspy-researcher"* ]]; then
     log_pass "SPIRE entry exists for dspy-researcher agent"
 else
     log_fail "SPIRE agent entry (dspy)" "No SPIRE entry found for dspy-researcher"
 fi
 
-if echo "$SPIRE_ENTRIES" | grep -q "pydantic-researcher"; then
+if [[ "$SPIRE_ENTRIES" == *"pydantic-researcher"* ]]; then
     log_pass "SPIRE entry exists for pydantic-researcher agent"
 else
     log_fail "SPIRE agent entry (pydantic)" "No SPIRE entry found for pydantic-researcher"

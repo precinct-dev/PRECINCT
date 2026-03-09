@@ -1,0 +1,49 @@
+
+[1m=========================================[0m
+[1m  Section 10.13.1 -- Local Readiness Checklist[0m
+[1m=========================================[0m
+
+[0;36m--- 1. Identity (SPIFFE/SPIRE) ---[0m
+  [[0;32mPASS[0m] SPIRE server is running and healthy
+  [[0;32mPASS[0m] SPIRE agent is running and healthy
+  [[0;32mPASS[0m] SPIRE entry exists for mcp-security-gateway
+  [[0;32mPASS[0m] SPIRE entry exists for dspy-researcher agent
+  [[0;32mPASS[0m] SPIRE entry exists for pydantic-researcher agent
+  [[0;32mPASS[0m] Agent SPIFFE ID appears in audit log
+         SPIFFE ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
+[0;36m--- 2. Policy (OPA) ---[0m
+  [[0;32mPASS[0m] Gateway is healthy (OPA embedded, policies loaded)
+  [[0;32mPASS[0m] OPA decision_id appears in gateway logs
+         Sample decision_id: 7a3341c0-1af9-440c-acd4-47a51a809596
+  [[0;32mPASS[0m] Unauthorized tool call denied with HTTP 403
+         Response: {"code":"authz_policy_denied","message":"Policy denied: tool_not_authorized","middleware":"opa_policy","middleware_step":6,"decision_id":"ef001069-c949-458e-99e8-4f0db69413de","trace_id":"df9c87f7145b7939283be04984c445d0","details":{"reason":"tool_not_authorized"},"remediation":"Check that the SPIFFE ID has a grant for the requested tool and path."}
+[0;36m--- 3. Tool Integrity (Registry Hash Verification) ---[0m
+  [[0;36mINFO[0m] Valid tool call response code: 403
+  [[0;32mPASS[0m] Tool hash mismatch blocked (HTTP 403)
+         Response: {"code":"registry_hash_mismatch","message":"Tool not authorized: hash_mismatch","middleware":"tool_registry_verify","middleware_step":5,"decision_id":"fa66fdca-1f39-4d50-8266-ebcbcc546ec0","trace_id":"bd03641e469bacc8266761a6d0aa1284","details":{"alert_level":"warning","reason":"hash_mismatch","tool":"read"},"remediation":"Verify the tool is registered and its hash matches the registry."}
+[0;36m--- 4. Secrets (SPIKE Token Substitution) ---[0m
+  [[0;36mINFO[0m] SPIKE token request response code: 200
+  [[0;32mPASS[0m] SPIKE token format accepted by gateway (not rejected as invalid)
+         Token substitution happens at step 13 (last before proxy)
+  [[0;36mINFO[0m] Note: Full token substitution E2E requires upstream MCP server (Docker MCP Gateway)
+[0;36m--- 5. Audit (Structured Events + Hash Chain) ---[0m
+  [[0;32mPASS[0m] Audit events contain session_id
+         Sample session_id: 92c65af1-4403-40ab-ac53-5f79477ea8af
+  [[0;32mPASS[0m] Audit events contain trace_id
+         Sample trace_id: b232d924-e027-4b0d-ba6f-0b6b9b328b09
+  [[0;32mPASS[0m] Audit events contain prev_hash (hash chain integrity)
+         Sample prev_hash: 254294dc1debecd2dc192902cb011876...
+  [[0;32mPASS[0m] Audit events contain bundle_digest
+  [[0;32mPASS[0m] Audit events contain registry_digest
+
+
+[1m=========================================[0m
+[1m  Results Summary[0m
+[1m=========================================[0m
+
+  Total checks: 16
+  [0;32mPASS[0m: 16
+  [0;31mFAIL[0m: 0
+  [1;33mSKIP[0m: 0
+
+[0;32mAll checks passed.[0m

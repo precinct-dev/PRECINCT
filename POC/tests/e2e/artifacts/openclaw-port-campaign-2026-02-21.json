@@ -1,0 +1,24 @@
+{
+  "campaign_id": "openclaw-port-validation-2026-02-21",
+  "executed_at": "2026-03-01T19:51:26Z",
+  "log_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/tests/e2e/artifacts/openclaw-port-campaign-2026-02-21.log",
+  "checks": [
+    {
+      "name": "openclaw_port_unit_suite",
+      "status": "pass",
+      "duration_seconds": 3,
+      "command": "go test ./ports/openclaw/... -count=1"
+    },
+    {
+      "name": "openclaw_e2e_walking_skeleton",
+      "status": "pass",
+      "duration_seconds": 8,
+      "command": "bash ports/openclaw/tests/e2e/scenario_j_openclaw_walking_skeleton.sh"
+    }
+  ],
+  "summary": {
+    "total": 2,
+    "pass": 2,
+    "fail": 0
+  }
+}

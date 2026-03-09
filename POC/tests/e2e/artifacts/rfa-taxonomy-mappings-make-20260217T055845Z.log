@@ -1,0 +1,6 @@
+[PASS] mapping docs and artifacts exist
+[PASS] mapping schemas are valid
+[PASS] required signal key coverage is complete for MITRE and OWASP catalogs
+[PASS] identifier formats are valid (MITRE AML.Txxxx, OWASP ASIxx)
+[PASS] mapping matrix doc includes all required signal keys
+[PASS] Framework taxonomy mapping validation passed

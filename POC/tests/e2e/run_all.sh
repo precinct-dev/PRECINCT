@@ -7,6 +7,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # Colors
 RED='\033[0;31m'
@@ -16,22 +17,38 @@ CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
-echo ""
-echo -e "${BOLD}################################################################${NC}"
-echo -e "${BOLD}  RFA-70p: Final E2E Validation -- POC Docker Compose${NC}"
-echo -e "${BOLD}  Full 13-Middleware Chain Capstone Test${NC}"
-echo -e "${BOLD}################################################################${NC}"
-echo ""
-echo "Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-echo "Branch: $(git branch --show-current 2>/dev/null || echo 'unknown')"
-echo "Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
-echo ""
-
 # Track overall results
 TOTAL_PASS=0
 TOTAL_FAIL=0
 TOTAL_SKIP=0
 declare -a SCENARIO_RESULTS
+
+gateway_healthy() {
+    local state health
+    state=$(docker compose -f "${PROJECT_ROOT}/docker-compose.yml" ps --format '{{.State}}' mcp-security-gateway 2>/dev/null || true)
+    health=$(docker compose -f "${PROJECT_ROOT}/docker-compose.yml" ps --format '{{.Health}}' mcp-security-gateway 2>/dev/null || true)
+    [ "$state" = "running" ] && { [ -z "$health" ] || [ "$health" = "healthy" ]; }
+}
+
+ensure_stack_ready() {
+    if gateway_healthy; then
+        echo -e "${GREEN}E2E preflight: gateway is already running.${NC}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}E2E preflight: gateway not running, starting compose stack via make up...${NC}"
+    if ! make -C "${PROJECT_ROOT}" up; then
+        echo -e "${RED}E2E preflight failed: make up returned non-zero.${NC}"
+        return 1
+    fi
+
+    if ! gateway_healthy; then
+        echo -e "${RED}E2E preflight failed: gateway is still not healthy after make up.${NC}"
+        return 1
+    fi
+
+    echo -e "${GREEN}E2E preflight: compose stack is ready.${NC}"
+}
 
 run_scenario() {
     local name="$1"
@@ -75,6 +92,19 @@ run_scenario() {
     fi
 }
 
+echo ""
+echo -e "${BOLD}################################################################${NC}"
+echo -e "${BOLD}  RFA-70p: Final E2E Validation -- POC Docker Compose${NC}"
+echo -e "${BOLD}  Full 13-Middleware Chain Capstone Test${NC}"
+echo -e "${BOLD}################################################################${NC}"
+echo ""
+echo "Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+echo "Branch: $(git branch --show-current 2>/dev/null || echo 'unknown')"
+echo "Commit: $(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')"
+echo ""
+
+ensure_stack_ready || exit 1
+
 # ================================================================
 # Run all scenarios
 # ================================================================
@@ -84,6 +114,8 @@ run_scenario "Scenario B: Security Denial" "${SCRIPT_DIR}/scenario_b_security_de
 run_scenario "Scenario C: Exfiltration Detection" "${SCRIPT_DIR}/scenario_c_exfiltration.sh"
 run_scenario "Scenario D: Tool Poisoning" "${SCRIPT_DIR}/scenario_d_tool_poisoning.sh"
 run_scenario "Scenario E: DLP Detection" "${SCRIPT_DIR}/scenario_e_dlp.sh"
+run_scenario "Scenario F: Phase 3 Multi-Plane" "${SCRIPT_DIR}/scenario_f_phase3_planes.sh"
+run_scenario "Scenario G: Model Egress SPIKE Reference" "${SCRIPT_DIR}/scenario_g_model_egress_ref.sh"
 run_scenario "Section 10.13.1 Readiness Checklist" "${SCRIPT_DIR}/readiness_checklist.sh"
 run_scenario "Full 13-Middleware Chain" "${SCRIPT_DIR}/middleware_chain_verify.sh"
 run_scenario "Scenario SPIKE Nexus: Late-Binding Secrets" "${SCRIPT_DIR}/scenario_spike_nexus.sh"

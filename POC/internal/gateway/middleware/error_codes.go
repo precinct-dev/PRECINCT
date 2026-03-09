@@ -59,4 +59,7 @@ const (
 
 	// MCP Request Validation -- 400 Bad Request
 	ErrMCPInvalidRequest = "mcp_invalid_request"
+
+	// UASGS Phase 3 contract validation -- 400 Bad Request
+	ErrContractValidationFailed = "contract_validation_failed"
 )

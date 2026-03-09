@@ -1,0 +1,30 @@
+{
+  "scenario": "scenario_f_phase3_planes",
+  "run_id": "phase3-compose-1771277799",
+  "session_id": "phase3-compose-session-phase3-compose-1771277799",
+  "generated_at_utc": "2026-02-16T21:36:39Z",
+  "enforcement_profile": {
+    "name": "dev",
+    "mediation_gate": "true",
+    "hipaa_prompt_safety_gate": "true"
+  },
+  "decisions": [
+    {"plane":"model","path":"profile_mediation_deny","status_code":403,"reason_code":"MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED","decision_id":"","trace_id":""},
+    {"plane":"ingress","path":"allow","status_code":200,"reason_code":"INGRESS_ALLOW","decision_id":"33ef820a-5247-46e2-b80e-59d68f8b595d","trace_id":"d1a74b79-a75b-4619-9029-6731497b452c"},
+    {"plane":"ingress","path":"replay_deny","status_code":409,"reason_code":"INGRESS_REPLAY_DETECTED","decision_id":"a16fff9f-22a9-4560-85b2-d5970e35fceb","trace_id":"2e3783d3-e135-407f-a45f-288ab9d42534"},
+    {"plane":"ingress","path":"stale_deny","status_code":403,"reason_code":"INGRESS_FRESHNESS_STALE","decision_id":"2600d108-bf8a-474a-877a-498650837f92","trace_id":"5d5dc9e4-ac60-4de2-9de8-b0ad277cdeb3"},
+    {"plane":"ingress","path":"deny","status_code":403,"reason_code":"INGRESS_SOURCE_UNAUTHENTICATED","decision_id":"e0c71186-5612-42de-ac98-18fca89e038e","trace_id":"a532f6da-befd-470d-a8ea-aa954c384d1b"},
+    {"plane":"context","path":"allow","status_code":200,"reason_code":"CONTEXT_ALLOW","decision_id":"2975491c-7233-4e4d-a68c-2bc721e5b38e","trace_id":"e907b53c-036a-4d62-a570-330a4ab674be"},
+    {"plane":"context","path":"deny","status_code":403,"reason_code":"CONTEXT_NO_SCAN_NO_SEND","decision_id":"d3d8ff9c-b9f9-4e7e-9faf-06a4fdce0a19","trace_id":"d3387efc-19dd-42eb-9326-757210e8ae10"},
+    {"plane":"model","path":"allow","status_code":200,"reason_code":"MODEL_ALLOW","decision_id":"934426a7-c329-4eb7-906e-acb3b539cd66","trace_id":"22bcd595-ec15-4f9e-8294-1d831cc763a5"},
+    {"plane":"model","path":"deny","status_code":403,"reason_code":"PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED","decision_id":"d1133304-5e6b-4089-8450-6f8769dbc8b1","trace_id":"43c5143a-5d1d-41da-a1d3-8518a580eac7"},
+    {"plane":"tool","path":"allow","status_code":200,"reason_code":"TOOL_ALLOW","decision_id":"82979637-6c8c-4f40-9693-554dee610b03","trace_id":"0edce70d-88b5-4795-8a14-fc4b88db8ef2"},
+    {"plane":"tool","path":"deny","status_code":403,"reason_code":"TOOL_CAPABILITY_DENIED","decision_id":"b5864214-82dc-4622-b9d9-f2635e971aff","trace_id":"129ba5e9-e91a-4118-9279-944c236d7f9f"},
+    {"plane":"loop","path":"allow","status_code":200,"reason_code":"LOOP_ALLOW","decision_id":"b97517e1-9028-44ce-a4bb-6c19142437df","trace_id":"9e6eabab-b6ee-4e71-bfbf-d521a3297921"},
+    {"plane":"loop","path":"deny","status_code":429,"reason_code":"LOOP_HALT_MAX_STEPS","decision_id":"0d330af6-f4ea-436e-ad80-f63ebdb2de67","trace_id":"5372232e-8080-4fce-b4d8-9a7be476d4eb"},
+    {"plane":"loop","path":"deny_tool_calls","status_code":429,"reason_code":"LOOP_HALT_MAX_TOOL_CALLS","decision_id":"20c4b3c2-9b8d-49b4-b9ff-b74a6ebc6b8c","trace_id":"d9745084-486b-4674-9681-e2962cfc9390"},
+    {"plane":"loop","path":"deny_risk","status_code":429,"reason_code":"LOOP_HALT_MAX_RISK_SCORE","decision_id":"b13ac799-1f0d-48a5-bc5a-a73546787b2a","trace_id":"0c14da88-f093-436a-9646-0cca00a60aab"}
+  ],
+  "connector_conformance_report_decision_id": "e0c71186-5612-42de-ac98-18fca89e038e"
+  ,"ruleops_active_decision_id": "75541b57-c4be-4ed7-8464-a420726fe0bb"
+}

@@ -1,0 +1,7 @@
+[PASS] Using compose log: tests/e2e/artifacts/rfa-02lt-demo-compose-20260216T213319Z.log
+[PASS] Using k8s log: tests/e2e/artifacts/rfa-5i2u-1-demo-k8s-20260217T003817Z.log
+[PASS] Strict-mode fail-closed timeout guards present in Go and Python demos
+[PASS] Compose case26 stays on strict path (no non-strict timeout variance marker)
+[PASS] compose case26 parity verified (Go PASS=2, Python PASS=2)
+[PASS] k8s case26 parity verified (Go PASS=2, Python PASS=2)
+[PASS] Gateway bypass case26 conformance validation passed

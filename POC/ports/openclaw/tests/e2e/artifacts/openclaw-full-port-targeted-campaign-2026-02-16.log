@@ -1,0 +1,7 @@
+[PASS] required_integration_suite (3s)
+[PASS] openclaw_gateway_unit_suite (3s)
+[PASS] openclaw_parser_unit_suite (0s)
+[PASS] openclaw_integration_authz_audit_suite (3s)
+
+Campaign log: /Users/ramirosalas/workspace/agentic_reference_architecture/POC/tests/e2e/artifacts/openclaw-port-campaign-2026-02-16.log
+Campaign JSON: /Users/ramirosalas/workspace/agentic_reference_architecture/POC/tests/e2e/artifacts/openclaw-port-campaign-2026-02-16.json

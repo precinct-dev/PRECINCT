@@ -1,0 +1,15 @@
+[PASS] mapping docs and artifacts exist
+[PASS] mapping schemas are valid
+[PASS] required signal key coverage is complete for MITRE and OWASP catalogs
+[PASS] identifier formats are valid (MITRE AML.Txxxx, OWASP ASIxx)
+tests/e2e/validate_framework_taxonomy_mappings.sh: line 67: availability.rate_limited: command not found
+tests/e2e/validate_framework_taxonomy_mappings.sh: line 67: content.blocked: command not found
+tests/e2e/validate_framework_taxonomy_mappings.sh: line 67: data.pii_detected: command not found
+tests/e2e/validate_framework_taxonomy_mappings.sh: line 67: policy.authorization_denied: command not found
+tests/e2e/validate_framework_taxonomy_mappings.sh: line 67: policy.step_up_blocked: command not found
+tests/e2e/validate_framework_taxonomy_mappings.sh: line 67: prompt.injection_blocked: command not found
+tests/e2e/validate_framework_taxonomy_mappings.sh: line 67: prompt.injection_detected: command not found
+tests/e2e/validate_framework_taxonomy_mappings.sh: line 67: prompt.jailbreak_detected: command not found
+tests/e2e/validate_framework_taxonomy_mappings.sh: line 67: tool.hash_unverified: command not found
+[PASS] mapping matrix doc includes all required signal keys
+[PASS] Framework taxonomy mapping validation passed

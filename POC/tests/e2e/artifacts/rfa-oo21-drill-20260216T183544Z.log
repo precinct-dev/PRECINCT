@@ -1,0 +1,3 @@
+ Container mcp-security-gateway Restarting 
+ Container mcp-security-gateway Started 
+[FAIL] gateway did not recover after restart containment

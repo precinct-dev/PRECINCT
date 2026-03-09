@@ -25,6 +25,10 @@ type GatewayError struct {
 	// Message is the human-readable error description.
 	Message string `json:"message"`
 
+	// ReasonCode is an optional policy reason taxonomy value surfaced by
+	// Phase 3 control-plane denials (e.g. prompt safety reasons).
+	ReasonCode string `json:"reason_code,omitempty"`
+
 	// Middleware identifies which middleware layer rejected the request.
 	Middleware string `json:"middleware"`
 

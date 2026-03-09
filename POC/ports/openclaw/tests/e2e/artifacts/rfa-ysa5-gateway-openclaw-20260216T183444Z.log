@@ -1,0 +1,3 @@
+ok  	github.com/example/agentic-security-poc/internal/gateway	1.410s
+ok  	github.com/example/agentic-security-poc/internal/gateway/mcpclient	0.538s [no tests to run]
+ok  	github.com/example/agentic-security-poc/internal/gateway/middleware	1.465s [no tests to run]

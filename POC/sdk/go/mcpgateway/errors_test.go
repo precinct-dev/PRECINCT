@@ -48,7 +48,8 @@ func TestGatewayError_JSONSerialization(t *testing.T) {
 	ge := &GatewayError{
 		Code:        "dlp_credentials_detected",
 		Message:     "Credentials found in request",
-		Middleware:   "dlp",
+		ReasonCode:  "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED",
+		Middleware:  "dlp",
 		Step:        7,
 		DecisionID:  "dec-123",
 		TraceID:     "trace-456",
@@ -72,7 +73,8 @@ func TestGatewayError_JSONSerialization(t *testing.T) {
 	checks := map[string]any{
 		"code":            "dlp_credentials_detected",
 		"message":         "Credentials found in request",
-		"middleware":       "dlp",
+		"reason_code":     "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED",
+		"middleware":      "dlp",
 		"middleware_step": float64(7),
 		"decision_id":     "dec-123",
 		"trace_id":        "trace-456",
@@ -110,6 +112,7 @@ func TestGatewayError_JSONDeserialization(t *testing.T) {
 	raw := `{
 		"code": "authz_policy_denied",
 		"message": "OPA policy denied access",
+		"reason_code": "PROMPT_SAFETY_OVERRIDE_APPROVAL_REQUIRED",
 		"middleware": "opa",
 		"middleware_step": 6,
 		"decision_id": "dec-789",
@@ -129,6 +132,9 @@ func TestGatewayError_JSONDeserialization(t *testing.T) {
 	}
 	if ge.Message != "OPA policy denied access" {
 		t.Errorf("Message = %q, want %q", ge.Message, "OPA policy denied access")
+	}
+	if ge.ReasonCode != "PROMPT_SAFETY_OVERRIDE_APPROVAL_REQUIRED" {
+		t.Errorf("ReasonCode = %q, want %q", ge.ReasonCode, "PROMPT_SAFETY_OVERRIDE_APPROVAL_REQUIRED")
 	}
 	if ge.Middleware != "opa" {
 		t.Errorf("Middleware = %q, want %q", ge.Middleware, "opa")

@@ -1,0 +1,23 @@
+[INFO] Validate decision artifact references and story dependencies
+[INFO] UTC now: 2026-02-16T18:57:11Z
+[PASS] artifact exists: tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log
+[PASS] artifact exists: tests/e2e/artifacts/rfa-t1hb-openclaw-campaign-20260216T185105Z.log
+[PASS] artifact exists: tests/e2e/artifacts/rfa-t1hb-readiness-state-20260216T185105Z.log
+[PASS] artifact exists: docs/security/openclaw-full-port-execution-2026-02-16.md
+[PASS] artifact exists: docs/security/openclaw-port-comparative-2026-02-16.md
+[PASS] artifact exists: docs/security/openclaw-framework-closure-reassessment-2026-02-16.md
+[PASS] artifact exists: docs/security/openclaw-latest-source-final-decision-2026-02-16.md
+[PASS] artifact exists: docs/security/artifacts/openclaw-latest-source-final-decision-2026-02-16.json
+[PASS] final decision json parses
+[PASS] RFA-pnxr is closed+accepted
+[PASS] RFA-ysa5 is closed+accepted
+[PASS] RFA-oo21 is closed+accepted
+[PASS] RFA-t1hb is closed+accepted
+
+🌲 Dependency tree for RFA-6w26:
+
+RFA-6w26: OpenClaw latest-source secure-port refresh (baseline 5d40d475) [P0] (open) [READY]
+    └── RFA-l6h6.5: RFA-v24 Use-Case Integration Hardening [P1] (open)
+        └── RFA-l6h6: RFA-v24 Production Closure Program (K8s-first, portable invariants) [P0] (open)
+
+[PASS] dependency tree rendered

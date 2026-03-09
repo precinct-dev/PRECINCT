@@ -1,0 +1,4 @@
+[PASS] signature prerequisite docs and preflight script exist
+[PASS] contract and runbook include required guidance
+[PASS] live signature mode missing-credential failure is deterministic and actionable
+[PASS] Compose signature prerequisite validation passed

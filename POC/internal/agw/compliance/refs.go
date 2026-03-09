@@ -19,6 +19,7 @@ func snapshotConfig(projectRoot, snapshotsDir string) ([]SnapshotItem, error) {
 	}
 	plan := []item{
 		{srcRel: "config/tool-registry.yaml", dstName: "tool-registry.yaml"},
+		{srcRel: "config/capability-registry-v2.yaml", dstName: "capability-registry-v2.yaml"},
 		{srcRel: "config/opa/tool_grants.yaml", dstName: "tool_grants.yaml"},
 		{srcRel: "config/risk_thresholds.yaml", dstName: "risk_thresholds.yaml"},
 		{srcRel: "config/spiffe-ids.yaml", dstName: "spiffe-ids.yaml"},
@@ -62,9 +63,9 @@ func configReferencesForControl(c Control) []string {
 	case "spiffe_auth":
 		return []string{"spiffe-ids.yaml"}
 	case "opa":
-		return []string{"mcp_policy.rego", "tool_grants.yaml", "tool-registry.yaml", "destinations.yaml"}
+		return []string{"mcp_policy.rego", "tool_grants.yaml", "tool-registry.yaml", "capability-registry-v2.yaml", "destinations.yaml"}
 	case "tool_registry":
-		return []string{"tool-registry.yaml"}
+		return []string{"tool-registry.yaml", "capability-registry-v2.yaml"}
 	case "dlp":
 		return []string{"risk_thresholds.yaml"}
 	case "deep_scan":
@@ -75,7 +76,7 @@ func configReferencesForControl(c Control) []string {
 		return []string{"risk_thresholds.yaml"}
 	default:
 		// Supply chain or unknown: include what we have.
-		return []string{"tool-registry.yaml", "tool_grants.yaml", "risk_thresholds.yaml", "spiffe-ids.yaml", "mcp_policy.rego"}
+		return []string{"tool-registry.yaml", "capability-registry-v2.yaml", "tool_grants.yaml", "risk_thresholds.yaml", "spiffe-ids.yaml", "mcp_policy.rego"}
 	}
 }
 
@@ -93,4 +94,3 @@ func testReferencesForControl(c Control) []string {
 		"tests/integration/",
 	}
 }
-

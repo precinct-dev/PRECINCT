@@ -79,6 +79,24 @@ func TestNewClient_WithOptions(t *testing.T) {
 	}
 }
 
+func TestBuildSPIKETokenRef(t *testing.T) {
+	token, err := BuildSPIKETokenRef("deadbeef", 3600, "", true)
+	if err != nil {
+		t.Fatalf("BuildSPIKETokenRef returned error: %v", err)
+	}
+	if token != "Bearer $SPIKE{ref:deadbeef,exp:3600}" {
+		t.Fatalf("unexpected token: %s", token)
+	}
+
+	token, err = BuildSPIKETokenRef("deadbeef", 1800, "model.call.groq", false)
+	if err != nil {
+		t.Fatalf("BuildSPIKETokenRef returned error: %v", err)
+	}
+	if token != "$SPIKE{ref:deadbeef,exp:1800,scope:model.call.groq}" {
+		t.Fatalf("unexpected scoped token: %s", token)
+	}
+}
+
 func TestCallModelChat_HeadersAndEndpoint(t *testing.T) {
 	var gotPath string
 	var gotAuth string
