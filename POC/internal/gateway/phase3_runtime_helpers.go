@@ -336,6 +336,28 @@ func (g *Gateway) handleIngressAdmit(w http.ResponseWriter, r *http.Request) {
 		attrs = map[string]any{}
 	}
 
+	// OC-j9fj: When attributes contain canonical envelope fields, delegate to the
+	// ingress plane policy engine for structured validation, source principal
+	// matching, replay detection, and payload content-addressing.
+	// Requests without canonical fields fall through to existing handler logic
+	// for backward compatibility (AC8).
+	if g.ingressPolicy != nil && hasCanonicalEnvelopeFields(attrs) {
+		decision, reason, httpStatus, metadata := g.ingressPolicy.evaluate(req, time.Now().UTC())
+		resp := PlaneDecisionV2{
+			Decision:   decision,
+			ReasonCode: reason,
+			Envelope:   req.Envelope,
+			TraceID:    traceID,
+			DecisionID: decisionID,
+			Metadata:   metadata,
+		}
+		g.logPlaneDecision(r, resp, httpStatus)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(httpStatus)
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
+
 	connectorID := getStringAttr(attrs, "connector_id", "")
 	if connectorID == "" {
 		connectorID = getStringAttr(attrs, "source_id", "")
