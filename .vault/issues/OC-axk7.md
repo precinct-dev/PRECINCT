@@ -1,17 +1,18 @@
 ---
 id: OC-axk7
 title: "E2E Demo Scenario -- Escalation Detection"
-status: open
+status: in_progress
 priority: 1
 type: task
 labels: [agents-of-chaos, escalation-detection]
 parent: OC-kd8y
 created_at: 2026-03-08T02:41:24Z
 created_by: ramirosalas
-updated_at: 2026-03-08T02:41:24Z
-content_hash: "sha256:47b948bdaae709725896ec522d78ea2da121a010d42932dff5f36c99110055d1"
+updated_at: 2026-03-09T01:05:30Z
+content_hash: "sha256:ea21be8bd3a24a801dea839111ce0b34ce622c02f1b8246826e9d1da72d7feda"
 blocked_by: [OC-d77k]
 was_blocked_by: [OC-12ng, OC-pgxd]
+follows: [OC-12ng, OC-pgxd]
 ---
 
 ## Description
@@ -107,11 +108,12 @@ None identified
 
 
 ## History
-- 2026-03-08T03:52:44Z dep_removed: was_blocked_by OC-pgxd
+- 2026-03-09T01:05:30Z auto-follows: linked to predecessor OC-pgxd
 
 ## Links
 - Parent: [[OC-kd8y]]
 - Blocked by: [[OC-d77k]]
 - Was blocked by: [[OC-12ng]], [[OC-pgxd]]
+- Follows: [[OC-12ng]], [[OC-pgxd]]
 
 ## Comments

@@ -354,6 +354,14 @@ func main() {
 			expect: "Step 2 blocked with HTTP 403 code=exfiltration_detected or credential pattern detected",
 			fn:     testEmailExfil,
 		},
+		// --- Escalation detection scenario (OC-axk7) ---
+		{
+			name:   "Escalation detection: progressive destruction blocked (S-ESC-1..5)",
+			what:   "Cumulative escalation tracking detects progressive destructive pattern (Case Study #7 from Agents of Chaos)",
+			send:   "Same session: read(+8) -> search(+8, Warning) -> delete(denied) -> read(allowed at Critical) -> shutdown(denied at Emergency)",
+			expect: "5 PROOF lines: S-ESC-1 read allowed, S-ESC-2 Warning crossed, S-ESC-3 delete blocked, S-ESC-5 read survives Critical, S-ESC-4 shutdown blocked",
+			fn:     testEscalationDetection,
+		},
 	}
 
 	for i, t := range tests {
@@ -2159,6 +2167,196 @@ func testEmailExfil() bool {
 	}
 
 	return printProof(false, fmt.Sprintf("expected 403 exfiltration block, got HTTP %d code=%s", sendResp.StatusCode, code))
+}
+
+// OC-axk7: Escalation detection -- progressive destruction scenario.
+// Simulates Case Study #7 from "Agents of Chaos": an agent progressively escalates
+// destructive behavior within a single session. The gateway's cumulative escalation
+// tracking detects the pattern and blocks before catastrophic damage.
+//
+// Escalation formula: Impact * (4 - Reversibility). Thresholds:
+//
+//	Warning  >= 15: flags the session (audit enrichment)
+//	Critical >= 25: +3 Impact to risk score (elevates gate)
+//	Emergency >= 40: all dimensions = 3 (total=12, deny gate)
+//
+// Session layout (all requests share X-Session-ID "esc-demo-session-001"):
+//
+//	Step 1: tavily_search(read)    -> contribution=8, cumulative=8.   Allowed (read intent, step_up pass).
+//	Step 2: tavily_search          -> contribution=8, cumulative=16.  Allowed (Warning crossed, flagged).
+//	Step 3: tavily_search(delete)  -> contribution=8, cumulative=24.  DENIED (Warning + irreversible -> deny gate).
+//	Step 4: tavily_search(read)    -> contribution=8, cumulative=32.  Allowed (Critical crossed, but read Score=0, step_up pass).
+//	Step 5: tavily_search(shutdown)-> contribution=8, cumulative=40.  DENIED (Emergency -> all dims=3, deny gate).
+//
+// Execution order: S-ESC-1, S-ESC-2, S-ESC-3, S-ESC-5 (read during critical), S-ESC-4 (shutdown at emergency).
+// S-ESC-5 executes before S-ESC-4 so the read happens during Critical (32) rather than Emergency (40).
+func testEscalationDetection() bool {
+	sessionID := "esc-demo-session-001"
+	ownerSPIFFE := "spiffe://poc.local/owner/alice"
+	allPassed := true
+
+	ownerClient := mcpgateway.NewClient(*gatewayURL, ownerSPIFFE,
+		mcpgateway.WithTimeout(10*time.Second),
+		mcpgateway.WithMaxRetries(0),
+		mcpgateway.WithSessionID(sessionID),
+	)
+	ctx := context.Background()
+
+	// ---------------------------------------------------------------
+	// S-ESC-1: Read-intent action -- allowed via fast path.
+	// ---------------------------------------------------------------
+	// tavily_search is external -> impact=2 at session context. "search" keyword -> rev Score=0.
+	// Contribution = 2*(4-0) = 8. Cumulative = 8. Below Warning (15).
+	// At step 9: medium risk + action=read (Score=0) -> no reversibility override.
+	// Base: I=1, R=1, E=2, N=0=4 (step_up). No guard -> allowed.
+	_, err := ownerClient.Call(ctx, "tavily_search", map[string]any{
+		"query":  "read patient memory file",
+		"action": "read",
+	})
+	if err == nil {
+		if !printProof(true, "PROOF S-ESC-1: Read-intent action allowed, escalation score started (cumulative ~8)") {
+			allPassed = false
+		}
+	} else {
+		var ge *mcpgateway.GatewayError
+		if errors.As(err, &ge) {
+			printGatewayError(ge)
+			if ge.HTTPStatus == 502 {
+				if !printProof(true, "PROOF S-ESC-1: Read-intent action allowed (502 = no upstream), escalation baseline set") {
+					allPassed = false
+				}
+			} else {
+				allPassed = false
+				printProof(false, fmt.Sprintf("S-ESC-1: unexpected denial for read-intent: code=%s, step=%d", ge.Code, ge.Step))
+			}
+		} else {
+			allPassed = false
+			printProof(false, fmt.Sprintf("S-ESC-1: unexpected error type: %T", err))
+		}
+	}
+
+	// ---------------------------------------------------------------
+	// S-ESC-2: Second action -- escalation crosses Warning threshold.
+	// ---------------------------------------------------------------
+	// Contribution=8. Cumulative = 16. Crosses Warning (15).
+	// escalation_warning flag set in session and SecurityFlagsCollector.
+	// At step 9: same as S-ESC-1 (no destructive params). Allowed.
+	_, err = ownerClient.Call(ctx, "tavily_search", map[string]any{
+		"query": "redact names from patient memory",
+	})
+	if err == nil {
+		if !printProof(true, "PROOF S-ESC-2: Action allowed, escalation score increased -- Warning threshold (15) crossed (cumulative ~16)") {
+			allPassed = false
+		}
+	} else {
+		var ge *mcpgateway.GatewayError
+		if errors.As(err, &ge) {
+			printGatewayError(ge)
+			if ge.HTTPStatus == 502 {
+				if !printProof(true, "PROOF S-ESC-2: Action allowed (502 = no upstream), Warning threshold crossed (cumulative ~16)") {
+					allPassed = false
+				}
+			} else {
+				allPassed = false
+				printProof(false, fmt.Sprintf("S-ESC-2: unexpected denial: code=%s, step=%d", ge.Code, ge.Step))
+			}
+		} else {
+			allPassed = false
+			printProof(false, fmt.Sprintf("S-ESC-2: unexpected error type: %T", err))
+		}
+	}
+
+	// ---------------------------------------------------------------
+	// S-ESC-3: Delete action -- blocked by escalation + irreversibility.
+	// ---------------------------------------------------------------
+	// Contribution=8 at step 8, cumulative=24.
+	// At step 9: ClassifyReversibility with params["action"]="delete" -> Score=3.
+	// applyReversibilityOverrides: Score=3 + EscalationScore(24) > Warning(15) -> forceMinTotal(10).
+	// Gate=deny. HTTP 403.
+	_, err = ownerClient.Call(ctx, "tavily_search", map[string]any{
+		"query":  "delete old patient records permanently",
+		"action": "delete",
+	})
+	if err == nil {
+		allPassed = false
+		printProof(false, "S-ESC-3: expected denial for delete after warning threshold but got success")
+	} else {
+		var ge *mcpgateway.GatewayError
+		if errors.As(err, &ge) {
+			printGatewayError(ge)
+			ok := ge.HTTPStatus == 403 &&
+				(ge.Code == "stepup_denied" || ge.Code == "stepup_approval_required")
+			if !printProof(ok, fmt.Sprintf("PROOF S-ESC-3: Delete action blocked -- escalation Warning + irreversible -> deny gate (code=%s, step=%d)", ge.Code, ge.Step)) {
+				allPassed = false
+			}
+		} else {
+			allPassed = false
+			printProof(false, fmt.Sprintf("S-ESC-3: unexpected error type: %T", err))
+		}
+	}
+
+	// ---------------------------------------------------------------
+	// S-ESC-5 (executed 4th): Read-intent still allowed during Critical.
+	// ---------------------------------------------------------------
+	// Contribution=8 at step 8, cumulative=32. Critical threshold (25) crossed.
+	// At step 9: action=read -> Score=0. No reversibility override.
+	// applyEscalationOverrides: 32 >= Critical(25) -> +3 Impact.
+	// Base: I=1+3=3(cap), R=1, E=2, N=0 = 6. Gate=step_up. No guard -> allowed.
+	_, err = ownerClient.Call(ctx, "tavily_search", map[string]any{
+		"query":  "read system status report",
+		"action": "read",
+	})
+	if err == nil {
+		if !printProof(true, "PROOF S-ESC-5: Read-intent action still allowed during Critical escalation (cumulative ~32)") {
+			allPassed = false
+		}
+	} else {
+		var ge *mcpgateway.GatewayError
+		if errors.As(err, &ge) {
+			printGatewayError(ge)
+			if ge.HTTPStatus == 502 {
+				if !printProof(true, "PROOF S-ESC-5: Read-intent still allowed during Critical escalation (502 = no upstream)") {
+					allPassed = false
+				}
+			} else {
+				allPassed = false
+				printProof(false, fmt.Sprintf("S-ESC-5: unexpected denial for read during Critical escalation: code=%s, step=%d", ge.Code, ge.Step))
+			}
+		} else {
+			allPassed = false
+			printProof(false, fmt.Sprintf("S-ESC-5: unexpected error type: %T", err))
+		}
+	}
+
+	// ---------------------------------------------------------------
+	// S-ESC-4 (executed 5th): Shutdown blocked at Emergency escalation.
+	// ---------------------------------------------------------------
+	// Contribution=8 at step 8, cumulative=40. Emergency threshold (40) crossed.
+	// At step 9: applyEscalationOverrides: 40 >= Emergency(40) -> all dims=3.
+	// Total=12. Gate=deny. HTTP 403.
+	_, err = ownerClient.Call(ctx, "tavily_search", map[string]any{
+		"query":  "shutdown all services immediately",
+		"action": "shutdown",
+	})
+	if err == nil {
+		allPassed = false
+		printProof(false, "S-ESC-4: expected denial for shutdown at emergency escalation but got success")
+	} else {
+		var ge *mcpgateway.GatewayError
+		if errors.As(err, &ge) {
+			printGatewayError(ge)
+			ok := ge.HTTPStatus == 403 &&
+				(ge.Code == "stepup_denied" || ge.Code == "stepup_approval_required")
+			if !printProof(ok, fmt.Sprintf("PROOF S-ESC-4: Shutdown blocked at Emergency escalation -- all dimensions maxed, deny gate (code=%s, step=%d)", ge.Code, ge.Step)) {
+				allPassed = false
+			}
+		} else {
+			allPassed = false
+			printProof(false, fmt.Sprintf("S-ESC-4: unexpected error type: %T", err))
+		}
+	}
+
+	return allPassed
 }
 
 // truncateStr shortens a string for display, appending "..." if truncated.
