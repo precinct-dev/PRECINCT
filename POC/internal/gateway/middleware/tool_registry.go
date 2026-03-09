@@ -721,6 +721,194 @@ func ComputeDataSourceHash(content []byte) string {
 	return "sha256:" + hex.EncodeToString(hash[:])
 }
 
+// ContentFetcher fetches raw content from a URI. Injected into VerifyDataSource
+// so that tests can simulate content changes without network access.
+// OC-am3w: Data source verification middleware logic.
+type ContentFetcher func(uri string) ([]byte, error)
+
+// DataSourceVerifyResult captures the outcome of a data source verification check.
+// OC-am3w: Returned by VerifyDataSource for the middleware to act on.
+type DataSourceVerifyResult struct {
+	Allowed      bool
+	Reason       string
+	URI          string
+	ExpectedHash string
+	ObservedHash string
+	Policy       string // the policy applied ("block_on_change", "flag_on_change", "allow", or unknown source policy)
+	Flagged      bool   // true when allow+flag (caller should append to SecurityFlagsCollector)
+	FlagName     string // flag to append (e.g., "data_source_hash_mismatch", "unregistered_data_source")
+}
+
+// ExtractDataSourceURIs scans tool call parameters for recognized URL attributes.
+// Returns all discovered URIs. Recognized keys: "source_url", "data_uri", "url", "uri".
+// OC-am3w: Data source URI extraction from tool call parameters (AC1).
+func ExtractDataSourceURIs(params map[string]interface{}) []string {
+	if params == nil {
+		return nil
+	}
+	keys := []string{"source_url", "data_uri", "url", "uri"}
+	var uris []string
+	for _, key := range keys {
+		if val, ok := params[key]; ok {
+			if s, ok := val.(string); ok && s != "" {
+				// Only consider values that look like URIs (contain "://")
+				if strings.Contains(s, "://") {
+					uris = append(uris, s)
+				}
+			}
+		}
+	}
+	return uris
+}
+
+// VerifyDataSource checks a data source URI against the registry.
+// If registered: verifies content hash (respecting RefreshTTL), applies MutablePolicy.
+// If not registered: applies unknownPolicy.
+// The fetcher is called only when verification is needed (TTL expired or first check).
+// OC-am3w: Data source verification logic (AC2-AC9).
+func (tr *ToolRegistry) VerifyDataSource(uri string, fetcher ContentFetcher, unknownPolicy string) DataSourceVerifyResult {
+	tr.mu.RLock()
+	ds, exists := tr.dataSources[uri]
+	tr.mu.RUnlock()
+
+	if !exists {
+		// Unregistered data source -- apply unknownPolicy (AC5)
+		switch unknownPolicy {
+		case "block":
+			return DataSourceVerifyResult{
+				Allowed:  false,
+				Reason:   "unregistered_data_source",
+				URI:      uri,
+				Policy:   "block",
+				Flagged:  false,
+			}
+		case "allow":
+			return DataSourceVerifyResult{
+				Allowed:  true,
+				Reason:   "unregistered_data_source_allowed",
+				URI:      uri,
+				Policy:   "allow",
+				Flagged:  false,
+			}
+		default: // "flag" (default)
+			return DataSourceVerifyResult{
+				Allowed:  true,
+				Reason:   "unregistered_data_source_flagged",
+				URI:      uri,
+				Policy:   "flag",
+				Flagged:  true,
+				FlagName: "unregistered_data_source",
+			}
+		}
+	}
+
+	// Registered data source -- check RefreshTTL (AC9)
+	now := time.Now()
+	if ds.RefreshTTL > 0 && !ds.LastVerified.IsZero() && now.Sub(ds.LastVerified) < ds.RefreshTTL {
+		// Within TTL window -- no re-fetch needed, allow
+		return DataSourceVerifyResult{
+			Allowed:      true,
+			Reason:       "within_refresh_ttl",
+			URI:          uri,
+			ExpectedHash: ds.ContentHash,
+			ObservedHash: ds.ContentHash, // assumed match from last verification
+			Policy:       ds.MutablePolicy,
+		}
+	}
+
+	// Fetch content and compute hash (AC2)
+	content, err := fetcher(uri)
+	if err != nil {
+		// Fetch failed -- treat as mismatch for security (fail closed)
+		return DataSourceVerifyResult{
+			Allowed:      false,
+			Reason:       fmt.Sprintf("data_source_fetch_failed: %v", err),
+			URI:          uri,
+			ExpectedHash: ds.ContentHash,
+			ObservedHash: "",
+			Policy:       ds.MutablePolicy,
+		}
+	}
+
+	observedHash := ComputeDataSourceHash(content)
+
+	if observedHash == ds.ContentHash {
+		// Hash match -- allow and update LastVerified (AC3)
+		tr.updateDataSourceLastVerified(uri, now)
+		return DataSourceVerifyResult{
+			Allowed:      true,
+			Reason:       "data_source_verified",
+			URI:          uri,
+			ExpectedHash: ds.ContentHash,
+			ObservedHash: observedHash,
+			Policy:       ds.MutablePolicy,
+		}
+	}
+
+	// Hash mismatch -- apply MutablePolicy (AC4)
+	switch ds.MutablePolicy {
+	case "block_on_change":
+		return DataSourceVerifyResult{
+			Allowed:      false,
+			Reason:       "data_source_hash_mismatch",
+			URI:          uri,
+			ExpectedHash: ds.ContentHash,
+			ObservedHash: observedHash,
+			Policy:       "block_on_change",
+		}
+	case "flag_on_change":
+		return DataSourceVerifyResult{
+			Allowed:      true,
+			Reason:       "data_source_hash_mismatch_flagged",
+			URI:          uri,
+			ExpectedHash: ds.ContentHash,
+			ObservedHash: observedHash,
+			Policy:       "flag_on_change",
+			Flagged:      true,
+			FlagName:     "data_source_hash_mismatch",
+		}
+	case "allow":
+		return DataSourceVerifyResult{
+			Allowed:      true,
+			Reason:       "data_source_hash_mismatch_allowed",
+			URI:          uri,
+			ExpectedHash: ds.ContentHash,
+			ObservedHash: observedHash,
+			Policy:       "allow",
+		}
+	default:
+		// Unknown policy -- fail closed
+		return DataSourceVerifyResult{
+			Allowed:      false,
+			Reason:       fmt.Sprintf("data_source_hash_mismatch (unknown policy: %s)", ds.MutablePolicy),
+			URI:          uri,
+			ExpectedHash: ds.ContentHash,
+			ObservedHash: observedHash,
+			Policy:       ds.MutablePolicy,
+		}
+	}
+}
+
+// updateDataSourceLastVerified updates the LastVerified timestamp for a data source.
+// Called after successful hash verification. Thread-safe via write lock.
+// OC-am3w: AC3 -- update LastVerified on hash match.
+func (tr *ToolRegistry) updateDataSourceLastVerified(uri string, t time.Time) {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	if ds, exists := tr.dataSources[uri]; exists {
+		ds.LastVerified = t
+		tr.dataSources[uri] = ds
+	}
+}
+
+// RegisterDataSource adds or updates a data source registration programmatically.
+// OC-am3w: Used for test injection and dynamic registration workflows.
+func (tr *ToolRegistry) RegisterDataSource(ds DataSourceDefinition) {
+	tr.mu.Lock()
+	defer tr.mu.Unlock()
+	tr.dataSources[ds.URI] = ds
+}
+
 // RegisterUIResource adds or updates a UI resource registration programmatically.
 // RFA-j2d.6: Used for test injection and dynamic registration workflows.
 func (tr *ToolRegistry) RegisterUIResource(res RegisteredUIResource) {
@@ -822,6 +1010,9 @@ type ObservedToolHashRefresher func(ctx context.Context, server string) (map[str
 
 type toolRegistryVerifyOptions struct {
 	failClosedWhenObservedUnavailable bool
+	// OC-am3w: Data source verification options
+	dataSourceFetcher       ContentFetcher
+	unknownDataSourcePolicy string // "flag" (default), "block", "allow"
 }
 
 // ToolRegistryVerifyOption customizes ToolRegistryVerify behavior.
@@ -832,6 +1023,17 @@ type ToolRegistryVerifyOption func(*toolRegistryVerifyOptions)
 func WithObservedHashFailClosed(enabled bool) ToolRegistryVerifyOption {
 	return func(cfg *toolRegistryVerifyOptions) {
 		cfg.failClosedWhenObservedUnavailable = enabled
+	}
+}
+
+// WithDataSourceVerification enables data source integrity verification in the
+// ToolRegistryVerify middleware. When a tool call includes URL parameters, the
+// middleware extracts them and verifies against the data source registry.
+// OC-am3w: Data source verification middleware logic.
+func WithDataSourceVerification(fetcher ContentFetcher, unknownPolicy string) ToolRegistryVerifyOption {
+	return func(cfg *toolRegistryVerifyOptions) {
+		cfg.dataSourceFetcher = fetcher
+		cfg.unknownDataSourcePolicy = unknownPolicy
 	}
 }
 
@@ -1090,6 +1292,63 @@ func ToolRegistryVerify(next http.Handler, registry *ToolRegistry, observed *Obs
 
 		// Store verification status in context for audit (RFA-qq0.13)
 		ctx = WithToolHashVerified(ctx, toolHashVerified)
+
+		// OC-am3w: Data source verification -- check URIs in tool call parameters
+		if verifyOpts.dataSourceFetcher != nil {
+			toolParams := parsed.EffectiveToolParams()
+			dataSourceURIs := ExtractDataSourceURIs(toolParams)
+			for _, dsURI := range dataSourceURIs {
+				unknownPolicy := verifyOpts.unknownDataSourcePolicy
+				if unknownPolicy == "" {
+					unknownPolicy = "flag"
+				}
+				dsResult := registry.VerifyDataSource(dsURI, verifyOpts.dataSourceFetcher, unknownPolicy)
+
+				// Emit audit log with URI, expected hash, observed hash (AC8)
+				slog.Info("data_source_verification",
+					"uri", dsResult.URI,
+					"expected_hash", dsResult.ExpectedHash,
+					"observed_hash", dsResult.ObservedHash,
+					"policy", dsResult.Policy,
+					"allowed", dsResult.Allowed,
+					"reason", dsResult.Reason,
+				)
+
+				if dsResult.Flagged {
+					// Propagate flag to SecurityFlagsCollector (AC7)
+					if collector := GetFlagsCollector(ctx); collector != nil {
+						collector.Append(dsResult.FlagName)
+					}
+				}
+
+				if !dsResult.Allowed {
+					errCode := ErrDataSourceHashMismatch
+					if dsResult.Reason == "unregistered_data_source" {
+						errCode = ErrUnregisteredDataSource
+					}
+					span.SetAttributes(
+						attribute.String("mcp.result", "denied"),
+						attribute.String("mcp.reason", dsResult.Reason),
+						attribute.String("data_source_uri", dsURI),
+					)
+					WriteGatewayError(w, r.WithContext(ctx), http.StatusForbidden, GatewayError{
+						Code:           errCode,
+						Message:        fmt.Sprintf("Data source verification failed: %s", dsResult.Reason),
+						Middleware:     "tool_registry_verify",
+						MiddlewareStep: 5,
+						Details: map[string]any{
+							"uri":           dsResult.URI,
+							"expected_hash": dsResult.ExpectedHash,
+							"observed_hash": dsResult.ObservedHash,
+							"policy":        dsResult.Policy,
+						},
+						Remediation: "Register the data source in the tool registry or adjust the mutable_policy/unknown_data_source_policy.",
+					})
+					return
+				}
+			}
+		}
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
