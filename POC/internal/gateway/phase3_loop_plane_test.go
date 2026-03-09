@@ -465,6 +465,7 @@ func TestLoopPlane_SchemaInvalid_MissingRunID(t *testing.T) {
 	now := time.Now().UTC()
 
 	req := makeLoopRequest("", "boundary", nil)
+	_ = req // suppress unused variable -- run_id validation is tested at handler level
 	// The envelope validation should catch missing run_id before we even get
 	// to evaluate, but the engine itself should handle it via parseLoopCheckInput
 	// or the caller should validate. The contract says missing run_id => LOOP_SCHEMA_INVALID.
