@@ -22,6 +22,10 @@ const (
 	ErrRegistryHashMismatch = "registry_hash_mismatch"
 	ErrRegistryToolUnknown  = "registry_tool_unknown"
 
+	// Data Source Integrity (step 5) -- 403 Forbidden (OC-am3w)
+	ErrDataSourceHashMismatch   = "data_source_hash_mismatch"
+	ErrUnregisteredDataSource   = "unregistered_data_source"
+
 	// DLP (step 7) -- 403 Forbidden
 	ErrDLPCredentialsDetected   = "dlp_credentials_detected"
 	ErrDLPInjectionBlocked      = "dlp_injection_blocked" // RFA-sd7: injection blocked by policy
