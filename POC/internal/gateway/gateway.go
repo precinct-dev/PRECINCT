@@ -65,6 +65,7 @@ type Gateway struct {
 	dlpRuleOps                 *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
 	cca                        *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
 	ingressReplayGuard         *ingressReplayGuard               // RFA-l6h6.2.2: ingress replay/freshness guard
+	ingressPolicy              *ingressPlanePolicyEngine          // OC-j9fj: canonical connector envelope policy engine
 	extensionRegistry          *middleware.ExtensionRegistry     // pluggable extension slots
 	extensionRegistryStop      func()                            // stop function for extension registry fsnotify watcher
 	adminAuthzAllowedSPIFFEIDs map[string]struct{}               // explicit SPIFFE allowlist for /admin/* authorization
@@ -545,6 +546,7 @@ func New(cfg *Config) (*Gateway, error) {
 		dlpRuleOps:                 dlpRuleOps,
 		cca:                        newConnectorConformanceAuthority(),
 		ingressReplayGuard:         newIngressReplayGuard(5*time.Minute, 15*time.Second),
+		ingressPolicy:              newIngressPlanePolicyEngine(),
 		adminAuthzAllowedSPIFFEIDs: normalizeAdminAuthzAllowlist(adminAllowlist),
 		rlmEngine:                  newRLMGovernanceEngine(),
 	}, nil
