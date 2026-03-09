@@ -69,6 +69,7 @@ type Gateway struct {
 	extensionRegistryStop      func()                            // stop function for extension registry fsnotify watcher
 	adminAuthzAllowedSPIFFEIDs map[string]struct{}               // explicit SPIFFE allowlist for /admin/* authorization
 	portAdapters               []PortAdapter                     // registered port adapters for third-party integrations
+	rlmEngine                  *rlmGovernanceEngine              // OC-tjtj: RLM multi-agent lineage governance engine
 }
 
 // New creates a new gateway instance
@@ -545,6 +546,7 @@ func New(cfg *Config) (*Gateway, error) {
 		cca:                        newConnectorConformanceAuthority(),
 		ingressReplayGuard:         newIngressReplayGuard(5*time.Minute, 15*time.Second),
 		adminAuthzAllowedSPIFFEIDs: normalizeAdminAuthzAllowlist(adminAllowlist),
+		rlmEngine:                  newRLMGovernanceEngine(),
 	}, nil
 }
 
