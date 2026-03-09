@@ -10,6 +10,44 @@ import (
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
 
+// logLoopAdminEvent emits an audit event for loop admin operations.
+// action should be one of: "admin.loop.list", "admin.loop.detail", "admin.loop.halt".
+func (g *Gateway) logLoopAdminEvent(r *http.Request, action string, httpStatus int, metadata map[string]any) {
+	if g == nil || g.auditor == nil {
+		return
+	}
+	traceID, decisionID := getDecisionCorrelationIDs(r, RunEnvelope{})
+
+	// Build a human-readable result string from metadata.
+	result := fmt.Sprintf("action=%s status=%d", action, httpStatus)
+	if metadata != nil {
+		if runID, ok := metadata["run_id"]; ok {
+			result += fmt.Sprintf(" run_id=%v", runID)
+		}
+		if state, ok := metadata["state"]; ok {
+			result += fmt.Sprintf(" state=%v", state)
+		}
+		if reason, ok := metadata["halt_reason"]; ok {
+			result += fmt.Sprintf(" halt_reason=%v", reason)
+		}
+		if errMsg, ok := metadata["error"]; ok {
+			result += fmt.Sprintf(" error=%v", errMsg)
+		}
+	}
+
+	g.auditor.Log(middleware.AuditEvent{
+		SessionID:  middleware.GetSessionID(r.Context()),
+		DecisionID: decisionID,
+		TraceID:    traceID,
+		SPIFFEID:   middleware.GetSPIFFEID(r.Context()),
+		Action:     action,
+		Result:     result,
+		Method:     r.Method,
+		Path:       r.URL.Path,
+		StatusCode: httpStatus,
+	})
+}
+
 type dlpRulesetStatus struct {
 	ActiveVersion   string            `json:"active_version"`
 	ActiveDigest    string            `json:"active_digest"`
@@ -387,11 +425,14 @@ func (g *Gateway) adminLoopRunsHandler(w http.ResponseWriter, r *http.Request) {
 	g.handleAdminLoopRunDetail(w, r, runID)
 }
 
-func (g *Gateway) handleAdminLoopRunsList(w http.ResponseWriter, _ *http.Request) {
+func (g *Gateway) handleAdminLoopRunsList(w http.ResponseWriter, r *http.Request) {
 	var runs []loopRunRecord
 	if g.loopPolicy != nil {
 		runs = g.loopPolicy.listRuns()
 	}
+	g.logLoopAdminEvent(r, "admin.loop.list", http.StatusOK, map[string]any{
+		"run_count": len(runs),
+	})
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status": "ok",
@@ -401,6 +442,10 @@ func (g *Gateway) handleAdminLoopRunsList(w http.ResponseWriter, _ *http.Request
 
 func (g *Gateway) handleAdminLoopRunDetail(w http.ResponseWriter, r *http.Request, runID string) {
 	if g.loopPolicy == nil {
+		g.logLoopAdminEvent(r, "admin.loop.detail", http.StatusNotFound, map[string]any{
+			"run_id": runID,
+			"error":  "run not found",
+		})
 		writeV24GatewayError(w, r, http.StatusNotFound, middleware.ErrMCPInvalidRequest,
 			"run not found", v24MiddlewareLoopAdmin, ReasonContractInvalid,
 			map[string]any{"run_id": runID})
@@ -408,6 +453,10 @@ func (g *Gateway) handleAdminLoopRunDetail(w http.ResponseWriter, r *http.Reques
 	}
 	run, ok := g.loopPolicy.getRun(runID)
 	if !ok {
+		g.logLoopAdminEvent(r, "admin.loop.detail", http.StatusNotFound, map[string]any{
+			"run_id": runID,
+			"error":  "run not found",
+		})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -416,6 +465,10 @@ func (g *Gateway) handleAdminLoopRunDetail(w http.ResponseWriter, r *http.Reques
 		})
 		return
 	}
+	g.logLoopAdminEvent(r, "admin.loop.detail", http.StatusOK, map[string]any{
+		"run_id": runID,
+		"state":  string(run.State),
+	})
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status": "ok",
@@ -425,6 +478,10 @@ func (g *Gateway) handleAdminLoopRunDetail(w http.ResponseWriter, r *http.Reques
 
 func (g *Gateway) handleAdminLoopRunHalt(w http.ResponseWriter, r *http.Request, runID string) {
 	if g.loopPolicy == nil {
+		g.logLoopAdminEvent(r, "admin.loop.halt", http.StatusNotFound, map[string]any{
+			"run_id": runID,
+			"error":  "run not found",
+		})
 		writeV24GatewayError(w, r, http.StatusNotFound, middleware.ErrMCPInvalidRequest,
 			"run not found", v24MiddlewareLoopAdmin, ReasonContractInvalid,
 			map[string]any{"run_id": runID})
@@ -434,6 +491,10 @@ func (g *Gateway) handleAdminLoopRunHalt(w http.ResponseWriter, r *http.Request,
 	// Check if the run exists before attempting halt.
 	run, ok := g.loopPolicy.getRun(runID)
 	if !ok {
+		g.logLoopAdminEvent(r, "admin.loop.halt", http.StatusNotFound, map[string]any{
+			"run_id": runID,
+			"error":  "run not found",
+		})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusNotFound)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -445,6 +506,11 @@ func (g *Gateway) handleAdminLoopRunHalt(w http.ResponseWriter, r *http.Request,
 
 	// If the run is already in a terminal state, return 409 Conflict.
 	if isLoopTerminalState(run.State) {
+		g.logLoopAdminEvent(r, "admin.loop.halt", http.StatusConflict, map[string]any{
+			"run_id": runID,
+			"state":  string(run.State),
+			"error":  "run already terminal",
+		})
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusConflict)
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -489,6 +555,11 @@ func (g *Gateway) handleAdminLoopRunHalt(w http.ResponseWriter, r *http.Request,
 
 	// Re-fetch the updated run after evaluate.
 	updatedRun, _ := g.loopPolicy.getRun(runID)
+	g.logLoopAdminEvent(r, "admin.loop.halt", http.StatusOK, map[string]any{
+		"run_id":      runID,
+		"state":       string(updatedRun.State),
+		"halt_reason": string(reason),
+	})
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":        "ok",
