@@ -336,6 +336,28 @@ func (g *Gateway) handleIngressAdmit(w http.ResponseWriter, r *http.Request) {
 		attrs = map[string]any{}
 	}
 
+	// OC-j9fj: When attributes contain canonical envelope fields, delegate to the
+	// ingress plane policy engine for structured validation, source principal
+	// matching, replay detection, and payload content-addressing.
+	// Requests without canonical fields fall through to existing handler logic
+	// for backward compatibility (AC8).
+	if g.ingressPolicy != nil && hasCanonicalEnvelopeFields(attrs) {
+		decision, reason, httpStatus, metadata := g.ingressPolicy.evaluate(req, time.Now().UTC())
+		resp := PlaneDecisionV2{
+			Decision:   decision,
+			ReasonCode: reason,
+			Envelope:   req.Envelope,
+			TraceID:    traceID,
+			DecisionID: decisionID,
+			Metadata:   metadata,
+		}
+		g.logPlaneDecision(r, resp, httpStatus)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(httpStatus)
+		_ = json.NewEncoder(w).Encode(resp)
+		return
+	}
+
 	connectorID := getStringAttr(attrs, "connector_id", "")
 	if connectorID == "" {
 		connectorID = getStringAttr(attrs, "source_id", "")
@@ -594,6 +616,19 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 		}
 	}
 
+	// Memory tier classification: parse and validate memory_tier attribute.
+	// Default is "ephemeral" when not provided.
+	memoryTier := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "memory_tier", "ephemeral")))
+	switch memoryTier {
+	case "ephemeral", "session", "long_term", "regulated":
+	default:
+		return DecisionDeny, ReasonContextSchemaInvalid, http.StatusBadRequest, map[string]any{
+			"invariant":    "memory_tier_validation",
+			"memory_tier":  memoryTier,
+			"error":        "memory_tier must be one of ephemeral/session/long_term/regulated",
+		}
+	}
+
 	verificationRequired := modelEgress || persistRequested || memoryOperation == "read"
 	if verificationRequired {
 		verified := getBoolAttr(provenance, "verified", false)
@@ -605,11 +640,35 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 				"verification_required":  true,
 				"model_egress":           modelEgress,
 				"memory_operation":       memoryOperation,
+				"memory_tier":            memoryTier,
 				"provenance_present":     provenancePresent,
 				"verification_verified":  verified,
 				"verifier_present":       verifier != "",
 				"verification_method_ok": verificationMethod != "",
 			}
+		}
+	}
+
+	// Memory tier enforcement: write to long_term requires clean DLP classification.
+	if persistRequested && memoryTier == "long_term" {
+		dlpClassification := strings.ToLower(strings.TrimSpace(getStringAttr(attrs, "dlp_classification", "")))
+		if dlpClassification != "clean" {
+			return DecisionDeny, ReasonContextMemoryWriteDenied, http.StatusForbidden, map[string]any{
+				"invariant":          "memory_tier_write_denied",
+				"memory_operation":   memoryOperation,
+				"memory_tier":        memoryTier,
+				"dlp_classification": dlpClassification,
+				"error":              "long_term memory writes require dlp_classification=clean",
+			}
+		}
+	}
+
+	// Memory tier enforcement: read from regulated tier requires step-up.
+	if memoryOperation == "read" && memoryTier == "regulated" {
+		return DecisionStepUp, ReasonContextMemoryReadStepUp, http.StatusAccepted, map[string]any{
+			"invariant":        "memory_tier_read_step_up",
+			"memory_operation": memoryOperation,
+			"memory_tier":      memoryTier,
 		}
 	}
 
@@ -619,6 +678,7 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 			return DecisionDeny, ReasonContextDLPRequired, http.StatusForbidden, map[string]any{
 				"invariant":    "minimum_necessary",
 				"model_egress": true,
+				"memory_tier":  memoryTier,
 				"error":        "dlp_classification is required for model-bound context",
 			}
 		}
@@ -633,6 +693,7 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 				return DecisionDeny, ReasonContextDLPDenied, http.StatusForbidden, map[string]any{
 					"invariant":                  "minimum_necessary",
 					"dlp_classification":         classification,
+					"memory_tier":                memoryTier,
 					"minimum_necessary_applied":  minimumNecessaryApplied,
 					"minimum_necessary_outcome":  "deny",
 					"required_minimum_necessary": "tokenize_or_redact",
@@ -641,6 +702,7 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 			return DecisionAllow, ReasonContextAllow, http.StatusOK, map[string]any{
 				"invariant":                 "minimum_necessary",
 				"dlp_classification":        classification,
+				"memory_tier":               memoryTier,
 				"minimum_necessary_applied": true,
 				"minimum_necessary_outcome": minimumNecessaryOutcome(tokenized, redacted),
 			}
@@ -651,6 +713,7 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 			return DecisionDeny, ReasonContextDLPDenied, http.StatusForbidden, map[string]any{
 				"invariant":                  "minimum_necessary",
 				"dlp_classification":         classification,
+				"memory_tier":                memoryTier,
 				"minimum_necessary_applied":  minimumNecessaryApplied,
 				"minimum_necessary_outcome":  "deny",
 				"required_minimum_necessary": "apply_minimization_for_large_context",
@@ -662,13 +725,17 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 			return DecisionAllow, ReasonContextAllow, http.StatusOK, map[string]any{
 				"invariant":                 "minimum_necessary",
 				"dlp_classification":        classification,
+				"memory_tier":               memoryTier,
 				"minimum_necessary_applied": true,
 				"minimum_necessary_outcome": defaultString(outcome, "minimized"),
 			}
 		}
 	}
 
-	return DecisionAllow, ReasonContextAllow, http.StatusOK, nil
+	return DecisionAllow, ReasonContextAllow, http.StatusOK, map[string]any{
+		"memory_operation": memoryOperation,
+		"memory_tier":      memoryTier,
+	}
 }
 
 func minimumNecessaryOutcome(tokenized, redacted bool) string {
