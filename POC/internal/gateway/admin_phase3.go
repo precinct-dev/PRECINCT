@@ -5,9 +5,48 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 )
+
+// logLoopAdminEvent emits an audit event for loop admin operations.
+// action should be one of: "admin.loop.list", "admin.loop.detail", "admin.loop.halt".
+func (g *Gateway) logLoopAdminEvent(r *http.Request, action string, httpStatus int, metadata map[string]any) {
+	if g == nil || g.auditor == nil {
+		return
+	}
+	traceID, decisionID := getDecisionCorrelationIDs(r, RunEnvelope{})
+
+	// Build a human-readable result string from metadata.
+	result := fmt.Sprintf("action=%s status=%d", action, httpStatus)
+	if metadata != nil {
+		if runID, ok := metadata["run_id"]; ok {
+			result += fmt.Sprintf(" run_id=%v", runID)
+		}
+		if state, ok := metadata["state"]; ok {
+			result += fmt.Sprintf(" state=%v", state)
+		}
+		if reason, ok := metadata["halt_reason"]; ok {
+			result += fmt.Sprintf(" halt_reason=%v", reason)
+		}
+		if errMsg, ok := metadata["error"]; ok {
+			result += fmt.Sprintf(" error=%v", errMsg)
+		}
+	}
+
+	g.auditor.Log(middleware.AuditEvent{
+		SessionID:  middleware.GetSessionID(r.Context()),
+		DecisionID: decisionID,
+		TraceID:    traceID,
+		SPIFFEID:   middleware.GetSPIFFEID(r.Context()),
+		Action:     action,
+		Result:     result,
+		Method:     r.Method,
+		Path:       r.URL.Path,
+		StatusCode: httpStatus,
+	})
+}
 
 type dlpRulesetStatus struct {
 	ActiveVersion   string            `json:"active_version"`
@@ -334,30 +373,233 @@ func (g *Gateway) logDLPRuleOpsDecision(r *http.Request, rulesetID, operation, d
 	})
 }
 
-// adminLoopRunsHandler exposes read-only loop run metadata. In the POC the loop
-// plane is enforced mostly via immutable external limits (rate limiting, timeouts).
+// adminLoopRunsHandler exposes loop run observability and operator halt.
+//
+// Supported endpoints:
+//   - GET  /admin/loop/runs           -> list all runs
+//   - GET  /admin/loop/runs/<run_id>  -> single run detail
+//   - POST /admin/loop/runs/<run_id>/halt -> operator halt
 func (g *Gateway) adminLoopRunsHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		writeV24GatewayError(
-			w,
-			r,
-			http.StatusMethodNotAllowed,
-			middleware.ErrMCPInvalidRequest,
-			"method not allowed",
-			v24MiddlewareLoopAdmin,
-			ReasonContractInvalid,
-			map[string]any{"expected_method": http.MethodGet},
-		)
+	const basePath = "/admin/loop/runs"
+	suffix := strings.TrimPrefix(r.URL.Path, basePath)
+
+	// GET /admin/loop/runs or GET /admin/loop/runs/
+	if suffix == "" || suffix == "/" {
+		if r.Method != http.MethodGet {
+			g.writeLoopAdminMethodNotAllowed(w, r, "GET")
+			return
+		}
+		g.handleAdminLoopRunsList(w, r)
 		return
 	}
 
+	// Remove leading slash to get the run ID or run_id/halt.
+	suffix = strings.TrimPrefix(suffix, "/")
+
+	// POST /admin/loop/runs/<run_id>/halt
+	if strings.HasSuffix(suffix, "/halt") {
+		if r.Method != http.MethodPost {
+			g.writeLoopAdminMethodNotAllowed(w, r, "POST")
+			return
+		}
+		runID := strings.TrimSuffix(suffix, "/halt")
+		if runID == "" {
+			writeV24GatewayError(w, r, http.StatusNotFound, middleware.ErrMCPInvalidRequest,
+				"run not found", v24MiddlewareLoopAdmin, ReasonContractInvalid, nil)
+			return
+		}
+		g.handleAdminLoopRunHalt(w, r, runID)
+		return
+	}
+
+	// GET /admin/loop/runs/<run_id>
+	if r.Method != http.MethodGet {
+		g.writeLoopAdminMethodNotAllowed(w, r, "GET")
+		return
+	}
+	runID := suffix
+	if strings.Contains(runID, "/") {
+		http.NotFound(w, r)
+		return
+	}
+	g.handleAdminLoopRunDetail(w, r, runID)
+}
+
+func (g *Gateway) handleAdminLoopRunsList(w http.ResponseWriter, r *http.Request) {
 	var runs []loopRunRecord
 	if g.loopPolicy != nil {
 		runs = g.loopPolicy.listRuns()
 	}
-
+	g.logLoopAdminEvent(r, "admin.loop.list", http.StatusOK, map[string]any{
+		"run_count": len(runs),
+	})
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"runs": runs,
+		"status": "ok",
+		"runs":   runs,
 	})
+}
+
+func (g *Gateway) handleAdminLoopRunDetail(w http.ResponseWriter, r *http.Request, runID string) {
+	if g.loopPolicy == nil {
+		g.logLoopAdminEvent(r, "admin.loop.detail", http.StatusNotFound, map[string]any{
+			"run_id": runID,
+			"error":  "run not found",
+		})
+		writeV24GatewayError(w, r, http.StatusNotFound, middleware.ErrMCPInvalidRequest,
+			"run not found", v24MiddlewareLoopAdmin, ReasonContractInvalid,
+			map[string]any{"run_id": runID})
+		return
+	}
+	run, ok := g.loopPolicy.getRun(runID)
+	if !ok {
+		g.logLoopAdminEvent(r, "admin.loop.detail", http.StatusNotFound, map[string]any{
+			"run_id": runID,
+			"error":  "run not found",
+		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "failed",
+			"error":  "run not found",
+		})
+		return
+	}
+	g.logLoopAdminEvent(r, "admin.loop.detail", http.StatusOK, map[string]any{
+		"run_id": runID,
+		"state":  string(run.State),
+	})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status": "ok",
+		"run":    run,
+	})
+}
+
+func (g *Gateway) handleAdminLoopRunHalt(w http.ResponseWriter, r *http.Request, runID string) {
+	if g.loopPolicy == nil {
+		g.logLoopAdminEvent(r, "admin.loop.halt", http.StatusNotFound, map[string]any{
+			"run_id": runID,
+			"error":  "run not found",
+		})
+		writeV24GatewayError(w, r, http.StatusNotFound, middleware.ErrMCPInvalidRequest,
+			"run not found", v24MiddlewareLoopAdmin, ReasonContractInvalid,
+			map[string]any{"run_id": runID})
+		return
+	}
+
+	// Check if the run exists before attempting halt.
+	run, ok := g.loopPolicy.getRun(runID)
+	if !ok {
+		g.logLoopAdminEvent(r, "admin.loop.halt", http.StatusNotFound, map[string]any{
+			"run_id": runID,
+			"error":  "run not found",
+		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "failed",
+			"error":  "run not found",
+		})
+		return
+	}
+
+	// If the run is already in a terminal state, return 409 Conflict.
+	if isLoopTerminalState(run.State) {
+		g.logLoopAdminEvent(r, "admin.loop.halt", http.StatusConflict, map[string]any{
+			"run_id": runID,
+			"state":  string(run.State),
+			"error":  "run already terminal",
+		})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusConflict)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "failed",
+			"error":  "run already terminal",
+			"run":    run,
+		})
+		return
+	}
+
+	// Construct a synthetic PlaneRequestV2 that passes through evaluate().
+	// Re-use the existing run's limits and usage to avoid LIMITS_IMMUTABLE_VIOLATION.
+	traceID, decisionID := getDecisionCorrelationIDs(r, RunEnvelope{})
+	req := PlaneRequestV2{
+		Envelope: RunEnvelope{
+			RunID:         runID,
+			SessionID:     run.SessionID,
+			Tenant:        "admin",
+			ActorSPIFFEID: "admin",
+			Plane:         PlaneLoop,
+		},
+		Policy: PolicyInputV2{
+			Envelope: RunEnvelope{
+				RunID:         runID,
+				SessionID:     run.SessionID,
+				Tenant:        "admin",
+				ActorSPIFFEID: "admin",
+				Plane:         PlaneLoop,
+			},
+			Action:   "loop.check",
+			Resource: "agent-loop",
+			Attributes: map[string]any{
+				"run_id": runID,
+				"event":  "operator_halt",
+				"limits": loopLimitsToMap(run.Limits),
+				"usage":  loopUsageToMap(run.Usage),
+			},
+		},
+	}
+
+	decision, reason, _, _ := g.loopPolicy.evaluate(req, decisionID, traceID, time.Now().UTC())
+
+	// Re-fetch the updated run after evaluate.
+	updatedRun, _ := g.loopPolicy.getRun(runID)
+	g.logLoopAdminEvent(r, "admin.loop.halt", http.StatusOK, map[string]any{
+		"run_id":      runID,
+		"state":       string(updatedRun.State),
+		"halt_reason": string(reason),
+	})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"status":        "ok",
+		"run":           updatedRun,
+		"halt_decision": string(decision),
+		"halt_reason":   string(reason),
+	})
+}
+
+func (g *Gateway) writeLoopAdminMethodNotAllowed(w http.ResponseWriter, r *http.Request, allowed string) {
+	w.Header().Set("Allow", allowed)
+	writeV24GatewayError(w, r, http.StatusMethodNotAllowed, middleware.ErrMCPInvalidRequest,
+		"method not allowed", v24MiddlewareLoopAdmin, ReasonContractInvalid,
+		map[string]any{"allow": allowed})
+}
+
+// loopLimitsToMap converts immutable limits struct to a map for synthetic requests.
+func loopLimitsToMap(l loopImmutableLimits) map[string]any {
+	return map[string]any{
+		"max_steps":              l.MaxSteps,
+		"max_tool_calls":         l.MaxToolCalls,
+		"max_model_calls":        l.MaxModelCalls,
+		"max_wall_time_ms":       l.MaxWallTimeMS,
+		"max_egress_bytes":       l.MaxEgressBytes,
+		"max_model_cost_usd":     l.MaxModelCostUSD,
+		"max_provider_failovers": l.MaxProviderFailovers,
+		"max_risk_score":         l.MaxRiskScore,
+	}
+}
+
+// loopUsageToMap converts usage snapshot struct to a map for synthetic requests.
+func loopUsageToMap(u loopUsageSnapshot) map[string]any {
+	return map[string]any{
+		"steps":              u.Steps,
+		"tool_calls":         u.ToolCalls,
+		"model_calls":        u.ModelCalls,
+		"wall_time_ms":       u.WallTimeMS,
+		"egress_bytes":       u.EgressBytes,
+		"model_cost_usd":     u.ModelCostUSD,
+		"provider_failovers": u.ProviderFailovers,
+		"risk_score":         u.RiskScore,
+	}
 }
