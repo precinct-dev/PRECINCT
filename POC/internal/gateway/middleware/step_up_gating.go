@@ -327,6 +327,11 @@ func (dal *DestinationAllowlist) IsAllowed(destination string) bool {
 // total score is forced into the approval range (>= 7). When rev.Score == 3
 // and the session's EscalationScore exceeds EscalationWarningThreshold, the
 // total is forced into the deny range (>= 10).
+//
+// OC-d77k: Also checks session.EscalationScore against Critical (25) and
+// Emergency (40) thresholds. At Critical: +3 to Impact dimension (fast_path
+// actions become step_up, step_up becomes approval). At Emergency: all
+// dimensions set to max (3), forcing deny gate for ALL actions.
 func ComputeRiskScore(
 	toolDef *ToolDefinition,
 	session *AgentSession,
@@ -348,6 +353,7 @@ func ComputeRiskScore(
 	if toolDef == nil {
 		rd := RiskDimension(defaults)
 		applyReversibilityOverrides(&rd, session, &rso)
+		applyEscalationOverrides(&rd, session)
 		return rd
 	}
 
@@ -373,7 +379,36 @@ func ComputeRiskScore(
 	// OC-h4m7: Apply reversibility-aware overrides
 	applyReversibilityOverrides(&rd, session, &rso)
 
+	// OC-d77k: Apply escalation-based overrides
+	applyEscalationOverrides(&rd, session)
+
 	return rd
+}
+
+// applyEscalationOverrides applies OC-d77k escalation-based gate elevation.
+//
+// At Emergency (>= 40): all dimensions are set to 3, forcing total=12 (deny gate).
+// At Critical (>= 25): +3 is added to Impact (capped at 3), elevating the gate
+// by one or more bands.
+func applyEscalationOverrides(rd *RiskDimension, session *AgentSession) {
+	if session == nil {
+		return
+	}
+
+	if session.EscalationScore >= EscalationEmergencyThreshold {
+		rd.Impact = 3
+		rd.Reversibility = 3
+		rd.Exposure = 3
+		rd.Novelty = 3
+		return
+	}
+
+	if session.EscalationScore >= EscalationCriticalThreshold {
+		rd.Impact += 3
+		if rd.Impact > 3 {
+			rd.Impact = 3
+		}
+	}
 }
 
 // RiskScoreOption is a functional option for ComputeRiskScore (OC-h4m7).
@@ -897,6 +932,13 @@ func StepUpGating(
 				guardResultStr = "passed"
 			}
 		}
+		// OC-d77k: Include escalation score and state in span attributes
+		var escalationScore float64
+		var escalationState string
+		if session != nil {
+			escalationScore = session.EscalationScore
+			escalationState = EscalationState(session.EscalationScore)
+		}
 		span.SetAttributes(
 			attribute.String("gate", gate),
 			attribute.Int("total_score", totalScore),
@@ -908,6 +950,8 @@ func StepUpGating(
 			attribute.Int("reversibility_score", rev.Score),
 			attribute.String("reversibility_category", rev.Category),
 			attribute.Bool("backup_recommended", rev.RequiresBackup && result.Allowed),
+			attribute.Float64("escalation_score", escalationScore),
+			attribute.String("escalation_state", escalationState),
 		)
 		if result.Allowed {
 			span.SetAttributes(
@@ -925,7 +969,17 @@ func StepUpGating(
 		ctx = WithStepUpResult(ctx, result)
 
 		// Log audit event for step-up decision (OC-h4m7: includes reversibility classification)
+		// OC-d77k: includes escalation_score and escalation_state
 		if auditor != nil {
+			secAudit := &SecurityAudit{
+				ReversibilityScore:    rev.Score,
+				ReversibilityCategory: rev.Category,
+				BackupRecommended:     rev.RequiresBackup && result.Allowed,
+			}
+			if session != nil {
+				secAudit.EscalationScore = session.EscalationScore
+				secAudit.EscalationState = EscalationState(session.EscalationScore)
+			}
 			auditor.Log(AuditEvent{
 				SessionID:  GetSessionID(ctx),
 				DecisionID: GetDecisionID(ctx),
@@ -935,11 +989,7 @@ func StepUpGating(
 				Result:     fmt.Sprintf("gate=%s allowed=%v total_score=%d impact=%d reversibility=%d exposure=%d novelty=%d reason=%s", gate, result.Allowed, totalScore, riskScore.Impact, riskScore.Reversibility, riskScore.Exposure, riskScore.Novelty, result.Reason),
 				Method:     r.Method,
 				Path:       r.URL.Path,
-				Security: &SecurityAudit{
-					ReversibilityScore:    rev.Score,
-					ReversibilityCategory: rev.Category,
-					BackupRecommended:     rev.RequiresBackup && result.Allowed,
-				},
+				Security:   secAudit,
 			})
 		}
 
