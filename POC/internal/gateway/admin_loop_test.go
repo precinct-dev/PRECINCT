@@ -4,8 +4,14 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
 )
 
 // ---------------------------------------------------------------------------
@@ -417,5 +423,252 @@ func TestAdminLoopRuns_Integration_ListShowsMultipleRuns(t *testing.T) {
 	first := runs[0].(map[string]any)
 	if first["run_id"] != "int-list-003" {
 		t.Fatalf("expected first run_id=int-list-003 (most recently updated), got %v", first["run_id"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Audit Logging Tests (AC7)
+// ---------------------------------------------------------------------------
+
+// newTestGatewayWithAuditor creates a Gateway with a real auditor writing to a
+// temp file. The caller must defer auditor.Close(). Returns the gateway and
+// the audit file path for post-hoc verification.
+func newTestGatewayWithAuditor(t *testing.T) (*Gateway, string) {
+	t.Helper()
+	auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
+	auditor, err := middleware.NewAuditor(auditPath, testutil.OPAPolicyPath(), testutil.ToolRegistryConfigPath())
+	if err != nil {
+		t.Fatalf("create auditor: %v", err)
+	}
+	t.Cleanup(func() { _ = auditor.Close() })
+
+	engine := newLoopPlanePolicyEngine()
+	return &Gateway{
+		loopPolicy: engine,
+		auditor:    auditor,
+	}, auditPath
+}
+
+func TestAdminLoopRuns_AuditEvent_List(t *testing.T) {
+	gw, auditPath := newTestGatewayWithAuditor(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/loop/runs", nil)
+	rec := httptest.NewRecorder()
+	gw.adminLoopRunsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	gw.auditor.Flush()
+	content, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	text := string(content)
+	for _, want := range []string{
+		`"action":"admin.loop.list"`,
+		`"path":"/admin/loop/runs"`,
+		`"method":"GET"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected audit log to contain %s, got:\n%s", want, text)
+		}
+	}
+}
+
+func TestAdminLoopRuns_AuditEvent_Detail(t *testing.T) {
+	gw, auditPath := newTestGatewayWithAuditor(t)
+
+	// Create a run first.
+	loopReq := makeLoopRequest("audit-detail-001", "boundary", nil)
+	gw.loopPolicy.evaluate(loopReq, "dec-001", "trace-001", time.Now().UTC())
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/loop/runs/audit-detail-001", nil)
+	rec := httptest.NewRecorder()
+	gw.adminLoopRunsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	gw.auditor.Flush()
+	content, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	text := string(content)
+	for _, want := range []string{
+		`"action":"admin.loop.detail"`,
+		`run_id=audit-detail-001`,
+		`"path":"/admin/loop/runs/audit-detail-001"`,
+		`"method":"GET"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected audit log to contain %s, got:\n%s", want, text)
+		}
+	}
+}
+
+func TestAdminLoopRuns_AuditEvent_DetailNotFound(t *testing.T) {
+	gw, auditPath := newTestGatewayWithAuditor(t)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/loop/runs/nonexistent", nil)
+	rec := httptest.NewRecorder()
+	gw.adminLoopRunsHandler(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	gw.auditor.Flush()
+	content, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	text := string(content)
+	for _, want := range []string{
+		`"action":"admin.loop.detail"`,
+		`run_id=nonexistent`,
+		`error=run not found`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected audit log to contain %s, got:\n%s", want, text)
+		}
+	}
+}
+
+func TestAdminLoopRuns_AuditEvent_Halt(t *testing.T) {
+	gw, auditPath := newTestGatewayWithAuditor(t)
+
+	// Create a running run.
+	loopReq := makeLoopRequest("audit-halt-001", "boundary", nil)
+	gw.loopPolicy.evaluate(loopReq, "dec-001", "trace-001", time.Now().UTC())
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/loop/runs/audit-halt-001/halt", nil)
+	rec := httptest.NewRecorder()
+	gw.adminLoopRunsHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	gw.auditor.Flush()
+	content, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	text := string(content)
+	for _, want := range []string{
+		`"action":"admin.loop.halt"`,
+		`run_id=audit-halt-001`,
+		`state=HALTED_OPERATOR`,
+		`halt_reason=LOOP_HALT_OPERATOR`,
+		`"method":"POST"`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected audit log to contain %s, got:\n%s", want, text)
+		}
+	}
+}
+
+func TestAdminLoopRuns_AuditEvent_HaltConflict(t *testing.T) {
+	gw, auditPath := newTestGatewayWithAuditor(t)
+
+	// Create a run and complete it to make it terminal.
+	loopReq := makeLoopRequest("audit-halt-409", "boundary", nil)
+	gw.loopPolicy.evaluate(loopReq, "dec-001", "trace-001", time.Now().UTC())
+	completeReq := makeLoopRequest("audit-halt-409", "complete", nil)
+	gw.loopPolicy.evaluate(completeReq, "dec-002", "trace-002", time.Now().UTC())
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/loop/runs/audit-halt-409/halt", nil)
+	rec := httptest.NewRecorder()
+	gw.adminLoopRunsHandler(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	gw.auditor.Flush()
+	content, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	text := string(content)
+	for _, want := range []string{
+		`"action":"admin.loop.halt"`,
+		`run_id=audit-halt-409`,
+		`error=run already terminal`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected audit log to contain %s, got:\n%s", want, text)
+		}
+	}
+}
+
+func TestAdminLoopRuns_Integration_AuditTrailForCreateInspectHalt(t *testing.T) {
+	gw, auditPath := newTestGatewayWithAuditor(t)
+
+	// Step 1: Create a run.
+	loopReq := makeLoopRequest("int-audit-001", "boundary", nil)
+	gw.loopPolicy.evaluate(loopReq, "dec-001", "trace-001", time.Now().UTC())
+
+	// Step 2: List runs -- should produce admin.loop.list audit event.
+	listReq := httptest.NewRequest(http.MethodGet, "/admin/loop/runs", nil)
+	listRec := httptest.NewRecorder()
+	gw.adminLoopRunsHandler(listRec, listReq)
+	if listRec.Code != http.StatusOK {
+		t.Fatalf("list: expected 200, got %d", listRec.Code)
+	}
+
+	// Step 3: Detail -- should produce admin.loop.detail audit event.
+	detailReq := httptest.NewRequest(http.MethodGet, "/admin/loop/runs/int-audit-001", nil)
+	detailRec := httptest.NewRecorder()
+	gw.adminLoopRunsHandler(detailRec, detailReq)
+	if detailRec.Code != http.StatusOK {
+		t.Fatalf("detail: expected 200, got %d", detailRec.Code)
+	}
+
+	// Step 4: Halt -- should produce admin.loop.halt audit event.
+	haltReq := httptest.NewRequest(http.MethodPost, "/admin/loop/runs/int-audit-001/halt", nil)
+	haltRec := httptest.NewRecorder()
+	gw.adminLoopRunsHandler(haltRec, haltReq)
+	if haltRec.Code != http.StatusOK {
+		t.Fatalf("halt: expected 200, got %d body=%s", haltRec.Code, haltRec.Body.String())
+	}
+
+	// Step 5: Verify audit trail contains all three action types.
+	gw.auditor.Flush()
+	content, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit log: %v", err)
+	}
+	text := string(content)
+
+	for _, want := range []string{
+		`"action":"admin.loop.list"`,
+		`"action":"admin.loop.detail"`,
+		`"action":"admin.loop.halt"`,
+		`run_id=int-audit-001`,
+		`state=HALTED_OPERATOR`,
+	} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected audit trail to contain %s, got:\n%s", want, text)
+		}
+	}
+
+	// Verify all events have the audit hash chain fields (prev_hash, bundle_digest).
+	lines := strings.Split(strings.TrimSpace(text), "\n")
+	for i, line := range lines {
+		var evt map[string]any
+		if err := json.Unmarshal([]byte(line), &evt); err != nil {
+			t.Fatalf("line %d: invalid JSON: %v", i, err)
+		}
+		if _, ok := evt["prev_hash"]; !ok {
+			t.Fatalf("line %d: missing prev_hash in audit event", i)
+		}
+		if _, ok := evt["bundle_digest"]; !ok {
+			t.Fatalf("line %d: missing bundle_digest in audit event", i)
+		}
 	}
 }
