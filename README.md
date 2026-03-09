@@ -12,6 +12,10 @@ PRECINCT is an open-source security reference architecture for agentic AI system
 
 - **Zero-trust identity** -- Cryptographic agent identity via SPIFFE/SPIRE, eliminating shared secrets
 - **Policy enforcement** -- OPA-based authorization at every tool call, model invocation, and data access
+- **Multi-agent governance** -- RLM lineage tracking with subcall budgets, loop state machine with operator halt (human kill switch), and 8-dimension immutable budget enforcement
+- **Context memory tiering** -- Four-tier classification (ephemeral/session/long_term/regulated) with DLP enforcement and step-up gating
+- **Ingress security** -- Canonical connector envelope validation with SPIFFE source principal matching, SHA-256 payload content-addressing, and replay detection
+- **Shell injection prevention** -- CLI tool adapter with command allowlists, max-args limits, and denied-arg-token detection
 - **Audit contracts** -- Structured decision records for every gateway action, enabling compliance and forensics
 - **Supply-chain integrity** -- Signed container images and provenance verification for all components
 - **Compliance mappings** -- Pre-built profiles for SOC 2, HIPAA, PCI-DSS, GDPR, and FedRAMP

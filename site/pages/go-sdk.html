@@ -136,6 +136,7 @@
                 <li><a href="#wire-format">Wire Format</a></li>
                 <li><a href="#retry-behavior">Retry Behavior</a></li>
                 <li><a href="#advanced">Advanced Usage</a></li>
+                <li><a href="#spike-token-helpers">SPIKE Token Helpers</a></li>
                 <li><a href="#constants">Constants</a></li>
               </ul>
             </div>
@@ -178,6 +179,7 @@
                 <li><a href="#wire-format">Wire Format</a></li>
                 <li><a href="#retry-behavior">Retry Behavior</a></li>
                 <li><a href="#advanced">Advanced Usage</a></li>
+                <li><a href="#spike-token-helpers">SPIKE Token Helpers</a></li>
                 <li><a href="#constants">Constants</a></li>
               </ul>
             </div>
@@ -1129,6 +1131,68 @@ wg.Wait()</code></pre>
           </section>
 
           <!-- ========== Constants ========== -->
+          <section id="spike-token-helpers">
+            <h2>SPIKE Token Helpers</h2>
+            <p>
+              The Go SDK provides two helper functions for constructing SPIKE token
+              reference strings. These functions produce opaque Bearer tokens that the
+              gateway resolves to real credentials at egress time (middleware layer 13).
+              The format matches the Python SDK's <code>build_spike_token_ref</code> exactly.
+            </p>
+
+            <h3><code>BuildSPIKETokenRef</code></h3>
+            <pre data-lang="go"><code>func BuildSPIKETokenRef(spikeRef string, expSeconds int) string</code></pre>
+            <p>
+              Constructs a Bearer SPIKE token reference string suitable for use as an
+              <code>Authorization</code> header value. If <code>spikeRef</code> is empty,
+              returns an empty string. If <code>expSeconds</code> is &lt;= 0, defaults
+              to 3600 (1 hour).
+            </p>
+            <pre data-lang="go"><code>// Typical usage
+ref := mcpgateway.BuildSPIKETokenRef("secrets/groq-api-key", 3600)
+// Returns: "Bearer $SPIKE{ref:secrets/groq-api-key,exp:3600}"
+
+// Custom expiration
+ref := mcpgateway.BuildSPIKETokenRef("secrets/openai-key", 7200)
+// Returns: "Bearer $SPIKE{ref:secrets/openai-key,exp:7200}"</code></pre>
+
+            <h3><code>BuildSPIKETokenRefWithScope</code></h3>
+            <pre data-lang="go"><code>func BuildSPIKETokenRefWithScope(spikeRef string, expSeconds int, scope string) string</code></pre>
+            <p>
+              Like <code>BuildSPIKETokenRef</code> but appends an optional scope qualifier.
+              If scope is empty, the result is identical to <code>BuildSPIKETokenRef</code>.
+            </p>
+            <pre data-lang="go"><code>// With scope
+ref := mcpgateway.BuildSPIKETokenRefWithScope("secrets/db-cred", 1800, "read-only")
+// Returns: "Bearer $SPIKE{ref:secrets/db-cred,exp:1800,scope:read-only}"
+
+// Without scope (equivalent to BuildSPIKETokenRef)
+ref := mcpgateway.BuildSPIKETokenRefWithScope("secrets/key", 3600, "")
+// Returns: "Bearer $SPIKE{ref:secrets/key,exp:3600}"</code></pre>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">SPIKE token helper constants</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Constant</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Value</th>
+                    <th scope="col">Description</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>DefaultSPIKEExpSeconds</code></td>
+                    <td><code>int</code></td>
+                    <td><code>3600</code></td>
+                    <td>Default token expiration in seconds (matches the Python SDK default).</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
           <section id="constants">
             <h2>Constants</h2>
             <p>

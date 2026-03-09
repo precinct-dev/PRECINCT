@@ -53,15 +53,16 @@ Note:
 
 ## 3) Posture Delta From Phase 3 Design
 
-| Area | Before Phase 3 | After Phase 3 Design Update | Remaining Requirement |
+| Area | Before Phase 3 | After Phase 3 Implementation | Remaining Requirement |
 |---|---|---|---|
-| LLM provider governance | Fragmented, app-level | Mandatory model mediation (policy + identity + network gates) + trust/residency/budget policy | Sustained control-operation evidence |
-| Event ingress governance | Uneven across webhook/queue triggers | Connector-based normalized ingress admission + conformance gates | Connector ownership and 24x7 support model |
-| Loop controls | Framework-specific, hard to audit consistently | External immutable envelopes and reason-coded halts | Runtime adoption and alerts/runbooks |
-| Context safety | Detection-oriented, non-uniform enforcement | No-scan-no-send + minimum-necessary + artifact verification invariants | Ongoing verification evidence by environment |
-| RLM runtime | Emerging pattern with weak standard controls | Explicit sandbox/sub-call/budget controls | GA profile defaults + control effectiveness evidence |
-| DLP rule lifecycle | Static/ad hoc or code-bound patterns | DLP RuleOps lifecycle (RBAC/SOD, validate, approve, sign, canary, rollback) | RuleOps drill and approval evidence |
-| HIPAA prompt path | Partial and policy-implicit | `prod_regulated_hipaa` deny/tokenize defaults + override reason codes | Legal/operational HIPAA governance evidence |
+| LLM provider governance | Fragmented, app-level | **Implemented:** Mandatory model mediation (policy + identity + network gates) + trust/residency/budget policy + provider fallback + prompt safety | Sustained control-operation evidence |
+| Event ingress governance | Uneven across webhook/queue triggers | **Implemented:** Canonical connector envelope with source principal auth, SHA256 content-addressing, replay detection (30min nonce TTL), freshness validation (10min window) | Connector ownership and 24x7 support model |
+| Loop controls | Framework-specific, hard to audit consistently | **Implemented:** Full 8-state governance machine with all 8 immutable limits, operator halt via admin API, approval flow, audit logging | Runtime adoption and alerts/runbooks |
+| Context safety | Detection-oriented, non-uniform enforcement | **Implemented:** All 4 invariants + context memory tiering (ephemeral/session/long_term/regulated) with DLP enforcement and step-up for regulated reads | Ongoing verification evidence by environment |
+| RLM runtime | Emerging pattern with weak standard controls | **Implemented:** RLM governance engine with per-lineage tracking, depth/subcall/budget limits, UASGS bypass prevention | GA profile defaults + control effectiveness evidence |
+| DLP rule lifecycle | Static/ad hoc or code-bound patterns | **Implemented:** DLP RuleOps lifecycle (create, validate, approve, sign, promote, rollback) via admin API | RuleOps drill and approval evidence |
+| HIPAA prompt path | Partial and policy-implicit | **Implemented:** `prod_regulated_hipaa` deny/tokenize defaults + override reason codes + prompt safety evaluation | Legal/operational HIPAA governance evidence |
+| Tool plane governance | Placeholder with minimal enforcement | **Implemented:** Capability registry v2, multi-protocol adapters (MCP/HTTP/CLI/email/Discord), CLI shell injection prevention, step-up for high-risk actions | Registry curation and adapter certification |
 
 ---
 
@@ -81,11 +82,11 @@ Legend:
 | Data loss/exfiltration controls | DLP + response firewall + step-up gating | CC6.6, CC7.1 | Monitoring/data protection controls | 1798.150 risk reduction posture | Art. 25, Art. 32 | 164.312(c)(1), 164.308(a)(1) | Partial |
 | LLM provider egress governance | Mandatory model mediation with policy+identity+network gates, trust policy, residency, budget/fallback policy | CC6.6, CC7.2 | Supplier/network/data transfer controls | Service provider controls expectation | Art. 28, Art. 44+, Art. 32 | 164.308(b)(1), 164.312(e)(1) | Partial |
 | Ingress governance | Connector-based source auth/replay/schema/idempotency + connector conformance gates | CC6.6, CC7.1 | Network/input/change controls | Security safeguards | Art. 25, Art. 32 | 164.308(a)(1), 164.312(e)(1) | Partial |
-| Loop governance | Immutable run envelopes, halt reason taxonomy, operator stop controls | CC7.1, CC7.2 | Operational security/resilience controls | Security safeguards | Art. 32(1)(b),(d) | 164.308(a)(1), 164.308(a)(7) | Partial |
-| Context engineering admission | No-scan-no-send, no-provenance-no-persist, no-verification-no-load, minimum-necessary | CC6.6, CC7.2 | Input validation/data handling controls | Sensitive PI safeguards | Art. 25, Art. 32 | 164.312(c)(1), 164.308(a)(1) | Partial |
-| RLM governance | REPL sandbox, recursion/sub-call limits, mediated sub-calls | CC6.6, CC7.1 | Secure operations/change controls | Security safeguards | Art. 32 | 164.308(a)(1), 164.312(c)(1) | Partial |
+| Loop governance | 8-state machine with all 8 immutable limits, operator halt, approval flow, admin API with audit logging | CC7.1, CC7.2 | Operational security/resilience controls | Security safeguards | Art. 32(1)(b),(d) | 164.308(a)(1), 164.308(a)(7) | Implemented |
+| Context engineering admission | All 4 invariants enforced + context memory tiering (ephemeral/session/long_term/regulated) with DLP and step-up governance | CC6.6, CC7.2 | Input validation/data handling controls | Sensitive PI safeguards | Art. 25, Art. 32 | 164.312(c)(1), 164.308(a)(1) | Implemented |
+| RLM governance | Per-lineage tracking, depth/subcall/budget limits, UASGS bypass prevention | CC6.6, CC7.1 | Secure operations/change controls | Security safeguards | Art. 32 | 164.308(a)(1), 164.312(c)(1) | Implemented |
 | Auditability and evidence chain | Unified event taxonomy + hash chain + trace correlation | CC7.2 | Logging/monitoring controls | Accountability support | Art. 30, Art. 5(2) | 164.312(b), 164.316(b)(1) | Partial |
-| DLP RuleOps governance | RuleOps RBAC/SOD + approvals + signing + canary + rollback + immutable audit | CC6.7, CC7.2 | Change/logging controls | Security safeguards | Art. 24, Art. 32 | 164.308(a)(1), 164.316(b)(1) | Partial |
+| DLP RuleOps governance | RuleOps lifecycle (create/validate/approve/sign/promote/rollback) via admin API with immutable audit | CC6.7, CC7.2 | Change/logging controls | Security safeguards | Art. 24, Art. 32 | 164.308(a)(1), 164.316(b)(1) | Implemented |
 | HIPAA prompt safety profile | `prod_regulated_hipaa` deny/tokenize defaults, prompt minimization, restricted override path | CC6.6, CC7.2 | Data handling and operations controls | Sensitive PI safeguards | Art. 25, Art. 32 | 164.312(c)(1), 164.308(a)(1) | Partial |
 | Supply-chain integrity | Signed image/digest admission + artifact fetch/proxy model | CC6.7, CC7.1 | Supplier/dev/change controls | Security safeguards | Art. 32 | 164.308(a)(1), 164.312(c)(1) | Partial |
 | Privacy rights operations | ROPA + deletion orchestration + retention controls | CC6/CC7 supporting controls | Lifecycle/retention controls | 1798.105 deletion rights | Art. 17, Art. 30 | 164.316 policies/procedures support | Partial |
@@ -238,11 +239,11 @@ Required workstream:
 
 - Implement tested legal hold/WORM/custody procedures with recurring evidence drills.
 
-### C-05 (Medium): Mandatory controls exist; sustained production verification and drift detection are now the gap
+### C-05 (Medium): Mandatory controls exist and are now implemented; sustained production verification and drift detection are the gap
 
 Required workstream:
 
-- Prove and continuously verify no direct model calls and no unscanned context admission in production.
+- Prove and continuously verify no direct model calls and no unscanned context admission in production. All five governed planes now have implemented enforcement with reason-code-complete decisions; remaining work is operational verification evidence.
 
 ### C-06 (Medium): Ingress connector governance model (reference set, certification, owner responsibilities) is incomplete
 
@@ -260,7 +261,7 @@ Required workstream:
 
 Required workstream:
 
-- Set recursion/sub-call/cost limits and escalation criteria by risk tier.
+- RLM governance engine is now implemented with default limits (max_depth=6, max_subcalls=64, max_budget_units=128) and UASGS bypass prevention. Remaining work is to establish per-risk-tier limit profiles and escalation criteria for production GA.
 
 ### C-09 (Medium): Legal identity to technical identity linkage for DSAR and deletion remains partial
 

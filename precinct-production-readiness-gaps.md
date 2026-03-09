@@ -37,14 +37,21 @@ Scope posture for this architecture/reference implementation:
 
 ## 2. Executive Verdict
 
-The architecture is **strong in core MCP tool-plane security**, but it is **not yet production-ready for all stated use cases**.
+The architecture is **strong in core MCP tool-plane security** and **Phase 3 control planes are now substantially implemented**.
 
-Top reasons:
+Top reasons for improved posture:
 
-1. Phase 3 control planes are only partially implemented (several are scaffolding/minimal logic).
-2. Production go/no-go controls are not fully proven end-to-end (notably conformance gates, connector governance, RuleOps lifecycle, break-glass, legal-hold-grade audit workflows).
-3. Compliance automation is meaningful but narrow; it does not yet span all required control areas for SOC 2 Type II / ISO 27001 / CCPA-CPRA / GDPR, and does not yet include PCI-DSS.
-4. Non-K8s/proprietary environment adaptation guidance is not yet strong enough to guarantee safe portability without design drift.
+1. Phase 3 control planes are now implemented for all five governed planes: ingress (canonical connector envelope with replay detection, freshness, SHA256 content-addressing), model (provider governance, trust policy, residency, budget/fallback, prompt safety), context (all four admission invariants plus memory tier governance), loop (full 8-state machine with all 8 immutable limits), and tool (capability registry v2, multi-protocol adapters, CLI shell injection prevention).
+2. RLM Governance Engine is implemented with per-lineage state tracking, subcall budget enforcement, depth limits, and UASGS bypass prevention.
+3. Loop Admin API provides per-run observability and operator halt capability with audit logging.
+4. Go SDK and Python SDK both provide SPIKE token builder utilities.
+
+Remaining gaps are concentrated in:
+
+1. Operational evidence maturity (not architecture completeness).
+2. Compliance automation scope (SOC 2 Type II / ISO 27001 / CCPA-CPRA / GDPR coverage still narrow; PCI-DSS absent).
+3. Non-K8s/proprietary environment adaptation guidance.
+4. HIPAA legal-operational uplift.
 
 ---
 
@@ -79,38 +86,38 @@ Assessment style:
 ## G-02: DLP RuleOps Control Plane Is Scaffolding
 
 - **Architecture requirement:** `7.5.2`, `9.8`, `10.14.2` (RBAC/SOD, dual approval, signing, canary, rollback, audit lifecycle).
-- **Current state:** Read-only introspection only; no CRUD lifecycle.
-- **Evidence:** `POC/internal/gateway/phase3_dlp_ruleops.go`, `POC/internal/gateway/admin_phase3.go`.
-- **Risk:** DLP policy drift/tampering cannot be governed at production grade.
-- **Status:** `Partial`
-- **Required change:** Implement `/v1/dlp/rulesets/*` state machine with approval workflows, signature checks, canary activation, rollback, immutable audit events.
+- **Current state:** **CLOSED.** Full RuleOps lifecycle is implemented with create, validate, approve, sign, promote (canary/active), and rollback operations. Admin API at `/admin/dlp/rulesets/*` with immutable audit events for every lifecycle transition.
+- **Evidence:** `POC/internal/gateway/admin_phase3.go` (`adminDLPRulesetsHandler`), `POC/internal/gateway/phase3_dlp_ruleops.go`.
+- **Risk:** Residual risk is operational: sustained evidence of dual-approval drills and rollback readiness.
+- **Status:** `Implemented`
+- **Remaining:** Recurring operational evidence (approval records, canary outcomes, rollback drills).
 
 ## G-03: Context Admission Invariants Are Incomplete
 
 - **Architecture requirement:** `7.11` mandates `no-scan-no-send`, `no-provenance-no-persist`, `no-verification-no-load`, `minimum-necessary`.
-- **Current state:** Context endpoint checks only a subset (`scan_passed`, `prompt_check_passed`, injection flag).
-- **Evidence:** `POC/internal/gateway/phase3_runtime_helpers.go` (`handleContextAdmit`).
-- **Risk:** Unverified or non-minimized external context can still be persisted/loaded.
-- **Status:** `Partial`
-- **Required change:** Enforce all four invariants with explicit provenance object requirements, verification tokens, and size/token minimization policies.
+- **Current state:** **CLOSED.** All four context admission invariants are enforced in `evaluateContextInvariants()`. Additionally, context memory tiering (ephemeral/session/long_term/regulated) is implemented with DLP classification enforcement for long-term writes and step-up requirements for regulated tier reads.
+- **Evidence:** `POC/internal/gateway/phase3_runtime_helpers.go` (`evaluateContextInvariants`). Enforces: `no-scan-no-send` (scan_passed + prompt_check_passed), `no-provenance-no-persist` (provenance source + checksum required for writes), `no-verification-no-load` (verified + verifier + verification_method required for reads/egress), `minimum-necessary` (DLP classification + tokenize/redact for sensitive content + size limits). Memory tier validation rejects invalid tiers (CONTEXT_SCHEMA_INVALID), denies long_term writes without clean DLP (CONTEXT_MEMORY_WRITE_DENIED), and requires step-up for regulated reads (CONTEXT_MEMORY_READ_STEP_UP_REQUIRED).
+- **Risk:** Residual risk is operational verification evidence by environment.
+- **Status:** `Implemented`
+- **Remaining:** Per-environment verification evidence cadence.
 
 ## G-04: Tool Plane Endpoint Does Not Enforce Capability Governance
 
 - **Architecture requirement:** Phase 3 tool plane with capability and adapter constraints.
-- **Current state:** `/v1/tool/execute` returns allow with minimal metadata.
-- **Evidence:** `POC/internal/gateway/phase3_runtime_helpers.go` (`handleToolExecute`).
-- **Risk:** Phase 3 tool-plane contract exists without real enforcement boundary.
-- **Status:** `Partial`
-- **Required change:** Enforce capability registry v2 checks, adapter protocol policy, action-level allowlists, and step-up requirements for irreversible operations.
+- **Current state:** **CLOSED.** Full tool plane governance is implemented via `toolPlanePolicyEngine` with capability registry v2 (YAML-configurable), multi-protocol adapter support (MCP, HTTP, CLI, email, Discord), action-level authorization with resource matching, step-up requirements for high-risk actions, and a CLI tool adapter with shell injection prevention (command allowlists, max-args enforcement, denied-arg-token detection for `;`, `&&`, `||`, `|`, `$(`, `` ` ``, `>`, `<`).
+- **Evidence:** `POC/internal/gateway/phase3_plane_stubs.go` (`toolPlanePolicyEngine`, `evaluate`, `hasDeniedCLIArgToken`), `POC/internal/gateway/phase3_runtime_helpers.go` (`handleToolExecute`). Reason codes: TOOL_ALLOW, TOOL_CAPABILITY_DENIED, TOOL_ADAPTER_UNSUPPORTED, TOOL_ACTION_DENIED, TOOL_CLI_COMMAND_DENIED, TOOL_CLI_ARGS_DENIED, TOOL_STEP_UP_REQUIRED.
+- **Risk:** Residual risk is operational: sustained registry maintenance and adapter onboarding.
+- **Status:** `Implemented`
+- **Remaining:** Production capability registry curation and adapter certification program.
 
 ## G-05: Loop Governance Is Minimal
 
 - **Architecture requirement:** Loop plane limits across steps, tool calls, model calls, wall time, egress bytes, cost, failovers, risk.
-- **Current state:** Only `max_steps` is enforced in endpoint logic.
-- **Evidence:** `POC/internal/gateway/phase3_runtime_helpers.go` (`handleLoopCheck`).
-- **Risk:** No robust external loop governor for high-autonomy agent flows.
-- **Status:** `Partial`
-- **Required change:** Enforce full immutable limit set with durable counters and reason-code-complete denial paths.
+- **Current state:** **CLOSED.** Full loop governance state machine is implemented with 8 states (CREATED, RUNNING, WAITING_APPROVAL, COMPLETED, HALTED_POLICY, HALTED_BUDGET, HALTED_PROVIDER_UNAVAILABLE, HALTED_OPERATOR), all 8 immutable limits enforced (max_steps, max_tool_calls, max_model_calls, max_wall_time_ms, max_egress_bytes, max_model_cost_usd, max_provider_failovers, max_risk_score), durable per-run counters, immutable limit tampering detection (LOOP_LIMITS_IMMUTABLE_VIOLATION), operator halt via admin API, and approval flow (WAITING_APPROVAL/approval_granted transitions). Admin API provides per-run detail (`GET /admin/loop/runs/<run_id>`) and operator halt (`POST /admin/loop/runs/<run_id>/halt`) with audit logging for all admin operations.
+- **Evidence:** `POC/internal/gateway/phase3_loop_plane.go` (`loopPlanePolicyEngine`, `loopRunGovernanceState`, `loopImmutableLimits`), `POC/internal/gateway/admin_phase3.go` (`adminLoopRunsHandler`, `handleAdminLoopRunHalt`). Reason codes: LOOP_ALLOW, LOOP_HALT_MAX_STEPS, LOOP_HALT_MAX_TOOL_CALLS, LOOP_HALT_MAX_MODEL_CALLS, LOOP_HALT_MAX_WALL_TIME, LOOP_HALT_MAX_EGRESS_BYTES, LOOP_HALT_MAX_MODEL_COST, LOOP_HALT_MAX_PROVIDER_FAILOVERS, LOOP_HALT_MAX_RISK_SCORE, LOOP_HALT_PROVIDER_UNAVAILABLE, LOOP_HALT_OPERATOR, LOOP_STEP_UP_REQUIRED, LOOP_COMPLETED, LOOP_RUN_ALREADY_TERMINATED, LOOP_LIMITS_IMMUTABLE_VIOLATION.
+- **Risk:** Residual risk is operational: runtime adoption, alert tuning, and runbooks.
+- **Status:** `Implemented`
+- **Remaining:** Runtime adoption by agent frameworks and operational alert/runbook configuration.
 
 ## G-06: Human Approval Path Is Still a Stub
 
@@ -236,8 +243,8 @@ Technical control/evidence gap view:
 |---|---|---|---|---|---|
 | Identity/access, authz, least privilege | Covered | Covered | Partial | Partial | Strong technical coverage |
 | Cryptography/secrets and key handling | Covered | Covered | Partial | Partial | Strong technical coverage |
-| Tool/model/context/ingress policy enforcement | Partial | Partial | Partial | Partial | Phase 3 incomplete |
-| Audit integrity, correlation, machine-readable logs | Covered | Covered | Partial | Partial | Strong core; immutable sink proof incomplete |
+| Tool/model/context/ingress policy enforcement | Covered | Covered | Partial | Partial | Phase 3 implemented: all 5 planes enforced with reason-code-complete decisions, RLM governance, memory tier controls, CLI shell injection prevention, replay detection |
+| Audit integrity, correlation, machine-readable logs | Covered | Covered | Partial | Partial | Strong core; loop admin and plane decisions emit audit events; immutable sink proof incomplete |
 | Artifact integrity and supply-chain controls | Partial | Partial | Partial | Partial | Good image controls; model/policy provenance incomplete |
 | Data deletion/retention technical hooks | Partial | Partial | Partial | Partial | GDPR delete present; full evidence linkage needs expansion |
 | Evidence export completeness (machine-readable) | Partial | Partial | Partial | Partial | Current report scope too narrow for full technical mapping |
@@ -288,10 +295,10 @@ Out of scope for implementation deliverables (but acknowledged): org governance 
 
 | Use Case | Current Readiness | Critical Missing Pieces |
 |---|---|---|
-| Sensitive domain assistant (Fargate/EKS) | Partial | non-K8s adaptation hardening guide, connector conformance, RuleOps lifecycle, immutable audit proven in target runtime |
-| Third-party framework integration | Low | Implementation not started beyond architecture sketch |
-| External context ingestion pipeline | Partial | Context fetcher/ingestion hardening, provenance and verification invariants, loop governance completeness |
-| ISO 27001 + ITSM compliance agents | Partial | technical control library expansion, PCI pack, stronger technical evidence and break-glass capabilities |
+| Sensitive domain assistant (Fargate/EKS) | Medium-High | non-K8s adaptation hardening guide, immutable audit proven in target runtime (RuleOps lifecycle and context invariants are now implemented) |
+| Third-party framework integration | Medium | Loop governance and RLM engine provide framework-agnostic boundary-only integration points; SDK token builders exist for Go and Python |
+| External context ingestion pipeline | Medium-High | Context admission invariants and memory tier governance now implemented; ingress canonical envelope with replay detection operational; remaining gap is provenance verification at scale |
+| ISO 27001 + ITSM compliance agents | Medium | Technical control library expansion needed; break-glass and approval capabilities implemented; PCI pack absent |
 
 ---
 

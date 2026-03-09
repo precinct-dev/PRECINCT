@@ -349,10 +349,26 @@ The following matrix summarizes PRECINCT control coverage against the threat cat
 | EoP | #11 | Task-scoped OPA policy | Step 6 | Per-request authorization, SPIFFE identity scoping |
 | EoP | #12 | Cumulative escalation scoring | Step 8 | Immutable OPA bundles, audit trail for policy overrides |
 
-## Suggested Next Step
+## Implementation Status Update (Phase 3)
 
-If you want, I can propose a concrete “v2.1” patch to `precinct-reference-architecture.md` that adds:
-- a dedicated “Model Supply Chain / Weight Integrity” subsection,
-- a “sync step-up gating” pattern for high-risk tools,
-- explicit schema hash verification in the Tool Registry section,
-- and a response firewall design (moving the residual-risk item toward implementable controls).
+Several recommendations from this security review have been implemented in Phase 3:
+
+### Implemented Controls
+
+1. **Sync step-up gating for high-risk tools (HIGH-1 recommendation)**: The tool plane governance engine now supports per-action `require_step_up` flags with approval capability token validation. CLI tool adapter additionally blocks shell injection attempts with command allowlists and denied-arg-token detection.
+
+2. **Capability tokens (HIGH-1, Prompt Injection Hardening #3)**: The approval capability service issues identity-bound, time-boxed, scope-limited capability tokens that are validated and consumed at the tool plane enforcement boundary.
+
+3. **Response firewall (HIGH-3 recommendation)**: Response firewall with handle-ization is implemented in middleware step 9.
+
+4. **Session-wide budgets and lineage tracking (MED-3 recommendation)**: The RLM governance engine tracks per-lineage resource usage (subcalls, budget units) with cumulative accounting across multi-agent call chains. The loop governor enforces 8 immutable limits (steps, tool calls, model calls, wall time, egress bytes, cost, failovers, risk score) per run.
+
+5. **Context memory governance**: Context memory tiering (ephemeral/session/long_term/regulated) with DLP enforcement for long-term writes and step-up for regulated reads addresses the memory systems guidance (Additional Threat Vector #2).
+
+6. **Ingress replay/freshness controls**: Canonical connector envelope with replay detection (30-minute nonce TTL), freshness validation (10-minute window), and SHA256 payload content-addressing.
+
+### Still Open
+
+1. **CRIT-1 (Model artifact integrity)**: Guard model artifact digest/signature verification at startup remains architecture-level guidance, not a runtime gate.
+2. **MED-1 (Policy supply chain integrity)**: OPA bundle and registry artifact signing/attestation remains under-specified for production.
+3. **MED-2 (Tool registry staleness)**: Risk-level-dependent staleness tolerance is not yet implemented.

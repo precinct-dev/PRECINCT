@@ -121,7 +121,10 @@
               <ul>
                 <li><a href="#snapshot">Capability Snapshot</a></li>
                 <li><a href="#new-capabilities">Extended Capabilities</a></li>
+                <li><a href="#multi-agent-governance">Multi-Agent Governance</a></li>
+                <li><a href="#plane-api">Control Plane API</a></li>
                 <li><a href="#core-security">Core Security Controls</a></li>
+                <li><a href="#decision-types">Decision Types</a></li>
                 <li><a href="#runtime-matrix">Runtime Matrix</a></li>
                 <li><a href="#integration">Integration & Platform</a></li>
                 <li><a href="#operations">Operations & Compliance</a></li>
@@ -156,7 +159,10 @@
               <ul>
                 <li><a href="#snapshot">Capability Snapshot</a></li>
                 <li><a href="#new-capabilities">Extended Capabilities</a></li>
+                <li><a href="#multi-agent-governance">Multi-Agent Governance</a></li>
+                <li><a href="#plane-api">Control Plane API</a></li>
                 <li><a href="#core-security">Core Security Controls</a></li>
+                <li><a href="#decision-types">Decision Types</a></li>
                 <li><a href="#runtime-matrix">Runtime Matrix</a></li>
                 <li><a href="#integration">Integration & Platform</a></li>
                 <li><a href="#operations">Operations & Compliance</a></li>
@@ -185,8 +191,8 @@
                 <span class="badge badge-accent">Runtime Enforcement</span>
               </div>
               <div class="card">
-                <h3 class="mt-0">5 Governed Planes</h3>
-                <p>Model, Tool, Context, Loop, and Ingress policies under one gateway decision fabric.</p>
+                <h3 class="mt-0">5 Governed Planes + RLM</h3>
+                <p>Model, Tool, Context, Loop, and Ingress planes with dedicated policy engines, plus a cross-cutting RLM governance engine for multi-agent lineage tracking.</p>
                 <span class="badge badge-success">Policy Architecture</span>
               </div>
               <div class="card">
@@ -289,6 +295,155 @@
             </div>
           </section>
 
+          <section id="multi-agent-governance">
+            <h2>Multi-Agent Governance (Phase 3)</h2>
+            <p>
+              Phase 3 introduces comprehensive multi-agent governance capabilities: a full loop state
+              machine, a cross-cutting RLM (Recursive Lineage Manager) governance engine, context memory
+              tiering, CLI tool security adapters, ingress connector envelope validation, and an admin API
+              for operator-level loop control.
+            </p>
+            <div class="card-grid card-grid-3">
+              <div class="card">
+                <h3 class="mt-0">RLM Governance Engine</h3>
+                <p>
+                  Tracks multi-agent lineage across nested subcalls. Enforces three configurable limits
+                  per lineage: max depth (default 6), max subcalls (default 64), and max budget units
+                  (default 128). Prevents UASGS bypass by denying subcalls that lack mediation markers.
+                </p>
+                <ul>
+                  <li>Per-lineage state with budget-unit accounting</li>
+                  <li>Depth, subcall, and budget enforcement</li>
+                  <li>UASGS bypass prevention (unmediated subcalls denied)</li>
+                  <li>Reason codes: <code>RLM_ALLOW</code>, <code>RLM_HALT_MAX_DEPTH</code>, <code>RLM_HALT_MAX_SUBCALLS</code>, <code>RLM_HALT_MAX_SUBCALL_BUDGET</code>, <code>RLM_BYPASS_DENIED</code></li>
+                </ul>
+                <span class="badge badge-accent">Multi-Agent Security</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Loop Governor State Machine</h3>
+                <p>
+                  Full 8-state governance state machine for agent loop runs with immutable budget limits.
+                  Supports operator halt (human kill switch) and provider unavailability handling.
+                </p>
+                <ul>
+                  <li>States: CREATED, RUNNING, WAITING_APPROVAL, COMPLETED, HALTED_POLICY, HALTED_BUDGET, HALTED_PROVIDER_UNAVAILABLE, HALTED_OPERATOR</li>
+                  <li>8 immutable limit dimensions: steps, tool calls, model calls, wall time, egress bytes, model cost, provider failovers, risk score</li>
+                  <li>Immutable limits: once set on first call, cannot be changed (prevents limit-widening attacks)</li>
+                  <li>Terminal states are irreversible for deterministic external governance</li>
+                </ul>
+                <span class="badge badge-accent">Loop Governance</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Loop Admin API</h3>
+                <p>
+                  Admin endpoints for loop run observability and operator control, with audit logging
+                  for all admin operations.
+                </p>
+                <ul>
+                  <li><code>GET /admin/loop/runs</code> -- list all runs (sorted by last update)</li>
+                  <li><code>GET /admin/loop/runs/&lt;id&gt;</code> -- per-run detail with full state and usage</li>
+                  <li><code>POST /admin/loop/runs/&lt;id&gt;/halt</code> -- operator halt (human kill switch)</li>
+                  <li>All operations emit structured audit events</li>
+                </ul>
+                <span class="badge badge-accent">Admin API</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Context Memory Tiering</h3>
+                <p>
+                  Four-tier memory classification system with tier-specific enforcement rules:
+                </p>
+                <ul>
+                  <li><code>ephemeral</code> -- no persistence constraints</li>
+                  <li><code>session</code> -- session-scoped context</li>
+                  <li><code>long_term</code> -- writes require <code>dlp_classification=clean</code></li>
+                  <li><code>regulated</code> -- reads require step-up authorization</li>
+                </ul>
+                <span class="badge badge-accent">Data Governance</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">CLI Tool Adapter</h3>
+                <p>
+                  Shell injection prevention for CLI-protocol tool calls through the tool plane:
+                </p>
+                <ul>
+                  <li>Command allowlists (only registered commands execute)</li>
+                  <li>Max-args enforcement (configurable per capability)</li>
+                  <li>Denied-arg-token detection: <code>;</code> <code>&amp;&amp;</code> <code>||</code> <code>|</code> <code>$(</code> <code>`</code> <code>&gt;</code> <code>&lt;</code></li>
+                  <li>Reason codes: <code>TOOL_CLI_COMMAND_DENIED</code>, <code>TOOL_CLI_ARGS_DENIED</code></li>
+                </ul>
+                <span class="badge badge-accent">Tool Security</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Ingress Connector Envelope</h3>
+                <p>
+                  Canonical envelope validation for webhook and queue connectors:
+                </p>
+                <ul>
+                  <li>SPIFFE source principal matching (source_principal must match actor_spiffe_id)</li>
+                  <li>SHA-256 payload content-addressing (<code>ingress://payload/&lt;hex&gt;</code>)</li>
+                  <li>Replay detection with composite nonce key and 30-minute TTL</li>
+                  <li>10-minute freshness window (past and future)</li>
+                  <li>Quarantine for stale events (not outright denial)</li>
+                </ul>
+                <span class="badge badge-accent">Ingress Security</span>
+              </div>
+            </div>
+          </section>
+
+          <section id="plane-api">
+            <h2>Control Plane API Endpoints</h2>
+            <p>
+              The gateway exposes per-plane control endpoints that allow external governors (agent
+              frameworks, orchestrators, custom middleware) to enforce limits without requiring
+              invasive changes inside agent framework loops. All endpoints accept the unified
+              <code>PlaneRequestV2</code> contract with <code>RunEnvelope</code> correlation metadata.
+            </p>
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Gateway control plane API endpoints</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Endpoint</th>
+                    <th scope="col">Plane</th>
+                    <th scope="col">Function</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>POST /v1/ingress/admit</code></td>
+                    <td>Ingress</td>
+                    <td>Canonical envelope validation, source principal matching, replay detection, payload content-addressing</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST /v1/context/admit</code></td>
+                    <td>Context</td>
+                    <td>Memory tier enforcement, provenance validation, DLP classification checks, minimum-necessary invariants</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST /v1/model/call</code></td>
+                    <td>Model</td>
+                    <td>Model provider authorization, data residency enforcement, prompt safety (HIPAA-aware), budget tracking</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST /v1/tool/execute</code></td>
+                    <td>Tool</td>
+                    <td>Capability registry evaluation, CLI adapter shell-injection prevention, step-up token validation</td>
+                  </tr>
+                  <tr>
+                    <td><code>POST /v1/loop/check</code></td>
+                    <td>Loop</td>
+                    <td>Boundary checks, budget enforcement (8 dimensions), state machine transitions, operator halt, provider unavailability</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p>
+              All plane endpoints support the <code>execution_mode=rlm</code> modifier for RLM governance.
+              When RLM mode is active, the gateway evaluates lineage depth, subcall budgets, and
+              UASGS mediation before the plane-specific policy.
+            </p>
+          </section>
+
           <section id="core-security">
             <h2>Core Security Controls</h2>
             <div class="table-wrapper">
@@ -331,6 +486,49 @@
                     <td><strong>Traceability</strong></td>
                     <td>Structured audit records, decision and trace IDs, hash-chain evidence, OpenTelemetry traces to Phoenix, and indexed forensic search via OpenSearch Dashboards.</td>
                     <td>Audit middleware, OTel collector, Phoenix, OpenSearch extension</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section id="decision-types">
+            <h2>Decision Types</h2>
+            <p>
+              Every plane and middleware decision resolves to one of four possible outcomes.
+              These are not HTTP-specific -- they are semantic decision types that determine
+              what happens to the request and how the calling agent should respond.
+            </p>
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">PRECINCT decision types</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Decision</th>
+                    <th scope="col">Semantics</th>
+                    <th scope="col">Typical HTTP Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><code>allow</code></td>
+                    <td>Request is authorized and may proceed.</td>
+                    <td>200</td>
+                  </tr>
+                  <tr>
+                    <td><code>deny</code></td>
+                    <td>Request is rejected. The reason code indicates why.</td>
+                    <td>400, 401, 403, 409, 429</td>
+                  </tr>
+                  <tr>
+                    <td><code>step_up</code></td>
+                    <td>Request requires elevated authorization before it can proceed. The agent must obtain an approval token and resubmit.</td>
+                    <td>202, 428</td>
+                  </tr>
+                  <tr>
+                    <td><code>quarantine</code></td>
+                    <td>Request is not denied outright but is held for review or data transformation (e.g., stale ingress events, regulated content requiring tokenization/redaction).</td>
+                    <td>202, 403</td>
                   </tr>
                 </tbody>
               </table>

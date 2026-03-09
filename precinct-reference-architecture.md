@@ -1864,6 +1864,8 @@ This closes bypass ambiguity and makes model-provider governance auditable.
 
 ### 7.11 Context Admission Invariants (Hard Requirements)
 
+**Status: IMPLEMENTED** -- `evaluateContextInvariants()` in `POC/internal/gateway/phase3_runtime_helpers.go`
+
 All model-bound context must satisfy:
 
 - `no-scan-no-send`
@@ -1871,11 +1873,29 @@ All model-bound context must satisfy:
 - `no-verification-no-load`
 - `minimum-necessary`
 
+**Context memory tiering** (implemented):
+- `ephemeral`: default tier, no additional restrictions
+- `session`: standard validation applies
+- `long_term`: writes require `dlp_classification=clean`; writes without clean DLP classification are denied (`CONTEXT_MEMORY_WRITE_DENIED`)
+- `regulated`: reads require step-up approval (`CONTEXT_MEMORY_READ_STEP_UP_REQUIRED`)
+
+Decision outputs:
+- `CONTEXT_ALLOW`
+- `CONTEXT_SCHEMA_INVALID` (invalid memory tier)
+- `CONTEXT_NO_SCAN_NO_SEND`
+- `CONTEXT_PROMPT_INJECTION_UNSAFE`
+- `CONTEXT_DLP_CLASSIFICATION_REQUIRED`
+- `CONTEXT_DLP_CLASSIFICATION_DENIED`
+- `CONTEXT_MEMORY_READ_STEP_UP_REQUIRED` (regulated tier read)
+- `CONTEXT_MEMORY_WRITE_DENIED` (long_term write without clean DLP, or missing provenance)
+
 Regulated profile behavior:
 - high-risk prompt findings are fail-closed by default
 - detected PHI/PII in prompt path is denied or tokenized before model egress
 
 ### 7.12 Ingress Connector Conformance (Non-MITM by Default)
+
+**Status: IMPLEMENTED** -- `ingressPlanePolicyEngine` in `POC/internal/gateway/phase3_ingress_plane.go`
 
 PRECINCT Gateway remains protocol-agnostic and does not need to be a universal transparent MITM.
 
@@ -1883,6 +1903,22 @@ Production requirement:
 - ingress adapters/connectors must pass conformance checks and register signed manifests before enablement
 - non-conformant connectors are denied at registration and runtime
 - every admitted event must carry trace/session/decision linkage
+
+**Ingress connector envelope engine** (implemented):
+- Canonical envelope parsing: connector_type (webhook/queue), source_id, source_principal, event_id, nonce, event_timestamp, payload
+- Source principal authentication: source_principal must match ActorSPIFFEID
+- Freshness validation: 10-minute past/future window
+- Replay detection: composite nonce key (tenant|connector_type|source_id|event_id|nonce) with 30-minute TTL and automatic eviction
+- SHA256 payload content-addressing: deterministic `ingress://payload/<hex>` reference with raw payload stripped from response
+- Step-up support: `requires_step_up=true` yields DecisionStepUp
+
+Decision outputs:
+- `INGRESS_ALLOW` (with payload_ref and payload_size_bytes)
+- `INGRESS_SCHEMA_INVALID`
+- `INGRESS_REPLAY_DETECTED` (HTTP 409)
+- `INGRESS_FRESHNESS_STALE` (DecisionQuarantine, HTTP 202)
+- `INGRESS_SOURCE_UNAUTHENTICATED` (HTTP 401)
+- `INGRESS_STEP_UP_REQUIRED` (HTTP 202)
 
 ### 7.13 Communication Channel Mediation
 
@@ -1958,6 +1994,64 @@ Not all actions are equally recoverable. PRECINCT's four-tier destructiveness ta
 | Critical | 3 | 3 | delete, rm, drop, destroy, purge |
 
 These values feed both the escalation accumulator and the step-up gating risk score. A `force` or `recursive` flag increases Impact by 1.
+
+### 7.18 Tool Plane Governance
+
+**Status: IMPLEMENTED** -- `toolPlanePolicyEngine` in `POC/internal/gateway/phase3_plane_stubs.go`
+
+The tool plane governance engine enforces capability-level authorization for all tool execution requests, extending the hash-verification controls in Section 7.3 with structured policy enforcement.
+
+**Capability registry v2** (YAML-configurable):
+- Per-capability definitions with protocol adapter binding (`mcp`, `http`, `cli`, `email`, `discord`)
+- Per-capability tool allowlists and action-level authorization
+- Per-action `require_step_up` flag for irreversible/high-impact actions
+- Default capabilities: `tool.default.mcp`, `tool.highrisk.cli`, `tool.messaging.http`, `tool.messaging.email`, `tool.messaging.discord`
+
+**CLI tool adapter** (shell injection prevention):
+- Command allowlists: only explicitly approved commands are permitted
+- Max-args enforcement: limits the number of arguments per invocation
+- Denied-arg-token detection: rejects arguments containing dangerous shell metacharacters (`;`, `&&`, `||`, `|`, `$(`, `` ` ``, `>`, `<`)
+
+Decision outputs:
+- `TOOL_ALLOW`
+- `TOOL_SCHEMA_INVALID`
+- `TOOL_CAPABILITY_DENIED`
+- `TOOL_ADAPTER_UNSUPPORTED`
+- `TOOL_ACTION_DENIED`
+- `TOOL_CLI_COMMAND_DENIED` (CLI adapter: command not in allowlist)
+- `TOOL_CLI_ARGS_DENIED` (CLI adapter: args exceed max or contain denied tokens)
+- `TOOL_STEP_UP_REQUIRED`
+
+### 7.19 Loop Governor
+
+**Status: IMPLEMENTED** -- `loopPlanePolicyEngine` in `POC/internal/gateway/phase3_loop_plane.go`, admin API in `POC/internal/gateway/admin_phase3.go`
+
+External immutable limits for autonomous loops, enforced at the gateway boundary (not inside framework-specific loop engines).
+
+**8 immutable limits** (per-run, tamper-detected):
+1. max steps
+2. max tool calls
+3. max model calls
+4. max wall time (ms)
+5. max egress bytes
+6. max model cost (USD)
+7. max provider failovers
+8. max risk score
+
+**8-state governance machine**:
+- `CREATED` -> `RUNNING` -> `COMPLETED` (terminal)
+- `RUNNING` -> `WAITING_APPROVAL` -> `RUNNING` (approval granted)
+- `RUNNING` -> `HALTED_POLICY` (terminal, risk score exceeded)
+- `RUNNING` -> `HALTED_BUDGET` (terminal, any budget limit exceeded)
+- `RUNNING` -> `HALTED_PROVIDER_UNAVAILABLE` (terminal)
+- Any non-terminal -> `HALTED_OPERATOR` (terminal, via admin API or event)
+
+**Admin API**:
+- `GET /admin/loop/runs` -- list all active and historical runs
+- `GET /admin/loop/runs/<id>` -- per-run detail with usage snapshots
+- `POST /admin/loop/runs/<id>/halt` -- operator halt with audit logging
+
+All admin operations emit audit events via `logLoopAdminEvent`. Immutable limit tampering is detected and denied with `LOOP_LIMITS_IMMUTABLE_VIOLATION`.
 
 ---
 
@@ -3227,6 +3321,16 @@ Protocols like UCP introduce high-stakes actions (payments, checkout, customer d
 
 #### 10.12.6 RLM-Style Runtime Code Execution (Model-Generated Code)
 
+**RLM Governance Engine: IMPLEMENTED** -- `rlmGovernanceEngine` in `POC/internal/gateway/phase3_rlm.go`
+
+The RLM governance engine provides per-lineage state tracking with cumulative resource accounting. Implemented controls:
+- Depth limits: maximum nesting depth for recursive agent calls (default: 6)
+- Subcall budgets: maximum number of subcalls per lineage (default: 64)
+- Budget units: maximum cost units per lineage with per-call cost accounting (default: 128)
+- UASGS bypass prevention: subcalls without `uasgs_mediated=true` are denied with `RLM_BYPASS_DENIED` (HTTP 403)
+
+Decision outputs: `RLM_ALLOW`, `RLM_SCHEMA_INVALID`, `RLM_BYPASS_DENIED`, `RLM_HALT_MAX_DEPTH` (429), `RLM_HALT_MAX_SUBCALLS` (429), `RLM_HALT_MAX_SUBCALL_BUDGET` (429). RLM governance is evaluated for every model plane request when `execution_mode=rlm`; denial short-circuits the request.
+
 Some frameworks now allow the model to generate and execute code inside a sandboxed runtime (e.g., Deno or similar). The RLM paradigm explicitly loads the prompt into a REPL environment as a variable and lets the model write code to inspect it and recursively call sub‑LLMs. This is powerful—but it also expands the attack surface. Regardless of the framework name, **treat “model-generated code execution” as a high‑risk tool** and enforce the same gateway controls as any other tool.
 
 **Required controls (non‑optional)**
@@ -3702,6 +3806,8 @@ The 3 Rs are the practical counterpart to zero trust for agentic systems: recove
 
 ### 10.17 Gateway-Mediated LLM Provider Access (Model Egress Governance)
 
+**Status: IMPLEMENTED** -- `phase3_model_egress.go` (provider resolution, fallback, egress execution, prompt safety, policy intent projection)
+
 Many enterprises will use external model providers for most LLM inference. For those environments, model-provider access should be governed at the same boundary as tool access.
 
 #### 10.17.1 Why this belongs in the architecture
@@ -3802,6 +3908,11 @@ To keep this architecture solid for teams using different stacks, use this imple
 | Gradual escalation (AoC #1, #7) | | | | ✅ | **High** (EscalationScore + session window decay) |
 | Unmediated agent comms (AoC #4, #11) | ✅ | | ✅ | ✅ | **Full** (channel adapters + SPIFFE auth) |
 | Data source rug-pull (AoC #10) | | | | ✅ | **High** (DataSourceDefinition hash verification) |
+| Runaway loops / cost explosion | | | | ✅ | **Full** (loop governor 8-state machine + 8 immutable limits + operator halt) |
+| RLM recursion/subcall abuse | | | | ✅ | **Full** (RLM governance: depth/subcall/budget limits + UASGS bypass prevention) |
+| Shell injection via CLI tools | | | | ✅ | **Full** (CLI adapter: command allowlists + denied-arg-token detection) |
+| Ingress replay attacks | ✅ | | | ✅ | **Full** (composite nonce + 30min TTL + SPIFFE source auth) |
+| Context memory exfiltration | | | | ✅ | **High** (4-tier memory governance + DLP classification + step-up for regulated) |
 
 ### 11.2 What This Architecture Protects Against
 
@@ -3823,6 +3934,15 @@ To keep this architecture solid for teams using different stacks, use this imple
 | Permission escalation via UI | ✅ Full | Permissions denied by default, stripped by gateway |
 | Nested frame attacks via UI | ✅ Full | frameDomains hard-denied at gateway |
 | Provider endpoint spoofing / misrouting | ✅ High | PRECINCT Gateway model egress policy (TLS identity + DNS integrity + residency gating + no-bypass gates) |
+| Runaway autonomous loops | ✅ Full | Loop governor: 8 immutable limits, 8-state machine, operator halt via admin API |
+| RLM recursion depth abuse | ✅ Full | RLM governance: per-lineage depth (6), subcall (64), budget (128) limits |
+| UASGS bypass (unmediated subcalls) | ✅ Full | RLM engine denies subcalls without `uasgs_mediated=true` (`RLM_BYPASS_DENIED`) |
+| Shell injection via CLI tool | ✅ Full | CLI adapter: command allowlists, max-args, denied-arg-token detection |
+| Ingress replay / event replay | ✅ Full | Composite nonce key with 30min TTL + SPIFFE source principal auth |
+| Stale ingress events | ✅ High | 10-minute freshness window with quarantine for stale events |
+| Unclassified writes to long-term memory | ✅ Full | Memory tier governance: long_term writes require `dlp_classification=clean` |
+| Uncontrolled regulated data reads | ✅ Full | Memory tier governance: regulated tier reads require step-up approval |
+| Loop limit tampering | ✅ Full | Immutable limit tampering detection (`LOOP_LIMITS_IMMUTABLE_VIOLATION`) |
 
 ### 11.3 Residual Risks
 
@@ -3878,20 +3998,26 @@ To keep this architecture solid for teams using different stacks, use this imple
 
 ### Phase 3: Operational Maturity
 
-| Milestone | Dependencies / Notes |
-|----------|----------------------|
-| Local Prompt Guard (ONNX) | Model export |
-| Model artifact integrity checks | Model digests/signatures |
-| Behavioral baselines | Session context |
-| Human approval workflows | UI integration |
-| PRECINCT Gateway-mediated model egress controls | Provider catalog + policy + residency governance |
-| Mandatory model mediation enforcement | Policy + identity + network gates |
-| Ingress connector conformance framework | Adapter SDK/spec + signed manifest validation |
-| DLP RuleOps control plane | Ruleset lifecycle + canary + rollback + audit events |
-| HIPAA prompt safety technical profile | Prompt minimization + PHI/PII deny/tokenize workflow |
-| Enforcement profiles (`dev`, `prod_standard`, `prod_regulated_hipaa`) | Policy bundles + runtime configuration gates |
-| Compliance dashboard | All components |
-| Runbooks and DR testing | All components |
+| Milestone | Dependencies / Notes | Status |
+|----------|----------------------|--------|
+| Local Prompt Guard (ONNX) | Model export | Design |
+| Model artifact integrity checks | Model digests/signatures | Design |
+| Behavioral baselines | Session context | Design |
+| Human approval workflows | UI integration | Design |
+| PRECINCT Gateway-mediated model egress controls | Provider catalog + policy + residency governance | **Implemented** (`phase3_model_egress.go`) |
+| Mandatory model mediation enforcement | Policy + identity + network gates | **Implemented** |
+| Ingress connector conformance framework | Adapter SDK/spec + signed manifest validation | **Implemented** (`phase3_ingress_plane.go`) |
+| DLP RuleOps control plane | Ruleset lifecycle + canary + rollback + audit events | **Implemented** (`admin_phase3.go`) |
+| HIPAA prompt safety technical profile | Prompt minimization + PHI/PII deny/tokenize workflow | **Implemented** (reason codes + profile) |
+| Enforcement profiles (`dev`, `prod_standard`, `prod_regulated_hipaa`) | Policy bundles + runtime configuration gates | **Implemented** (profile selection) |
+| Context admission engine with memory tiering | Context invariants + 4-tier memory governance | **Implemented** (`phase3_runtime_helpers.go`) |
+| Tool plane governance with CLI adapter | Capability registry v2 + shell injection prevention | **Implemented** (`phase3_plane_stubs.go`) |
+| Loop governor with 8-state machine | Immutable limits + operator halt + admin API | **Implemented** (`phase3_loop_plane.go`) |
+| RLM governance engine | Per-lineage depth/subcall/budget limits + UASGS bypass prevention | **Implemented** (`phase3_rlm.go`) |
+| Go SDK SPIKE token builder | SPIKE integration | **Implemented** (`sdk/go/mcpgateway/spike_token.go`) |
+| Python SDK runtime utilities | SPIKE + DSPy integration | **Implemented** (`sdk/python/mcp_gateway_sdk/runtime.py`) |
+| Compliance dashboard | All components | Design |
+| Runbooks and DR testing | All components | Design |
 
 ### Future Exploration: Task Agent + Safety Agent (Pluggable)
 
@@ -3949,6 +4075,25 @@ Normative intent of this addendum:
    - approval + break-glass,
    - profile conformance.
 4. Expand compliance support as a **technical evidence system** (machine-readable first), while keeping organization-level people/process programs out of implementation scope.
+
+**Phase 3 implementation status (as of March 2026):**
+
+The following Phase 3 control planes are implemented with reason-code-complete enforcement in the POC:
+
+| Control Plane | Implementation | Key Capabilities |
+|--------------|----------------|------------------|
+| Context Admission Engine | `phase3_runtime_helpers.go` | All 4 invariants + 4-tier memory governance |
+| Tool Plane Governance | `phase3_plane_stubs.go` | Capability registry v2, multi-protocol adapters (MCP/HTTP/CLI/email/Discord), CLI shell injection prevention |
+| Loop Governor | `phase3_loop_plane.go` | 8-state machine, 8 immutable limits, operator halt, admin API |
+| RLM Governance Engine | `phase3_rlm.go` | Per-lineage depth/subcall/budget limits, UASGS bypass prevention |
+| Ingress Connector Envelope | `phase3_ingress_plane.go` | Canonical parsing, SPIFFE source auth, SHA256 content-addressing, replay detection |
+| Model Egress Plane | `phase3_model_egress.go` | Provider resolution, fallback, prompt safety, policy intent projection |
+| DLP RuleOps | `admin_phase3.go` | Full lifecycle: create/validate/approve/sign/promote/rollback |
+| Loop Admin API | `admin_phase3.go` | Per-run observability, operator halt, audit logging |
+| Go SDK | `sdk/go/mcpgateway/spike_token.go` | SPIKE token builder with scope qualifier |
+| Python SDK | `sdk/python/mcp_gateway_sdk/runtime.py` | SPIKE token builder, DSPy gateway LM configuration |
+
+Remaining gaps are operational (sustained verification, connector certification, 24x7 support model, SOC 2 Type 2 evidence cadence) rather than architectural. See `precinct-production-readiness-gaps.md` for the current gap register.
 
 Use the addendum artifacts as the source for backlog decomposition and delivery sequencing.
 

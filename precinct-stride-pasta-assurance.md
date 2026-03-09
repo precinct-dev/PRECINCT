@@ -76,21 +76,34 @@ Representative implementation evidence:
 - Irreversibility gating: `POC/internal/gateway/middleware/step_up_gating.go`, ClassifyActionDestructiveness taxonomy
 - External threat validation: Shapira et al. (2026), *Agents of Chaos*, arXiv:2602.20021v1
 
+Phase 3 implemented controls (all in `POC/internal/gateway/`):
+
+- **RLM Governance Engine**: `phase3_rlm.go` -- per-lineage state tracking, subcall budget enforcement, depth limits, UASGS bypass prevention
+- **Loop Governor State Machine**: `phase3_loop_plane.go` -- 8-state governance machine, all 8 immutable limits, operator halt, approval flow
+- **Loop Admin API**: `admin_phase3.go` -- per-run detail, operator halt endpoint, audit logging for all admin operations
+- **Context Memory Tiering**: `phase3_runtime_helpers.go` (`evaluateContextInvariants`) -- ephemeral/session/long_term/regulated tiers with DLP enforcement
+- **CLI Tool Adapter**: `phase3_plane_stubs.go` (`toolPlanePolicyEngine`) -- shell injection prevention via command allowlists, max-args, denied-arg-token detection
+- **Ingress Connector Envelope**: `phase3_ingress_plane.go` -- canonical parsing, SPIFFE source principal authentication, SHA256 content-addressing, replay detection with 30min nonce TTL
+- **Phase 3 Contracts**: `phase3_contracts.go` -- `PlaneRequestV2`, `PlaneDecisionV2`, `RunEnvelope`, `AuditEventV2` with full reason code taxonomy
+- **Go SDK SPIKE Token Builder**: `POC/sdk/go/mcpgateway/spike_token.go` -- `BuildSPIKETokenRef`, `BuildSPIKETokenRefWithScope`
+- **Python SDK Runtime**: `POC/sdk/python/mcp_gateway_sdk/runtime.py` -- `build_spike_token_ref`, `resolve_model_api_key_ref`, DSPy gateway LM configuration
+
 ---
 
 ## 4) Posture Delta From Phase 3 Architecture
 
 This section captures the impact of the Phase 3 proposal itself (design-level uplift). Implementation evidence for these controls is still required before final auditor claims.
 
-| Control Plane | Pre-Phase 3 Posture | Phase 3 Design Posture | Net Effect |
+| Control Plane | Pre-Phase 3 Posture | Phase 3 Implementation Status | Net Effect |
 |---|---|---|---|
-| LLM egress | Fragmented, app-specific provider handling | PRECINCT Gateway-mediated provider governance, trust checks, residency + budget policy | Major uplift in disclosure, supplier, and audit defensibility |
-| Loop control | Inconsistent per framework | External immutable envelopes and reason-coded halts (boundary-only baseline) | Stronger DoS/EoP resilience without framework lock-in |
-| Ingress | Not first-class across webhook/queue/schedule | Connector-based normalized ingress admission (non-MITM default) | Better spoofing/tampering coverage for event-driven agents |
-| Context engineering | Detection-oriented, uneven enforcement | Mandatory admission model: no-scan-no-send / no-verification-no-load | Large uplift in prompt-injection and data handling consistency |
-| RLM/repl flows | Largely ungoverned pattern | Explicit RLM controls (sandbox, recursion limits, sub-call mediation) | Reduced emerging-runtime risk and better auditability |
-| DLP control plane | Static or ad hoc rule lifecycle | RuleOps lifecycle with signing, staged rollout, rollback, and immutable audit | Closes major tampering gap for rule CRUD |
-| HIPAA prompt safety | Implicit/partial handling | Regulated profile with deny/tokenize defaults and minimum-necessary controls | Closes core architecture gap for prompt-bound PHI/PII handling |
+| LLM egress | Fragmented, app-specific provider handling | **Implemented:** Gateway-mediated provider governance, trust checks, residency + budget policy, provider fallback, prompt safety, RLM governance integration | Major uplift in disclosure, supplier, and audit defensibility |
+| Loop control | Inconsistent per framework | **Implemented:** Full 8-state governance machine, all 8 immutable limits, operator halt via admin API, approval flow, audit logging | Strong DoS/EoP resilience without framework lock-in |
+| Ingress | Not first-class across webhook/queue/schedule | **Implemented:** Canonical connector envelope with source principal auth, SHA256 content-addressing, replay detection (30min nonce TTL), freshness validation (10min window) | Strong spoofing/tampering coverage for event-driven agents |
+| Context engineering | Detection-oriented, uneven enforcement | **Implemented:** All 4 invariants + memory tiering (ephemeral/session/long_term/regulated) with DLP enforcement and step-up for regulated reads | Large uplift in prompt-injection and data handling consistency |
+| RLM/repl flows | Largely ungoverned pattern | **Implemented:** Per-lineage governance engine with depth/subcall/budget limits and UASGS bypass prevention | Reduced emerging-runtime risk and better auditability |
+| DLP control plane | Static or ad hoc rule lifecycle | **Implemented:** Full RuleOps lifecycle (create/validate/approve/sign/promote/rollback) via admin API with immutable audit | Closes major tampering gap for rule CRUD |
+| Tool plane | Placeholder with minimal enforcement | **Implemented:** Capability registry v2, multi-protocol adapters (MCP/HTTP/CLI/email/Discord), CLI shell injection prevention, step-up for high-risk actions | Closes enforcement gap for tool execution boundary |
+| HIPAA prompt safety | Implicit/partial handling | **Implemented:** Regulated profile with deny/tokenize defaults and minimum-necessary controls | Closes core architecture gap for prompt-bound PHI/PII handling |
 
 ---
 
@@ -110,11 +123,14 @@ Controls:
 - Ingress source authentication (mTLS/JWT/HMAC/signature)
 - PRECINCT Gateway endpoint trust policy for model egress
 - Production default for mediated model egress (policy + identity + network gates)
+- Ingress canonical connector envelope with source principal authentication (source_principal must match ActorSPIFFEID)
+- Replay detection with composite nonce key and 30-minute TTL
+- Freshness validation with 10-minute past/future window
 
 Coverage rating:
 
 - Current: High
-- Target with Phase 3 implementation: Very High
+- Target with operational maturity: Very High
 
 Residual gaps:
 
@@ -175,22 +191,26 @@ Threat focus:
 - Secrets/PII exfiltration through model/tool/context paths
 - Prompt injection and unsafe context ingestion
 - Cross-border data transfer violations
+- Memory tier leakage across classification boundaries
 
 Controls:
 
 - Late-binding secret substitution and referential credentials
 - DLP and response firewall
 - Model-provider residency and endpoint policy gates
-- Mandatory context admission controls:
+- Mandatory context admission controls (all four invariants implemented):
   - no-scan-no-send
   - no-provenance-no-persist
   - no-verification-no-load
+  - minimum-necessary (DLP classification + tokenize/redact for sensitive content)
+- Context memory tiering: long_term writes require `dlp_classification=clean`; regulated tier reads require step-up
 - HIPAA prompt safety profile with deny/tokenize defaults and minimum-necessary preprocessing
+- Ingress payload content-addressing: SHA256 references replace raw payloads in responses (`ingress://payload/<hex>`)
 
 Coverage rating:
 
-- Current: High (conditional)
-- Target with Phase 3 implementation: Very High
+- Current: High (upgraded from conditional; all four context invariants and memory tier governance now implemented)
+- Target with operational maturity: Very High
 
 Residual gaps:
 
@@ -204,17 +224,21 @@ Threat focus:
 - Runaway loops
 - Provider outages and budget exhaustion
 - Gateway/connector bottlenecks
+- RLM recursive cost explosions
 
 Controls:
 
 - Rate limits, request limits, and circuit breakers
-- Immutable run envelopes (step/tool/model/time/cost/failover bounds)
-- Provider fallback policy and explicit halt reason codes
+- Loop governor with full 8-state machine and all 8 immutable limits (max_steps, max_tool_calls, max_model_calls, max_wall_time_ms, max_egress_bytes, max_model_cost_usd, max_provider_failovers, max_risk_score)
+- Provider fallback policy and explicit halt reason codes (15 distinct loop reason codes)
+- Operator halt via admin API (`POST /admin/loop/runs/<id>/halt`)
+- RLM governance engine with per-lineage subcall budgets and depth limits
+- Ingress replay detection with 30-minute nonce TTL prevents replay-driven resource exhaustion
 
 Coverage rating:
 
-- Current: Medium-High
-- Target with Phase 3 implementation: High
+- Current: High (upgraded from Medium-High; loop governor and RLM governance now implemented)
+- Target with operational maturity: Very High
 
 Residual gaps:
 
@@ -228,18 +252,22 @@ Threat focus:
 - Prompt injection driving privilege jumps
 - Hidden sub-call escalation in RLM/REPL workflows
 - Cross-plane policy bypass attempts
+- Shell injection via CLI tool adapter
 
 Controls:
 
 - OPA least-privilege policy for capabilities
 - Step-up gating and risk scoring
-- Boundary-only loop governance with immutable limits
-- RLM sub-call mediation through model egress controls
+- Loop governor with full 8-state machine, immutable limits, and operator halt
+- RLM governance engine with UASGS bypass prevention (`RLM_BYPASS_DENIED` for unmediated subcalls), per-lineage depth limits, and subcall budgets
+- Tool plane capability registry v2 with action-level authorization
+- CLI tool adapter with shell injection prevention (command allowlists, denied-arg-token detection for `;`, `&&`, `||`, `|`, `$(`, `` ` ``, `>`, `<`)
+- Context memory tier governance (regulated tier reads require step-up)
 
 Coverage rating:
 
-- Current: High
-- Target with Phase 3 implementation: Very High
+- Current: Very High (upgraded from High; RLM bypass prevention, CLI shell injection prevention, and memory tier governance now implemented)
+- Target with operational maturity: Very High
 
 Residual gaps:
 
@@ -317,14 +345,14 @@ STRIDE mapping: Elevation of Privilege
 
 ## 6) STRIDE Coverage Summary
 
-| STRIDE Element | Current Coverage | Target Coverage (Phase 3 Implemented) | Main Remaining Gap |
+| STRIDE Element | Current Coverage | Target Coverage (Operational Maturity) | Main Remaining Gap |
 |---|---|---|---|
 | Spoofing | High | Very High | Uniform attestation + connector governance operations |
 | Tampering | High | Very High | Operating-evidence maturity for RuleOps and artifact enforcement |
 | Repudiation | High | Very High | Immutable retention/legal hold execution rigor |
-| Info Disclosure | High (conditional) | Very High | Legal transfer prerequisites + profile verification evidence |
-| DoS | Medium-High | High | Audit-ready resilience/DR evidence packages |
-| Elevation of Privilege | High | Very High | JIT approvals + delegation-chain rigor |
+| Info Disclosure | High | Very High | Legal transfer prerequisites + profile verification evidence |
+| DoS | High | Very High | Audit-ready resilience/DR evidence packages |
+| Elevation of Privilege | Very High | Very High | JIT approvals + delegation-chain rigor |
 
 ---
 
@@ -393,15 +421,15 @@ Phase 3 effect:
 
 ## 8) PASTA Coverage Summary
 
-| PASTA Stage | Current | With Phase 3 Direction | Remaining Gap |
+| PASTA Stage | Current | With Phase 3 Implemented | Remaining Gap |
 |---|---|---|---|
-| Stage 1 Objectives | Strong | Stronger and more explicit | None material |
-| Stage 2 Scope | Strong | Stronger multi-plane scope | None material |
-| Stage 3 Decomposition | Strong | Strong with clearer boundaries | None material |
-| Stage 4 Threat Analysis | Strong | Stronger emerging-pattern coverage | Keep updating threat library |
-| Stage 5 Vulnerability Analysis | Medium-High | Medium-High to High potential | Continuous evidence and metrics maturity |
-| Stage 6 Attack Modeling | Medium-High | High potential | Formal adversary-emulation cadence |
-| Stage 7 Risk/Impact | Medium-High | High potential | Executive risk acceptance operationalization |
+| Stage 1 Objectives | Strong | Strong | None material |
+| Stage 2 Scope | Strong | Strong (all 5 planes implemented) | None material |
+| Stage 3 Decomposition | Strong | Strong (clear subsystem boundaries with implemented contracts) | None material |
+| Stage 4 Threat Analysis | Strong | Strong (RLM bypass, shell injection, replay, memory tier threats covered) | Keep updating threat library |
+| Stage 5 Vulnerability Analysis | Medium-High | High (implemented controls reduce attack surface) | Continuous evidence and metrics maturity |
+| Stage 6 Attack Modeling | Medium-High | High (loop stress, RLM recursion, ingress replay, CLI injection now testable) | Formal adversary-emulation cadence |
+| Stage 7 Risk/Impact | Medium-High | High (reason-code-complete decisions enable precise risk treatment) | Executive risk acceptance operationalization |
 
 Re-assessment result:
 
@@ -454,19 +482,18 @@ Required action:
 
 ## 10) Defensibility Position (Executive Summary)
 
-Overall posture is stronger after the Phase 3 architecture update because core modern-agentic risk surfaces are now explicitly governed in design:
+Overall posture is significantly stronger because Phase 3 controls are now **implemented**, not merely designed:
 
-- model egress,
-- event ingress,
-- loop autonomy bounds,
-- context admission,
-- and RLM execution.
+- **Model egress**: mandatory mediation with provider governance, trust policy, residency, budget/fallback, prompt safety, and RLM governance integration.
+- **Event ingress**: canonical connector envelope with source principal authentication, SHA256 content-addressing, replay detection (30min nonce TTL), and freshness validation (10min window).
+- **Loop autonomy bounds**: full 8-state governance machine with all 8 immutable limits, operator halt via admin API, and approval flow.
+- **Context admission**: all four invariants enforced plus context memory tiering (ephemeral/session/long_term/regulated) with DLP enforcement.
+- **RLM execution**: per-lineage governance with depth/subcall/budget limits and UASGS bypass prevention.
+- **Tool execution**: capability registry v2 with multi-protocol adapters and CLI shell injection prevention.
 
-What remains is mostly implementation and operating-evidence maturity, not conceptual architecture deficiency.
-
-Following the latest hardening pass, there are no major architecture-level gaps left in this STRIDE/PASTA view that can be closed purely by additional design text; remaining items are execution and governance operations.
+What remains is operating-evidence maturity and legal-operational governance, not architecture or implementation deficiency.
 
 Practical readout:
 
-- SOC 2 Type 2 / ISO 27001 / GDPR / CCPA-CPRA: defensible trajectory with focused evidence hardening.
-- HIPAA: still requires dedicated compliance and legal-operational uplift before readiness claims.
+- SOC 2 Type 2 / ISO 27001 / GDPR / CCPA-CPRA: defensible trajectory with focused evidence hardening. Technical controls are implemented.
+- HIPAA: technical safeguards are implemented (`prod_regulated_hipaa`); legal-operational uplift still required before readiness claims.
