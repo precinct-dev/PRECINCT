@@ -102,36 +102,14 @@ func (g *Gateway) logPlaneDecision(r *http.Request, decision PlaneDecisionV2, ht
 	})
 }
 
-// evaluateRLMGovernance is a minimal governance hook for RLM-style execution. In a
-// fully wired Phase 3 implementation, this would:
-// - enforce max depth/subcall budgets
-// - prevent bypassing plane controls from a framework-spawned REPL
-// - attribute nested calls to a lineage_id for audit and cost accounting
+// evaluateRLMGovernance delegates to the stateful RLM governance engine which
+// tracks multi-agent lineage and enforces subcall budgets per lineage.
 func (g *Gateway) evaluateRLMGovernance(req PlaneRequestV2) (bool, Decision, ReasonCode, int, map[string]any) {
-	mode := strings.ToLower(strings.TrimSpace(req.Envelope.ExecutionMode))
-	if mode != "rlm" {
-		return false, DecisionAllow, ReasonRLMAllow, http.StatusOK, nil
+	if g.rlmEngine != nil {
+		return g.rlmEngine.evaluate(req)
 	}
-
-	attrs := req.Policy.Attributes
-	if attrs == nil {
-		attrs = map[string]any{}
-	}
-
-	depth := getIntAttr(attrs, "rlm_depth", 0)
-	maxDepth := getIntAttr(attrs, "rlm_max_depth", 3)
-	if depth > maxDepth {
-		return true, DecisionDeny, ReasonRLMHaltMaxDepth, http.StatusForbidden, map[string]any{
-			"rlm_depth":     depth,
-			"rlm_max_depth": maxDepth,
-		}
-	}
-
-	return true, DecisionAllow, ReasonRLMAllow, http.StatusOK, map[string]any{
-		"rlm_depth":     depth,
-		"rlm_max_depth": maxDepth,
-		"lineage_id":    req.Envelope.LineageID,
-	}
+	// Fallback: engine not initialized -- bypass.
+	return false, "", "", 0, nil
 }
 
 // evaluatePromptSafety enforces "context engineering" guardrails at the model-plane
