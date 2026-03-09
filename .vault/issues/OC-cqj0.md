@@ -4,11 +4,11 @@ title: "DataSourceDefinition Struct and Registry Extension"
 status: in_progress
 priority: 1
 type: task
-labels: [agents-of-chaos, data-source-integrity, delivered]
+labels: [agents-of-chaos, data-source-integrity]
 parent: OC-yrwz
 created_at: 2026-03-08T02:38:06Z
 created_by: ramirosalas
-updated_at: 2026-03-08T03:49:16Z
+updated_at: 2026-03-09T00:13:36Z
 content_hash: "sha256:dd22b777cf5627db7974c7f41b7fe7cdc4f8a49b85fb86147726b3d82842b1a9"
 blocks: [OC-am3w, OC-4zrf, OC-9aac]
 ---
@@ -110,7 +110,7 @@ None identified
 
 
 ## History
-- 2026-03-08T03:44:47Z status: open -> in_progress
+- 2026-03-09T00:13:27Z status: in_progress -> in_progress
 
 ## Links
 - Parent: [[OC-yrwz]]

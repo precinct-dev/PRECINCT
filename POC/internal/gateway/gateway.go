@@ -602,12 +602,19 @@ func (g *Gateway) Handler() http.Handler {
 		toolHashRefresher = g.refreshObservedToolHashes
 	}
 	failClosedObservedHash := g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict"
+	// OC-9aac: Wire data source verification into the tool registry middleware.
+	// This enables rug-pull detection for external data sources referenced in tool call parameters.
+	dsPolicy := g.config.UnknownDataSourcePolicy
+	if dsPolicy == "" {
+		dsPolicy = "flag"
+	}
 	handler = middleware.ToolRegistryVerify(
 		handler,
 		g.registry,
 		g.observedToolHashes,
 		toolHashRefresher,
 		middleware.WithObservedHashFailClosed(failClosedObservedHash),
+		middleware.WithDataSourceVerification(httpDataSourceFetcher, dsPolicy),
 	) // 5
 	handler = middleware.AuditLog(handler, g.auditor)                                                // 4
 	handler = middleware.PrincipalHeaders(handler, g.config.SPIFFETrustDomain, g.config.SPIFFEMode) // 3b: OC-t7go
@@ -1170,6 +1177,28 @@ func extractUIResourceFromMCPResult(result json.RawMessage, resourceURI string) 
 	}
 
 	return nil, mimeType, fmt.Errorf("no resource contents found")
+}
+
+// httpDataSourceFetcher is a ContentFetcher that retrieves data source content
+// over HTTP/HTTPS. Used by WithDataSourceVerification to fetch content for
+// hash verification against the registry baseline.
+// OC-9aac: Enables rug-pull detection for external data sources.
+func httpDataSourceFetcher(uri string) ([]byte, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Get(uri)
+	if err != nil {
+		return nil, fmt.Errorf("data source fetch failed: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("data source returned HTTP %d", resp.StatusCode)
+	}
+	// Limit read to 10 MB to prevent resource exhaustion
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+	if err != nil {
+		return nil, fmt.Errorf("data source read failed: %w", err)
+	}
+	return body, nil
 }
 
 // refreshObservedToolHashes performs an internal tools/list call upstream and
