@@ -102,6 +102,7 @@ func TestToolPlaneStepUpRequirementAndApprovalToken(t *testing.T) {
 				"capability_id": "tool.highrisk.cli",
 				"tool_name":     "bash",
 				"adapter":       "cli",
+				"command":       "bash",
 			},
 		},
 	}
@@ -159,6 +160,7 @@ func TestToolPlaneStepUpRequirementAndApprovalToken(t *testing.T) {
 				"capability_id":             "tool.highrisk.cli",
 				"tool_name":                 "bash",
 				"adapter":                   "cli",
+				"command":                   "bash",
 				"approval_capability_token": grant.Token,
 			},
 		},
