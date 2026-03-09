@@ -1,0 +1,4 @@
+[PASS] managed-cloud prerequisite assets exist
+[PASS] managed-cloud contract doc includes required sections
+jq: error (at /Users/ramirosalas/workspace/agentic_reference_architecture/POC/docs/operations/artifacts/managed-cloud-bootstrap-handoff.template.json:31): boolean (true) has no length
+[FAIL] handoff template missing access/namespace requirements

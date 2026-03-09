@@ -91,9 +91,102 @@ docker compose ps
 
 # Run the full E2E demo test suite (21 Go + 22 Python = 43 tests)
 make demo-compose
+
+# Run the operator-focused Phase 3 multi-plane validation
+bash tests/e2e/scenario_f_phase3_planes.sh
 ```
 
 All services should show status `healthy`. The demo suite exercises all 13 middleware layers with real requests through the gateway.
+
+### Compose Operator Runbook: Phase 3 Control Planes
+
+For Phase 3 compose operations, treat these checks as mandatory before promoting a config change:
+
+1. Verify capability registry path is mounted and loaded:
+   - `CAPABILITY_REGISTRY_V2_PATH=/config/capability-registry-v2.yaml`
+   - File: `config/capability-registry-v2.yaml`
+2. Run the multi-plane scenario:
+   - `bash tests/e2e/scenario_f_phase3_planes.sh`
+3. Confirm audit reason codes include both allow and deny outcomes for the same run/session lineage:
+   - Allow path: `INGRESS_ALLOW`, `CONTEXT_ALLOW`, `MODEL_ALLOW`, `TOOL_ALLOW`
+   - Deny path: `PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED`, `LOOP_HALT_MAX_STEPS`
+4. If any Phase 3 reason code is missing, treat the deployment as non-conformant and stop rollout.
+
+### Phase 3 CLI Inspect and Report Commands
+
+The operator CLI now exposes inspect surfaces for all required Phase 3 state domains:
+
+1. `agw inspect ingress` (admission)
+2. `agw inspect context` (memory/context admission)
+3. `agw inspect model` (model mediation + prompt safety)
+4. `agw inspect loop` (immutable loop limits and halt reason)
+5. `agw inspect ruleops` (DLP ruleset lifecycle)
+6. `agw compliance report` (report artifact generation)
+
+Example commands:
+
+```bash
+agw inspect ingress --source file --audit-log-path /tmp/audit.jsonl --last 24h --format table
+agw inspect context --source file --audit-log-path /tmp/audit.jsonl --last 24h --format table
+agw inspect model --source file --audit-log-path /tmp/audit.jsonl --last 24h --denied --format json
+agw inspect loop --format table
+agw inspect ruleops --format table
+agw compliance report --framework soc2 --output pdf --output-dir reports
+```
+
+Representative output excerpts:
+
+```text
+$ agw inspect loop --format table
+RUN_ID                               STATE          HALT_REASON          STEPS  TOOL_CALLS  MODEL_CALLS  RISK_SCORE  UPDATED_AT
+phase3-compose-1770866375-deny-loop  HALTED_BUDGET  LOOP_HALT_MAX_STEPS  3      0           0            0.00        2026-02-12T03:19:35Z
+```
+
+```text
+$ agw inspect ruleops --format table
+Status: ok
+Active: builtin-v1 (digest=b324... state=draft)
+Rulesets:
+- builtin-v1 state=draft approved=false signed=false digest=b324...
+```
+
+### SDK Error Contract (Before and After Phase 3)
+
+Both Go and Python SDKs normalize gateway denials into structured `GatewayError` objects.
+Phase 3 adds explicit reason-code semantics and remediation metadata.
+
+Before (legacy/minimal parsing):
+
+```json
+{
+  "code": "authz_policy_denied",
+  "message": "Policy denied"
+}
+```
+
+After (Phase 3 normalized contract):
+
+```json
+{
+  "code": "authz_policy_denied",
+  "message": "Policy denied: tool_not_authorized",
+  "middleware": "opa_policy",
+  "middleware_step": 6,
+  "decision_id": "ac6f6198-1e76-44b3-ba92-89c803aabbf7",
+  "trace_id": "f482032aafc42bf41247390f8fbcee24",
+  "details": {
+    "reason": "tool_not_authorized"
+  },
+  "remediation": "Check that the SPIFFE ID has a grant for the requested tool and path."
+}
+```
+
+Expected SDK behavior:
+
+1. `GatewayError.code` remains stable for programmatic handling.
+2. `GatewayError.details.reason` carries policy reason taxonomy values.
+3. `GatewayError.remediation` carries operator-facing next action.
+4. `decision_id` and `trace_id` are available for audit and incident correlation.
 
 ### Step 4: View Traces
 
@@ -184,13 +277,16 @@ make k8s-registry
 make k8s-up
 # Alias: make k8s-local-up
 
-# 4. Verify
+# 4. Validate K8s manifests and Phase 3 wiring (offline-first)
+make k8s-validate
+
+# 5. Verify runtime pods
 kubectl get pods -A | grep -E '(gateway|spire|spike|data|tools)'
 
-# 5. Run E2E demo against K8s
+# 6. Run E2E demo against K8s
 make demo-k8s
 
-# 6. Teardown
+# 7. Teardown
 make k8s-down
 # Alias: make k8s-local-down
 ```
@@ -207,6 +303,36 @@ make k8s-down
 6. Generates TLS certs for the policy-controller webhook
 7. Waits for all rollouts: SPIRE server/agent, SPIKE keeper/nexus/bootstrap/seeder, KeyDB, MCP server, gateway
 8. Registers SPIRE workload entries via `make k8s-register-spire`
+
+### Phase 3 K8s Validation Checklist
+
+Run `make k8s-validate` and confirm:
+
+1. All overlays build (`local`, `dev`, `staging`, `prod`) via `kustomize build`.
+2. Schema validation passes with `kubeconform`.
+3. Gateway manifests contain:
+   - `CAPABILITY_REGISTRY_V2_PATH=/config/capability-registry-v2.yaml`
+   - mounted `capability-registry-v2.yaml` data from `gateway-config`.
+
+These checks ensure K8s profile parity with Compose for Phase 3 tool/model policy mediation.
+
+### Phase 3 Compliance Mapping (K8s + Audit Evidence)
+
+The compliance report output now includes Phase 3 reason-coded evidence rows for:
+
+1. Ingress Plane: `INGRESS_ALLOW`
+2. Context Plane: `CONTEXT_ALLOW`
+3. Model Plane: `MODEL_ALLOW` and prompt safety deny `PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED`
+4. Tool Plane: `TOOL_ALLOW`
+5. Loop Plane: `LOOP_HALT_MAX_STEPS`
+
+Framework alignment:
+
+1. SOC 2 Type 2: CC6.7, CC7.2
+2. ISO 27001: A.8.2.1, A.12.4.1
+3. CCPA/CPRA: 1798.150
+4. GDPR: Art. 25, Art. 30
+5. HIPAA: Minimum-necessary and auditability are evidenced via the model prompt-safety deny controls and reason-coded audit events.
 
 ### Local Overlay Adaptations
 
@@ -458,6 +584,7 @@ The gateway is configured via environment variables. The most commonly needed on
 | `make phoenix-reset` | Stop Phoenix + destroy trace data |
 | `make k8s-up` | Deploy full stack to local K8s |
 | `make k8s-down` | Teardown local K8s deployment |
+| `make k8s-validate` | Validate K8s overlays + Phase 3 capability wiring |
 | `make k8s-prereqs` | Install K8s CRD prerequisites (Gatekeeper, sigstore) |
 | `make k8s-registry` | Start local container registry |
 | `make register-spire` | Register SPIRE workload entries (Docker Compose) |

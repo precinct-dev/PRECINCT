@@ -20,6 +20,7 @@ TOOLS_NAMESPACE := tools
 # Path to source config files (relative to POC root when run from this dir)
 OPA_DIR ?= ../../../config/opa
 TOOL_REGISTRY ?= ../../../config/tool-registry.yaml
+CAPABILITY_REGISTRY_V2 ?= ../../../config/capability-registry-v2.yaml
 
 help: ## Show this help message
 	@echo "Gateway Deployment -- EKS Targets"
@@ -50,8 +51,9 @@ deploy-configmap: ## Create/update ConfigMap from source OPA policies and tool r
 		--from-file=tool_grants.yaml=$(OPA_DIR)/tool_grants.yaml \
 		--from-file=ui_capability_grants.yaml=$(OPA_DIR)/ui_capability_grants.yaml \
 		--from-file=tool-registry.yaml=$(TOOL_REGISTRY) \
+		--from-file=capability-registry-v2.yaml=$(CAPABILITY_REGISTRY_V2) \
 		--dry-run=client -o yaml | $(KUBECTL) apply -f -
-	@echo "ConfigMap created with OPA policies and tool registry."
+	@echo "ConfigMap created with OPA policies, tool registry, and capability registry v2."
 
 deploy-gateway: ## Deploy gateway Deployment and Service
 	@echo "=== Deploying MCP Security Gateway ==="

@@ -1,0 +1,44 @@
+
+[1m=========================================[0m
+[1m  Scenario D: Tool Poisoning Detection[0m
+[1m=========================================[0m
+
+[0;36m--- Pre-flight checks ---[0m
+  [[0;32mPASS[0m] Gateway is running
+[0;36m--- D1: Valid tool call (correct hash) ---[0m
+         Using allowed read probe path: /app/go.mod
+  [[0;36mINFO[0m] Response code: 502
+  [[0;32mPASS[0m] Valid tool call passes hash verification (HTTP 502)
+[0;36m--- D2: Poisoned tool (wrong hash) ---[0m
+  [[0;36mINFO[0m] Response code: 403
+  [[0;36mINFO[0m] Response body: {"code":"registry_hash_mismatch","message":"Tool not authorized: hash_mismatch","middleware":"tool_registry_verify","middleware_step":5,"decision_id":"01c8074b-332d-4ae8-9f3f-ee887132bdc2","trace_id":"feab75b53744e14e7f39ba40e479a949","details":{"alert_level":"warning","reason":"hash_mismatch","tool":"read"},"remediation":"Verify the tool is registered and its hash matches the registry."}
+  [[0;32mPASS[0m] Hash mismatch detected and blocked (HTTP 403, hash_mismatch)
+[0;36m--- D3: Multiple poisoned tools ---[0m
+  [[0;36mINFO[0m] Tool tavily_search with wrong hash: HTTP 403
+  [[0;32mPASS[0m] tavily_search: Hash mismatch blocked (HTTP 403)
+  [[0;36mINFO[0m] Tool grep with wrong hash: HTTP 403
+  [[0;32mPASS[0m] grep: Hash mismatch blocked (HTTP 403)
+[0;36m--- D4: Audit trail of poisoning attempts ---[0m
+  [[0;32mPASS[0m] Denial (403) events recorded in audit log for hash verification failures
+[0;36m--- D5: OPA poisoning pattern detection (description-level) ---[0m
+  [[0;36mINFO[0m] OPA policy includes regex patterns for poisoning indicators:
+         Pattern 1: <IMPORTANT> tags
+         Pattern 2: <SYSTEM> tags
+         Pattern 3: HTML comments
+         Pattern 4: 'before using this tool... first' instructions
+         Pattern 5: 'ignore instructions' commands
+         Pattern 6: 'you must always/first/never' directives
+         Pattern 7: 'send to external destination' patterns
+  [[0;32mPASS[0m] OPA poisoning pattern detection policy is loaded (7 patterns in mcp_policy.rego)
+
+
+[1m=========================================[0m
+[1m  Results Summary[0m
+[1m=========================================[0m
+
+  Total checks: 7
+  [0;32mPASS[0m: 7
+  [0;31mFAIL[0m: 0
+  [1;33mSKIP[0m: 0
+
+[0;32mAll checks passed.[0m

@@ -1,0 +1,20 @@
+mesg: ttyname failed: Inappropriate ioctl for device
+[INFO] Running KeyDB backup/restore drill
+mesg: ttyname failed: Inappropriate ioctl for device
+mesg: ttyname failed: Inappropriate ioctl for device
+mesg: ttyname failed: Inappropriate ioctl for device
+mesg: ttyname failed: Inappropriate ioctl for device
+ Container keydb Stopping 
+ Container keydb Stopped 
+ Container keydb Starting 
+ Container keydb Started 
+mesg: ttyname failed: Inappropriate ioctl for device
+[INFO] Running SPIKE Nexus backup/restore drill
+Unable to find image 'alpine:3.21' locally
+3.21: Pulling from library/alpine
+a447a5de8f4e: Already exists
+Digest: sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709
+Status: Downloaded newer image for alpine:3.21
+[INFO] Running gateway audit evidence backup/restore drill
+[PASS] backup/restore drill completed
+[INFO] report: /Users/ramirosalas/workspace/agentic_reference_architecture/POC/docs/operations/artifacts/backup-restore-drill-latest.json

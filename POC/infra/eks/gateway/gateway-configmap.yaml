@@ -35,9 +35,30 @@ data:
   #   opa/tool_grants.yaml
   #   opa/ui_capability_grants.yaml
   #   tool-registry.yaml
+  #   capability-registry-v2.yaml
   #
-  # Placeholder entry to make this a valid ConfigMap for kubeconform validation.
-  # The deploy target replaces this with real data.
-  _placeholder: |
-    # This ConfigMap is populated at deploy time by the Makefile.
-    # Run: make -C infra/eks/gateway deploy
+  # Placeholder defaults keep the manifest self-contained for kustomize/kubeconform.
+  # Production overlays should replace this ConfigMap from source policy files.
+  mcp_policy.rego: |
+    package gateway.authz
+    default allow := false
+  ui_policy.rego: |
+    package gateway.ui
+    default allow := true
+  ui_csp_policy.rego: |
+    package gateway.ui_csp
+    default allow := true
+  exfiltration.rego: |
+    package gateway.exfiltration
+    default deny := false
+  context_policy.rego: |
+    package gateway.context
+    default allow_context := true
+  tool_grants.yaml: |
+    tool_grants: []
+  ui_capability_grants.yaml: |
+    grants: []
+  tool-registry.yaml: |
+    tools: []
+  capability-registry-v2.yaml: |
+    capability_grants: []

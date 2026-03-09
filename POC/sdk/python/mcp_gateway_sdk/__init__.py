@@ -18,8 +18,8 @@ Usage:
         client.close()
 """
 
-from .client import GatewayClient
+from .client import GatewayClient, build_spike_token_ref
 from .errors import GatewayError
 
-__all__ = ["GatewayClient", "GatewayError"]
+__all__ = ["GatewayClient", "GatewayError", "build_spike_token_ref"]
 __version__ = "0.1.0"

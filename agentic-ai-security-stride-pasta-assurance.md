@@ -1,7 +1,7 @@
 # Agentic AI Security Reference Architecture
 ## STRIDE + PASTA Assurance Mapping (Production Profile)
 
-Document version: 1.0  
+Document version: 1.2  
 Date: 2026-02-11  
 Audience: Security architecture, audit, legal, risk, platform leadership
 
@@ -9,48 +9,50 @@ Audience: Security architecture, audit, legal, risk, platform leadership
 
 ## 1) Purpose and Scope
 
-This document maps the reference architecture to two threat-model methodologies used by audit and risk functions:
+This document maps the reference architecture to:
 
 - STRIDE (threat-class coverage)
-- PASTA (process and risk lifecycle coverage)
+- PASTA (risk lifecycle coverage)
 
-It is designed to support defensibility discussions for production deployments on:
+It incorporates the approved **Phase 3 architectural direction** centered on the **Unified Agentic Security Gateway System (UASGS)** and this document now reflects the latest hardening pass intended to close architecture-level (non-operational) gaps.
 
-- A leading cloud provider, and/or
-- A properly managed Kubernetes environment (managed or self-hosted)
+Deployment scope assumed:
 
-This is an assurance mapping, not a legal attestation. Claims here are tied to implementation artifacts currently present in this repository.
+- Leading cloud provider and/or
+- Properly managed Kubernetes environment
+
+This is an assurance mapping, not legal advice or an attestation.
 
 ---
 
 ## 2) Assumptions for Production Defensibility
 
-Defensibility statements in this document assume the following are true in production:
+Defensibility statements in this document assume:
 
-1. Workload identity is SPIFFE/SPIRE based with mTLS enforced for service-to-service traffic.
-2. Gateway remains the mandatory policy enforcement point for all MCP traffic.
-3. Policy, registry, image, and model artifacts are promoted through signed and reviewed supply-chain gates.
-4. Audit events are shipped to immutable/append-only retention systems.
-5. Break-glass changes are time-boxed and auditable.
-6. The operating model follows the 3 Rs (Repair, Rotate, Repave) as a continuous practice, not a one-time design goal.
-
-If these assumptions are not met, coverage downgrades from "defensible" to "partially defensible".
+1. Workload identity is SPIFFE/SPIRE based and mTLS is enforced.
+2. UASGS is the mandatory policy boundary for ingress admission, model egress, tool execution, and governed memory I/O.
+3. Loop governance is enforced externally via immutable run envelopes (boundary-only baseline), without requiring framework loop-engine replacement.
+4. Model-provider credentials are reference-based (not embedded in agent services).
+5. Policy, registry, image, and runtime artifact promotion is signed and reviewed.
+6. Audit events are retained in immutable/append-only systems.
+7. Break-glass operations are time-boxed, reason-coded, and reviewed.
+8. Operating model follows the 3 Rs: Repair, Rotate, Repave.
+9. Production profile defaults from Phase 3 v1.1 are applied (`prod_standard` and `prod_regulated_hipaa`).
 
 ### 2.1 3 Rs Operating Doctrine
 
-- Repair: platform uses self-healing and redundancy controls for critical services.
-- Rotate: identities and secrets are short-lived and automatically rotated.
-- Repave: environments can be rebuilt rapidly to remove persistence and restore trusted state.
-
-This doctrine is central to long-term resilience against both routine failures and persistent adversaries.
+- Repair: self-heal and recover quickly through redundant, observable services.
+- Rotate: use short-lived identity and referential secrets by default.
+- Repave: rebuild trusted runtime state on demand to reduce persistent footholds.
 
 ---
 
 ## 3) Control Evidence Baseline (Repository Anchors)
 
-Primary architectural references:
+Primary references:
 
 - `agentic-ai-security-reference-architecture.md`
+- `agentic-ai-security-phase3-proposal.md`
 - `POC/docs/ARCHITECTURE.md`
 
 Representative implementation evidence:
@@ -68,326 +70,328 @@ Representative implementation evidence:
 
 ---
 
-## 4) STRIDE Mapping to Architecture
+## 4) Posture Delta From Phase 3 Architecture
 
-### 4.1 Spoofing (S)
+This section captures the impact of the Phase 3 proposal itself (design-level uplift). Implementation evidence for these controls is still required before final auditor claims.
 
-Threat focus:
-- Impersonated agent/tool workloads
-- Service identity spoofing in east-west traffic
-
-Current controls:
-- SPIFFE/SPIRE workload identity and SVID-based mTLS
-- Trust-domain and identity checks in gateway auth middleware
-- K8s admission constraints reducing rogue workload introduction
-
-Coverage rating: High
-
-Residual gaps:
-- No explicit hardware-backed attestation requirement across all deployment profiles
-- Non-K8s deployments need stronger node attestation standardization
-
-### 4.2 Tampering (T)
-
-Threat focus:
-- Tool metadata or schema mutation (rug pull)
-- Policy/registry/config mutation
-- Artifact supply-chain manipulation
-
-Current controls:
-- Tool hash verification and poisoning checks
-- UI resource hash verification and gating
-- Signature-aware hot reload path for registry updates
-- K8s digest and signature admission policies
-
-Coverage rating: High
-
-Residual gaps:
-- Model artifact signing/verification is defined architecturally but not uniformly enforced end-to-end
-- Signed policy bundle verification can be strengthened in non-K8s profiles
-
-### 4.3 Repudiation (R)
-
-Threat focus:
-- Inability to prove who did what, when, and under which decision policy
-
-Current controls:
-- Structured JSON audit events with trace/session/decision identifiers
-- Tamper-evident hash chain for audit event continuity
-- Compliance report generation path from control taxonomy + evidence artifacts
-
-Coverage rating: High
-
-Residual gaps:
-- Immutable retention is partly deployment-dependent (must be implemented in cloud object lock/WORM)
-- Legal hold runbooks and chain-of-custody operations are not fully codified as executable procedures
-
-### 4.4 Information Disclosure (I)
-
-Threat focus:
-- Secrets/PII exfiltration through compromised agent behavior
-- Sensitive response data leakage via legitimate tools
-
-Current controls:
-- Late-binding token substitution pattern (agent never receives raw secret)
-- DLP scanning and risk flags
-- Response firewall with sensitive-response handle-ization
-- Egress and destination controls in policy
-- Documented path to enforce model-provider egress controls at the same boundary
-
-Coverage rating: High (conditional)
-
-Residual gaps:
-- Some DLP failure paths are configurable and can fail open if not hardened per risk class
-- Cross-border data transfer governance for external AI scanning providers requires legal controls (SCCs/DPIA)
-- External LLM provider endpoint attestation/residency enforcement is not yet fully standardized
-
-### 4.5 Denial of Service (D)
-
-Threat focus:
-- Gateway overload, scanner outage, dependency failure cascades
-
-Current controls:
-- Request size limits, rate limiting, circuit breakers
-- Explicit failure mode table and degraded modes
-- Observability and alerting patterns
-
-Coverage rating: Medium-High
-
-Residual gaps:
-- HA/SLO targets and failure-injection evidence are not yet formally packaged for auditors
-- Multi-region recovery and tested RTO/RPO plans are not documented at assurance depth
-
-### 4.6 Elevation of Privilege (E)
-
-Threat focus:
-- Prompt injection driving privileged tools/actions
-- Lateral movement from lower-risk to higher-risk capabilities
-
-Current controls:
-- OPA tool authorization by identity + path/destination rules
-- Step-up gating and risk-score thresholds
-- Session-context exfiltration pattern detection
-- Approval/capability model described for high-risk actions
-
-Coverage rating: High
-
-Residual gaps:
-- Formal JIT approval workflow integration and reviewer accountability trail needs standardized implementation
-- Delegation-chain controls (actor vs subject) are still maturing for complex multi-agent workflows
-
----
-
-## 5) STRIDE Coverage Summary
-
-| STRIDE Element | Coverage | Why Defensible Today | Main Remaining Gap |
+| Control Plane | Pre-Phase 3 Posture | Phase 3 Design Posture | Net Effect |
 |---|---|---|---|
-| Spoofing | High | SPIFFE/SPIRE identity + mTLS + auth middleware | Uniform strong attestation in all environments |
-| Tampering | High | Hash verification, signed reload paths, admission controls | Model/policy artifact verification consistency |
-| Repudiation | High | Hash-chained audit + decision/trace correlation | Immutable retention + legal hold operationalization |
-| Info Disclosure | High (conditional) | Late-binding secrets + DLP + response firewall | Fail-open edge cases and transfer governance |
-| DoS | Medium-High | Rate limits, breakers, explicit failure modes | Formal resilience evidence package |
-| Elevation of Privilege | High | OPA least privilege + step-up gating + risk scoring | JIT approval and delegation rigor |
+| LLM egress | Fragmented, app-specific provider handling | UASGS-mediated provider governance, trust checks, residency + budget policy | Major uplift in disclosure, supplier, and audit defensibility |
+| Loop control | Inconsistent per framework | External immutable envelopes and reason-coded halts (boundary-only baseline) | Stronger DoS/EoP resilience without framework lock-in |
+| Ingress | Not first-class across webhook/queue/schedule | Connector-based normalized ingress admission (non-MITM default) | Better spoofing/tampering coverage for event-driven agents |
+| Context engineering | Detection-oriented, uneven enforcement | Mandatory admission model: no-scan-no-send / no-verification-no-load | Large uplift in prompt-injection and data handling consistency |
+| RLM/repl flows | Largely ungoverned pattern | Explicit RLM controls (sandbox, recursion limits, sub-call mediation) | Reduced emerging-runtime risk and better auditability |
+| DLP control plane | Static or ad hoc rule lifecycle | RuleOps lifecycle with signing, staged rollout, rollback, and immutable audit | Closes major tampering gap for rule CRUD |
+| HIPAA prompt safety | Implicit/partial handling | Regulated profile with deny/tokenize defaults and minimum-necessary controls | Closes core architecture gap for prompt-bound PHI/PII handling |
 
 ---
 
-## 6) PASTA Mapping to Architecture
+## 5) STRIDE Mapping to Architecture
+
+### 5.1 Spoofing (S)
+
+Threat focus:
+
+- Workload identity impersonation
+- Fake ingress sources
+- Spoofed model-provider endpoints
+
+Controls:
+
+- SPIFFE/SPIRE SVID + mTLS
+- Ingress source authentication (mTLS/JWT/HMAC/signature)
+- UASGS endpoint trust policy for model egress
+- Production default for mediated model egress (policy + identity + network gates)
+
+Coverage rating:
+
+- Current: High
+- Target with Phase 3 implementation: Very High
+
+Residual gaps:
+
+- Hardware/root-of-trust attestation is not uniformly required across all deployment profiles.
+- Ingress connector certification remains an operational governance dependency.
+
+### 5.2 Tampering (T)
+
+Threat focus:
+
+- Tool/registry/policy mutation
+- DLP rule abuse via CRUD surfaces
+- Artifact/skill tampering in download path
+
+Controls:
+
+- Tool hash verification and poisoning checks
+- Signed policy and artifact supply-chain gates
+- DLP RuleOps lifecycle (RBAC/SOD, validation, signing, staged rollout, rollback)
+- Artifact proxy + signature/scan gates (Phase 3)
+
+Coverage rating:
+
+- Current: High (tool-focused)
+- Target with Phase 3 implementation: Very High
+
+Residual gaps:
+
+- DLP RuleOps assurance is now primarily an operations-evidence task (e.g., dual-approval and rollback drill records).
+- Artifact intake controls require runtime enforcement verification in production telemetry.
+
+### 5.3 Repudiation (R)
+
+Threat focus:
+
+- Inability to prove who did what, when, and under which policy decision
+
+Controls:
+
+- Structured JSON audits with trace/session/decision ids
+- Hash-chained audit continuity
+- UASGS unified audit taxonomy v2 across ingress/model/tool/memory/loop/RLM/context-admission
+
+Coverage rating:
+
+- Current: High
+- Target with Phase 3 implementation: Very High
+
+Residual gaps:
+
+- Immutable retention and legal hold operations require stronger operational drill evidence.
+- Auditor-ready packaged evidence cadence still depends on control-operations maturity.
+
+### 5.4 Information Disclosure (I)
+
+Threat focus:
+
+- Secrets/PII exfiltration through model/tool/context paths
+- Prompt injection and unsafe context ingestion
+- Cross-border data transfer violations
+
+Controls:
+
+- Late-binding secret substitution and referential credentials
+- DLP and response firewall
+- Model-provider residency and endpoint policy gates
+- Mandatory context admission controls:
+  - no-scan-no-send
+  - no-provenance-no-persist
+  - no-verification-no-load
+- HIPAA prompt safety profile with deny/tokenize defaults and minimum-necessary preprocessing
+
+Coverage rating:
+
+- Current: High (conditional)
+- Target with Phase 3 implementation: Very High
+
+Residual gaps:
+
+- High-risk fail-closed defaults now exist in architecture; remaining work is operational verification.
+- Legal prerequisites for external processors (DPIA/SCC/contract terms) remain organizational dependencies.
+
+### 5.5 Denial of Service (D)
+
+Threat focus:
+
+- Runaway loops
+- Provider outages and budget exhaustion
+- Gateway/connector bottlenecks
+
+Controls:
+
+- Rate limits, request limits, and circuit breakers
+- Immutable run envelopes (step/tool/model/time/cost/failover bounds)
+- Provider fallback policy and explicit halt reason codes
+
+Coverage rating:
+
+- Current: Medium-High
+- Target with Phase 3 implementation: High
+
+Residual gaps:
+
+- Formal HA/SLO evidence package and failure-injection cadence are not yet audit-packaged.
+- Multi-region DR/RTO/RPO validation remains to be codified as repeatable evidence.
+
+### 5.6 Elevation of Privilege (E)
+
+Threat focus:
+
+- Prompt injection driving privilege jumps
+- Hidden sub-call escalation in RLM/REPL workflows
+- Cross-plane policy bypass attempts
+
+Controls:
+
+- OPA least-privilege policy for capabilities
+- Step-up gating and risk scoring
+- Boundary-only loop governance with immutable limits
+- RLM sub-call mediation through model egress controls
+
+Coverage rating:
+
+- Current: High
+- Target with Phase 3 implementation: Very High
+
+Residual gaps:
+
+- JIT approval workflow and reviewer-accountability controls need standardized implementation.
+- Delegation-chain modeling for complex multi-agent subject/actor flows needs maturity.
+
+---
+
+## 6) STRIDE Coverage Summary
+
+| STRIDE Element | Current Coverage | Target Coverage (Phase 3 Implemented) | Main Remaining Gap |
+|---|---|---|---|
+| Spoofing | High | Very High | Uniform attestation + connector governance operations |
+| Tampering | High | Very High | Operating-evidence maturity for RuleOps and artifact enforcement |
+| Repudiation | High | Very High | Immutable retention/legal hold execution rigor |
+| Info Disclosure | High (conditional) | Very High | Legal transfer prerequisites + profile verification evidence |
+| DoS | Medium-High | High | Audit-ready resilience/DR evidence packages |
+| Elevation of Privilege | High | Very High | JIT approvals + delegation-chain rigor |
+
+---
+
+## 7) PASTA Mapping to Architecture
 
 ### Stage 1: Define Business and Security Objectives
 
-Evidence:
-- Business drivers and compliance expectations: `POC/docs/BUSINESS.md`
-- Architecture objective framing: `agentic-ai-security-reference-architecture.md`
-
 Assessment: Strong
 
-Notes:
-- Objectives are explicit: secure agent/tool mediation, compliance evidence, and production deployment portability.
+Phase 3 effect:
+
+- Explicit objectives now include model egress governance, ingress governance, context admission invariants, and loop-bound autonomy controls.
 
 ### Stage 2: Define Technical Scope
 
-Evidence:
-- System and deployment architecture: `POC/docs/ARCHITECTURE.md`
-- EKS and deployment assets: `POC/infra/eks/`
-
 Assessment: Strong
 
-Notes:
-- Scope includes identity plane, policy engine, gateway, observability, compliance tooling, and deployment variants.
+Phase 3 effect:
+
+- Scope now explicitly covers five agentic planes plus policy/audit/identity/secrets planes under one UASGS contract.
 
 ### Stage 3: Application Decomposition
 
-Evidence:
-- Middleware chain, trust boundaries, component responsibilities: `agentic-ai-security-reference-architecture.md`, `POC/docs/ARCHITECTURE.md`
-
 Assessment: Strong
 
-Notes:
-- Architecture decomposes control points clearly enough for attack-surface reasoning.
+Phase 3 effect:
+
+- Clear subsystem boundaries: LLM plane, Tool Plane, Context/Memory plane, Loop Governance plane, Ingress plane.
+- Boundary-only governance model lowers integration friction with framework-native loops.
 
 ### Stage 4: Threat Analysis
 
-Evidence:
-- Threat landscape and analysis sections: `agentic-ai-security-reference-architecture.md`
-- Existing security review: `security_best_practices_report.md`
-
 Assessment: Strong
 
-Notes:
-- Threats include MCP-specific vectors (poisoning, rug pull, exfiltration, active UI content), not just generic web threats.
+Phase 3 effect:
+
+- Threat coverage now includes RLM trajectory risk, provider budget failures, ingress connector abuse, and context/artifact supply-chain poisoning.
 
 ### Stage 5: Vulnerability Analysis
 
-Evidence:
-- Security baseline and findings process: `POC/docs/security/baseline.md`
-- Tool-specific middleware and policy implementations under `POC/internal/gateway/middleware/` and `POC/config/opa/`
-
 Assessment: Medium-High
 
-Notes:
-- The architecture defines practical vulnerability classes and controls; coverage is stronger in design than in continuously published vulnerability management metrics.
+Phase 3 effect:
+
+- Vulnerability classes are richer and closer to real deployment patterns.
+- Remaining gap is continuous vulnerability-management evidence and control effectiveness cadence.
 
 ### Stage 6: Attack Modeling and Simulation
 
-Evidence:
-- E2E scenarios and validation scripts: `POC/tests/e2e/`
-- Integration and policy tests: `POC/tests/integration/`, `POC/config/opa/*_test.rego`
-
 Assessment: Medium-High
 
-Notes:
-- Simulation exists and is substantive; formal red-team/adversary-emulation playbooks are still limited.
+Phase 3 effect:
+
+- Simulation scope should expand to boundary-only loop stress tests, ingress replay/forgery, provider brownouts, RLM recursion abuse, and context-admission bypass attempts.
 
 ### Stage 7: Risk and Impact Analysis
 
-Evidence:
-- Risk-adaptive gating model and operational risk framing in architecture docs
-- Compliance reporting and evidence generation toolchain
+Assessment: Medium-High
 
-Assessment: Medium
+Phase 3 effect:
 
-Notes:
-- Qualitative risk treatment is strong, but enterprise-grade quantitative risk register linkage (loss magnitude, appetite thresholds, KRIs) is not yet fully formalized.
+- Risk treatment becomes more explicit via run envelopes, policy reason codes, and model-provider budget/fallback policies.
+- Risk-acceptance governance still requires stronger executive workflow formalization.
 
 ---
 
-## 7) PASTA Coverage Summary
+## 8) PASTA Coverage Summary
 
-| PASTA Stage | Coverage | Defensibility Position |
-|---|---|---|
-| Stage 1 - Objectives | Strong | Clear security and compliance outcomes are defined |
-| Stage 2 - Technical Scope | Strong | Production control plane and deployment footprint are explicit |
-| Stage 3 - Decomposition | Strong | Components and trust boundaries are well decomposed |
-| Stage 4 - Threat Analysis | Strong | Threat taxonomy includes agentic/MCP-native vectors |
-| Stage 5 - Vulnerability Analysis | Medium-High | Good control mapping, needs stronger continuous vuln evidence packet |
-| Stage 6 - Attack Simulation | Medium-High | Test scenarios exist, needs formal adversary playbooks |
-| Stage 7 - Risk/Impact | Medium | Needs tighter integration with enterprise risk quantification |
+| PASTA Stage | Current | With Phase 3 Direction | Remaining Gap |
+|---|---|---|---|
+| Stage 1 Objectives | Strong | Stronger and more explicit | None material |
+| Stage 2 Scope | Strong | Stronger multi-plane scope | None material |
+| Stage 3 Decomposition | Strong | Strong with clearer boundaries | None material |
+| Stage 4 Threat Analysis | Strong | Stronger emerging-pattern coverage | Keep updating threat library |
+| Stage 5 Vulnerability Analysis | Medium-High | Medium-High to High potential | Continuous evidence and metrics maturity |
+| Stage 6 Attack Modeling | Medium-High | High potential | Formal adversary-emulation cadence |
+| Stage 7 Risk/Impact | Medium-High | High potential | Executive risk acceptance operationalization |
 
----
+Re-assessment result:
 
-## 8) Prioritized Gap Register (Auditor/Legal/Risk View)
-
-### G-01 (High): HIPAA-specific control mapping and operational safeguards are not first-class
-
-Impact:
-- Weakens defensibility for PHI workloads and covered-entity/business-associate scrutiny.
-
-What is missing:
-- Explicit HIPAA Security Rule control matrix and operating procedures
-- BAA, minimum necessary standard workflows, and HIPAA incident/breach response mappings
-
-Priority recommendation:
-- Create HIPAA crosswalk with technical + administrative controls and evidence owners.
-
-### G-02 (High): Immutable retention and legal hold are architecture-described but not fully operationalized as runbooks/evidence
-
-Impact:
-- Repudiation/eDiscovery defensibility is reduced during legal discovery.
-
-What is missing:
-- Evidence of object lock/WORM retention, legal hold activation workflow, and custody approvals
-
-Priority recommendation:
-- Implement and test legal hold playbook with periodic drill evidence.
-
-### G-03 (High): Supply-chain integrity for model artifacts is not uniformly enforced
-
-Impact:
-- Compromised model weights can degrade security detections and trustworthiness.
-
-What is missing:
-- Standard startup/runtime verification for model digests/signatures across all deployment profiles
-
-Priority recommendation:
-- Enforce model artifact signature and digest validation at deploy + startup.
-
-### G-04 (Medium): Cross-border data transfer governance for optional external scanning providers is conditional
-
-Impact:
-- GDPR/CPRA legal risk if transfer safeguards are incomplete.
-
-What is missing:
-- Institutionalized SCC/DPIA controls tied to feature flags and deployment policy
-
-Priority recommendation:
-- Enforce policy guardrails that disable external scanning unless legal prerequisites are attested.
-
-### G-05 (Medium): Risk quantification and executive risk acceptance workflow needs formalization
-
-Impact:
-- Harder to defend residual risk decisions during audits.
-
-What is missing:
-- Formal KRIs, risk appetite thresholds, signed exceptions, and expiration-driven review cycle
-
-Priority recommendation:
-- Integrate architecture risk findings into enterprise risk register with owner/accountability.
-
-### G-06 (Medium): Non-K8s production parity controls need stronger prescriptive baseline
-
-Impact:
-- Portability claims may outpace realized control equivalence outside Kubernetes.
-
-What is missing:
-- Mandatory baseline profile for VM/non-K8s deployments (identity, egress, integrity, immutable audit)
-
-Priority recommendation:
-- Publish non-K8s minimum control profile with pass/fail go-live checklist.
-
-### G-07 (Medium): DLP rule CRUD introduces a new control-plane tampering surface
-
-Impact:
-- If DLP patterns become editable via API/CLI without strong governance, attackers or misconfigurations can silently weaken detection/blocking or induce DoS via unsafe regex.
-
-What is missing:
-- A mandated rule lifecycle with RBAC, signed/versioned rule bundles, validation gates, staged rollout, full audit trail, and rollback guarantees.
-
-Priority recommendation:
-- Treat DLP rule management as a Tier-0 security control plane with change-management controls equivalent to policy bundle governance.
-
-### G-08 (High): External LLM provider traffic is not yet governed as a first-class gateway control plane
-
-Impact:
-- Model API access may bypass centralized controls, weakening secret management, endpoint trust validation, and data residency enforcement.
-
-What is missing:
-- Standardized gateway mediation for model egress with credential-by-reference, provider allowlists, TLS endpoint identity policy, DNS integrity checks, and jurisdiction gating.
-
-Priority recommendation:
-- Extend the gateway boundary to mediate external model-provider access with the same enforcement and audit rigor used for tools.
+- The Phase 3 v1.1 hardening pass closes the major architecture-level (non-operational) gaps previously flagged around model egress bypass, context admission defaults, DLP CRUD scaffolding, and HIPAA prompt-safety technical controls.
+- Remaining gaps are predominantly operationalization, legal governance, and audit-evidence cadence concerns.
 
 ---
 
-## 9) Defensibility Position (Executive Summary)
+## 9) Prioritized Gap Register (Auditor/Legal/Risk View)
 
-If implemented with the production assumptions in Section 2, this architecture is defensible under both STRIDE and PASTA because:
+After the Phase 3 v1.1 hardening pass, remaining gaps are predominantly operational/human-process:
 
-1. Threat classes are addressed with layered, testable controls at identity, policy, content, and audit layers.
-2. Control points are centralized at the gateway, reducing policy drift and improving evidentiary consistency.
-3. Supply-chain and trust-boundary concerns are explicitly represented, including MCP-specific attack vectors.
-4. Residual risks are known and can be treated with concrete, near-term remediation actions.
+### G-01 (Critical): HIPAA-specific governance and evidence program remains incomplete
 
-Current posture is best characterized as:
-- Strong technical defensibility for STRIDE coverage
-- Strong process framing for PASTA Stages 1-4
-- Maturing assurance maturity for Stages 5-7, contingent on operational evidence program completion
+Required action:
+
+- Operate a HIPAA-focused control/evidence framework (45 CFR 164.308/310/312/314/316), including BAAs and incident workflows.
+
+### G-02 (High): Immutable retention, legal hold, and custody controls require recurring operational drills
+
+Required action:
+
+- Run and record legal hold/WORM retention drills and custody validations on a defined schedule.
+
+### G-03 (High): SOC 2 Type 2 operating-effectiveness cadence is not yet fully institutionalized
+
+Required action:
+
+- Establish sampling plans, owner attestations, exception SLAs, and internal-audit checkpoints.
+
+### G-04 (Medium): Connector and RuleOps controls need sustained conformance evidence
+
+Required action:
+
+- Produce recurring evidence for connector conformance checks, RuleOps approvals, and rollback readiness.
+
+### G-05 (Medium): Privacy/legal transfer governance remains an organizational dependency
+
+Required action:
+
+- Ensure DPIA/SCC and processor-contract controls are embedded in deployment gates and exceptions.
+
+### G-06 (Medium): Resilience/DR proof remains an evidence packaging challenge
+
+Required action:
+
+- Produce audit-ready RTO/RPO, failure-injection, and multi-region recovery evidence artifacts.
+
+---
+
+## 10) Defensibility Position (Executive Summary)
+
+Overall posture is stronger after the Phase 3 architecture update because core modern-agentic risk surfaces are now explicitly governed in design:
+
+- model egress,
+- event ingress,
+- loop autonomy bounds,
+- context admission,
+- and RLM execution.
+
+What remains is mostly implementation and operating-evidence maturity, not conceptual architecture deficiency.
+
+Following the latest hardening pass, there are no major architecture-level gaps left in this STRIDE/PASTA view that can be closed purely by additional design text; remaining items are execution and governance operations.
+
+Practical readout:
+
+- SOC 2 Type 2 / ISO 27001 / GDPR / CCPA-CPRA: defensible trajectory with focused evidence hardening.
+- HIPAA: still requires dedicated compliance and legal-operational uplift before readiness claims.

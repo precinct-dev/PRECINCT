@@ -1,0 +1,64 @@
+
+[1m=========================================[0m
+[1m  Scenario B: Security Denial (OPA Policy)[0m
+[1m=========================================[0m
+
+[0;36m--- Pre-flight checks ---[0m
+  [[0;32mPASS[0m] Gateway is running
+[0;36m--- B1: Bash tool call without step-up (should be denied) ---[0m
+  [[0;36mINFO[0m] Response code: 403
+  [[0;36mINFO[0m] Response body: {"code":"authz_policy_denied","message":"Policy denied: tool_not_authorized","middleware":"opa_policy","middleware_step":6,"decision_id":"e730b34f-ab5f-46d9-b4f2-b804b3d80134","trace_id":"d6b878a7a689ef5e6b5dcd6954573535","details":{"reason":"tool_not_authorized"},"remediation":"Check that the SPIFFE ID has a grant for the requested tool and path."}
+  [[0;32mPASS[0m] High-risk tool call denied (HTTP 403)
+         Denied by OPA policy or step-up gating
+[0;36m--- B1.1: Approval capability lifecycle (request -> grant -> use) ---[0m
+  [[0;32mPASS[0m] Approval request created
+  [[0;32mPASS[0m] Approval request id parsed
+  [[0;32mPASS[0m] Approval request granted
+  [[0;32mPASS[0m] Approval token issued
+  [[0;32mPASS[0m] Valid approval token passed step-up gate for high-risk call
+         Result code=403 error_code=authz_policy_denied (non-step-up outcomes are acceptable here)
+[0;36m--- B1.1a: Phase 3 tool-plane high-risk step-up ---[0m
+  [[0;32mPASS[0m] Phase 3 high-risk tool denied without approval token
+  [[0;32mPASS[0m] Phase 3 high-risk tool allowed with approval token
+[0;36m--- B1.2: Approval token replay denied ---[0m
+  [[0;32mPASS[0m] Approval token consumed once successfully
+  [[0;32mPASS[0m] Replay consume denied with deterministic step-up code
+[0;36m--- B1.3: Approval deny lifecycle ---[0m
+  [[0;32mPASS[0m] Approval deny endpoint succeeded
+[0;36m--- B1.4: Expired approval token denied ---[0m
+  [[0;32mPASS[0m] Expired approval token rejected with HTTP 410
+[0;36m--- B2: Unknown tool call (should be denied) ---[0m
+  [[0;36mINFO[0m] Response code: 403
+  [[0;36mINFO[0m] Response body: {"code":"registry_tool_unknown","message":"Tool not authorized: tool_not_found","middleware":"tool_registry_verify","middleware_step":5,"decision_id":"c697f690-b4c9-4c2f-86f3-db5e5178baee","trace_id":"cb25939a253ff41516f2efe726276c4b","details":{"reason":"tool_not_found","tool":"nonexistent_tool"},"remediation":"Verify the tool is registered and its hash matches the registry."}
+  [[0;32mPASS[0m] Unknown tool denied with HTTP 403
+  [[0;32mPASS[0m] Denial response includes reason
+[0;36m--- B3: Unregistered SPIFFE ID (should be denied) ---[0m
+  [[0;36mINFO[0m] Response code: 403
+  [[0;32mPASS[0m] Unregistered SPIFFE ID denied with HTTP 403
+[0;36m--- B4: Denial appears in audit log ---[0m
+  [[0;32mPASS[0m] Denial event recorded in audit log
+         Audit excerpt: mcp-security-gateway  | 2026/02/16 07:25:15 {"timestamp":"2026-02-16T07:25:15Z","session_id":"576611d5-d21c-43c4-85ee-6eb4c9270015","decision_id":"21790b83-316c-4f28-8eff-3eeded6de889","trace_id":"91a
+[0;36m--- B5: Error response format validation ---[0m
+  [[0;32mPASS[0m] Gateway returns structured error (not crash/panic)
+         Error body: {"code":"registry_tool_unknown","message":"Tool not authorized: tool_not_found","middleware":"tool_registry_verify","middleware_step":5,"decision_id":"d4648636-ea9c-470b-9745-463b57cbfb0d","trace_id":"0fef243ae6eef6a171abc96cbfb6380c","details":{"reason":"tool_not_found","tool":"nonexistent_tool"},"remediation":"Verify the tool is registered and its hash matches the registry."}
+  [[0;32mPASS[0m] No panic or crash detected in error response
+[0;36m--- B6: Gateway stability under multiple denials ---[0m
+  [[0;32mPASS[0m] Gateway remains healthy after 5 rapid denial requests
+[0;36m--- B7: Approval lifecycle appears in audit log ---[0m
+  [[0;32mPASS[0m] Audit includes approval.request
+  [[0;32mPASS[0m] Audit includes approval.grant
+  [[0;32mPASS[0m] Audit includes approval.deny
+  [[0;32mPASS[0m] Audit includes approval.consume
+  [[0;32mPASS[0m] Audit includes approval.expire
+
+
+[1m=========================================[0m
+[1m  Results Summary[0m
+[1m=========================================[0m
+
+  Total checks: 25
+  [0;32mPASS[0m: 25
+  [0;31mFAIL[0m: 0
+  [1;33mSKIP[0m: 0
+
+[0;32mAll checks passed.[0m

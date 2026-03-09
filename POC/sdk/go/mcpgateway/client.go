@@ -94,6 +94,25 @@ type ModelChatRequest struct {
 	ExtraPayload  map[string]any
 }
 
+// BuildSPIKETokenRef builds a SPIKE token reference from a secret ref ID.
+func BuildSPIKETokenRef(ref string, expSeconds int, scope string, bearer bool) (string, error) {
+	ref = strings.TrimSpace(ref)
+	if ref == "" {
+		return "", fmt.Errorf("ref is required")
+	}
+	if expSeconds <= 0 {
+		expSeconds = 3600
+	}
+	token := fmt.Sprintf("$SPIKE{ref:%s,exp:%d}", ref, expSeconds)
+	if strings.TrimSpace(scope) != "" {
+		token = fmt.Sprintf("$SPIKE{ref:%s,exp:%d,scope:%s}", ref, expSeconds, strings.TrimSpace(scope))
+	}
+	if bearer {
+		return "Bearer " + token, nil
+	}
+	return token, nil
+}
+
 // NewClient creates a GatewayClient for the given gateway URL and SPIFFE identity.
 //
 // The url is the gateway base URL (e.g. "http://localhost:9090").

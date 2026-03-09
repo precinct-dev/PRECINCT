@@ -1,0 +1,111 @@
+{
+  "schema_version": "conformance.report.v1",
+  "harness": "v2.4",
+  "generated_at": "2026-02-16T18:52:46Z",
+  "suites": [
+    {
+      "suite": "connectors",
+      "status": "pass",
+      "checks": [
+        {
+          "name": "connector invalid transition denied",
+          "case_id": "invalid_transition_denied",
+          "expected": "fail",
+          "actual": "fail",
+          "status": "pass",
+          "message": "invalid transition denied as expected (code=400 body=map[code:contract_validation_failed decision_id:10b9da57-346d-4ca4-b740-c4193a77432a details:map[connector_id:conformance-connector-invalid-1771267906526844000 operation:activate] message:invalid transition: registered -\u003e active middleware:v24_connector_authority middleware_step:16 reason_code:CONTRACT_INVALID trace_id:9229c147ffc412ec1f5d7665f3a20175])"
+        },
+        {
+          "name": "connector lifecycle success",
+          "case_id": "lifecycle_success",
+          "expected": "pass",
+          "actual": "pass",
+          "status": "pass",
+          "message": "connector lifecycle completed (register-\u003evalidate-\u003eapprove-\u003eactivate)"
+        }
+      ]
+    },
+    {
+      "suite": "contracts",
+      "status": "pass",
+      "checks": [
+        {
+          "name": "contracts manifest exists",
+          "case_id": "artifact_exists",
+          "expected": "pass",
+          "actual": "pass",
+          "status": "pass",
+          "message": "artifact present: contracts/v2.4/manifest.v2.4.json"
+        },
+        {
+          "name": "contracts missing artifact fails",
+          "case_id": "artifact_exists",
+          "expected": "fail",
+          "actual": "fail",
+          "status": "pass",
+          "message": "artifact missing at contracts/v2.4/does-not-exist.json"
+        }
+      ]
+    },
+    {
+      "suite": "profiles",
+      "status": "pass",
+      "checks": [
+        {
+          "name": "dev profile boot success",
+          "case_id": "dev_profile_boot",
+          "expected": "pass",
+          "actual": "pass",
+          "status": "pass",
+          "message": "dev profile booted successfully"
+        },
+        {
+          "name": "hipaa profile prompt safety reason-code mapping",
+          "case_id": "hipaa_profile_prompt_safety_reason_codes",
+          "expected": "pass",
+          "actual": "pass",
+          "status": "pass",
+          "message": "hipaa profile enforces raw deny and tokenize quarantine reason-codes"
+        },
+        {
+          "name": "prod profile requires mediation",
+          "case_id": "prod_profile_requires_mediation",
+          "expected": "fail",
+          "actual": "fail",
+          "status": "pass",
+          "message": "prod profile startup gate denied misconfigured mediation control"
+        }
+      ]
+    },
+    {
+      "suite": "ruleops",
+      "status": "pass",
+      "checks": [
+        {
+          "name": "ruleops signed promotion success",
+          "case_id": "signed_promotion_success",
+          "expected": "pass",
+          "actual": "pass",
+          "status": "pass",
+          "message": "signed ruleset promotion succeeded"
+        },
+        {
+          "name": "ruleops unsigned promotion denied",
+          "case_id": "unsigned_promotion_denied",
+          "expected": "fail",
+          "actual": "fail",
+          "status": "pass",
+          "message": "unsigned promotion denied as expected (code=400 body=map[code:contract_validation_failed decision_id:02d3d69a-e3d5-4414-9672-615f968bd038 details:map[operation:promote ruleset_id:conformance-ruleops-unsigned-1771267966679686000] message:signature required before promotion middleware:v24_ruleops_admin middleware_step:16 reason_code:CONTRACT_INVALID trace_id:94b657a41dfa07018ef43b417a6b45bf])"
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "total_suites": 4,
+    "suite_pass": 4,
+    "suite_fail": 0,
+    "total_checks": 9,
+    "check_pass": 9,
+    "check_fail": 0
+  }
+}

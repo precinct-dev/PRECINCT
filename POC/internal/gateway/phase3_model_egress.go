@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -331,6 +332,11 @@ func (g *Gateway) resolveProviderTarget(provider string, attrs map[string]any) (
 	endpoint := strings.TrimSpace(getStringAttr(attrs, overrideKey, ""))
 	if endpoint == "" {
 		endpoint = strings.TrimSpace(getStringAttr(attrs, "provider_endpoint", ""))
+	}
+
+	if endpoint == "" {
+		envKey := "MODEL_PROVIDER_ENDPOINT_" + strings.ToUpper(provider)
+		endpoint = strings.TrimSpace(os.Getenv(envKey))
 	}
 
 	if endpoint == "" {

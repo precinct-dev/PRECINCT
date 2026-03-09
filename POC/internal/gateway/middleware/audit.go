@@ -45,6 +45,8 @@ type AuditEvent struct {
 type SecurityAudit struct {
 	ToolHashVerified bool     `json:"tool_hash_verified"`
 	SafeZoneFlags    []string `json:"safezone_flags,omitempty"`
+	DLPRulesetVer    string   `json:"dlp_ruleset_version,omitempty"`
+	DLPRulesetDigest string   `json:"dlp_ruleset_digest,omitempty"`
 }
 
 // AuthzAudit contains authorization-related audit information
@@ -360,9 +362,15 @@ func AuditLog(next http.Handler, auditor *Auditor) http.Handler {
 		if len(flags) == 0 {
 			flags = GetSecurityFlags(ctx)
 		}
+		dlpVer, dlpDigest := collector.DLPRulesetVersion, collector.DLPRulesetDigest
+		if dlpVer == "" && dlpDigest == "" {
+			dlpVer, dlpDigest = GetDLPRulesetMetadata(ctx)
+		}
 		securityAudit := &SecurityAudit{
 			ToolHashVerified: GetToolHashVerified(ctx),
 			SafeZoneFlags:    flags,
+			DLPRulesetVer:    dlpVer,
+			DLPRulesetDigest: dlpDigest,
 		}
 
 		// Build authorization audit info

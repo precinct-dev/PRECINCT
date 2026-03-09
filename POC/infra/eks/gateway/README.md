@@ -123,6 +123,7 @@ The gateway reads its configuration from environment variables and mounted files
 | `UPSTREAM_URL` | `http://mcp-server.tools.svc.cluster.local:8081/mcp` | Deployment env |
 | `OPA_POLICY_DIR` | `/config/opa` | ConfigMap mount |
 | `TOOL_REGISTRY_CONFIG_PATH` | `/config/tool-registry.yaml` | ConfigMap mount |
+| `CAPABILITY_REGISTRY_V2_PATH` | `/config/capability-registry-v2.yaml` | ConfigMap mount |
 | `MAX_REQUEST_SIZE_BYTES` | 10485760 (10 MB) | Deployment env |
 | `SPIFFE_MODE` | `prod` | Deployment env |
 | `SPIRE_AGENT_SOCKET` | `/run/spire/sockets/agent.sock` | hostPath mount |

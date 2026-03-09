@@ -22,7 +22,7 @@ import uuid
 import httpx
 import pytest
 
-from mcp_gateway_sdk import GatewayClient, GatewayError
+from mcp_gateway_sdk import GatewayClient, GatewayError, build_spike_token_ref
 
 
 SPIFFE_ID = "spiffe://poc.local/agents/mcp-client/test/dev"
@@ -76,6 +76,12 @@ class TestGatewayClientConstructor:
         with GatewayClient(url=url, spiffe_id=SPIFFE_ID) as client:
             result = client.call("tavily_search", query="test")
             assert "results" in result
+
+    def test_build_spike_token_ref(self):
+        token = build_spike_token_ref("deadbeef")
+        assert token == "Bearer $SPIKE{ref:deadbeef,exp:3600}"
+        token_no_bearer = build_spike_token_ref("deadbeef", bearer=False)
+        assert token_no_bearer == "$SPIKE{ref:deadbeef,exp:3600}"
 
 
 # ---------------------------------------------------------------------------

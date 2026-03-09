@@ -1,0 +1,28 @@
+
+[1m=========================================[0m
+[1m  Scenario I: Conformance Harness[0m
+[1m=========================================[0m
+
+  [[0;32mPASS[0m] Gateway is running
+  [[0;36mINFO[0m] Reset rate-limit keys for harness SPIFFE: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
+[0;36m--- I1: Run conformance harness in live mode ---[0m
+conformance report: /Users/ramirosalas/workspace/agentic_reference_architecture/POC/tests/e2e/artifacts/conformance-report.json
+suites: total=4 pass=4 fail=0
+checks: total=9 pass=9 fail=0
+  [[0;32mPASS[0m] Conformance harness completed
+  [[0;32mPASS[0m] Conformance report artifact generated
+         /Users/ramirosalas/workspace/agentic_reference_architecture/POC/tests/e2e/artifacts/conformance-report.json
+[0;36m--- I2: Validate report schema markers and suite outcomes ---[0m
+  [[0;32mPASS[0m] Conformance report contains required schema version and passing suite/check summary
+
+
+[1m=========================================[0m
+[1m  Results Summary[0m
+[1m=========================================[0m
+
+  Total checks: 4
+  [0;32mPASS[0m: 4
+  [0;31mFAIL[0m: 0
+  [1;33mSKIP[0m: 0
+
+[0;32mAll checks passed.[0m

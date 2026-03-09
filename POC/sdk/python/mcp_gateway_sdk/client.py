@@ -38,6 +38,26 @@ _DEFAULT_BACKOFF_BASE = 1.0  # seconds
 _DEFAULT_TIMEOUT = 30.0  # seconds
 
 
+def build_spike_token_ref(
+    ref: str,
+    *,
+    exp_seconds: int = 3600,
+    scope: Optional[str] = None,
+    bearer: bool = True,
+) -> str:
+    """Build a SPIKE token reference string from a secret reference ID."""
+    ref = ref.strip()
+    if not ref:
+        raise ValueError("ref is required")
+
+    token = f"$SPIKE{{ref:{ref},exp:{int(exp_seconds)}}}"
+    if scope:
+        token = f"$SPIKE{{ref:{ref},exp:{int(exp_seconds)},scope:{scope}}}"
+    if bearer:
+        return f"Bearer {token}"
+    return token
+
+
 class GatewayClient:
     """HTTP client for MCP JSON-RPC calls through the security gateway.
 

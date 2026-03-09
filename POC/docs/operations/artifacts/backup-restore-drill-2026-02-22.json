@@ -1,0 +1,39 @@
+{
+  "schema_version": "ops_backup_restore_drill.v1",
+  "generated_at": "2026-02-22T00:50:19Z",
+  "date": "2026-02-22",
+  "status": "pass",
+  "commands": [
+    "make phoenix-up",
+    "make up",
+    "docker compose exec -T keydb redis-cli SAVE",
+    "docker compose restart keydb",
+    "docker cp <container>:/tmp/audit.jsonl <backup>"
+  ],
+  "steps": [
+    {
+      "name": "keydb_backup_restore",
+      "status": "pass",
+      "key": "ops:backup-restore:20260222T005019Z",
+      "expected_value": "drill-value-20260222T005019Z"
+    },
+    {
+      "name": "spike_nexus_backup_restore",
+      "status": "pass",
+      "marker_file": "drill-marker-20260222T005019Z.txt"
+    },
+    {
+      "name": "audit_log_backup_restore",
+      "status": "pass",
+      "original_lines": 12,
+      "restored_lines": 12,
+      "original_sha256": "353af6145627f8cced541838d06bedbd32be3e317d325fbb745fef7aea31d125",
+      "restored_sha256": "353af6145627f8cced541838d06bedbd32be3e317d325fbb745fef7aea31d125"
+    }
+  ],
+  "artifacts": [
+    "docs/operations/artifacts/backups/20260222T005019Z/keydb-dump.rdb",
+    "docs/operations/artifacts/backups/20260222T005019Z/spike-nexus-data",
+    "docs/operations/artifacts/backups/20260222T005019Z/audit.jsonl"
+  ]
+}

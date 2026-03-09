@@ -3946,3 +3946,128 @@ func TestAdminPolicyReload(t *testing.T) {
 		}
 	})
 }
+
+func TestAdminDLPRulesetsLifecycle(t *testing.T) {
+	mgr, _, err := newDLPRuleOpsManager()
+	if err != nil {
+		t.Fatalf("newDLPRuleOpsManager: %v", err)
+	}
+
+	auditPath := filepath.Join(t.TempDir(), "audit-dlp-ruleops.jsonl")
+	auditor, err := middleware.NewAuditor(auditPath, testutil.OPAPolicyPath(), testutil.ToolRegistryConfigPath())
+	if err != nil {
+		t.Fatalf("NewAuditor: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = auditor.Close()
+	})
+
+	g := &Gateway{
+		dlpRuleOps: mgr,
+		auditor:    auditor,
+	}
+
+	// Create draft ruleset
+	createBody := bytes.NewBufferString(`{"version":"v2","suspicious_patterns":["(?i)exfiltrate now"]}`)
+	createReq := httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets", createBody)
+	createRec := httptest.NewRecorder()
+	g.adminDLPRulesetsHandler(createRec, createReq)
+	if createRec.Code != http.StatusOK {
+		t.Fatalf("create status=%d body=%s", createRec.Code, createRec.Body.String())
+	}
+	updateBody := bytes.NewBufferString(`{"version":"v2","suspicious_patterns":["(?i)exfiltrate immediately"]}`)
+	updateReq := httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets", updateBody)
+	updateRec := httptest.NewRecorder()
+	g.adminDLPRulesetsHandler(updateRec, updateReq)
+	if updateRec.Code != http.StatusOK {
+		t.Fatalf("update status=%d body=%s", updateRec.Code, updateRec.Body.String())
+	}
+
+	// Promote should fail before approval/signature.
+	promotePreReq := httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets/v2/promote", nil)
+	promotePreRec := httptest.NewRecorder()
+	g.adminDLPRulesetsHandler(promotePreRec, promotePreReq)
+	if promotePreRec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for unapproved promote, got %d body=%s", promotePreRec.Code, promotePreRec.Body.String())
+	}
+
+	// Approve then promote.
+	approveReq := httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets/v2/approve", bytes.NewBufferString(`{"approver":"security@example.com","signature":"sig-v2"}`))
+	approveRec := httptest.NewRecorder()
+	g.adminDLPRulesetsHandler(approveRec, approveReq)
+	if approveRec.Code != http.StatusOK {
+		t.Fatalf("approve status=%d body=%s", approveRec.Code, approveRec.Body.String())
+	}
+	promoteReq := httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets/v2/promote", nil)
+	promoteRec := httptest.NewRecorder()
+	g.adminDLPRulesetsHandler(promoteRec, promoteReq)
+	if promoteRec.Code != http.StatusOK {
+		t.Fatalf("promote status=%d body=%s", promoteRec.Code, promoteRec.Body.String())
+	}
+	var promoted dlpRulesetsResponse
+	if err := json.Unmarshal(promoteRec.Body.Bytes(), &promoted); err != nil {
+		t.Fatalf("unmarshal promote response: %v body=%s", err, promoteRec.Body.String())
+	}
+	if promoted.Active == nil || promoted.Active.Version != "v2" || promoted.Active.Digest == "" {
+		t.Fatalf("unexpected promoted active response: %+v", promoted)
+	}
+
+	// Create v3, approve and promote so rollback has a previous target.
+	for _, req := range []*http.Request{
+		httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets", bytes.NewBufferString(`{"version":"v3","credential_patterns":["(?i)supersecret"]}`)),
+		httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets/v3/approve", bytes.NewBufferString(`{"approver":"security@example.com","signature":"sig-v3"}`)),
+		httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets/v3/promote", nil),
+	} {
+		rec := httptest.NewRecorder()
+		g.adminDLPRulesetsHandler(rec, req)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("v3 flow status=%d path=%s body=%s", rec.Code, req.URL.Path, rec.Body.String())
+		}
+	}
+
+	rollbackReq := httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets/rollback", bytes.NewBufferString(`{}`))
+	rollbackRec := httptest.NewRecorder()
+	g.adminDLPRulesetsHandler(rollbackRec, rollbackReq)
+	if rollbackRec.Code != http.StatusOK {
+		t.Fatalf("rollback status=%d body=%s", rollbackRec.Code, rollbackRec.Body.String())
+	}
+	var rolledBack dlpRulesetsResponse
+	if err := json.Unmarshal(rollbackRec.Body.Bytes(), &rolledBack); err != nil {
+		t.Fatalf("unmarshal rollback response: %v body=%s", err, rollbackRec.Body.String())
+	}
+	if rolledBack.Active == nil || rolledBack.Active.Version != "v2" {
+		t.Fatalf("expected rollback active version v2, got %+v", rolledBack)
+	}
+
+	// Active metadata endpoint should reflect pinned active version/digest.
+	activeReq := httptest.NewRequest(http.MethodGet, "/admin/dlp/rulesets/active", nil)
+	activeRec := httptest.NewRecorder()
+	g.adminDLPRulesetsHandler(activeRec, activeReq)
+	if activeRec.Code != http.StatusOK {
+		t.Fatalf("active status=%d body=%s", activeRec.Code, activeRec.Body.String())
+	}
+	var activeOut dlpRulesetsResponse
+	if err := json.Unmarshal(activeRec.Body.Bytes(), &activeOut); err != nil {
+		t.Fatalf("unmarshal active response: %v body=%s", err, activeRec.Body.String())
+	}
+	if activeOut.Active == nil || activeOut.Active.Version != "v2" || activeOut.Active.Digest == "" {
+		t.Fatalf("expected active v2 with digest, got %+v", activeOut)
+	}
+
+	auditor.Flush()
+	raw, err := os.ReadFile(auditPath)
+	if err != nil {
+		t.Fatalf("read audit file: %v", err)
+	}
+	for _, evt := range []string{
+		"dlp.ruleset.create",
+		"dlp.ruleset.update",
+		"dlp.ruleset.approve",
+		"dlp.ruleset.promote",
+		"dlp.ruleset.rollback",
+	} {
+		if !strings.Contains(string(raw), evt) {
+			t.Fatalf("expected audit event %q in audit log", evt)
+		}
+	}
+}

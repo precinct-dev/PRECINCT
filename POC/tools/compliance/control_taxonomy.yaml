@@ -171,6 +171,19 @@ controls:
     evidence_type: configuration
     evidence_query: null
 
+  - id: GW-DLP-006
+    name: "HIPAA Minimum-Necessary Prompt Safety Denial"
+    description: "Raw regulated prompt content is denied before external model processing with deterministic reason coding"
+    middleware: dlp
+    step: 7
+    frameworks:
+      soc2: ["CC6.7"]
+      iso27001: ["A.8.2.1"]
+      ccpa: ["1798.150"]
+      gdpr: ["Art. 25"]
+    evidence_type: audit_log
+    evidence_query: '.action == "uasgs_plane_model" and .security.safezone_flags | contains("PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED")'
+
   # ---------------------------------------------------------------------------
   # Content Security (Deep Scan -- step 10, Step-Up Gating -- step 9)
   # ---------------------------------------------------------------------------
@@ -267,6 +280,71 @@ controls:
       gdpr: ["Art. 30"]
     evidence_type: audit_log
     evidence_query: '.bundle_digest != null and .registry_digest != null'
+
+  - id: GW-AUDIT-005
+    name: "Phase 3 Ingress Plane Reason-Code Audit"
+    description: "Ingress admission decisions are captured with explicit allow and deny reason codes"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.action == "uasgs_plane_ingress" and .security.safezone_flags | contains("INGRESS_ALLOW")'
+
+  - id: GW-AUDIT-006
+    name: "Phase 3 Context Plane Reason-Code Audit"
+    description: "Context and memory admission outcomes are captured with explicit reason codes"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.action == "uasgs_plane_context" and .security.safezone_flags | contains("CONTEXT_ALLOW")'
+
+  - id: GW-AUDIT-007
+    name: "Phase 3 Model Plane Reason-Code Audit"
+    description: "Model plane mediation outcomes are captured with explicit reason codes"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.action == "uasgs_plane_model" and .security.safezone_flags | contains("MODEL_ALLOW")'
+
+  - id: GW-AUDIT-008
+    name: "Phase 3 Tool Plane Reason-Code Audit"
+    description: "Protocol-agnostic tool plane decisions are captured with explicit reason codes"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.action == "uasgs_plane_tool" and .security.safezone_flags | contains("TOOL_ALLOW")'
+
+  - id: GW-AUDIT-009
+    name: "Phase 3 Loop Plane Halt Reason-Code Audit"
+    description: "Loop governance halts are captured with deterministic halt reason codes"
+    middleware: audit
+    step: 4
+    frameworks:
+      soc2: ["CC7.2"]
+      iso27001: ["A.12.4.1"]
+      ccpa: []
+      gdpr: ["Art. 30"]
+    evidence_type: audit_log
+    evidence_query: '.action == "uasgs_plane_loop" and .security.safezone_flags | contains("LOOP_HALT_MAX_STEPS")'
 
   # ---------------------------------------------------------------------------
   # Secrets (Token Substitution -- middleware step 13, SPIKE Nexus)

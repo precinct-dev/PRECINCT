@@ -9,6 +9,11 @@ func newInspectCmd() *cobra.Command {
 	}
 	cmd.AddCommand(newInspectRateLimitCmd())
 	cmd.AddCommand(newInspectCircuitBreakerCmd())
+	cmd.AddCommand(newInspectLoopCmd())
+	cmd.AddCommand(newInspectIngressCmd())
+	cmd.AddCommand(newInspectContextCmd())
+	cmd.AddCommand(newInspectModelCmd())
+	cmd.AddCommand(newInspectRuleOpsCmd())
 	cmd.AddCommand(newInspectIdentityCmd())
 	cmd.AddCommand(newInspectSessionsCmd())
 	return cmd

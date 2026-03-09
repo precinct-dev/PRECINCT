@@ -17,6 +17,8 @@ const (
 	contextKeyOPADecisionID    contextKey = "opa_decision_id"
 	contextKeySecurityFlags    contextKey = "security_flags"
 	contextKeyFlagsCollector   contextKey = "flags_collector" // RFA-9i2: mutable collector for upstream propagation
+	contextKeyDLPRulesetVer    contextKey = "dlp_ruleset_version"
+	contextKeyDLPRulesetDigest contextKey = "dlp_ruleset_digest"
 	contextKeySessionContext   contextKey = "session_context_engine"
 	contextKeyUIEnabled        contextKey = "ui_enabled"        // RFA-j2d.7: MCP-UI enabled flag
 	contextKeyUICallOrigin     contextKey = "ui_call_origin"    // RFA-j2d.7: "model" or "app"
@@ -33,7 +35,9 @@ const (
 // RFA-9i2: Without this, safezone_flags never appeared in audit logs because
 // context.WithValue creates child contexts invisible to parent middleware.
 type SecurityFlagsCollector struct {
-	Flags []string
+	Flags             []string
+	DLPRulesetVersion string
+	DLPRulesetDigest  string
 }
 
 // Append adds a flag to the collector if not already present.
@@ -51,6 +55,12 @@ func (c *SecurityFlagsCollector) AppendAll(flags []string) {
 	for _, f := range flags {
 		c.Append(f)
 	}
+}
+
+// SetDLPRulesetMetadata stores the active DLP ruleset metadata for upstream audit propagation.
+func (c *SecurityFlagsCollector) SetDLPRulesetMetadata(version, digest string) {
+	c.DLPRulesetVersion = version
+	c.DLPRulesetDigest = digest
 }
 
 // GetSessionID retrieves session ID from context
@@ -176,6 +186,29 @@ func GetFlagsCollector(ctx context.Context) *SecurityFlagsCollector {
 // RFA-9i2: Created by audit middleware, read by audit middleware after next.ServeHTTP.
 func WithFlagsCollector(ctx context.Context, collector *SecurityFlagsCollector) context.Context {
 	return context.WithValue(ctx, contextKeyFlagsCollector, collector)
+}
+
+// GetDLPRulesetMetadata retrieves active DLP ruleset version/digest from context.
+func GetDLPRulesetMetadata(ctx context.Context) (string, string) {
+	version := ""
+	digest := ""
+	if v := ctx.Value(contextKeyDLPRulesetVer); v != nil {
+		version = v.(string)
+	}
+	if v := ctx.Value(contextKeyDLPRulesetDigest); v != nil {
+		digest = v.(string)
+	}
+	return version, digest
+}
+
+// WithDLPRulesetMetadata stores active DLP ruleset version/digest in context and collector.
+func WithDLPRulesetMetadata(ctx context.Context, version, digest string) context.Context {
+	if c := GetFlagsCollector(ctx); c != nil {
+		c.SetDLPRulesetMetadata(version, digest)
+	}
+	ctx = context.WithValue(ctx, contextKeyDLPRulesetVer, version)
+	ctx = context.WithValue(ctx, contextKeyDLPRulesetDigest, digest)
+	return ctx
 }
 
 // GetUIEnabled retrieves MCP-UI enabled flag from context (RFA-j2d.7)

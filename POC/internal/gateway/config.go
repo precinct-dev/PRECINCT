@@ -25,35 +25,36 @@ type Config struct {
 	// Only injection gets an env var override:
 	//   - credentials=block is a security invariant (must not be easily toggled via env var)
 	//   - pii=flag is rarely changed (deliberate YAML edit required)
-	DLPInjectionPolicy      string    // "block" or "flag" (empty = use YAML config)
-	DeepScanTimeout         int       // in seconds
-	DeepScanFallback        string    // "fail_closed" or "fail_open" (default: fail_closed)
-	RateLimitRPM            int       // requests per minute per agent
-	RateLimitBurst          int       // burst allowance
-	CircuitFailureThreshold int       // consecutive failures before opening circuit
-	CircuitResetTimeout     int       // seconds in Open before trying Half-Open
-	CircuitSuccessThreshold int       // consecutive successes in Half-Open before closing
-	HandleTTL               int       // TTL in seconds for response firewall data handles (default 300)
-	DestinationsConfigPath  string    // Path to destinations allowlist YAML
-	RiskThresholdsPath      string    // Path to risk thresholds YAML
-	AllowedBasePath         string    // Base directory for OPA path-based access control (RFA-2jl)
-	UIConfigPath            string    // Path to MCP-UI config YAML (RFA-j2d.9)
-	UI                      *UIConfig // MCP-UI configuration (RFA-j2d.9)
-	UICapabilityGrantsPath  string    // Path to UI capability grants YAML (RFA-j2d.1)
-	SPIKENexusURL           string    // SPIKE Nexus URL for secret redemption via mTLS (RFA-a2y.1)
-	SPIFFETrustDomain       string    // SPIFFE trust domain (default: poc.local) (RFA-8z8.1)
-	SPIFFEListenPort        int       // Port for HTTPS when SPIFFE_MODE=prod (default: 9443) (RFA-8z8.1)
-	OTelEndpoint            string    // OTLP gRPC endpoint for trace export (RFA-m6j.1)
-	OTelServiceName         string    // OTel service name (RFA-m6j.1)
-	KeyDBURL                string    // KeyDB/Redis URL for session persistence (RFA-hh5.1)
-	KeyDBPoolMin            int       // Minimum idle connections in KeyDB pool (default 5)
-	KeyDBPoolMax            int       // Maximum connections in KeyDB pool (default 20)
-	SessionTTL              int       // Session TTL in seconds (default 3600)
-	ToolRegistryPublicKey   string    // RFA-lo1.4: Path to PEM public key for registry attestation (empty = dev mode)
-	MCPTransportMode        string    // RFA-9ol: "mcp" (default) or "proxy" (backward compat reverse proxy)
-	MCPProbeTimeout         int       // RFA-xhr: per-probe timeout in seconds for transport detection (default: 5)
-	MCPDetectTimeout        int       // RFA-xhr: overall detection timeout in seconds (default: 15)
-	MCPRequestTimeout       int       // RFA-xhr: per-request timeout in seconds for MCP calls (default: 30)
+	DLPInjectionPolicy       string    // "block" or "flag" (empty = use YAML config)
+	DeepScanTimeout          int       // in seconds
+	DeepScanFallback         string    // "fail_closed" or "fail_open" (default: fail_closed)
+	RateLimitRPM             int       // requests per minute per agent
+	RateLimitBurst           int       // burst allowance
+	CircuitFailureThreshold  int       // consecutive failures before opening circuit
+	CircuitResetTimeout      int       // seconds in Open before trying Half-Open
+	CircuitSuccessThreshold  int       // consecutive successes in Half-Open before closing
+	HandleTTL                int       // TTL in seconds for response firewall data handles (default 300)
+	DestinationsConfigPath   string    // Path to destinations allowlist YAML
+	RiskThresholdsPath       string    // Path to risk thresholds YAML
+	AllowedBasePath          string    // Base directory for OPA path-based access control (RFA-2jl)
+	UIConfigPath             string    // Path to MCP-UI config YAML (RFA-j2d.9)
+	UI                       *UIConfig // MCP-UI configuration (RFA-j2d.9)
+	UICapabilityGrantsPath   string    // Path to UI capability grants YAML (RFA-j2d.1)
+	CapabilityRegistryV2Path string    // Path to unified capability registry v2 (RFA-owgw.6)
+	SPIKENexusURL            string    // SPIKE Nexus URL for secret redemption via mTLS (RFA-a2y.1)
+	SPIFFETrustDomain        string    // SPIFFE trust domain (default: poc.local) (RFA-8z8.1)
+	SPIFFEListenPort         int       // Port for HTTPS when SPIFFE_MODE=prod (default: 9443) (RFA-8z8.1)
+	OTelEndpoint             string    // OTLP gRPC endpoint for trace export (RFA-m6j.1)
+	OTelServiceName          string    // OTel service name (RFA-m6j.1)
+	KeyDBURL                 string    // KeyDB/Redis URL for session persistence (RFA-hh5.1)
+	KeyDBPoolMin             int       // Minimum idle connections in KeyDB pool (default 5)
+	KeyDBPoolMax             int       // Maximum connections in KeyDB pool (default 20)
+	SessionTTL               int       // Session TTL in seconds (default 3600)
+	ToolRegistryPublicKey    string    // RFA-lo1.4: Path to PEM public key for registry attestation (empty = dev mode)
+	MCPTransportMode         string    // RFA-9ol: "mcp" (default) or "proxy" (backward compat reverse proxy)
+	MCPProbeTimeout          int       // RFA-xhr: per-probe timeout in seconds for transport detection (default: 5)
+	MCPDetectTimeout         int       // RFA-xhr: overall detection timeout in seconds (default: 15)
+	MCPRequestTimeout        int       // RFA-xhr: per-request timeout in seconds for MCP calls (default: 30)
 	// Demo-only: allow the gateway to mediate upstream rugpull toggles via
 	// /__demo__/rugpull/{on|off}. Disabled by default.
 	DemoRugpullAdminEnabled bool
@@ -210,49 +211,50 @@ func ConfigFromEnv() *Config {
 	}
 
 	return &Config{
-		Port:                    port,
-		UpstreamURL:             getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
-		OPAPolicyDir:            getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
-		ToolRegistryConfigPath:  getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
-		AuditLogPath:            getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
-		OPAPolicyPath:           getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
-		MaxRequestSizeBytes:     maxRequestSize,
-		SPIFFEMode:              getEnvOrDefault("SPIFFE_MODE", "dev"),
-		LogLevel:                getEnvOrDefault("LOG_LEVEL", "info"),
-		GroqAPIKey:              getEnvOrDefault("GROQ_API_KEY", ""),
-		GuardModelEndpoint:      getEnvOrDefault("GUARD_MODEL_ENDPOINT", "https://api.groq.com/openai/v1"),
-		GuardModelName:          getEnvOrDefault("GUARD_MODEL_NAME", "meta-llama/llama-prompt-guard-2-86m"),
-		GuardAPIKey:             getEnvOrDefault("GUARD_API_KEY", getEnvOrDefault("GROQ_API_KEY", "")),
-		DLPInjectionPolicy:      getEnvOrDefault("DLP_INJECTION_POLICY", ""),
-		DeepScanTimeout:         deepScanTimeout,
-		DeepScanFallback:        deepScanFallback,
-		RateLimitRPM:            rateLimitRPM,
-		RateLimitBurst:          rateLimitBurst,
-		CircuitFailureThreshold: circuitFailureThreshold,
-		CircuitResetTimeout:     circuitResetTimeout,
-		CircuitSuccessThreshold: circuitSuccessThreshold,
-		HandleTTL:               handleTTL,
-		DestinationsConfigPath:  getEnvOrDefault("DESTINATIONS_CONFIG_PATH", "/config/destinations.yaml"),
-		RiskThresholdsPath:      getEnvOrDefault("RISK_THRESHOLDS_PATH", "/config/risk_thresholds.yaml"),
-		AllowedBasePath:         allowedBasePath,
-		UIConfigPath:            uiConfigPath,
-		UI:                      uiConfig,
-		UICapabilityGrantsPath:  getEnvOrDefault("UI_CAPABILITY_GRANTS_PATH", "/config/opa/ui_capability_grants.yaml"),
-		SPIKENexusURL:           getEnvOrDefault("SPIKE_NEXUS_URL", ""),
-		SPIFFETrustDomain:       getEnvOrDefault("SPIFFE_TRUST_DOMAIN", "poc.local"),
-		SPIFFEListenPort:        spiffeListenPort,
-		OTelEndpoint:            os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), // empty = no-op (AC6)
-		OTelServiceName:         getEnvOrDefault("OTEL_SERVICE_NAME", "mcp-security-gateway"),
-		KeyDBURL:                getEnvOrDefault("KEYDB_URL", ""),
-		KeyDBPoolMin:            keyDBPoolMin,
-		KeyDBPoolMax:            keyDBPoolMax,
-		SessionTTL:              sessionTTL,
-		ToolRegistryPublicKey:   getEnvOrDefault("TOOL_REGISTRY_PUBLIC_KEY", ""),
-		MCPTransportMode:        getEnvOrDefault("MCP_TRANSPORT_MODE", "mcp"),
-		MCPProbeTimeout:         mcpProbeTimeout,
-		MCPDetectTimeout:        mcpDetectTimeout,
-		MCPRequestTimeout:       mcpRequestTimeout,
-		DemoRugpullAdminEnabled: demoRugpullAdminEnabled,
+		Port:                     port,
+		UpstreamURL:              getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
+		OPAPolicyDir:             getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
+		ToolRegistryConfigPath:   getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
+		AuditLogPath:             getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
+		OPAPolicyPath:            getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
+		MaxRequestSizeBytes:      maxRequestSize,
+		SPIFFEMode:               getEnvOrDefault("SPIFFE_MODE", "dev"),
+		LogLevel:                 getEnvOrDefault("LOG_LEVEL", "info"),
+		GroqAPIKey:               getEnvOrDefault("GROQ_API_KEY", ""),
+		GuardModelEndpoint:       getEnvOrDefault("GUARD_MODEL_ENDPOINT", "https://api.groq.com/openai/v1"),
+		GuardModelName:           getEnvOrDefault("GUARD_MODEL_NAME", "meta-llama/llama-prompt-guard-2-86m"),
+		GuardAPIKey:              getEnvOrDefault("GUARD_API_KEY", getEnvOrDefault("GROQ_API_KEY", "")),
+		DLPInjectionPolicy:       getEnvOrDefault("DLP_INJECTION_POLICY", ""),
+		DeepScanTimeout:          deepScanTimeout,
+		DeepScanFallback:         deepScanFallback,
+		RateLimitRPM:             rateLimitRPM,
+		RateLimitBurst:           rateLimitBurst,
+		CircuitFailureThreshold:  circuitFailureThreshold,
+		CircuitResetTimeout:      circuitResetTimeout,
+		CircuitSuccessThreshold:  circuitSuccessThreshold,
+		HandleTTL:                handleTTL,
+		DestinationsConfigPath:   getEnvOrDefault("DESTINATIONS_CONFIG_PATH", "/config/destinations.yaml"),
+		RiskThresholdsPath:       getEnvOrDefault("RISK_THRESHOLDS_PATH", "/config/risk_thresholds.yaml"),
+		AllowedBasePath:          allowedBasePath,
+		UIConfigPath:             uiConfigPath,
+		UI:                       uiConfig,
+		UICapabilityGrantsPath:   getEnvOrDefault("UI_CAPABILITY_GRANTS_PATH", "/config/opa/ui_capability_grants.yaml"),
+		CapabilityRegistryV2Path: getEnvOrDefault("CAPABILITY_REGISTRY_V2_PATH", "/config/capability-registry-v2.yaml"),
+		SPIKENexusURL:            getEnvOrDefault("SPIKE_NEXUS_URL", ""),
+		SPIFFETrustDomain:        getEnvOrDefault("SPIFFE_TRUST_DOMAIN", "poc.local"),
+		SPIFFEListenPort:         spiffeListenPort,
+		OTelEndpoint:             os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), // empty = no-op (AC6)
+		OTelServiceName:          getEnvOrDefault("OTEL_SERVICE_NAME", "mcp-security-gateway"),
+		KeyDBURL:                 getEnvOrDefault("KEYDB_URL", ""),
+		KeyDBPoolMin:             keyDBPoolMin,
+		KeyDBPoolMax:             keyDBPoolMax,
+		SessionTTL:               sessionTTL,
+		ToolRegistryPublicKey:    getEnvOrDefault("TOOL_REGISTRY_PUBLIC_KEY", ""),
+		MCPTransportMode:         getEnvOrDefault("MCP_TRANSPORT_MODE", "mcp"),
+		MCPProbeTimeout:          mcpProbeTimeout,
+		MCPDetectTimeout:         mcpDetectTimeout,
+		MCPRequestTimeout:        mcpRequestTimeout,
+		DemoRugpullAdminEnabled:  demoRugpullAdminEnabled,
 	}
 }
 

@@ -1,0 +1,14 @@
+=== required_integration_suite ===
+CMD: go test ./tests/integration/... -run 'OpenClaw|Security|Adversarial' -count=1
+ok  	github.com/example/agentic-security-poc/tests/integration	1.070s
+=== openclaw_gateway_unit_suite ===
+CMD: go test ./internal/gateway/... -run 'OpenClaw' -count=1
+ok  	github.com/example/agentic-security-poc/internal/gateway	1.694s
+ok  	github.com/example/agentic-security-poc/internal/gateway/mcpclient	0.319s [no tests to run]
+ok  	github.com/example/agentic-security-poc/internal/gateway/middleware	0.804s [no tests to run]
+=== openclaw_parser_unit_suite ===
+CMD: go test ./internal/integrations/openclaw/... -count=1
+ok  	github.com/example/agentic-security-poc/internal/integrations/openclaw	0.277s
+=== openclaw_integration_authz_audit_suite ===
+CMD: go test ./tests/integration/... -run 'GatewayAuthz_OpenClawWSDenyMatrix|AuditOpenClawWSCorrelation' -count=1
+ok  	github.com/example/agentic-security-poc/tests/integration	0.702s

@@ -1,0 +1,47 @@
+=== openclaw_port_unit_suite ===
+CMD: go test ./ports/openclaw/... -count=1
+ok  	github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw	0.334s
+?   	github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw/cmd/openclaw-ws-smoke	[no test files]
+ok  	github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw/protocol	0.481s
+ok  	github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw/tests/unit	2.253s
+ok  	github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw/walking_skeleton	0.796s
+=== openclaw_e2e_walking_skeleton ===
+CMD: bash ports/openclaw/tests/e2e/scenario_j_openclaw_walking_skeleton.sh
+
+[1m=========================================[0m
+[1m  Scenario J: OpenClaw secure port walking skeleton[0m
+[1m=========================================[0m
+
+  [[0;32mPASS[0m] Gateway is running and healthy
+  [[0;36mINFO[0m] Reset prior rate-limit keys for spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
+[0;36m--- J0: Connector lifecycle bootstrap for ingress path ---[0m
+  [[0;32mPASS[0m] Connector bootstrap register returned expected signature
+  [[0;32mPASS[0m] Connector canonical register succeeded
+  [[0;32mPASS[0m] Connector validate succeeded
+  [[0;32mPASS[0m] Connector approve succeeded
+  [[0;32mPASS[0m] Connector activate succeeded
+[0;36m--- J1: Ingress/context allow path ---[0m
+  [[0;32mPASS[0m] Ingress allow path admitted with audit correlation
+  [[0;32mPASS[0m] Context/memory allow path admitted
+[0;36m--- J2: Mediated model/tool allow path ---[0m
+  [[0;32mPASS[0m] Mediated model path allowed
+  [[0;32mPASS[0m] Governed tool path allowed
+[0;36m--- J3: Deterministic deny paths ---[0m
+  [[0;36mINFO[0m] Reset rate-limit keys before deny checks
+  [[0;32mPASS[0m] Direct egress bypass denied deterministically
+  [[0;32mPASS[0m] Unapproved tool capability denied deterministically
+  [[0;32mPASS[0m] Audit log evidence includes run correlation (6 lines)
+/Users/ramirosalas/workspace/agentic_reference_architecture/POC/tests/e2e/artifacts/scenario_j_openclaw-ws-1772394679.json
+  [[0;32mPASS[0m] Machine-readable artifact written: /Users/ramirosalas/workspace/agentic_reference_architecture/POC/tests/e2e/artifacts/scenario_j_openclaw-ws-1772394679.json
+
+
+[1m=========================================[0m
+[1m  Results Summary[0m
+[1m=========================================[0m
+
+  Total checks: 14
+  [0;32mPASS[0m: 14
+  [0;31mFAIL[0m: 0
+  [1;33mSKIP[0m: 0
+
+[0;32mAll checks passed.[0m

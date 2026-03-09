@@ -1,0 +1,4 @@
+# ./demo/go/...
+pattern ./demo/go/...: directory prefix demo/go does not contain main module or its selected dependencies
+FAIL	./demo/go/... [setup failed]
+FAIL

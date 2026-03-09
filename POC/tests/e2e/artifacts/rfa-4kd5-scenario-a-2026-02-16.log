@@ -1,0 +1,53 @@
+
+[1m=========================================[0m
+[1m  Scenario A: Happy Path[0m
+[1m=========================================[0m
+
+[0;36m--- Pre-flight checks ---[0m
+  [[0;32mPASS[0m] Gateway is running and healthy
+[0;36m--- A1: Authorized tool call (read) ---[0m
+  [[0;36mINFO[0m] Response code: 403
+  [[0;36mINFO[0m] Response body (first 200 chars): {"code":"authz_policy_denied","message":"Policy denied: path_denied","middleware":"opa_policy","middleware_step":6,"decision_id":"4d0a7990-3833-45e9-8b14-e8f4f0d76049","trace_id":"53040d7bc67f99650439
+  [[0;31mFAIL[0m] Tool call processing
+         Reason: Expected 200, 404, or 502, got 403. Body: {"code":"authz_policy_denied","message":"Policy denied: path_denied","middleware":"opa_policy","middleware_step":6,"decision_id":"4d0a7990-3833-45e9-8b14-e8f4f0d76049","trace_id":"53040d7bc67f99650439
+[0;36m--- A2: Audit log verification ---[0m
+  [[0;32mPASS[0m] Audit event emitted for tool call
+         session_id: 8ecbc063-b2d7-4901-97de-7d8e10827df3
+         decision_id: 11f1c0a2-8486-49bd-87ef-d178921cc277
+         trace_id: 2b8263e4-22c0-43be-b29f-02cadfe0ce2b
+         spiffe_id: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
+         action: mcp_request
+         method: POST
+         path: /
+         prev_hash: fe527594fec3dbd102082449edb494f0f7ef8d87b0592ae6cde9c240866e
+         bundle_digest: a78a79ba46b4b6a255b4f9b675f6f503cc628fd2bc0fb86e0c39ff91af45
+         registry_digest: 839592bae946e7a3516f24b8f9586fe6a748550a738f294632db32b9edf0
+[0;36m--- A3: Security metadata in audit ---[0m
+  [[0;32mPASS[0m] Security metadata present in audit event
+  [[0;32mPASS[0m] Tool hash verification recorded
+[0;36m--- A4: Phoenix observability ---[0m
+  [[0;32mPASS[0m] Phoenix UI reachable at http://localhost:6006
+         Phoenix collects traces via OpenTelemetry Collector
+         View traces at: http://localhost:6006
+  [[1;33mSKIP[0m] OTEL Collector
+         Reason: Not running -- traces may not be collected
+[0;36m--- A5: Sequential tool calls (session continuity) ---[0m
+  [[0;36mINFO[0m] Request 1: HTTP 403
+  [[0;36mINFO[0m] Request 2: HTTP 403
+  [[0;36mINFO[0m] Request 3: HTTP 403
+  [[0;32mPASS[0m] Multiple tool calls produce sequential audit events (       8 events)
+[0;36m--- A6: Tavily search tool call ---[0m
+  [[0;36mINFO[0m] Tavily search response code: 200
+  [[0;32mPASS[0m] Tavily search tool call processed successfully (HTTP 200)
+
+
+[1m=========================================[0m
+[1m  Results Summary[0m
+[1m=========================================[0m
+
+  Total checks: 9
+  [0;32mPASS[0m: 7
+  [0;31mFAIL[0m: 1
+  [1;33mSKIP[0m: 1
+
+[0;31mSome checks failed. See details above.[0m

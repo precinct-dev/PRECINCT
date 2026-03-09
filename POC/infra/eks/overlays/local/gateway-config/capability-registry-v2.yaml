@@ -1,0 +1,50 @@
+# Unified Capability Registry v2 (Phase 3 Tool Plane)
+# Governs protocol-agnostic tool execution with tenant/workload scoping.
+
+capability_grants:
+  - id: tenant-a-mcp-tools
+    tenant: tenant-a
+    workload: dspy-researcher
+    protocol: mcp
+    capability_type: tool
+    capability_id: tool.default.mcp
+    effect_type: read
+    risk_level: low
+    requires_step_up: false
+    allowed_actions:
+      - tool.execute
+    allowed_resources:
+      - tool/*
+    allowed_tools:
+      - read
+      - grep
+      - bash
+
+  - id: tenant-a-cli-tools
+    tenant: tenant-a
+    workload: dspy-researcher
+    protocol: cli
+    capability_type: tool
+    capability_id: tool.default.cli
+    effect_type: read
+    risk_level: medium
+    requires_step_up: false
+    allowed_actions:
+      - tool.execute
+    allowed_resources:
+      - tool/cli/*
+    allowed_commands:
+      - ls
+      - echo
+      - cat
+      - grep
+    max_args: 6
+    denied_arg_tokens:
+      - ";"
+      - "&&"
+      - "||"
+      - "|"
+      - "$("
+      - "`"
+      - ">"
+      - "<"

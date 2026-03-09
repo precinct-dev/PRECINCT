@@ -1,0 +1,5 @@
+[PASS] managed-cloud prerequisite assets exist
+[PASS] managed-cloud contract doc includes required sections
+[PASS] handoff template structure is valid
+[PASS] preflight fails deterministically with actionable missing-env guidance
+[PASS] Managed-cloud bootstrap prerequisite validation passed

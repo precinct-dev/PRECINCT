@@ -1,0 +1,316 @@
+[repave-all] starting (components=9)
+[repave-all] step 1/9 repaving spire-server
+[repave] component=spire-server
+[repave] service=spire-server
+[repave] image_ref=ghcr.io/spiffe/spire-server:1.10.0@sha256:26daa394b3bfbc9dcadc734e9b110ce7ac5f2e1fe16050eb4418772280748b5e
+[repave] current_image_hash=sha256:4a7720534fa2ce2a356529b6230255b6efef960d3707ea769952775908229307
+[repave] pulling fresh image (same tag)...
+ Image ghcr.io/spiffe/spire-server:1.10.0@sha256:26daa394b3bfbc9dcadc734e9b110ce7ac5f2e1fe16050eb4418772280748b5e Pulling 
+ Image ghcr.io/spiffe/spire-server:1.10.0@sha256:26daa394b3bfbc9dcadc734e9b110ce7ac5f2e1fe16050eb4418772280748b5e Pulled 
+[repave] stopping container...
+ Container spire-server Stopping 
+ Container spire-server Stopped 
+[repave] removing container (preserving volumes)...
+Going to remove spire-server
+ Container spire-server Removing 
+ Container spire-server Removed 
+[repave] starting new container and waiting for health...
+time="2026-02-16T10:58:42-08:00" level=warning msg="Found orphan containers ([phoenix otel-collector]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container spire-server Creating 
+ Container spire-server Created 
+ Container spire-server Starting 
+ Container spire-server Started 
+ Container spire-server Waiting 
+ Container spire-server Healthy 
+[repave] new_image_hash=sha256:4a7720534fa2ce2a356529b6230255b6efef960d3707ea769952775908229307
+[repave] OK component=spire-server duration_s=22
+[repave-all] step 2/9 repaving spire-agent
+[repave] component=spire-agent
+[repave] service=spire-agent
+[repave] image_ref=spire-token-generator:latest
+[repave] current_image_hash=sha256:7b76ee9d6a78ac622e5d5cc8b1526820b12e1ce7643fbde17cb94a62cdf251f0
+[repave] pulling fresh image (same tag)...
+ Image spire-agent-wrapper:latest Pulling 
+ Image spire-agent-wrapper:latest pull access denied for spire-agent-wrapper, repository does not exist or may require 'docker login': denied: requested access to the resource is denied 
+time="2026-02-16T10:59:06-08:00" level=warning msg="WARNING: Some service image(s) must be built from source by running:\n    docker compose build spire-agent"
+Error response from daemon: pull access denied for spire-agent-wrapper, repository does not exist or may require 'docker login': denied: requested access to the resource is denied
+[repave] stopping container...
+ Container spire-agent Stopping 
+ Container spire-agent Stopped 
+[repave] removing container (preserving volumes)...
+Going to remove spire-agent
+ Container spire-agent Removing 
+ Container spire-agent Removed 
+[repave] starting new container and waiting for health...
+time="2026-02-16T10:59:06-08:00" level=warning msg="Found orphan containers ([phoenix otel-collector]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container spire-server Running 
+ Container spire-agent Creating 
+ Container spire-agent Created 
+ Container spire-server Waiting 
+ Container spire-server Healthy 
+ Container spire-token-generator Starting 
+ Container spire-token-generator Started 
+ Container spire-server Waiting 
+ Container spire-token-generator Waiting 
+ Container spire-server Healthy 
+ Container spire-token-generator Exited 
+ Container spire-agent Starting 
+ Container spire-agent Started 
+ Container spire-server Waiting 
+ Container spire-agent Waiting 
+ Container spire-token-generator Waiting 
+ Container spire-token-generator Exited 
+ Container spire-server Healthy 
+ Container spire-agent Healthy 
+[repave] new_image_hash=sha256:7b76ee9d6a78ac622e5d5cc8b1526820b12e1ce7643fbde17cb94a62cdf251f0
+[repave] OK component=spire-agent duration_s=15
+[repave-all] step 3/9 repaving keydb
+[repave] component=keydb
+[repave] service=keydb
+[repave] image_ref=eqalpha/keydb@sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac
+[repave] current_image_hash=sha256:71beb05559980130c19d060ffd8f6367cfecfac61bd4b8258931a5a2edf2a46d
+[repave] pulling fresh image (same tag)...
+ Image eqalpha/keydb@sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac Pulling 
+ Image eqalpha/keydb@sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac Pulled 
+[repave] stopping container...
+ Container keydb Stopping 
+ Container keydb Stopped 
+[repave] removing container (preserving volumes)...
+Going to remove keydb
+ Container keydb Removing 
+ Container keydb Removed 
+[repave] starting new container and waiting for health...
+time="2026-02-16T10:59:31-08:00" level=warning msg="Found orphan containers ([phoenix otel-collector]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container keydb Creating 
+ Container keydb Created 
+ Container keydb Starting 
+ Container keydb Started 
+ Container keydb Waiting 
+ Container keydb Healthy 
+[repave] new_image_hash=sha256:71beb05559980130c19d060ffd8f6367cfecfac61bd4b8258931a5a2edf2a46d
+[repave] OK component=keydb duration_s=29
+[repave-all] step 4/9 repaving spike-keeper-1
+[repave] component=spike-keeper-1
+[repave] service=spike-keeper-1
+[repave] image_ref=spike-keeper:latest
+[repave] current_image_hash=sha256:09a8c4f8203307c7fa8ea9c91f2207ed6cc8d81f8447de7ca51b3a9ae6c801b5
+[repave] pulling fresh image (same tag)...
+ Image spike-keeper:latest Pulling 
+ Image spike-keeper:latest pull access denied for spike-keeper, repository does not exist or may require 'docker login': denied: requested access to the resource is denied 
+time="2026-02-16T11:00:00-08:00" level=warning msg="WARNING: Some service image(s) must be built from source by running:\n    docker compose build spike-keeper-1"
+Error response from daemon: pull access denied for spike-keeper, repository does not exist or may require 'docker login': denied: requested access to the resource is denied
+[repave] stopping container...
+ Container spike-keeper-1 Stopping 
+ Container spike-keeper-1 Stopped 
+[repave] removing container (preserving volumes)...
+Going to remove spike-keeper-1
+ Container spike-keeper-1 Removing 
+ Container spike-keeper-1 Removed 
+[repave] starting new container and waiting for health...
+time="2026-02-16T11:00:01-08:00" level=warning msg="Found orphan containers ([phoenix otel-collector]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container spire-server Running 
+ Container spire-agent Running 
+ Container spike-keeper-1 Creating 
+ Container spike-keeper-1 Created 
+ Container spire-server Waiting 
+ Container spire-server Healthy 
+ Container spire-token-generator Starting 
+ Container spire-token-generator Started 
+ Container spire-token-generator Waiting 
+ Container spire-server Waiting 
+ Container spire-server Healthy 
+ Container spire-token-generator Exited 
+ Container spire-agent Waiting 
+ Container spire-agent Healthy 
+ Container spire-entry-registrar Starting 
+ Container spire-entry-registrar Started 
+ Container spire-entry-registrar Waiting 
+ Container spire-entry-registrar Exited 
+ Container spike-keeper-1 Starting 
+ Container spike-keeper-1 Started 
+ Container spire-agent Waiting 
+ Container spire-entry-registrar Waiting 
+ Container spire-server Waiting 
+ Container spike-keeper-1 Waiting 
+ Container spire-token-generator Waiting 
+ Container spire-token-generator Exited 
+ Container spire-entry-registrar Exited 
+ Container spire-agent Healthy 
+ Container spire-server Healthy 
+ Container spike-keeper-1 Healthy 
+[repave] new_image_hash=sha256:09a8c4f8203307c7fa8ea9c91f2207ed6cc8d81f8447de7ca51b3a9ae6c801b5
+[repave] OK component=spike-keeper-1 duration_s=22
+[repave-all] waiting 1s for SPIKE shard re-sync (nexus -> keeper)
+[repave-all] step 5/9 repaving spike-nexus
+[repave] component=spike-nexus
+[repave] service=spike-nexus
+[repave] image_ref=spire-token-generator:latest
+[repave] current_image_hash=sha256:57dc9a7db4569020a855c4340df1267224c9681e29097801cd1a3cf9f41dd3d0
+[repave] pulling fresh image (same tag)...
+ Image spike-nexus:latest Pulling 
+ Image spike-nexus:latest pull access denied for spike-nexus, repository does not exist or may require 'docker login': denied: requested access to the resource is denied 
+time="2026-02-16T11:00:33-08:00" level=warning msg="WARNING: Some service image(s) must be built from source by running:\n    docker compose build spike-nexus"
+Error response from daemon: pull access denied for spike-nexus, repository does not exist or may require 'docker login': denied: requested access to the resource is denied
+[repave] stopping container...
+ Container spike-nexus Stopping 
+ Container spike-nexus Stopped 
+[repave] removing container (preserving volumes)...
+Going to remove spike-nexus
+ Container spike-nexus Removing 
+ Container spike-nexus Removed 
+[repave] starting new container and waiting for health...
+time="2026-02-16T11:00:34-08:00" level=warning msg="Found orphan containers ([phoenix otel-collector]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container spire-server Running 
+ Container spire-agent Running 
+ Container spike-keeper-1 Running 
+ Container spike-nexus Creating 
+ Container spike-nexus Created 
+ Container spire-server Waiting 
+ Container spire-server Healthy 
+ Container spire-token-generator Starting 
+ Container spire-token-generator Started 
+ Container spire-token-generator Waiting 
+ Container spire-server Waiting 
+ Container spire-server Healthy 
+ Container spire-token-generator Exited 
+ Container spire-agent Waiting 
+ Container spire-agent Healthy 
+ Container spire-entry-registrar Starting 
+ Container spire-entry-registrar Started 
+ Container spire-entry-registrar Waiting 
+ Container spire-entry-registrar Exited 
+ Container spire-entry-registrar Waiting 
+ Container spike-keeper-1 Waiting 
+ Container spire-entry-registrar Exited 
+ Container spike-keeper-1 Healthy 
+ Container spike-nexus Starting 
+ Container spike-nexus Started 
+ Container spire-entry-registrar Waiting 
+ Container spire-agent Waiting 
+ Container spire-token-generator Waiting 
+ Container spike-nexus Waiting 
+ Container spike-keeper-1 Waiting 
+ Container spire-server Waiting 
+ Container spire-token-generator Exited 
+ Container spire-entry-registrar Exited 
+ Container spire-agent Healthy 
+ Container spike-keeper-1 Healthy 
+ Container spire-server Healthy 
+ Container spike-nexus Healthy 
+[repave] new_image_hash=sha256:57dc9a7db4569020a855c4340df1267224c9681e29097801cd1a3cf9f41dd3d0
+[repave] OK component=spike-nexus duration_s=33
+[repave-all] step 6/9 repaving mcp-security-gateway
+[repave] service mcp-security-gateway not running; starting it...
+time="2026-02-16T11:01:06-08:00" level=warning msg="Found orphan containers ([phoenix otel-collector]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container mcp-security-gateway Creating 
+ Container mcp-security-gateway Created 
+ Container mcp-security-gateway Starting 
+ Container mcp-security-gateway Started 
+ Container mcp-security-gateway Waiting 
+ Container mcp-security-gateway Healthy 
+[repave] component=mcp-security-gateway
+[repave] service=mcp-security-gateway
+[repave] image_ref=mcp-security-gateway:latest
+[repave] current_image_hash=sha256:b78d326af3123b2194c790968595b1e7e0cedca6e7468315477d2408d83d23ef
+[repave] pulling fresh image (same tag)...
+ Image mcp-security-gateway:latest Pulling 
+ Image mcp-security-gateway:latest pull access denied for mcp-security-gateway, repository does not exist or may require 'docker login': denied: requested access to the resource is denied 
+time="2026-02-16T11:01:13-08:00" level=warning msg="WARNING: Some service image(s) must be built from source by running:\n    docker compose build mcp-security-gateway"
+Error response from daemon: pull access denied for mcp-security-gateway, repository does not exist or may require 'docker login': denied: requested access to the resource is denied
+[repave] stopping container...
+ Container mcp-security-gateway Stopping 
+ Container mcp-security-gateway Stopped 
+[repave] removing container (preserving volumes)...
+Going to remove mcp-security-gateway
+ Container mcp-security-gateway Removing 
+ Container mcp-security-gateway Removed 
+[repave] starting new container and waiting for health...
+time="2026-02-16T11:01:14-08:00" level=warning msg="Found orphan containers ([phoenix otel-collector]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container mcp-security-gateway Creating 
+ Container mcp-security-gateway Created 
+ Container mcp-security-gateway Starting 
+ Container mcp-security-gateway Started 
+ Container mcp-security-gateway Waiting 
+ Container mcp-security-gateway Healthy 
+[repave] new_image_hash=sha256:b78d326af3123b2194c790968595b1e7e0cedca6e7468315477d2408d83d23ef
+[repave] OK component=mcp-security-gateway duration_s=6
+[repave-all] step 7/9 repaving mock-mcp-server
+[repave] component=mock-mcp-server
+[repave] service=mock-mcp-server
+[repave] image_ref=poc-mock-mcp-server
+[repave] current_image_hash=sha256:17d641aee26f85f3b65d6e81a1eaf33e4333a933e937178623e04e0966339e90
+[repave] pulling fresh image (same tag)...
+ mock-mcp-server Skipped No image to be pulled
+[repave] stopping container...
+ Container mock-mcp-server Stopping 
+ Container mock-mcp-server Stopped 
+[repave] removing container (preserving volumes)...
+Going to remove mock-mcp-server
+ Container mock-mcp-server Removing 
+ Container mock-mcp-server Removed 
+[repave] starting new container and waiting for health...
+time="2026-02-16T11:01:21-08:00" level=warning msg="Found orphan containers ([phoenix otel-collector]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container mock-mcp-server Creating 
+ Container mock-mcp-server Created 
+ Container mock-mcp-server Starting 
+ Container mock-mcp-server Started 
+ Container mock-mcp-server Waiting 
+ Container mock-mcp-server Healthy 
+[repave] new_image_hash=sha256:17d641aee26f85f3b65d6e81a1eaf33e4333a933e937178623e04e0966339e90
+[repave] OK component=mock-mcp-server duration_s=6
+[repave-all] step 8/9 repaving otel-collector
+[repave] component=otel-collector
+[repave] service=otel-collector
+[repave] image_ref=arizephoenix/phoenix:latest
+[repave] current_image_hash=sha256:b8419b41c1727e205fa60b874cb1f2598539313b56a9099d63c6cd03df27e3b0
+[repave] pulling fresh image (same tag)...
+ Image otel/opentelemetry-collector-contrib:latest Pulling 
+ Image otel/opentelemetry-collector-contrib:latest Pulled 
+[repave] stopping container...
+ Container otel-collector Stopping 
+ Container otel-collector Stopped 
+[repave] removing container (preserving volumes)...
+Going to remove otel-collector
+ Container otel-collector Removing 
+ Container otel-collector Removed 
+[repave] starting new container and waiting for health...
+time="2026-02-16T11:01:28-08:00" level=warning msg="Found orphan containers ([mock-mcp-server mcp-security-gateway spike-nexus spike-keeper-1 keydb spire-agent spire-server spike-secret-seeder spike-bootstrap spire-entry-registrar spire-token-generator mock-guard-model]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container phoenix Running 
+ Container otel-collector Creating 
+ Container otel-collector Created 
+ Container phoenix Waiting 
+ Container phoenix Healthy 
+ Container otel-collector Starting 
+ Container otel-collector Started 
+ Container otel-collector Waiting 
+ Container phoenix Waiting 
+ Container otel-collector Healthy 
+ Container phoenix Healthy 
+[repave] new_image_hash=sha256:b8419b41c1727e205fa60b874cb1f2598539313b56a9099d63c6cd03df27e3b0
+[repave] OK component=otel-collector duration_s=2
+[repave-all] step 9/9 repaving phoenix
+[repave] component=phoenix
+[repave] service=phoenix
+[repave] image_ref=arizephoenix/phoenix:latest
+[repave] current_image_hash=sha256:53648065828a35067507ec4ad3fc381004991d36efe03d14869c836ca47c50c8
+[repave] pulling fresh image (same tag)...
+ Image arizephoenix/phoenix:latest Pulling 
+ Image arizephoenix/phoenix:latest Pulled 
+[repave] stopping container...
+ Container phoenix Stopping 
+ Container phoenix Stopped 
+[repave] removing container (preserving volumes)...
+Going to remove phoenix
+ Container phoenix Removing 
+ Container phoenix Removed 
+[repave] starting new container and waiting for health...
+time="2026-02-16T11:01:32-08:00" level=warning msg="Found orphan containers ([mock-mcp-server mcp-security-gateway spike-nexus spike-keeper-1 keydb spire-agent spire-server spike-secret-seeder spike-bootstrap spire-entry-registrar spire-token-generator mock-guard-model]) for this project. If you removed or renamed this service in your compose file, you can run this command with the --remove-orphans flag to clean it up."
+ Container phoenix Creating 
+ Container phoenix Created 
+ Container phoenix Starting 
+ Container phoenix Started 
+ Container phoenix Waiting 
+ Container phoenix Healthy 
+[repave] new_image_hash=sha256:53648065828a35067507ec4ad3fc381004991d36efe03d14869c836ca47c50c8
+[repave] OK component=phoenix duration_s=12
+[repave-all] OK duration_s=191 report=/Users/ramirosalas/workspace/agentic_reference_architecture/POC/reports/repave-2026-02-16-185832.md

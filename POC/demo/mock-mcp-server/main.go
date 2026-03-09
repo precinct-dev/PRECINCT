@@ -77,6 +77,76 @@ var availableTools = []toolDef{
 		},
 	},
 	{
+		Name:        "read",
+		Description: "Read file contents from filesystem",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"file_path": map[string]any{
+					"type":        "string",
+					"description": "Absolute path to file",
+				},
+				"offset": map[string]any{
+					"type":        "integer",
+					"description": "Line number to start reading",
+				},
+				"limit": map[string]any{
+					"type":        "integer",
+					"description": "Number of lines to read",
+				},
+			},
+			"required": []string{"file_path"},
+		},
+	},
+	{
+		Name:        "grep",
+		Description: "Search for patterns in files",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"pattern": map[string]any{
+					"type":        "string",
+					"description": "Regular expression pattern",
+				},
+				"path": map[string]any{
+					"type":        "string",
+					"description": "Directory or file path to search",
+				},
+				"glob": map[string]any{
+					"type":        "string",
+					"description": "Glob pattern to filter files",
+				},
+				"output_mode": map[string]any{
+					"type": "string",
+					"enum": []string{"content", "files_with_matches", "count"},
+				},
+			},
+			"required": []string{"pattern", "path"},
+		},
+	},
+	{
+		Name:        "bash",
+		Description: "Execute shell commands",
+		InputSchema: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"command": map[string]any{
+					"type":        "string",
+					"description": "Shell command to execute",
+				},
+				"timeout": map[string]any{
+					"type":        "integer",
+					"description": "Timeout in milliseconds",
+				},
+				"run_in_background": map[string]any{
+					"type":        "boolean",
+					"description": "Run command in background",
+				},
+			},
+			"required": []string{"command"},
+		},
+	},
+	{
 		Name:        "echo",
 		Description: "Returns the input arguments as-is. Useful for testing.",
 		InputSchema: map[string]any{
@@ -132,6 +202,76 @@ func echoResult(args json.RawMessage) json.RawMessage {
 			{
 				"type": "text",
 				"text": string(args),
+			},
+		},
+	}
+	b, _ := json.Marshal(result)
+	return b
+}
+
+func readResult(args json.RawMessage) json.RawMessage {
+	type readArgs struct {
+		FilePath string `json:"file_path"`
+	}
+	parsed := readArgs{}
+	_ = json.Unmarshal(args, &parsed)
+	if parsed.FilePath == "" {
+		parsed.FilePath = "/tmp/unknown"
+	}
+
+	result := map[string]any{
+		"content": []map[string]any{
+			{
+				"type": "text",
+				"text": fmt.Sprintf("mock read content from %s", parsed.FilePath),
+			},
+		},
+	}
+	b, _ := json.Marshal(result)
+	return b
+}
+
+func grepResult(args json.RawMessage) json.RawMessage {
+	type grepArgs struct {
+		Pattern string `json:"pattern"`
+		Path    string `json:"path"`
+	}
+	parsed := grepArgs{}
+	_ = json.Unmarshal(args, &parsed)
+	if parsed.Pattern == "" {
+		parsed.Pattern = ".*"
+	}
+	if parsed.Path == "" {
+		parsed.Path = "/tmp"
+	}
+
+	result := map[string]any{
+		"content": []map[string]any{
+			{
+				"type": "text",
+				"text": fmt.Sprintf("mock grep pattern=%q path=%q (0 matches)", parsed.Pattern, parsed.Path),
+			},
+		},
+	}
+	b, _ := json.Marshal(result)
+	return b
+}
+
+func bashResult(args json.RawMessage) json.RawMessage {
+	type bashArgs struct {
+		Command string `json:"command"`
+	}
+	parsed := bashArgs{}
+	_ = json.Unmarshal(args, &parsed)
+	if parsed.Command == "" {
+		parsed.Command = "(empty)"
+	}
+
+	result := map[string]any{
+		"content": []map[string]any{
+			{
+				"type": "text",
+				"text": fmt.Sprintf("mock bash executed: %s", parsed.Command),
 			},
 		},
 	}
@@ -457,6 +597,12 @@ func toolResult(name string, args json.RawMessage) json.RawMessage {
 	switch name {
 	case "tavily_search":
 		return tavilySearchResult()
+	case "read":
+		return readResult(args)
+	case "grep":
+		return grepResult(args)
+	case "bash":
+		return bashResult(args)
 	case "echo":
 		return echoResult(args)
 	default:
@@ -490,7 +636,7 @@ func main() {
 	server := NewServer()
 	addr := ":8082"
 	log.Printf("[mock-mcp] Starting mock MCP server on %s", addr)
-	log.Printf("[mock-mcp] Available tools: tavily_search, echo")
+	log.Printf("[mock-mcp] Available tools: tavily_search, read, grep, bash, echo, render-analytics")
 	if err := http.ListenAndServe(addr, server); err != nil {
 		log.Fatalf("[mock-mcp] Server failed: %v", err)
 	}

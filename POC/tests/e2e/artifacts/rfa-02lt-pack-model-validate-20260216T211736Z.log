@@ -1,0 +1,10 @@
+[PASS] pack manifest parses as valid JSON
+[PASS] schema version is app.integration.pack.v1
+[PASS] pack_id present
+[PASS] upstream baseline metadata present
+[PASS] core security expectations preserved
+[PASS] required controls list present
+[PASS] runtime validation commands declared for compose and k8s
+[PASS] architecture doc includes core/sdk/pack boundaries
+[PASS] sdk authoring guide includes required sections
+[PASS] App integration pack model validation passed
