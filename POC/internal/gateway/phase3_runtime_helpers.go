@@ -102,36 +102,14 @@ func (g *Gateway) logPlaneDecision(r *http.Request, decision PlaneDecisionV2, ht
 	})
 }
 
-// evaluateRLMGovernance is a minimal governance hook for RLM-style execution. In a
-// fully wired Phase 3 implementation, this would:
-// - enforce max depth/subcall budgets
-// - prevent bypassing plane controls from a framework-spawned REPL
-// - attribute nested calls to a lineage_id for audit and cost accounting
+// evaluateRLMGovernance delegates to the stateful RLM governance engine which
+// tracks multi-agent lineage and enforces subcall budgets per lineage.
 func (g *Gateway) evaluateRLMGovernance(req PlaneRequestV2) (bool, Decision, ReasonCode, int, map[string]any) {
-	mode := strings.ToLower(strings.TrimSpace(req.Envelope.ExecutionMode))
-	if mode != "rlm" {
-		return false, DecisionAllow, ReasonRLMAllow, http.StatusOK, nil
+	if g.rlmEngine != nil {
+		return g.rlmEngine.evaluate(req)
 	}
-
-	attrs := req.Policy.Attributes
-	if attrs == nil {
-		attrs = map[string]any{}
-	}
-
-	depth := getIntAttr(attrs, "rlm_depth", 0)
-	maxDepth := getIntAttr(attrs, "rlm_max_depth", 3)
-	if depth > maxDepth {
-		return true, DecisionDeny, ReasonRLMHaltMaxDepth, http.StatusForbidden, map[string]any{
-			"rlm_depth":     depth,
-			"rlm_max_depth": maxDepth,
-		}
-	}
-
-	return true, DecisionAllow, ReasonRLMAllow, http.StatusOK, map[string]any{
-		"rlm_depth":     depth,
-		"rlm_max_depth": maxDepth,
-		"lineage_id":    req.Envelope.LineageID,
-	}
+	// Fallback: engine not initialized -- bypass.
+	return false, "", "", 0, nil
 }
 
 // evaluatePromptSafety enforces "context engineering" guardrails at the model-plane
@@ -877,17 +855,17 @@ func (g *Gateway) handleLoopCheck(w http.ResponseWriter, r *http.Request) {
 	if policy == nil {
 		policy = newLoopPlanePolicyEngine()
 	}
-	eval := policy.evaluate(req)
+	decision, reason, httpStatus, metadata := policy.evaluate(req, decisionID, traceID, time.Now().UTC())
 	resp := PlaneDecisionV2{
-		Decision:   eval.Decision,
-		ReasonCode: eval.Reason,
+		Decision:   decision,
+		ReasonCode: reason,
 		Envelope:   req.Envelope,
 		TraceID:    traceID,
 		DecisionID: decisionID,
-		Metadata:   eval.Metadata,
+		Metadata:   metadata,
 	}
-	g.logPlaneDecision(r, resp, eval.HTTPStatus)
+	g.logPlaneDecision(r, resp, httpStatus)
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(eval.HTTPStatus)
+	w.WriteHeader(httpStatus)
 	_ = json.NewEncoder(w).Encode(resp)
 }
