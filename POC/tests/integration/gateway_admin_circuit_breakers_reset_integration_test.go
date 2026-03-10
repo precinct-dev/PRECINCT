@@ -22,7 +22,7 @@ func TestGatewayAdminCircuitBreakersResetIntegration_ResetsToolToClosed(t *testi
 	if err != nil {
 		t.Fatalf("build list request: %v", err)
 	}
-	listReq.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
+	listReq.Header.Set("X-SPIFFE-ID", adminSPIFFEIDForTest())
 	listResp, err := client.Do(listReq)
 	if err != nil {
 		t.Fatalf("GET /admin/circuit-breakers: %v", err)
@@ -60,7 +60,7 @@ func TestGatewayAdminCircuitBreakersResetIntegration_ResetsToolToClosed(t *testi
 		t.Fatalf("build reset request: %v", err)
 	}
 	resetReq.Header.Set("Content-Type", "application/json")
-	resetReq.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
+	resetReq.Header.Set("X-SPIFFE-ID", adminSPIFFEIDForTest())
 
 	resetResp, err := client.Do(resetReq)
 	if err != nil {
@@ -98,7 +98,7 @@ func TestGatewayAdminCircuitBreakersResetIntegration_ResetsToolToClosed(t *testi
 	if err != nil {
 		t.Fatalf("build single-tool request: %v", err)
 	}
-	getOneReq.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
+	getOneReq.Header.Set("X-SPIFFE-ID", adminSPIFFEIDForTest())
 	getOneResp, err := client.Do(getOneReq)
 	if err != nil {
 		t.Fatalf("GET /admin/circuit-breakers/%s: %v", targetTool, err)

@@ -11,7 +11,7 @@
 #   - backoffLimit 3: retry on transient failures (Keeper not ready yet)
 #   - ttlSecondsAfterFinished 3600: keep logs long enough for demo proof collection
 #   - restartPolicy Never: failed pods create new pods (backoffLimit controls)
-#   - Shamir config: threshold=1, shares=1 (single Keeper for POC)
+#   - Shamir config: threshold=2, shares=3 for release-facing multi-share recovery
 #   - Bootstrap depends on Keeper (not Nexus) for shard delivery
 # ------------------------------------------------------------------------------
 apiVersion: batch/v1
@@ -43,11 +43,11 @@ spec:
             - name: SPIKE_NEXUS_API_URL
               value: 'https://spike-nexus.spike-system.svc.cluster.local:8443'
             - name: SPIKE_NEXUS_KEEPER_PEERS
-              value: 'https://spike-keeper-1.spike-system.svc.cluster.local:8443'
+              value: 'https://spike-keeper-1.spike-system.svc.cluster.local:8443,https://spike-keeper-2.spike-system.svc.cluster.local:8443,https://spike-keeper-3.spike-system.svc.cluster.local:8443'
             - name: SPIKE_NEXUS_SHAMIR_THRESHOLD
-              value: '1'
+              value: '2'
             - name: SPIKE_NEXUS_SHAMIR_SHARES
-              value: '1'
+              value: '3'
             - name: SPIKE_TRUST_ROOT
               value: 'agentic-ref-arch.poc'
             - name: SPIKE_TRUST_ROOT_NEXUS

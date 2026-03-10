@@ -10,7 +10,7 @@
 // - DLP private key block                    -- testDLPPrivateKeyBlock
 // - DLP API key block (sk-proj-*)            -- testDLPAPIKeyBlock
 // - DLP password leak block                  -- testDLPPasswordLeakBlock
-// - DLP PII pass-through (email, audit-only) -- testDLPPIIPass
+// - DLP PII block (email blocked) -- testDLPPIIBlock
 // - DLP injection flagging (flag-only)       -- testInjectionDirectOverride, testInjectionDANJailbreak
 
 package integration
@@ -20,6 +20,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -181,13 +182,14 @@ func TestDemoExtracted_DLP_PasswordLeakBlock(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// PII pass-through test (demo assertion 14: email is audit-only)
+// PII block test (demo assertion 14: email is blocked under hardened compose policy)
 // ---------------------------------------------------------------------------
 
-// TestDemoExtracted_DLP_PIIPassThrough mirrors demo test "DLP PII pass-through (email is audit-only)".
-// Sends a payload containing an email address. Default DLP policy flags PII
-// but does NOT block it. The request should reach the terminal handler (200).
-func TestDemoExtracted_DLP_PIIPassThrough(t *testing.T) {
+// TestDemoExtracted_DLP_PIIBlock mirrors demo test "DLP PII block (email is blocked)".
+// Sends a payload containing an email address. The extracted middleware path
+// follows the configured DLP policy: by default it flags PII, and compose demos
+// can opt into blocking via DEMO_EXPECT_DLP_PII_BLOCK=1.
+func TestDemoExtracted_DLP_PIIBlock(t *testing.T) {
 	handler := buildDLPChain(nil)
 
 	body := dlpMCPRequest("tavily_search", "contact user@example.com about results")
@@ -198,14 +200,24 @@ func TestDemoExtracted_DLP_PIIPassThrough(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	if rr.Code == http.StatusForbidden {
+	if os.Getenv("DEMO_EXPECT_DLP_PII_BLOCK") == "1" {
+		if rr.Code != http.StatusForbidden {
+			respBody, _ := io.ReadAll(rr.Result().Body)
+			t.Fatalf("Expected 403 (PII blocked), got %d body=%s", rr.Code, string(respBody))
+		}
 		respBody, _ := io.ReadAll(rr.Result().Body)
-		t.Fatalf("PII should NOT be blocked (audit-only), got 403: %s", string(respBody))
+		if !strings.Contains(string(respBody), "dlp_pii_blocked") {
+			t.Fatalf("Expected dlp_pii_blocked response, got %s", string(respBody))
+		}
+		t.Logf("PASS: PII (email) blocked under hardened compose policy (HTTP %d)", rr.Code)
+		return
 	}
+
 	if rr.Code != http.StatusOK {
-		t.Fatalf("Expected 200 (PII pass-through), got %d", rr.Code)
+		respBody, _ := io.ReadAll(rr.Result().Body)
+		t.Fatalf("Expected 200 (PII flagged but allowed), got %d body=%s", rr.Code, string(respBody))
 	}
-	t.Logf("PASS: PII (email) passed through -- audit-only, not blocked (HTTP %d)", rr.Code)
+	t.Logf("PASS: PII (email) flagged but not blocked under default extracted policy (HTTP %d)", rr.Code)
 }
 
 // ---------------------------------------------------------------------------

@@ -45,7 +45,7 @@ func newGDPRAuditCmd() *cobra.Command {
 				projectRoot = "."
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), 30*time.Second)
+			ctx, cancel := context.WithTimeout(cmd.Context(), 90*time.Second)
 			defer cancel()
 
 			result, err := gdprExportDSARPackage(ctx, agw.GDPRAuditParams{

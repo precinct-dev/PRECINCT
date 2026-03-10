@@ -6,6 +6,7 @@ import json
 import sys
 import os
 import threading
+import time
 from dataclasses import dataclass
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
@@ -18,6 +19,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "sdk", "p
 from mcp_gateway_sdk import CallResult, GatewayClient, GatewayError, ResponseMeta  # noqa: E402
 
 DSPY_SPIFFE = "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+DEMO_EXPECT_DLP_PII_BLOCK = os.getenv("DEMO_EXPECT_DLP_PII_BLOCK", "") == "1"
 
 # ANSI colors
 RESET = "\033[0m"
@@ -35,6 +37,10 @@ class TestCase:
     send: str           # What payload/tool/identity we send
     expect: str         # Expected result and what it proves
     fn: Callable        # Test function (takes url, returns bool)
+
+
+def unique_session_id(prefix: str) -> str:
+    return f"{prefix}-{time.time_ns()}"
 
 
 def print_proof(ok: bool, reason: str) -> bool:
@@ -119,6 +125,7 @@ def test_mcp_tools_call(url: str) -> bool:
 
 def test_invalid_tools_call_missing_name_rejected(url: str) -> bool:
     """2b. MCP spec: invalid tools/call (missing params.name) must be rejected (HTTP 400)."""
+    session_id = unique_session_id("demo-invalid-tools-call")
     payload = {
         "jsonrpc": "2.0",
         "id": 999,
@@ -128,7 +135,7 @@ def test_invalid_tools_call_missing_name_rejected(url: str) -> bool:
     headers = {
         "Content-Type": "application/json",
         "X-SPIFFE-ID": DSPY_SPIFFE,
-        "X-Session-ID": "demo-invalid-tools-call",
+        "X-Session-ID": session_id,
     }
     try:
         resp = httpx.post(url, json=payload, headers=headers, timeout=10.0)
@@ -148,11 +155,12 @@ def test_invalid_tools_call_missing_name_rejected(url: str) -> bool:
 
 def test_mcp_ui_tools_list_strips_meta_ui(url: str) -> bool:
     """2c. MCP-UI: tools/list response should have _meta.ui stripped in MCP transport mode."""
+    session_id = unique_session_id("demo-ui-tools-list")
     payload = {"jsonrpc": "2.0", "id": 1001, "method": "tools/list", "params": {}}
     headers = {
         "Content-Type": "application/json",
         "X-SPIFFE-ID": DSPY_SPIFFE,
-        "X-Session-ID": "demo-ui-tools-list",
+        "X-Session-ID": session_id,
         "X-MCP-Server": "mcp-dashboard-server",
         "X-Tenant": "acme-corp",
     }
@@ -184,6 +192,7 @@ def test_mcp_ui_tools_list_strips_meta_ui(url: str) -> bool:
 
 def test_mcp_ui_resource_read_denied(url: str) -> bool:
     """2d. MCP-UI: ui:// resources/read should be denied (fail-closed) in MCP transport mode."""
+    session_id = unique_session_id("demo-ui-resource-read")
     payload = {
         "jsonrpc": "2.0",
         "id": 1002,
@@ -193,7 +202,7 @@ def test_mcp_ui_resource_read_denied(url: str) -> bool:
     headers = {
         "Content-Type": "application/json",
         "X-SPIFFE-ID": DSPY_SPIFFE,
-        "X-Session-ID": "demo-ui-resource-read",
+        "X-Session-ID": session_id,
         "X-MCP-Server": "mcp-untrusted-server",
         "X-Tenant": "acme-corp",
     }
@@ -258,17 +267,20 @@ def test_tool_registry_rugpull_protection(url: str) -> bool:
     if not admin_base:
         return print_proof(True, "SKIP: rug-pull proof disabled (DEMO_RUGPULL_ADMIN_URL not set)")
 
+    list_session_id = unique_session_id("demo-rugpull-tools-list")
+    admin_session_id = unique_session_id("demo-rugpull-admin")
+    reset_session_id = unique_session_id("demo-rugpull-tools-list-reset")
     payload = {"jsonrpc": "2.0", "id": 1100, "method": "tools/list", "params": {}}
     headers = {
         "Content-Type": "application/json",
         "X-SPIFFE-ID": DSPY_SPIFFE,
-        "X-Session-ID": "demo-rugpull-tools-list",
+        "X-Session-ID": list_session_id,
         "X-MCP-Server": "default",
         "X-Tenant": "default",
     }
     admin_headers = {
         "X-SPIFFE-ID": DSPY_SPIFFE,
-        "X-Session-ID": "demo-rugpull-admin",
+        "X-Session-ID": admin_session_id,
     }
     enabled = False
     client = None
@@ -308,7 +320,7 @@ def test_tool_registry_rugpull_protection(url: str) -> bool:
         if enabled:
             try:
                 httpx.post(f"{admin_base}/__demo__/rugpull/off", headers=admin_headers, timeout=5.0)
-                httpx.post(url, json=payload, headers={**headers, "X-Session-ID": "demo-rugpull-tools-list-reset"}, timeout=10.0)
+                httpx.post(url, json=payload, headers={**headers, "X-Session-ID": reset_session_id}, timeout=10.0)
             except Exception:
                 pass
 
@@ -354,18 +366,29 @@ def test_dlp_credential_block(url: str) -> bool:
         client.close()
 
 
-def test_dlp_pii_pass(url: str) -> bool:
-    """7. DLP PII pass-through: email is audit-only, not blocked."""
+def test_dlp_pii_block(url: str) -> bool:
+    """7. DLP PII behavior varies by active demo profile."""
     client = new_client(url)
     try:
         result = client.call("tavily_search", query="contact user@example.com about results")
         print(f"  Result: {result}")
-        return print_proof(True, "PII passed through (audit-only, not blocked)")
+        if DEMO_EXPECT_DLP_PII_BLOCK:
+            return print_proof(False, "expected PII block but request passed through (200)")
+        return print_proof(True, "PII request passed through under non-blocking demo profile (flag-only)")
     except GatewayError as e:
         print_gateway_error(e)
+        if DEMO_EXPECT_DLP_PII_BLOCK:
+            if e.code == "dlp_pii_blocked" and e.step == 7:
+                return print_proof(True, f"DLP blocked PII at step {e.step}: {e.code}")
+            if e.http_status == 502:
+                return print_proof(False, "PII reached upstream (502) -- DLP did NOT block")
+            return print_proof(False, f"expected dlp_pii_blocked at step 7, got {e.code} at step {e.step}")
+
+        if e.code == "dlp_pii_blocked" and e.step == 7:
+            return print_proof(True, f"DLP blocked PII at step {e.step}: {e.code} under stricter profile")
         if e.http_status == 502:
-            return print_proof(True, "PII reached upstream (502 = no server, proves pass-through)")
-        return print_proof(False, f"PII was blocked: code={e.code}, step={e.step}")
+            return print_proof(True, "PII request reached upstream (502) under non-blocking demo profile")
+        return print_proof(False, f"expected flag-only or stricter-profile block, got {e.code} at step {e.step}")
     except Exception as e:
         print(f"  Error: {e}")
         return print_proof(False, f"unexpected error: {type(e).__name__}")
@@ -713,13 +736,15 @@ def test_rate_limit(url: str) -> bool:
     # that token refill prevents exhausting the bucket. Burst against the gateway's demo-only fast
     # path endpoint which still runs inside the normal middleware chain (incl. Step 11 rate limiting).
     endpoint = url.rstrip("/") + "/__demo__/ratelimit"
+    probe_session_id = unique_session_id("demo-rl-probe")
+    worker_session_prefix = unique_session_id("demo-rl")
 
     max_attempts = 5000
     concurrency = 50
 
     # Probe endpoint existence (demo endpoints must be enabled in the gateway).
     try:
-        r = httpx.get(endpoint, headers={"X-SPIFFE-ID": DSPY_SPIFFE, "X-Session-ID": "demo-rl-probe"}, timeout=5.0)
+        r = httpx.get(endpoint, headers={"X-SPIFFE-ID": DSPY_SPIFFE, "X-Session-ID": probe_session_id}, timeout=5.0)
         if r.status_code == 404:
             return print_proof(False, "rate limit probe returned 404: /__demo__/ratelimit not enabled (set DEMO_RUGPULL_ADMIN_ENABLED=1 in gateway)")
     except Exception as e:
@@ -749,7 +774,7 @@ def test_rate_limit(url: str) -> bool:
                 try:
                     resp = client.get(
                         endpoint,
-                        headers={"X-SPIFFE-ID": DSPY_SPIFFE, "X-Session-ID": f"demo-rl-{worker_id}"},
+                        headers={"X-SPIFFE-ID": DSPY_SPIFFE, "X-Session-ID": f"{worker_session_prefix}-{worker_id}"},
                     )
                     if resp.status_code == 429:
                         with first_429_lock:
@@ -838,7 +863,7 @@ def _send_principal_request(
 def test_principal_owner_destructive(url: str) -> bool:
     """S-PRINCIPAL-1: Owner (level 1) allowed destructive operation."""
     status, ge, _ = _send_principal_request(
-        url, "spiffe://poc.local/owner/alice", "delete", "demo-principal-owner-destructive",
+        url, "spiffe://poc.local/owner/alice", "delete", unique_session_id("demo-principal-owner-destructive"),
     )
     if ge:
         print_gateway_error(ge)
@@ -854,7 +879,7 @@ def test_principal_owner_destructive(url: str) -> bool:
 def test_principal_external_destructive(url: str) -> bool:
     """S-PRINCIPAL-2: External user (level 4) denied destructive operation."""
     status, ge, _ = _send_principal_request(
-        url, "spiffe://poc.local/external/bob", "delete", "demo-principal-external-destructive",
+        url, "spiffe://poc.local/external/bob", "delete", unique_session_id("demo-principal-external-destructive"),
     )
     if ge:
         print_gateway_error(ge)
@@ -873,7 +898,7 @@ def test_principal_external_destructive(url: str) -> bool:
 def test_principal_agent_messaging(url: str) -> bool:
     """S-PRINCIPAL-3: Agent (level 3) allowed messaging operation."""
     status, ge, _ = _send_principal_request(
-        url, "spiffe://poc.local/agents/summarizer/dev", "notify", "demo-principal-agent-messaging",
+        url, "spiffe://poc.local/agents/summarizer/dev", "notify", unique_session_id("demo-principal-agent-messaging"),
     )
     if ge:
         print_gateway_error(ge)
@@ -889,7 +914,7 @@ def test_principal_agent_messaging(url: str) -> bool:
 def test_principal_external_messaging(url: str) -> bool:
     """S-PRINCIPAL-4: External user (level 4) denied messaging operation."""
     status, ge, _ = _send_principal_request(
-        url, "spiffe://poc.local/external/bob", "notify", "demo-principal-external-messaging",
+        url, "spiffe://poc.local/external/bob", "notify", unique_session_id("demo-principal-external-messaging"),
     )
     if ge:
         print_gateway_error(ge)
@@ -911,7 +936,7 @@ def test_irrev1_read_allowed(url: str) -> bool:
     """S-IRREV-1: Read action (reversible, Score=0) fast-pathed."""
     client = GatewayClient(
         url=url, spiffe_id="spiffe://poc.local/external/bob",
-        timeout=10.0, max_retries=0, session_id="irrev-demo-read-001",
+        timeout=10.0, max_retries=0, session_id=unique_session_id("irrev-demo-read"),
     )
     try:
         result = client.call("tavily_search", query="reversibility classification test", action="read")
@@ -930,7 +955,7 @@ def test_irrev2_create_evaluated(url: str) -> bool:
     """S-IRREV-2: Create action (costly_reversible, Score=1) evaluated appropriately."""
     client = GatewayClient(
         url=url, spiffe_id="spiffe://poc.local/external/bob",
-        timeout=10.0, max_retries=0, session_id="irrev-demo-create-001",
+        timeout=10.0, max_retries=0, session_id=unique_session_id("irrev-demo-create"),
     )
     try:
         client.call("tavily_search", query="reversibility create test", action="create")
@@ -954,7 +979,7 @@ def test_irrev3_owner_delete(url: str) -> bool:
     """
     client = GatewayClient(
         url=url, spiffe_id="spiffe://poc.local/owner/alice",
-        timeout=10.0, max_retries=0, session_id="irrev-demo-owner-delete-001",
+        timeout=10.0, max_retries=0, session_id=unique_session_id("irrev-demo-owner-delete"),
     )
     try:
         cr = client.call_with_metadata("tavily_search", query="irreversible delete test", action="delete")
@@ -987,7 +1012,7 @@ def test_irrev4_external_delete(url: str) -> bool:
     """S-IRREV-4: External delete denied (irreversible or principal_level_insufficient)."""
     client = GatewayClient(
         url=url, spiffe_id="spiffe://poc.local/external/bob",
-        timeout=10.0, max_retries=0, session_id="irrev-demo-external-delete-001",
+        timeout=10.0, max_retries=0, session_id=unique_session_id("irrev-demo-external-delete"),
     )
     try:
         client.call("tavily_search", query="irreversible delete external test", action="delete")
@@ -1006,7 +1031,7 @@ def test_irrev4_external_delete(url: str) -> bool:
 
 def test_irrev5_escalated_session_deny(url: str) -> bool:
     """S-IRREV-5: Irreversible action in escalated session denied."""
-    session_id = "irrev-demo-escalated-001"
+    session_id = unique_session_id("irrev-demo-escalated")
     agent_spiffe = "spiffe://poc.local/agents/summarizer/dev"
 
     escalation_client = GatewayClient(
@@ -1146,11 +1171,11 @@ def main() -> None:
             fn=test_dlp_password_leak_block,
         ),
         TestCase(
-            name="DLP PII pass-through (email is audit-only)",
-            what="DLP scanner audits PII (email) but does NOT block -- audit-only policy",
+            name="DLP PII handling (profile-aware)",
+            what="DLP scanner either blocks PII under hardened compose policy or flags it under non-blocking demo profiles",
             send="tavily_search(query='contact user@example.com about results') -- contains email PII",
-            expect="200 or 502 -- PII is logged for audit but request passes through",
-            fn=test_dlp_pii_pass,
+            expect="Compose hardened profile: 403 dlp_pii_blocked at step 7. Local K8s dev profile: request may pass while remaining non-credential-safe.",
+            fn=test_dlp_pii_block,
         ),
         TestCase(
             name="DLP: direct instruction override",

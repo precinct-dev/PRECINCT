@@ -20,6 +20,7 @@ func strictBypassContractTestConfig(t *testing.T) *gateway.Config {
 		Port:                          0,
 		UpstreamURL:                   "https://mcp-server.example.com/mcp",
 		OPAPolicyDir:                  testutil.OPAPolicyDir(),
+		OPAPolicyPublicKey:            filepath.Join(projectRoot, "config", "attestation-ed25519.pub"),
 		ToolRegistryConfigPath:        testutil.ToolRegistryConfigPath(),
 		ToolRegistryPublicKey:         filepath.Join(projectRoot, "config", "attestation-ed25519.pub"),
 		ModelProviderCatalogPath:      filepath.Join(projectRoot, "config", "model-provider-catalog.v2.yaml"),
@@ -36,6 +37,7 @@ func strictBypassContractTestConfig(t *testing.T) *gateway.Config {
 		MCPTransportMode:              "mcp",
 		EnforcementProfile:            "prod_standard",
 		ApprovalSigningKey:            "prod-approval-signing-key-material-at-least-32",
+		AdminAuthzAllowedSPIFFEIDs:    []string{"spiffe://poc.local/admin/security"},
 		KeyDBURL:                      "redis://keydb:6379",
 	}
 }

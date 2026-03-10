@@ -272,6 +272,7 @@ func TestConfigFromEnv(t *testing.T) {
 	t.Setenv("KEYDB_POOL_MIN", "10")
 	t.Setenv("KEYDB_POOL_MAX", "50")
 	t.Setenv("SESSION_TTL", "7200")
+	t.Setenv("OPA_POLICY_PUBLIC_KEY", "/config/opa-attestation.pub")
 	cfg = ConfigFromEnv()
 	if cfg.KeyDBURL != "redis://keydb:6379" {
 		t.Errorf("Expected KeyDBURL=redis://keydb:6379, got %s", cfg.KeyDBURL)
@@ -284,6 +285,9 @@ func TestConfigFromEnv(t *testing.T) {
 	}
 	if cfg.SessionTTL != 7200 {
 		t.Errorf("Expected SessionTTL=7200, got %d", cfg.SessionTTL)
+	}
+	if cfg.OPAPolicyPublicKey != "/config/opa-attestation.pub" {
+		t.Errorf("Expected OPAPolicyPublicKey=/config/opa-attestation.pub, got %s", cfg.OPAPolicyPublicKey)
 	}
 
 	// RFA-8z8.1: Test SPIFFE trust domain defaults
@@ -396,9 +400,13 @@ func TestConfigFromEnv(t *testing.T) {
 	// RFA-l6h6.6.6: strict profiles auto-apply secure SPIFFE peer pinning defaults
 	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileProdStandard)
 	t.Setenv("SPIFFE_TRUST_DOMAIN", "example.org")
+	t.Setenv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS", "")
 	t.Setenv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS", "")
 	t.Setenv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS", "")
 	cfg = ConfigFromEnv()
+	if len(cfg.AdminAuthzAllowedSPIFFEIDs) != 0 {
+		t.Errorf("Expected no implicit admin SPIFFE allowlist, got %v", cfg.AdminAuthzAllowedSPIFFEIDs)
+	}
 
 	expectedUpstreamIDs := []string{
 		"spiffe://example.org/ns/tools/sa/mcp-tool",
@@ -415,10 +423,27 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Errorf("Expected strict keydb SPIFFE allowlist defaults %v, got %v", expectedKeyDBIDs, cfg.KeyDBAuthzAllowedSPIFFEIDs)
 	}
 
+	// RFA-83an: prod mTLS defaults pin peers even if ENFORCEMENT_PROFILE is left at dev.
+	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileDev)
+	t.Setenv("SPIFFE_MODE", "prod")
+	t.Setenv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS", "")
+	t.Setenv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS", "")
+	cfg = ConfigFromEnv()
+	if !reflect.DeepEqual(cfg.UpstreamAuthzAllowedSPIFFEIDs, expectedUpstreamIDs) {
+		t.Errorf("Expected prod-mode upstream SPIFFE allowlist defaults %v, got %v", expectedUpstreamIDs, cfg.UpstreamAuthzAllowedSPIFFEIDs)
+	}
+	if !reflect.DeepEqual(cfg.KeyDBAuthzAllowedSPIFFEIDs, expectedKeyDBIDs) {
+		t.Errorf("Expected prod-mode keydb SPIFFE allowlist defaults %v, got %v", expectedKeyDBIDs, cfg.KeyDBAuthzAllowedSPIFFEIDs)
+	}
+
 	// RFA-l6h6.6.6: explicit env allowlists override strict defaults
 	t.Setenv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS", "spiffe://example.org/ns/tools/sa/custom-mcp")
 	t.Setenv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS", "spiffe://example.org/ns/data/sa/custom-keydb")
+	t.Setenv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS", "spiffe://example.org/ns/ops/sa/admin")
 	cfg = ConfigFromEnv()
+	if !reflect.DeepEqual(cfg.AdminAuthzAllowedSPIFFEIDs, []string{"spiffe://example.org/ns/ops/sa/admin"}) {
+		t.Errorf("Expected explicit admin SPIFFE allowlist override, got %v", cfg.AdminAuthzAllowedSPIFFEIDs)
+	}
 	if !reflect.DeepEqual(cfg.UpstreamAuthzAllowedSPIFFEIDs, []string{"spiffe://example.org/ns/tools/sa/custom-mcp"}) {
 		t.Errorf("Expected explicit upstream SPIFFE allowlist override, got %v", cfg.UpstreamAuthzAllowedSPIFFEIDs)
 	}
@@ -428,9 +453,14 @@ func TestConfigFromEnv(t *testing.T) {
 
 	// RFA-l6h6.6.6: dev profile preserves backward compatibility (no defaults)
 	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileDev)
+	t.Setenv("SPIFFE_MODE", "dev")
+	t.Setenv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS", "")
 	t.Setenv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS", "")
 	t.Setenv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS", "")
 	cfg = ConfigFromEnv()
+	if len(cfg.AdminAuthzAllowedSPIFFEIDs) != 0 {
+		t.Errorf("Expected no admin SPIFFE allowlist in dev profile default, got %v", cfg.AdminAuthzAllowedSPIFFEIDs)
+	}
 	if len(cfg.UpstreamAuthzAllowedSPIFFEIDs) != 0 {
 		t.Errorf("Expected no upstream SPIFFE allowlist in dev profile default, got %v", cfg.UpstreamAuthzAllowedSPIFFEIDs)
 	}
@@ -3105,11 +3135,13 @@ func TestMCPTransport_GatewayUsesTransportInterface(t *testing.T) {
 
 func TestMCPTransportHTTPClient_StrictRequiresSPIFFETLS(t *testing.T) {
 	projectRoot := testutil.ProjectRoot()
+	signedRegistryPath, signedRegistryPubKeyPath := writeSignedStrictToolRegistryFixture(t)
 	cfg := &Config{
 		UpstreamURL:                   "https://mcp-server.example.com/mcp",
 		OPAPolicyDir:                  testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath:        testutil.ToolRegistryConfigPath(),
-		ToolRegistryPublicKey:         filepath.Join(projectRoot, "config", "attestation-ed25519.pub"),
+		ToolRegistryConfigPath:        signedRegistryPath,
+		ToolRegistryPublicKey:         signedRegistryPubKeyPath,
+		OPAPolicyPublicKey:            signedRegistryPubKeyPath,
 		ModelProviderCatalogPath:      filepath.Join(projectRoot, "config", "model-provider-catalog.v2.yaml"),
 		ModelProviderCatalogPublicKey: filepath.Join(projectRoot, "config", "attestation-ed25519.pub"),
 		GuardArtifactPath:             filepath.Join(projectRoot, "config", "guard-artifact.bin"),
@@ -3124,6 +3156,7 @@ func TestMCPTransportHTTPClient_StrictRequiresSPIFFETLS(t *testing.T) {
 		EnforceModelMediationGate:     true,
 		EnforceHIPAAPromptSafetyGate:  true,
 		ApprovalSigningKey:            "prod-approval-signing-key-material-at-least-32",
+		AdminAuthzAllowedSPIFFEIDs:    []string{"spiffe://poc.local/admin/security"},
 		KeyDBURL:                      "redis://keydb:6379",
 		DestinationsConfigPath:        filepath.Join(projectRoot, "config", "destinations.yaml"),
 		RiskThresholdsPath:            filepath.Join(projectRoot, "config", "risk_thresholds.yaml"),
@@ -4104,6 +4137,60 @@ func TestAdminCircuitBreakers_Reset(t *testing.T) {
 }
 
 func TestAdminPolicyReload(t *testing.T) {
+	newSignedOPA := func(t *testing.T) (*middleware.OPAEngine, string, ed25519.PrivateKey) {
+		t.Helper()
+
+		pub, priv, err := ed25519.GenerateKey(nil)
+		if err != nil {
+			t.Fatalf("GenerateKey: %v", err)
+		}
+		pubDER, err := x509.MarshalPKIXPublicKey(pub)
+		if err != nil {
+			t.Fatalf("MarshalPKIXPublicKey: %v", err)
+		}
+		pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
+
+		policyDir := t.TempDir()
+		policyPath := filepath.Join(policyDir, "mcp_policy.rego")
+		policy := []byte(`package mcp
+default allow := {
+	"allow": false,
+	"reason": "default_deny"
+}
+`)
+		if err := os.WriteFile(policyPath, policy, 0644); err != nil {
+			t.Fatalf("write policy: %v", err)
+		}
+		sig := ed25519.Sign(priv, policy)
+		if err := os.WriteFile(policyPath+".sig", []byte(base64.StdEncoding.EncodeToString(sig)), 0644); err != nil {
+			t.Fatalf("write policy sig: %v", err)
+		}
+
+		opa, err := middleware.NewOPAEngine(policyDir, middleware.OPAEngineConfig{
+			PolicyReloadPublicKeyPEM: pubPEM,
+		})
+		if err != nil {
+			t.Fatalf("NewOPAEngine: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = opa.Close()
+		})
+		return opa, policyPath, priv
+	}
+
+	newAuditor := func(t *testing.T) (*middleware.Auditor, string) {
+		t.Helper()
+		auditPath := filepath.Join(t.TempDir(), "audit.jsonl")
+		auditor, err := middleware.NewAuditor(auditPath, testutil.OPAPolicyPath(), testutil.ToolRegistryConfigPath())
+		if err != nil {
+			t.Fatalf("NewAuditor: %v", err)
+		}
+		t.Cleanup(func() {
+			_ = auditor.Close()
+		})
+		return auditor, auditPath
+	}
+
 	newOPA := func(t *testing.T) *middleware.OPAEngine {
 		t.Helper()
 		opa, err := middleware.NewOPAEngine(testutil.OPAPolicyDir(), middleware.OPAEngineConfig{})
@@ -4136,11 +4223,13 @@ func TestAdminPolicyReload(t *testing.T) {
 		}
 
 		var parsed struct {
-			Status         string `json:"status"`
-			Timestamp      string `json:"timestamp"`
-			RegistryTools  int    `json:"registry_tools"`
-			OPAPolicies    int    `json:"opa_policies"`
-			CosignVerified bool   `json:"cosign_verified"`
+			Status              string `json:"status"`
+			Timestamp           string `json:"timestamp"`
+			RegistryTools       int    `json:"registry_tools"`
+			OPAPolicies         int    `json:"opa_policies"`
+			CosignVerified      bool   `json:"cosign_verified"`
+			OPAVerified         bool   `json:"opa_verified"`
+			OPAVerificationMode string `json:"opa_verification_mode"`
 		}
 		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
 			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
@@ -4159,6 +4248,12 @@ func TestAdminPolicyReload(t *testing.T) {
 		}
 		if parsed.CosignVerified {
 			t.Fatalf("expected cosign_verified=false in dev mode, got true")
+		}
+		if parsed.OPAVerified {
+			t.Fatalf("expected opa_verified=false in dev mode, got true")
+		}
+		if parsed.OPAVerificationMode != "disabled" {
+			t.Fatalf("expected opa_verification_mode=disabled, got %q", parsed.OPAVerificationMode)
 		}
 	})
 
@@ -4260,6 +4355,139 @@ func TestAdminPolicyReload(t *testing.T) {
 			t.Fatalf("expected cosign_verified=false when verification fails")
 		}
 	})
+
+	t.Run("signed_opa_reload_reports_verified_and_audits", func(t *testing.T) {
+		reg, err := middleware.NewToolRegistry(writeTempToolRegistry(t))
+		if err != nil {
+			t.Fatalf("NewToolRegistry: %v", err)
+		}
+		opa, _, _ := newSignedOPA(t)
+		auditor, auditPath := newAuditor(t)
+
+		g := &Gateway{
+			registry: reg,
+			opa:      opa,
+			auditor:  auditor,
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/policy/reload", nil)
+		rec := httptest.NewRecorder()
+		g.adminPolicyReloadHandler(rec, req)
+
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Status              string `json:"status"`
+			OPAVerified         bool   `json:"opa_verified"`
+			OPAVerificationMode string `json:"opa_verification_mode"`
+			OPARejected         bool   `json:"opa_rejected"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if parsed.Status != "reloaded" {
+			t.Fatalf("expected status=reloaded, got %q", parsed.Status)
+		}
+		if !parsed.OPAVerified {
+			t.Fatal("expected opa_verified=true for signed reload")
+		}
+		if parsed.OPAVerificationMode != "ed25519" {
+			t.Fatalf("expected opa_verification_mode=ed25519, got %q", parsed.OPAVerificationMode)
+		}
+		if parsed.OPARejected {
+			t.Fatal("expected opa_rejected=false for signed reload")
+		}
+
+		auditor.Flush()
+		raw, err := os.ReadFile(auditPath)
+		if err != nil {
+			t.Fatalf("read audit log: %v", err)
+		}
+		if !strings.Contains(string(raw), "\"action\":\"policy.opa.reload\"") {
+			t.Fatalf("expected policy.opa.reload audit event, got %s", string(raw))
+		}
+		if !strings.Contains(string(raw), "status=verified verified=true attestation_mode=ed25519") {
+			t.Fatalf("expected verified audit result, got %s", string(raw))
+		}
+	})
+
+	t.Run("unsigned_opa_reload_reports_rejected_and_audits", func(t *testing.T) {
+		reg, err := middleware.NewToolRegistry(writeTempToolRegistry(t))
+		if err != nil {
+			t.Fatalf("NewToolRegistry: %v", err)
+		}
+		opa, policyPath, _ := newSignedOPA(t)
+		auditor, auditPath := newAuditor(t)
+		if err := os.WriteFile(policyPath, []byte(`package mcp
+default allow := {
+	"allow": true,
+	"reason": "tampered"
+}
+`), 0644); err != nil {
+			t.Fatalf("write unsigned policy: %v", err)
+		}
+		if err := os.Remove(policyPath + ".sig"); err != nil {
+			t.Fatalf("remove policy sig: %v", err)
+		}
+
+		g := &Gateway{
+			registry: reg,
+			opa:      opa,
+			auditor:  auditor,
+		}
+
+		req := httptest.NewRequest(http.MethodPost, "/admin/policy/reload", nil)
+		rec := httptest.NewRecorder()
+		g.adminPolicyReloadHandler(rec, req)
+
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+		}
+
+		var parsed struct {
+			Status              string `json:"status"`
+			Error               string `json:"error"`
+			OPAVerified         bool   `json:"opa_verified"`
+			OPAVerificationMode string `json:"opa_verification_mode"`
+			OPARejected         bool   `json:"opa_rejected"`
+			OPARejectionReason  string `json:"opa_rejection_reason"`
+		}
+		if err := json.Unmarshal(rec.Body.Bytes(), &parsed); err != nil {
+			t.Fatalf("unmarshal: %v body=%s", err, rec.Body.String())
+		}
+		if parsed.Status != "failed" {
+			t.Fatalf("expected status=failed, got %q", parsed.Status)
+		}
+		if parsed.OPAVerified {
+			t.Fatal("expected opa_verified=false for unsigned reload")
+		}
+		if parsed.OPAVerificationMode != "ed25519" {
+			t.Fatalf("expected opa_verification_mode=ed25519, got %q", parsed.OPAVerificationMode)
+		}
+		if !parsed.OPARejected {
+			t.Fatal("expected opa_rejected=true for unsigned reload")
+		}
+		if !strings.Contains(parsed.Error, "policy attestation failed") {
+			t.Fatalf("expected policy attestation error, got %q", parsed.Error)
+		}
+		if parsed.OPARejectionReason == "" {
+			t.Fatal("expected OPA rejection reason to be surfaced")
+		}
+
+		auditor.Flush()
+		raw, err := os.ReadFile(auditPath)
+		if err != nil {
+			t.Fatalf("read audit log: %v", err)
+		}
+		if !strings.Contains(string(raw), "\"action\":\"policy.opa.reload\"") {
+			t.Fatalf("expected policy.opa.reload audit event, got %s", string(raw))
+		}
+		if !strings.Contains(string(raw), "status=rejected verified=false attestation_mode=ed25519 rejected=true") {
+			t.Fatalf("expected rejected audit result, got %s", string(raw))
+		}
+	})
 }
 
 // ---- RFA-bci: SPIKE key fetch and dual-mode endpoint switching tests ----
@@ -4310,10 +4538,10 @@ func TestGateway_SPIKEKeyFetch_POCRedeemer_FallsBackToEnv(t *testing.T) {
 	}
 }
 
-// TestGateway_DualModeEndpointSwitching_MockToReal verifies that when a
-// guardAPIKey is available and the endpoint contains "mock-guard-model",
-// the endpoint is switched to the real Groq API.
-func TestGateway_DualModeEndpointSwitching_MockToReal(t *testing.T) {
+// TestGateway_DualModeEndpointSwitching_EnvKeyStaysOnMock verifies that an
+// environment-provided demo key does not silently switch a mock endpoint to
+// real Groq egress.
+func TestGateway_DualModeEndpointSwitching_EnvKeyStaysOnMock(t *testing.T) {
 	cfg := &Config{
 		Port:                   9090,
 		UpstreamURL:            "http://localhost:8080",
@@ -4334,9 +4562,8 @@ func TestGateway_DualModeEndpointSwitching_MockToReal(t *testing.T) {
 	}
 	defer func() { _ = gw.Close() }()
 
-	// After init, cfg.GuardModelEndpoint should have been switched to real Groq
-	if cfg.GuardModelEndpoint != "https://api.groq.com/openai/v1" {
-		t.Errorf("expected endpoint switched to real Groq API, got %q", cfg.GuardModelEndpoint)
+	if cfg.GuardModelEndpoint != "http://mock-guard-model:8080/openai/v1" {
+		t.Errorf("expected mock endpoint to remain unchanged, got %q", cfg.GuardModelEndpoint)
 	}
 }
 
@@ -4700,4 +4927,45 @@ func TestGateway_InitOrder_SpikeRedeemerBeforeGuardClient(t *testing.T) {
 	if gw.deepScanner == nil {
 		t.Error("deepScanner should be initialized")
 	}
+}
+
+func TestShouldFetchGuardAPIKeyFromSPIKE(t *testing.T) {
+	t.Run("disabled without nexus url", func(t *testing.T) {
+		if shouldFetchGuardAPIKeyFromSPIKE(&Config{GuardModelEndpoint: "https://api.groq.com/openai/v1"}) {
+			t.Fatal("expected fetch to be disabled when SPIKE nexus URL is not configured")
+		}
+	})
+
+	t.Run("disabled for mock guard endpoint", func(t *testing.T) {
+		cfg := &Config{
+			SPIKENexusURL:      "https://spike-nexus:8443",
+			GuardModelEndpoint: "http://mock-guard-model:8080/openai/v1",
+			GuardAPIKey:        "demo-guard-key",
+		}
+		if shouldFetchGuardAPIKeyFromSPIKE(cfg) {
+			t.Fatal("expected fetch to be disabled for mock guard endpoint")
+		}
+		if reason := guardAPIKeyFetchSkipReason(cfg); reason != "mock_guard_model_endpoint" {
+			t.Fatalf("expected mock skip reason, got %q", reason)
+		}
+	})
+
+	t.Run("enabled for real guard endpoint", func(t *testing.T) {
+		cfg := &Config{
+			SPIKENexusURL:      "https://spike-nexus:8443",
+			GuardModelEndpoint: "https://api.groq.com/openai/v1",
+		}
+		if !shouldFetchGuardAPIKeyFromSPIKE(cfg) {
+			t.Fatal("expected fetch to be enabled for real guard endpoint")
+		}
+	})
+
+	t.Run("switch to real endpoint only after SPIKE load", func(t *testing.T) {
+		if !shouldSwitchGuardModelEndpointToReal(true, "real-key", "http://mock-guard-model:8080/openai/v1") {
+			t.Fatal("expected SPIKE-loaded key to allow explicit switch from mock to real endpoint")
+		}
+		if shouldSwitchGuardModelEndpointToReal(false, "demo-guard-key", "http://mock-guard-model:8080/openai/v1") {
+			t.Fatal("expected env/demo key to stay on mock endpoint")
+		}
+	})
 }

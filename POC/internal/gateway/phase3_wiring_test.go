@@ -29,7 +29,7 @@ func TestV24RuntimeDispatch_WiresAllEntrypointFamilies(t *testing.T) {
 
 		// Connector authority runtime entrypoints
 		{name: "connector report", dispatch: "connector", method: http.MethodGet, path: "/v1/connectors/report", mustMatch: http.StatusOK},
-		{name: "connector status", dispatch: "connector", method: http.MethodGet, path: "/v1/connectors/status?connector_id=compose-webhook", mustMatch: http.StatusOK},
+		{name: "connector status missing", dispatch: "connector", method: http.MethodGet, path: "/v1/connectors/status?connector_id=missing-connector", mustMatch: http.StatusNotFound},
 
 		// v2.4 admin runtime entrypoints
 		{name: "ruleops summary", dispatch: "admin", method: http.MethodGet, path: "/admin/dlp/rulesets", mustMatch: http.StatusOK},

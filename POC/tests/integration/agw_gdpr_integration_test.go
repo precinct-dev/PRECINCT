@@ -13,8 +13,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 func TestAgwGDPRDeleteIntegration_CreateDeleteVerifyLifecycle(t *testing.T) {
@@ -22,14 +20,8 @@ func TestAgwGDPRDeleteIntegration_CreateDeleteVerifyLifecycle(t *testing.T) {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
 
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-	keydbURL := getEnvOrDefault("AGW_KEYDB_URL", "redis://localhost:6379")
-	opt, err := redis.ParseURL(keydbURL)
-	if err != nil {
-		t.Fatalf("parse keydb url: %v", err)
-	}
-	rdb := redis.NewClient(opt)
-	t.Cleanup(func() { _ = rdb.Close() })
+	spiffeID := "spiffe://poc.local/agents/mcp-client/gdpr-delete-researcher/dev"
+	keydbURL := integrationKeyDBURL()
 
 	sessionID := "gdpr-delete-int-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	sessionKey := "session:" + spiffeID + ":" + sessionID
@@ -37,18 +29,10 @@ func TestAgwGDPRDeleteIntegration_CreateDeleteVerifyLifecycle(t *testing.T) {
 	tokensKey := "ratelimit:" + spiffeID + ":tokens"
 	lastFillKey := "ratelimit:" + spiffeID + ":last_fill"
 
-	if err := rdb.Set(t.Context(), sessionKey, `{"RiskScore":0.33}`, 10*time.Minute).Err(); err != nil {
-		t.Fatalf("seed session: %v", err)
-	}
-	if err := rdb.RPush(t.Context(), actionsKey, `{"tool":"tavily_search"}`).Err(); err != nil {
-		t.Fatalf("seed session actions: %v", err)
-	}
-	if err := rdb.Set(t.Context(), tokensKey, "12.0", 10*time.Minute).Err(); err != nil {
-		t.Fatalf("seed tokens: %v", err)
-	}
-	if err := rdb.Set(t.Context(), lastFillKey, strconv.FormatInt(time.Now().UnixNano(), 10), 10*time.Minute).Err(); err != nil {
-		t.Fatalf("seed last fill: %v", err)
-	}
+	keydbSetValue(t, sessionKey, `{"RiskScore":0.33}`, 10*time.Minute)
+	keydbRPushValues(t, actionsKey, `{"tool":"tavily_search"}`)
+	keydbSetValue(t, tokensKey, "12.0", 10*time.Minute)
+	keydbSetValue(t, lastFillKey, strconv.FormatInt(time.Now().UnixNano(), 10), 10*time.Minute)
 
 	// Create a live audit entry for the SPIFFE identity.
 	_ = postGatewayRPCMethod(t, spiffeID, "tool_does_not_exist_for_gdpr_delete_integration", map[string]any{
@@ -114,11 +98,11 @@ func TestAgwGDPRDeleteIntegration_CreateDeleteVerifyLifecycle(t *testing.T) {
 		t.Fatalf("expected audit category to be marked_deleted: %+v", report.Categories)
 	}
 
-	if exists, err := rdb.Exists(t.Context(), sessionKey, actionsKey).Result(); err != nil || exists != 0 {
-		t.Fatalf("expected subject session keys deleted, exists=%d err=%v", exists, err)
+	if exists := keydbExists(t, sessionKey, actionsKey); exists != 0 {
+		t.Fatalf("expected subject session keys deleted, exists=%d", exists)
 	}
-	if exists, err := rdb.Exists(t.Context(), tokensKey, lastFillKey).Result(); err != nil || exists != 0 {
-		t.Fatalf("expected subject ratelimit keys deleted, exists=%d err=%v", exists, err)
+	if exists := keydbExists(t, tokensKey, lastFillKey); exists != 0 {
+		t.Fatalf("expected subject ratelimit keys deleted, exists=%d", exists)
 	}
 }
 
@@ -127,14 +111,8 @@ func TestAgwGDPRAuditIntegration_ExportsCompleteDSARPackage(t *testing.T) {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
 
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-	keydbURL := getEnvOrDefault("AGW_KEYDB_URL", "redis://localhost:6379")
-	opt, err := redis.ParseURL(keydbURL)
-	if err != nil {
-		t.Fatalf("parse keydb url: %v", err)
-	}
-	rdb := redis.NewClient(opt)
-	t.Cleanup(func() { _ = rdb.Close() })
+	spiffeID := "spiffe://poc.local/agents/mcp-client/gdpr-audit-researcher/dev"
+	keydbURL := integrationKeyDBURL()
 
 	sessionID := "gdpr-audit-int-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	sessionKey := "session:" + spiffeID + ":" + sessionID
@@ -142,18 +120,10 @@ func TestAgwGDPRAuditIntegration_ExportsCompleteDSARPackage(t *testing.T) {
 	tokensKey := "ratelimit:" + spiffeID + ":tokens"
 	lastFillKey := "ratelimit:" + spiffeID + ":last_fill"
 
-	if err := rdb.Set(t.Context(), sessionKey, `{"RiskScore":0.27}`, 10*time.Minute).Err(); err != nil {
-		t.Fatalf("seed session: %v", err)
-	}
-	if err := rdb.RPush(t.Context(), actionsKey, `{"tool":"tavily_search"}`, `{"tool":"read"}`).Err(); err != nil {
-		t.Fatalf("seed session actions: %v", err)
-	}
-	if err := rdb.Set(t.Context(), tokensKey, "15.0", 10*time.Minute).Err(); err != nil {
-		t.Fatalf("seed tokens: %v", err)
-	}
-	if err := rdb.Set(t.Context(), lastFillKey, strconv.FormatInt(time.Now().UnixNano(), 10), 10*time.Minute).Err(); err != nil {
-		t.Fatalf("seed last fill: %v", err)
-	}
+	keydbSetValue(t, sessionKey, `{"RiskScore":0.27}`, 10*time.Minute)
+	keydbRPushValues(t, actionsKey, `{"tool":"tavily_search"}`, `{"tool":"read"}`)
+	keydbSetValue(t, tokensKey, "15.0", 10*time.Minute)
+	keydbSetValue(t, lastFillKey, strconv.FormatInt(time.Now().UnixNano(), 10), 10*time.Minute)
 
 	_ = postGatewayRPCMethod(t, spiffeID, "tavily_search", map[string]any{"query": "gdpr-audit-dsar-integration"})
 	time.Sleep(400 * time.Millisecond)

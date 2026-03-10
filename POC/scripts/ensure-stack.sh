@@ -24,6 +24,32 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+host_port_reachable() {
+  local port="$1"
+  (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1
+}
+
+ensure_host_access() {
+  local gateway_recreated=0
+
+  if ! host_port_reachable 6379; then
+    echo "WARN: KeyDB host port 6379 is not reachable. Integration tests will fall back to compose://keydb."
+  fi
+
+  if ! host_port_reachable 9090; then
+    echo "Gateway host port 9090 is not reachable. Recreating mcp-security-gateway to restore host access..."
+    docker compose up -d --force-recreate mcp-security-gateway >/dev/null
+    gateway_recreated=1
+  fi
+
+  if [ "$gateway_recreated" -eq 1 ]; then
+    if ! bash "$SCRIPT_DIR/compose-health-check.sh"; then
+      echo "ERROR: services are not healthy after host-access recovery."
+      exit 1
+    fi
+  fi
+}
+
 # Step 1: Ensure phoenix network exists
 if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
   echo "Phoenix network not found. Running make phoenix-up..."
@@ -32,6 +58,7 @@ fi
 
 # Step 2: Check service health
 if bash "$SCRIPT_DIR/compose-health-check.sh"; then
+  ensure_host_access
   echo "Core services already running and healthy. Skipping make up."
   exit 0
 fi
@@ -50,3 +77,5 @@ else
     echo "Services are healthy despite make up non-zero; continuing."
   fi
 fi
+
+ensure_host_access

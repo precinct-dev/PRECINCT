@@ -55,7 +55,7 @@ append_unique() {
   local arr_name="$2"
   local current=()
   # bash 3.2 compatible indirection for arrays
-  eval "current=(\"\${${arr_name}[@]}\")"
+  eval "current=(\"\${${arr_name}[@]-}\")"
   if ! array_contains "${value}" "${current[@]:-}"; then
     eval "${arr_name}+=(\"\${value}\")"
   fi

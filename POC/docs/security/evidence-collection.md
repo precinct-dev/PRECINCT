@@ -101,7 +101,7 @@ Rationale:
 
 - Workflows are manual-only to prevent automatic runner usage.
 - Equivalent quality/safety gates are executed locally via make targets and demo scripts.
-- `readiness-state-validate` remains an operator control because it requires live `bd` state access.
+- `readiness-state-validate` remains an operator control because it requires live `nd` state access.
 
 ## Failure Semantics
 

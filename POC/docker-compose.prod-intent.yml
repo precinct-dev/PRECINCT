@@ -30,11 +30,136 @@ services:
     build: null
     image: ${PROD_SPIKE_NEXUS_IMAGE:?PROD_SPIKE_NEXUS_IMAGE must be set (digest-pinned)}
     pull_policy: always
+    depends_on: !override
+      spire-entry-registrar:
+        condition: service_completed_successfully
+      spike-keeper-1:
+        condition: service_healthy
+      spike-keeper-2:
+        condition: service_healthy
+      spike-keeper-3:
+        condition: service_healthy
+    environment: !override
+      SPIKE_NEXUS_TLS_PORT: ":8443"
+      SPIKE_NEXUS_BACKEND_STORE: sqlite
+      SPIKE_NEXUS_DATA_DIR: /opt/spike/data
+      SPIKE_NEXUS_KEEPER_PEERS: "${PROD_SPIKE_NEXUS_KEEPER_PEERS:-https://spike-keeper-1:8443,https://spike-keeper-2:8443,https://spike-keeper-3:8443}"
+      SPIKE_NEXUS_SHAMIR_THRESHOLD: "${PROD_SPIKE_NEXUS_SHAMIR_THRESHOLD:-2}"
+      SPIKE_NEXUS_SHAMIR_SHARES: "${PROD_SPIKE_NEXUS_SHAMIR_SHARES:-3}"
+      SPIKE_NEXUS_KEEPER_UPDATE_INTERVAL: 5s
+      SPIKE_SYSTEM_LOG_LEVEL: INFO
+      SPIKE_TRUST_ROOT: poc.local
+      SPIKE_TRUST_ROOT_NEXUS: poc.local
+      SPIKE_TRUST_ROOT_PILOT: poc.local
+      SPIKE_TRUST_ROOT_BOOTSTRAP: poc.local
+      SPIKE_TRUST_ROOT_KEEPER: poc.local
+      SPIKE_TRUST_ROOT_LITE_WORKLOAD: poc.local
+      SPIFFE_ENDPOINT_SOCKET: unix:///tmp/spire-agent/public/api.sock
+      HEALTHCHECK_URL: https://127.0.0.1:8443/
 
   spike-keeper-1:
     build: null
     image: ${PROD_SPIKE_KEEPER_IMAGE:?PROD_SPIKE_KEEPER_IMAGE must be set (digest-pinned)}
     pull_policy: always
+
+  spike-keeper-2:
+    image: ${PROD_SPIKE_KEEPER_IMAGE:?PROD_SPIKE_KEEPER_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+    container_name: spike-keeper-2
+    hostname: spike-keeper-2
+    depends_on:
+      spire-entry-registrar:
+        condition: service_completed_successfully
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+    environment:
+      - SPIKE_KEEPER_TLS_PORT=:8443
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_KEEPER=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+      - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
+      - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
+      - SPIKE_SYSTEM_LOG_LEVEL=INFO
+      - HEALTHCHECK_ADDR=127.0.0.1:8443
+    networks:
+      - secrets-plane
+    labels:
+      - "spiffe-id=spike-keeper-2"
+      - "component=secrets"
+      - "service=spike"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: "no"
+
+  spike-keeper-3:
+    image: ${PROD_SPIKE_KEEPER_IMAGE:?PROD_SPIKE_KEEPER_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+    container_name: spike-keeper-3
+    hostname: spike-keeper-3
+    depends_on:
+      spire-entry-registrar:
+        condition: service_completed_successfully
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+    environment:
+      - SPIKE_KEEPER_TLS_PORT=:8443
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_KEEPER=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+      - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
+      - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
+      - SPIKE_SYSTEM_LOG_LEVEL=INFO
+      - HEALTHCHECK_ADDR=127.0.0.1:8443
+    networks:
+      - secrets-plane
+    labels:
+      - "spiffe-id=spike-keeper-3"
+      - "component=secrets"
+      - "service=spike"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: "no"
+
+  spike-bootstrap:
+    depends_on: !override
+      spire-entry-registrar:
+        condition: service_completed_successfully
+      spike-keeper-1:
+        condition: service_healthy
+      spike-keeper-2:
+        condition: service_healthy
+      spike-keeper-3:
+        condition: service_healthy
+      spike-nexus:
+        condition: service_started
+    environment: !override
+      SPIFFE_ENDPOINT_SOCKET: unix:///tmp/spire-agent/public/api.sock
+      SPIKE_NEXUS_API_URL: https://spike-nexus:8443
+      SPIKE_NEXUS_KEEPER_PEERS: "${PROD_SPIKE_NEXUS_KEEPER_PEERS:-https://spike-keeper-1:8443,https://spike-keeper-2:8443,https://spike-keeper-3:8443}"
+      SPIKE_NEXUS_SHAMIR_THRESHOLD: "${PROD_SPIKE_NEXUS_SHAMIR_THRESHOLD:-2}"
+      SPIKE_NEXUS_SHAMIR_SHARES: "${PROD_SPIKE_NEXUS_SHAMIR_SHARES:-3}"
+      SPIKE_TRUST_ROOT: poc.local
+      SPIKE_TRUST_ROOT_NEXUS: poc.local
+      SPIKE_TRUST_ROOT_PILOT: poc.local
+      SPIKE_TRUST_ROOT_BOOTSTRAP: poc.local
+      SPIKE_TRUST_ROOT_KEEPER: poc.local
+      SPIKE_TRUST_ROOT_LITE_WORKLOAD: poc.local
+      SPIKE_SYSTEM_LOG_LEVEL: DEBUG
+      BOOTSTRAP_TIMEOUT: "30"
 
   mock-mcp-server:
     build: null

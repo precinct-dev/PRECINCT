@@ -107,19 +107,31 @@ make opensearch-seed
 
 OpenSearch Dashboards is available at `http://localhost:5601`.
 
-## Git Hooks (beads)
+## Git Hooks (historical beads compatibility)
 
-The repo includes a root `.beads` symlink to `POC/.beads` so `bd` git hooks can
-resolve the beads database when commits are made from subdirectories.
+`nd` is the canonical tracker for current work. The repo still carries a root
+`.beads` symlink to `POC/.beads` only for historical hook compatibility when
+inspecting older automation or archived branches that still reference `bd`.
 
-If you ever see a pre-commit warning about a missing beads database, treat it as
+If you ever see a pre-commit warning about a missing historical beads database, treat it as
 a warning (not a failed commit) and set:
 
 ```bash
-export BEADS_DIR=.beads
+export BEADS_DIR=.beads  # historical compatibility only
 ```
 
 from the repository root before committing.
+
+For current delivery workflow, prefer:
+
+```bash
+nd ready
+nd show <story-id>
+nd update <story-id> --status=in_progress
+nd update <story-id> --append-notes "<nd_contract block>"
+make story-evidence-validate STORY_ID=<story-id>
+make tracker-surface-validate
+```
 
 
 ## Directory Structure
@@ -152,7 +164,11 @@ scripts/                  Setup and operational scripts
 | **Core** | |
 | `make up` | Start Docker Compose stack (waits for all services healthy) |
 | `make down` | Stop Docker Compose stack |
-| `make test` | Run all tests (unit + OPA) |
+| `make test` | Run all tests (unit + tagged integration + OPA) |
+| `make test-unit` | Run unit tests (Go packages + non-tagged suites) |
+| `make test-integration` | Run tagged integration tests against an ensured local stack |
+| `make test-opa` | Run OPA policy tests |
+| `make test-e2e` | Run the full E2E demo suite (Compose + K8s) |
 | `make lint` | Run linters (golangci-lint or go fmt/vet) |
 | `make clean` | Full cleanup (containers, volumes, build artifacts, logs) |
 | `make logs` | Tail gateway logs |
@@ -183,6 +199,8 @@ scripts/                  Setup and operational scripts
 | **CI / Quality** | |
 | `make ci` | Full CI pipeline (lint + test + build) |
 | `make security-scan` | Run security scans (gosec, trivy) |
+| `make story-evidence-validate STORY_ID=<id>` | Validate `POC/` evidence paths referenced in an `nd` story |
+| `make tracker-surface-validate` | Audit active release workflow surfaces for stale non-archival `bd`/beads references |
 | `make benchmark` | Run performance benchmarks (Go microbenchmarks + load test) |
 | **Compliance** | |
 | `make compliance-report` | Generate SOC2/ISO27001/NIST compliance report |

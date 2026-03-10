@@ -81,6 +81,7 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"keydb_url",
 			"enforce_model_mediation_gate",
 			"approval_signing_key",
+			"admin_authz_allowed_spiffe_ids",
 			"tool_registry_config_path",
 			"tool_registry_public_key",
 			"model_provider_catalog_path",
@@ -108,6 +109,7 @@ var enforcementProfileCatalog = map[string]enforcementProfileDefinition{
 			"enforce_model_mediation_gate",
 			"enforce_hipaa_prompt_safety_gate",
 			"approval_signing_key",
+			"admin_authz_allowed_spiffe_ids",
 			"tool_registry_config_path",
 			"tool_registry_public_key",
 			"model_provider_catalog_path",
@@ -199,11 +201,17 @@ func resolveEnforcementProfile(cfg *Config) (*enforcementProfileRuntime, error) 
 		if strings.TrimSpace(cfg.ToolRegistryConfigPath) == "" {
 			violations = append(violations, "tool_registry_config_path must be set in strict profiles")
 		}
+		if len(normalizeAdminAuthzAllowlist(cfg.AdminAuthzAllowedSPIFFEIDs)) == 0 {
+			violations = append(violations, "admin_authz_allowed_spiffe_ids must be set in strict profiles")
+		}
 		if strings.TrimSpace(cfg.KeyDBURL) == "" {
 			violations = append(violations, "keydb_url must be set in strict profiles")
 		}
 		if strings.TrimSpace(cfg.ToolRegistryPublicKey) == "" {
 			violations = append(violations, "tool_registry_public_key must be set in strict profiles")
+		}
+		if strings.TrimSpace(cfg.OPAPolicyPublicKey) == "" {
+			violations = append(violations, "opa_policy_public_key must be set in strict profiles")
 		}
 		if strings.TrimSpace(cfg.ModelProviderCatalogPath) == "" {
 			violations = append(violations, "model_provider_catalog_path must be set in strict profiles")

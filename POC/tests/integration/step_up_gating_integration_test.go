@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 )
@@ -26,9 +27,10 @@ func TestStepUpGating_LowRiskTool_FastPath(t *testing.T) {
 	sessionID := GenerateTestSessionID()
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	// read tool is low risk -> should fast-path (no step-up)
+	// read tool is low risk -> should fast-path (no step-up) when the path is
+	// valid in the live container runtime.
 	body := createMCPRequest("read", map[string]interface{}{
-		"file_path": "/tmp/test.txt",
+		"file_path": "/app/gateway",
 	})
 
 	resp := sendRequest(t, client, gatewayURL, spiffeID, sessionID, body)
@@ -38,7 +40,7 @@ func TestStepUpGating_LowRiskTool_FastPath(t *testing.T) {
 	// May be 502 (upstream unavailable in test) or 200 (proxied), but NOT 403
 	if resp.StatusCode == http.StatusForbidden {
 		respBody, _ := io.ReadAll(resp.Body)
-		t.Errorf("Low-risk tool should NOT be blocked by step-up gating, got 403: %s", string(respBody))
+		t.Fatalf("low-risk tool should not be blocked in the live runtime, got 403: %s", string(respBody))
 	}
 	t.Logf("Low-risk read tool: status %d (expected not 403)", resp.StatusCode)
 }
@@ -49,7 +51,9 @@ func TestStepUpGating_CriticalTool_Blocked(t *testing.T) {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
 
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	// Use the gateway identity so the request reaches step-up gating instead of
+	// being denied earlier by OPA tool authorization.
+	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
 	sessionID := GenerateTestSessionID()
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -58,28 +62,38 @@ func TestStepUpGating_CriticalTool_Blocked(t *testing.T) {
 		"command": "ls -la /tmp",
 	})
 
-	resp := sendRequest(t, client, gatewayURL, spiffeID, sessionID, body)
+	req, err := http.NewRequest(http.MethodPost, gatewayURL, bytes.NewBuffer(body))
+	if err != nil {
+		t.Fatalf("Failed to create request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", spiffeID)
+	req.Header.Set("X-Session-ID", sessionID)
+	req.Header.Set("X-Step-Up-Token", "valid-step-up-token-12345")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("Request failed: %v", err)
+	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Errorf("Critical tool should be blocked with 403, got %d", resp.StatusCode)
 	}
 
-	// Verify response body contains step-up gating information
+	// Verify response body contains the current v24 step-up envelope.
 	respBody, _ := io.ReadAll(resp.Body)
 	var respJSON map[string]interface{}
 	if err := json.Unmarshal(respBody, &respJSON); err == nil {
-		reason, _ := respJSON["reason"].(string)
-		t.Logf("Critical tool blocked: reason=%q", reason)
-
-		// Should indicate approval required or denied
-		if reason != "human approval required" && reason != "risk score exceeds maximum threshold - denied by default" {
-			t.Logf("Warning: unexpected reason %q (expected 'human approval required' or deny)", reason)
+		code := trimmedStringField(respJSON["code"])
+		if code != "stepup_approval_required" && code != "stepup_denied" {
+			t.Fatalf("expected step-up denial code, got %q body=%s", code, string(respBody))
 		}
-
-		// Verify risk breakdown is present
-		if _, ok := respJSON["risk_breakdown"]; ok {
-			t.Log("Risk breakdown present in response")
+		if middleware, _ := respJSON["middleware"].(string); middleware != "step_up_gating" {
+			t.Fatalf("expected middleware=step_up_gating, got %q body=%s", middleware, string(respBody))
+		}
+		if details := responseDetails(respJSON); len(details) == 0 {
+			t.Fatalf("expected nested details object in step-up response, got body=%s", string(respBody))
 		}
 	}
 }
@@ -110,10 +124,10 @@ func TestStepUpGating_DisallowedDestination_Blocked(t *testing.T) {
 	respBody, _ := io.ReadAll(resp.Body)
 	var respJSON map[string]interface{}
 	if err := json.Unmarshal(respBody, &respJSON); err == nil {
-		reason, _ := respJSON["reason"].(string)
-		t.Logf("Disallowed destination blocked: reason=%q", reason)
-		if reason != "destination not allowed" {
-			t.Logf("Note: blocked for different reason than 'destination not allowed': %q (may be in higher risk band)", reason)
+		code := trimmedStringField(respJSON["code"])
+		t.Logf("Disallowed destination blocked: code=%q", code)
+		if code != "stepup_destination_blocked" {
+			t.Logf("Note: blocked with code %q instead of stepup_destination_blocked", code)
 		}
 	}
 }
@@ -142,12 +156,12 @@ func TestStepUpGating_AllowedDestination_Passes(t *testing.T) {
 		respBody, _ := io.ReadAll(resp.Body)
 		var respJSON map[string]interface{}
 		if err := json.Unmarshal(respBody, &respJSON); err == nil {
-			reason, _ := respJSON["reason"].(string)
+			code := trimmedStringField(respJSON["code"])
 			// Only fail if blocked by step-up, not by OPA or other middleware
-			if reason == "destination not allowed" || reason == "human approval required" {
-				t.Errorf("Allowed destination should NOT be blocked by step-up: reason=%q", reason)
+			if code == "stepup_destination_blocked" || code == "stepup_approval_required" || code == "stepup_denied" {
+				t.Errorf("Allowed destination should NOT be blocked by step-up: code=%q", code)
 			} else {
-				t.Logf("Blocked by other middleware (not step-up): reason=%q, status=%d", reason, resp.StatusCode)
+				t.Logf("Blocked by other middleware (not step-up): code=%q, status=%d", code, resp.StatusCode)
 			}
 		}
 	}
@@ -196,14 +210,14 @@ func TestStepUpGating_RiskScoreComputation(t *testing.T) {
 		{
 			name:        "ReadTool_LowRisk",
 			tool:        "read",
-			params:      map[string]interface{}{"file_path": "/tmp/test.txt"},
+			params:      map[string]interface{}{"file_path": "/app/gateway"},
 			expect403:   false,
 			description: "read tool (low risk) should not be blocked",
 		},
 		{
 			name:        "GrepTool_LowRisk",
 			tool:        "grep",
-			params:      map[string]interface{}{"pattern": "test", "path": "/tmp"},
+			params:      map[string]interface{}{"pattern": "test", "path": "/app"},
 			expect403:   false,
 			description: "grep tool (low risk) should not be blocked",
 		},
@@ -239,7 +253,7 @@ func TestStepUpGating_RiskScoreComputation(t *testing.T) {
 				respBody, _ := io.ReadAll(resp.Body)
 				var respJSON map[string]interface{}
 				if err := json.Unmarshal(respBody, &respJSON); err == nil {
-					if breakdown, ok := respJSON["risk_breakdown"].(map[string]interface{}); ok {
+					if breakdown, ok := responseDetails(respJSON)["risk_breakdown"].(map[string]interface{}); ok {
 						// Verify all 4 dimensions are present
 						for _, dim := range []string{"impact", "reversibility", "exposure", "novelty"} {
 							if _, exists := breakdown[dim]; !exists {
@@ -249,7 +263,7 @@ func TestStepUpGating_RiskScoreComputation(t *testing.T) {
 						t.Logf("Risk breakdown: %v", breakdown)
 					}
 
-					if score, ok := respJSON["risk_score"].(float64); ok {
+					if score, ok := responseDetails(respJSON)["risk_score"].(float64); ok {
 						t.Logf("Total risk score: %.0f", score)
 					}
 				}
@@ -258,12 +272,12 @@ func TestStepUpGating_RiskScoreComputation(t *testing.T) {
 					respBody, _ := io.ReadAll(resp.Body)
 					var respJSON map[string]interface{}
 					if err := json.Unmarshal(respBody, &respJSON); err == nil {
-						reason, _ := respJSON["reason"].(string)
+						code := trimmedStringField(respJSON["code"])
 						// Only fail if blocked by step-up gating specifically
-						if reason == "destination not allowed" ||
-							reason == "human approval required" ||
-							reason == "risk score exceeds maximum threshold - denied by default" {
-							t.Errorf("%s: blocked by step-up gating with reason: %q", tt.description, reason)
+						if code == "stepup_destination_blocked" ||
+							code == "stepup_approval_required" ||
+							code == "stepup_denied" {
+							t.Errorf("%s: blocked by step-up gating with code: %q", tt.description, code)
 						}
 					}
 				}
@@ -279,13 +293,17 @@ func TestStepUpGating_ResponseFormat(t *testing.T) {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
 
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	// Use the gateway identity plus a synthetic step-up token so the request
+	// reaches the step-up gate itself instead of being stopped earlier by OPA's
+	// step_up_required precondition.
+	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
 	sessionID := GenerateTestSessionID()
 	client := &http.Client{Timeout: 5 * time.Second}
 
-	// Use a tool that will definitely be blocked (critical)
+	// A critical tool with only a synthetic step-up token should return the
+	// current v24 step-up error envelope from middleware step 9.
 	body := createMCPRequest("bash", map[string]interface{}{
-		"command": "cat /etc/passwd",
+		"command": "ls",
 	})
 
 	req, err := http.NewRequest("POST", gatewayURL, bytes.NewBuffer(body))
@@ -295,6 +313,7 @@ func TestStepUpGating_ResponseFormat(t *testing.T) {
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-SPIFFE-ID", spiffeID)
 	req.Header.Set("X-Session-ID", sessionID)
+	req.Header.Set("X-Step-Up-Token", "valid-step-up-token-12345")
 
 	resp, err := client.Do(req)
 	if err != nil {
@@ -312,24 +331,126 @@ func TestStepUpGating_ResponseFormat(t *testing.T) {
 		t.Fatalf("Response is not valid JSON: %v\nBody: %s", err, string(respBody))
 	}
 
-	// Verify required fields
-	requiredFields := []string{"error", "reason", "gate", "risk_score", "risk_breakdown"}
+	// Verify the current v24 error envelope shape.
+	requiredFields := []string{"code", "message", "middleware", "middleware_step", "details"}
 	for _, field := range requiredFields {
 		if _, ok := respJSON[field]; !ok {
 			t.Errorf("Missing required field %q in response", field)
 		}
 	}
 
-	// Verify risk_breakdown has 4 dimensions
-	if breakdown, ok := respJSON["risk_breakdown"].(map[string]interface{}); ok {
+	if code, _ := respJSON["code"].(string); code != "stepup_approval_required" && code != "stepup_denied" {
+		t.Errorf("Expected step-up denial code, got %q", code)
+	}
+	if middlewareName, _ := respJSON["middleware"].(string); middlewareName != "step_up_gating" {
+		t.Errorf("Expected middleware=step_up_gating, got %q", middlewareName)
+	}
+
+	details, ok := respJSON["details"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("details is not a valid object: %s", string(respBody))
+	}
+	if gate, _ := details["gate"].(string); gate == "" {
+		t.Errorf("Expected non-empty details.gate, got %+v", details)
+	}
+	if _, ok := details["risk_score"].(float64); !ok {
+		t.Errorf("Expected numeric details.risk_score, got %+v", details["risk_score"])
+	}
+
+	// Verify details.risk_breakdown has 4 dimensions.
+	if breakdown, ok := details["risk_breakdown"].(map[string]interface{}); ok {
 		for _, dim := range []string{"impact", "reversibility", "exposure", "novelty"} {
 			if _, exists := breakdown[dim]; !exists {
-				t.Errorf("Missing dimension %q in risk_breakdown", dim)
+				t.Errorf("Missing dimension %q in details.risk_breakdown", dim)
 			}
 		}
 	} else {
-		t.Error("risk_breakdown is not a valid object")
+		t.Error("details.risk_breakdown is not a valid object")
 	}
 
 	t.Logf("Response format verified: %s", string(respBody))
+}
+
+// TestStepUpGating_EscalationSessionPersists verifies that repeated requests with
+// the same X-Session-ID accumulate escalation state through the live gateway.
+func TestStepUpGating_EscalationSessionPersists(t *testing.T) {
+	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
+		t.Fatalf("Gateway not ready: %v", err)
+	}
+
+	spiffeID := "spiffe://poc.local/owner/alice"
+	sessionID := GenerateTestSessionID()
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	call := func(t *testing.T, args map[string]interface{}) (int, map[string]interface{}, string) {
+		t.Helper()
+		body := createMCPRequest("tools/call", map[string]interface{}{
+			"name":      "tavily_search",
+			"arguments": args,
+		})
+		resp := sendRequest(t, client, gatewayURL, spiffeID, sessionID, body)
+		defer resp.Body.Close()
+
+		respBody, _ := io.ReadAll(resp.Body)
+		var parsed map[string]interface{}
+		_ = json.Unmarshal(respBody, &parsed)
+		return resp.StatusCode, parsed, string(respBody)
+	}
+
+	status, _, raw := call(t, map[string]interface{}{
+		"query":  "read patient memory file",
+		"action": "read",
+	})
+	if status != http.StatusOK && status != http.StatusBadGateway {
+		t.Fatalf("S-ESC-1 expected 200/502, got %d body=%s", status, raw)
+	}
+
+	status, _, raw = call(t, map[string]interface{}{
+		"query": "redact names from patient memory",
+	})
+	if status != http.StatusOK && status != http.StatusBadGateway {
+		t.Fatalf("S-ESC-2 expected 200/502, got %d body=%s", status, raw)
+	}
+
+	status, parsed, raw := call(t, map[string]interface{}{
+		"query":  "delete old patient records permanently",
+		"action": "delete",
+	})
+	if status != http.StatusForbidden {
+		t.Fatalf("S-ESC-3 expected 403 after warning threshold, got %d body=%s", status, raw)
+	}
+	code := trimmedStringField(parsed["code"])
+	if code != "stepup_denied" && code != "stepup_approval_required" {
+		t.Fatalf("S-ESC-3 expected step-up denial code, got %q body=%s", code, raw)
+	}
+
+	status, _, raw = call(t, map[string]interface{}{
+		"query":  "read system status report",
+		"action": "read",
+	})
+	if status != http.StatusOK && status != http.StatusBadGateway {
+		t.Fatalf("S-ESC-5 expected 200/502 during critical escalation, got %d body=%s", status, raw)
+	}
+
+	status, parsed, raw = call(t, map[string]interface{}{
+		"query":  "shutdown all services immediately",
+		"action": "shutdown",
+	})
+	if status != http.StatusForbidden {
+		t.Fatalf("S-ESC-4 expected 403 at emergency escalation, got %d body=%s", status, raw)
+	}
+	code = trimmedStringField(parsed["code"])
+	if code != "stepup_denied" && code != "stepup_approval_required" {
+		t.Fatalf("S-ESC-4 expected step-up denial code, got %q body=%s", code, raw)
+	}
+}
+
+func trimmedStringField(v interface{}) string {
+	s, _ := v.(string)
+	return strings.TrimSpace(s)
+}
+
+func responseDetails(respJSON map[string]interface{}) map[string]interface{} {
+	details, _ := respJSON["details"].(map[string]interface{})
+	return details
 }

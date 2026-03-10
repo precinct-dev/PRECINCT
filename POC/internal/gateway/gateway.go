@@ -65,7 +65,7 @@ type Gateway struct {
 	dlpRuleOps                 *dlpRuleOpsManager                // RFA-owgw.7: DLP RuleOps lifecycle manager
 	cca                        *connectorConformanceAuthority    // RFA-l6h6.1.2: connector conformance authority
 	ingressReplayGuard         *ingressReplayGuard               // RFA-l6h6.2.2: ingress replay/freshness guard
-	ingressPolicy              *ingressPlanePolicyEngine          // OC-j9fj: canonical connector envelope policy engine
+	ingressPolicy              *ingressPlanePolicyEngine         // OC-j9fj: canonical connector envelope policy engine
 	extensionRegistry          *middleware.ExtensionRegistry     // pluggable extension slots
 	extensionRegistryStop      func()                            // stop function for extension registry fsnotify watcher
 	adminAuthzAllowedSPIFFEIDs map[string]struct{}               // explicit SPIFFE allowlist for /admin/* authorization
@@ -110,9 +110,17 @@ func New(cfg *Config) (*Gateway, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create auditor: %w", err)
 	}
-	opa, err := middleware.NewOPAEngine(cfg.OPAPolicyDir, middleware.OPAEngineConfig{
+	opaCfg := middleware.OPAEngineConfig{
 		AllowedBasePath: cfg.AllowedBasePath,
-	})
+	}
+	if keyPath := strings.TrimSpace(cfg.OPAPolicyPublicKey); keyPath != "" {
+		publicKeyPEM, readErr := os.ReadFile(keyPath)
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to read OPA policy public key: %w", readErr)
+		}
+		opaCfg.PolicyReloadPublicKeyPEM = publicKeyPEM
+	}
+	opa, err := middleware.NewOPAEngine(cfg.OPAPolicyDir, opaCfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create OPA engine: %w", err)
 	}
@@ -187,7 +195,9 @@ func New(cfg *Config) (*Gateway, error) {
 	// RFA-hgj fix: The retry loop explicitly logs when SPIKE returns an empty value
 	// (no error but empty secret.Value), which was previously silently ignored.
 	guardAPIKey := cfg.GuardAPIKey // env var fallback
-	if nexusRedeemer, ok := spikeRedeemer.(*middleware.SPIKENexusRedeemer); ok {
+	guardAPIKeyLoadedFromSPIKE := false
+	fetchGuardAPIKeyFromSPIKE := shouldFetchGuardAPIKeyFromSPIKE(cfg)
+	if nexusRedeemer, ok := spikeRedeemer.(*middleware.SPIKENexusRedeemer); ok && fetchGuardAPIKeyFromSPIKE {
 		const maxAttempts = 15
 		const retryDelay = 2 * time.Second
 		token := &middleware.SPIKEToken{Ref: "groq-api-key"}
@@ -199,6 +209,7 @@ func New(cfg *Config) (*Gateway, error) {
 
 			if err == nil && secret.Value != "" {
 				guardAPIKey = secret.Value
+				guardAPIKeyLoadedFromSPIKE = true
 				slog.Info("guard model API key loaded from SPIKE", "path", "groq-api-key", "attempt", attempt)
 				break
 			}
@@ -218,12 +229,14 @@ func New(cfg *Config) (*Gateway, error) {
 		if guardAPIKey == cfg.GuardAPIKey {
 			slog.Warn("failed to load guard model API key from SPIKE after all attempts, falling back to env", "attempts", maxAttempts)
 		}
+	} else if _, ok := spikeRedeemer.(*middleware.SPIKENexusRedeemer); ok {
+		slog.Info("skipping SPIKE guard key fetch", "reason", guardAPIKeyFetchSkipReason(cfg))
 	}
 
 	// RFA-bci: Dual-mode endpoint switching. When a real API key is available
 	// and the current endpoint points to the mock guard model, switch to the
 	// real Groq API endpoint so the guard model uses production inference.
-	if guardAPIKey != "" && strings.Contains(cfg.GuardModelEndpoint, "mock-guard-model") {
+	if shouldSwitchGuardModelEndpointToReal(guardAPIKeyLoadedFromSPIKE, guardAPIKey, cfg.GuardModelEndpoint) {
 		cfg.GuardModelEndpoint = "https://api.groq.com/openai/v1"
 		slog.Info("guard model endpoint switched to real Groq API")
 	}
@@ -502,11 +515,6 @@ func New(cfg *Config) (*Gateway, error) {
 		})
 	}
 
-	adminAllowlist := cfg.AdminAuthzAllowedSPIFFEIDs
-	if len(adminAllowlist) == 0 {
-		adminAllowlist = defaultAdminAuthzAllowedSPIFFEIDs()
-	}
-
 	breakGlassManager := newBreakGlassManager(auditor)
 	if distributedControlPlaneState && redisClient != nil {
 		breakGlassManager.enableDistributedState(newKeyDBBreakGlassStore(redisClient))
@@ -547,7 +555,7 @@ func New(cfg *Config) (*Gateway, error) {
 		cca:                        newConnectorConformanceAuthority(),
 		ingressReplayGuard:         newIngressReplayGuard(5*time.Minute, 15*time.Second),
 		ingressPolicy:              newIngressPlanePolicyEngine(),
-		adminAuthzAllowedSPIFFEIDs: normalizeAdminAuthzAllowlist(adminAllowlist),
+		adminAuthzAllowedSPIFFEIDs: normalizeAdminAuthzAllowlist(cfg.AdminAuthzAllowedSPIFFEIDs),
 		rlmEngine:                  newRLMGovernanceEngine(),
 	}, nil
 }
@@ -620,12 +628,12 @@ func (g *Gateway) Handler() http.Handler {
 		middleware.WithObservedHashFailClosed(failClosedObservedHash),
 		middleware.WithDataSourceVerification(httpDataSourceFetcher, dsPolicy),
 	) // 5
-	handler = middleware.AuditLog(handler, g.auditor)                                                // 4
+	handler = middleware.AuditLog(handler, g.auditor)                                               // 4
 	handler = middleware.PrincipalHeaders(handler, g.config.SPIFFETrustDomain, g.config.SPIFFEMode) // 3b: OC-t7go
-	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                  // 3
+	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                   // 3
 	handler = middleware.BodyCapture(handler)                                                       // 2
-	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
-	handler = middleware.RequestMetrics(handler)                                 // 0 - outermost: record request_total with status code
+	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes)                    // 1
+	handler = middleware.RequestMetrics(handler)                                                    // 0 - outermost: record request_total with status code
 	handler = middleware.RuntimeProfile(handler, g.config.SPIFFEMode, g.config.EnforcementProfile)
 
 	// Add endpoints
@@ -1788,12 +1796,16 @@ type circuitBreakersResetResponse struct {
 }
 
 type policyReloadResponse struct {
-	Status         string `json:"status"`
-	Timestamp      string `json:"timestamp,omitempty"`
-	RegistryTools  int    `json:"registry_tools,omitempty"`
-	OPAPolicies    int    `json:"opa_policies,omitempty"`
-	CosignVerified bool   `json:"cosign_verified"`
-	Error          string `json:"error,omitempty"`
+	Status              string `json:"status"`
+	Timestamp           string `json:"timestamp,omitempty"`
+	RegistryTools       int    `json:"registry_tools,omitempty"`
+	OPAPolicies         int    `json:"opa_policies,omitempty"`
+	CosignVerified      bool   `json:"cosign_verified"`
+	OPAVerified         bool   `json:"opa_verified"`
+	OPAVerificationMode string `json:"opa_verification_mode,omitempty"`
+	OPARejected         bool   `json:"opa_rejected,omitempty"`
+	OPARejectionReason  string `json:"opa_rejection_reason,omitempty"`
+	Error               string `json:"error,omitempty"`
 }
 
 // adminCircuitBreakersHandler serves:
@@ -1955,21 +1967,57 @@ func (g *Gateway) adminPolicyReloadHandler(w http.ResponseWriter, r *http.Reques
 
 	opaResult, err := g.opa.Reload()
 	if err != nil {
+		g.logOPAPolicyReloadAudit(opaResult, "rejected", err)
 		w.WriteHeader(http.StatusBadRequest)
 		_ = json.NewEncoder(w).Encode(policyReloadResponse{
-			Status:         "failed",
-			Error:          err.Error(),
-			CosignVerified: registryResult.CosignVerified,
+			Status:              "failed",
+			Error:               err.Error(),
+			CosignVerified:      registryResult.CosignVerified,
+			OPAVerified:         opaResult.AttestationVerified,
+			OPAVerificationMode: opaResult.AttestationMode,
+			OPARejected:         opaResult.Rejected,
+			OPARejectionReason:  opaResult.RejectionReason,
 		})
 		return
 	}
 
+	g.logOPAPolicyReloadAudit(opaResult, "verified", nil)
+
 	_ = json.NewEncoder(w).Encode(policyReloadResponse{
-		Status:         "reloaded",
-		Timestamp:      time.Now().UTC().Format(time.RFC3339),
-		RegistryTools:  registryResult.ToolCount,
-		OPAPolicies:    opaResult.PolicyCount,
-		CosignVerified: registryResult.CosignVerified,
+		Status:              "reloaded",
+		Timestamp:           time.Now().UTC().Format(time.RFC3339),
+		RegistryTools:       registryResult.ToolCount,
+		OPAPolicies:         opaResult.PolicyCount,
+		CosignVerified:      registryResult.CosignVerified,
+		OPAVerified:         opaResult.AttestationVerified,
+		OPAVerificationMode: opaResult.AttestationMode,
+	})
+}
+
+func (g *Gateway) logOPAPolicyReloadAudit(result middleware.OPAEngineReloadResult, status string, err error) {
+	if g == nil || g.auditor == nil {
+		return
+	}
+
+	detail := result.RejectionReason
+	if detail == "" && err != nil {
+		detail = err.Error()
+	}
+	if detail == "" {
+		detail = "verified"
+	}
+
+	g.auditor.Log(middleware.AuditEvent{
+		Action: "policy.opa.reload",
+		Result: fmt.Sprintf(
+			"status=%s verified=%t attestation_mode=%s rejected=%t policy_count=%d detail=%s",
+			status,
+			result.AttestationVerified,
+			result.AttestationMode,
+			result.Rejected,
+			result.PolicyCount,
+			detail,
+		),
 	})
 }
 
@@ -2063,7 +2111,7 @@ func (g *Gateway) Close() error {
 func (g *Gateway) EnableSPIFFETLS(ctx context.Context) error {
 	upstreamAuthzAllowedSPIFFEIDs := g.config.UpstreamAuthzAllowedSPIFFEIDs
 	keyDBAuthzAllowedSPIFFEIDs := g.config.KeyDBAuthzAllowedSPIFFEIDs
-	if g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict" {
+	if shouldApplyDefaultSPIFFEPeerAllowlists(g.config.SPIFFEMode, g.config.EnforcementProfile) {
 		if len(upstreamAuthzAllowedSPIFFEIDs) == 0 {
 			upstreamAuthzAllowedSPIFFEIDs = defaultUpstreamAuthzAllowedSPIFFEIDs(g.config.SPIFFETrustDomain)
 		}
@@ -2157,6 +2205,30 @@ func (g *Gateway) enableKeyDBTLS(spiffeTLS *SPIFFETLSConfig, keyDBAuthzAllowedSP
 
 func shouldUseDistributedControlPlaneState(cfg *Config, profile *enforcementProfileRuntime) bool {
 	return cfg != nil && strings.TrimSpace(cfg.KeyDBURL) != ""
+}
+
+func shouldFetchGuardAPIKeyFromSPIKE(cfg *Config) bool {
+	if cfg == nil || strings.TrimSpace(cfg.SPIKENexusURL) == "" {
+		return false
+	}
+	return !strings.Contains(strings.ToLower(strings.TrimSpace(cfg.GuardModelEndpoint)), "mock-guard-model")
+}
+
+func guardAPIKeyFetchSkipReason(cfg *Config) string {
+	if cfg == nil || strings.TrimSpace(cfg.SPIKENexusURL) == "" {
+		return "spike_nexus_disabled"
+	}
+	if strings.Contains(strings.ToLower(strings.TrimSpace(cfg.GuardModelEndpoint)), "mock-guard-model") {
+		return "mock_guard_model_endpoint"
+	}
+	return "fetch_not_required"
+}
+
+func shouldSwitchGuardModelEndpointToReal(guardAPIKeyLoadedFromSPIKE bool, guardAPIKey, endpoint string) bool {
+	if !guardAPIKeyLoadedFromSPIKE || strings.TrimSpace(guardAPIKey) == "" {
+		return false
+	}
+	return strings.Contains(strings.ToLower(strings.TrimSpace(endpoint)), "mock-guard-model")
 }
 
 // SPIFFETLSEnabled returns true if the gateway is configured for SPIFFE mTLS.

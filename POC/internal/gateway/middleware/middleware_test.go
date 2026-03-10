@@ -95,7 +95,7 @@ func TestMiddlewareChainOrderWithExtensions(t *testing.T) {
 	})
 
 	// Apply in reverse order (innermost first) -- mirrors gateway.go Handler().
-	handler = track("token_sub")(handler)      // 13
+	handler = track("token_sub")(handler)       // 13
 	handler = track("circuit_breaker")(handler) // 12
 	handler = track("rate_limit")(handler)      // 11
 	handler = track("deep_scan")(handler)       // 10
@@ -280,6 +280,27 @@ func TestBodyCapture(t *testing.T) {
 	// Verify IDs are unique
 	if capturedSessionID == capturedDecisionID || capturedSessionID == capturedTraceID {
 		t.Error("IDs should be unique")
+	}
+}
+
+func TestBodyCapture_PreservesIncomingSessionID(t *testing.T) {
+	var capturedSessionID string
+
+	handler := BodyCapture(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedSessionID = GetSessionID(r.Context())
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(`{"test":"data"}`))
+	req.Header.Set("X-Session-ID", "session-from-client")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", rec.Code)
+	}
+	if capturedSessionID != "session-from-client" {
+		t.Fatalf("Expected BodyCapture to preserve X-Session-ID, got %q", capturedSessionID)
 	}
 }
 

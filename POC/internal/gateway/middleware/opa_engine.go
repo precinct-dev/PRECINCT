@@ -2,10 +2,16 @@ package middleware
 
 import (
 	"context"
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/pem"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 
 	"github.com/fsnotify/fsnotify"
@@ -23,6 +29,9 @@ type OPAEngineConfig struct {
 	// If empty, the policy falls back to its default ("/" -- fail-open for
 	// path checks; SPIFFE and tool authorization still enforce access control).
 	AllowedBasePath string
+	// PolicyReloadPublicKeyPEM enables Ed25519 companion-signature verification
+	// for .rego/.yaml reloads when set. Empty keeps backward-compatible dev mode.
+	PolicyReloadPublicKeyPEM []byte
 }
 
 // OPAEngine handles embedded OPA policy evaluation
@@ -34,6 +43,7 @@ type OPAEngine struct {
 	uiPolicyQueries      *uiPolicyPreparedQueries          // RFA-j2d.7: queries for mcp.ui.policy rules
 	dataSourcePolicyQuery *dataSourcePolicyPreparedQueries  // OC-4zrf: queries for precinct.data_source policy
 	policyCount          int
+	publicKey            ed25519.PublicKey
 	mu                   sync.RWMutex
 	watcher              *fsnotify.Watcher
 	stopChan             chan struct{}
@@ -48,7 +58,11 @@ type dataSourcePolicyPreparedQueries struct {
 
 // OPAEngineReloadResult captures metadata from a policy reload operation.
 type OPAEngineReloadResult struct {
-	PolicyCount int
+	PolicyCount          int
+	AttestationVerified  bool
+	AttestationMode      string
+	Rejected             bool
+	RejectionReason      string
 }
 
 // uiPolicyPreparedQueries holds the compiled queries for each rule in the
@@ -74,6 +88,12 @@ func NewOPAEngine(policyDir string, cfg ...OPAEngineConfig) (*OPAEngine, error) 
 		stopChan:   make(chan struct{}),
 	}
 
+	if len(runtimeCfg.PolicyReloadPublicKeyPEM) > 0 {
+		if err := engine.SetPublicKey(runtimeCfg.PolicyReloadPublicKeyPEM); err != nil {
+			return nil, fmt.Errorf("failed to configure OPA reload attestation: %w", err)
+		}
+	}
+
 	// Load and compile policies
 	if err := engine.loadPolicies(); err != nil {
 		return nil, fmt.Errorf("failed to load policies: %w", err)
@@ -85,6 +105,121 @@ func NewOPAEngine(policyDir string, cfg ...OPAEngineConfig) (*OPAEngine, error) 
 	}
 
 	return engine, nil
+}
+
+// SetPublicKey configures an Ed25519 public key for OPA policy reload attestation.
+// The PEM data must be a PKIX-encoded Ed25519 public key.
+func (e *OPAEngine) SetPublicKey(pemData []byte) error {
+	block, _ := pem.Decode(pemData)
+	if block == nil {
+		return fmt.Errorf("failed to decode PEM block from public key data")
+	}
+
+	pub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse public key: %w", err)
+	}
+
+	edPub, ok := pub.(ed25519.PublicKey)
+	if !ok {
+		return fmt.Errorf("public key is not Ed25519 (got %T)", pub)
+	}
+
+	e.mu.Lock()
+	e.publicKey = edPub
+	e.mu.Unlock()
+	return nil
+}
+
+// HasPublicKey returns true when reload attestation is enabled.
+func (e *OPAEngine) HasPublicKey() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.publicKey != nil
+}
+
+func (e *OPAEngine) attestationMode() string {
+	if e.HasPublicKey() {
+		return "ed25519"
+	}
+	return "disabled"
+}
+
+func (e *OPAEngine) verifySignature(data, sig []byte) error {
+	e.mu.RLock()
+	publicKey := e.publicKey
+	e.mu.RUnlock()
+
+	if publicKey == nil {
+		return fmt.Errorf("no public key configured for signature verification")
+	}
+
+	if len(sig) != ed25519.SignatureSize {
+		return fmt.Errorf("invalid signature size: got %d, want %d", len(sig), ed25519.SignatureSize)
+	}
+
+	if !ed25519.Verify(publicKey, data, sig) {
+		return fmt.Errorf("signature verification failed: invalid signature")
+	}
+
+	return nil
+}
+
+func (e *OPAEngine) readAndVerifySigFile(fileData []byte, path string) error {
+	sigPath := path + ".sig"
+	sigData, err := os.ReadFile(sigPath)
+	if err != nil {
+		return fmt.Errorf("failed to read signature file %s: %w", sigPath, err)
+	}
+
+	sigB64 := strings.TrimSpace(string(sigData))
+	sig, err := base64.StdEncoding.DecodeString(sigB64)
+	if err != nil {
+		return fmt.Errorf("failed to base64-decode signature from %s: %w", sigPath, err)
+	}
+
+	return e.verifySignature(fileData, sig)
+}
+
+func (e *OPAEngine) attestedPolicyFiles() ([]string, error) {
+	files, err := os.ReadDir(e.policyDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read policy directory: %w", err)
+	}
+
+	paths := make([]string, 0, len(files))
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		switch filepath.Ext(file.Name()) {
+		case ".rego", ".yaml", ".yml":
+			paths = append(paths, filepath.Join(e.policyDir, file.Name()))
+		}
+	}
+	sort.Strings(paths)
+	return paths, nil
+}
+
+func (e *OPAEngine) verifyPolicyAttestation() error {
+	if !e.HasPublicKey() {
+		return nil
+	}
+
+	paths, err := e.attestedPolicyFiles()
+	if err != nil {
+		return err
+	}
+	for _, path := range paths {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read policy file %s: %w", filepath.Base(path), err)
+		}
+		if err := e.readAndVerifySigFile(content, path); err != nil {
+			return fmt.Errorf("policy attestation failed for %s: %w", filepath.Base(path), err)
+		}
+	}
+	return nil
 }
 
 // loadPolicies loads all .rego and .yaml files from policy directory and compiles them
@@ -303,10 +438,24 @@ func (e *OPAEngine) PolicyCount() int {
 
 // Reload performs a policy reload from disk and returns summary metadata.
 func (e *OPAEngine) Reload() (OPAEngineReloadResult, error) {
-	if err := e.loadPolicies(); err != nil {
-		return OPAEngineReloadResult{}, err
+	result := OPAEngineReloadResult{
+		AttestationMode: e.attestationMode(),
 	}
-	return OPAEngineReloadResult{PolicyCount: e.PolicyCount()}, nil
+
+	if e.HasPublicKey() {
+		if err := e.verifyPolicyAttestation(); err != nil {
+			result.Rejected = true
+			result.RejectionReason = err.Error()
+			return result, err
+		}
+		result.AttestationVerified = true
+	}
+
+	if err := e.loadPolicies(); err != nil {
+		return result, err
+	}
+	result.PolicyCount = e.PolicyCount()
+	return result, nil
 }
 
 // Evaluate evaluates OPA policy with given input
@@ -569,6 +718,13 @@ func (e *OPAEngine) startWatcher() error {
 		return fmt.Errorf("failed to watch policy directory: %w", err)
 	}
 
+	if e.HasPublicKey() {
+		slog.Info("opa policy hot-reload watching with attestation", "path", e.policyDir, "attestation", e.attestationMode())
+	} else {
+		slog.Warn("opa policy hot-reload enabled WITHOUT attestation, unsigned updates will be accepted")
+		slog.Info("opa policy hot-reload watching", "path", e.policyDir, "attestation", e.attestationMode())
+	}
+
 	// Start watcher goroutine
 	go e.watchLoop()
 
@@ -584,15 +740,20 @@ func (e *OPAEngine) watchLoop() {
 				return
 			}
 
-			// Reload on write or create events for .rego or .yaml files
+			// Reload on write or create events for policy files or companion signatures.
 			if event.Op&(fsnotify.Write|fsnotify.Create) != 0 {
 				ext := filepath.Ext(event.Name)
-				if ext == ".rego" || ext == ".yaml" || ext == ".yml" {
+				if ext == ".rego" || ext == ".yaml" || ext == ".yml" || ext == ".sig" {
 					slog.Info("policy file changed, reloading", "file", event.Name)
-					if _, err := e.Reload(); err != nil {
-						slog.Warn("failed to reload policies, keeping previous policy", "error", err)
+					result, err := e.Reload()
+					if err != nil {
+						if result.Rejected {
+							slog.Error("opa policy reload rejected, keeping previous policy", "reason", result.RejectionReason, "attestation_mode", result.AttestationMode)
+						} else {
+							slog.Warn("failed to reload policies, keeping previous policy", "error", err)
+						}
 					} else {
-						slog.Info("policies reloaded successfully")
+						slog.Info("policies reloaded successfully", "policy_count", result.PolicyCount, "attestation_mode", result.AttestationMode, "attestation_verified", result.AttestationVerified)
 					}
 				}
 			}

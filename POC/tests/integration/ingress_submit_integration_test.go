@@ -13,7 +13,7 @@ func TestIngressSubmitConnectorConformanceReplayAndFreshness(t *testing.T) {
 	connectorID := "ingress-submit-it-connector"
 	sessionID := fmt.Sprintf("ingress-submit-session-%d", time.Now().UnixNano())
 
-	registerCode, registerBody := ruleOpsPost(t, baseURL+"/v1/connectors/register", map[string]any{
+	registerCode, registerBody := ruleOpsPostAs(t, baseURL+"/v1/connectors/register", map[string]any{
 		"connector_id": connectorID,
 		"manifest": map[string]any{
 			"connector_id":     connectorID,
@@ -26,7 +26,7 @@ func TestIngressSubmitConnectorConformanceReplayAndFreshness(t *testing.T) {
 				"value":     "bootstrap-signature",
 			},
 		},
-	})
+	}, adminSPIFFEIDForTest())
 	if registerCode != http.StatusOK {
 		t.Fatalf("connector register expected 200, got %d body=%v", registerCode, registerBody)
 	}
@@ -35,7 +35,7 @@ func TestIngressSubmitConnectorConformanceReplayAndFreshness(t *testing.T) {
 		t.Fatalf("connector register missing expected_signature body=%v", registerBody)
 	}
 
-	registerCode, registerBody = ruleOpsPost(t, baseURL+"/v1/connectors/register", map[string]any{
+	registerCode, registerBody = ruleOpsPostAs(t, baseURL+"/v1/connectors/register", map[string]any{
 		"connector_id": connectorID,
 		"manifest": map[string]any{
 			"connector_id":     connectorID,
@@ -48,12 +48,12 @@ func TestIngressSubmitConnectorConformanceReplayAndFreshness(t *testing.T) {
 				"value":     connectorSig,
 			},
 		},
-	})
+	}, adminSPIFFEIDForTest())
 	if registerCode != http.StatusOK {
 		t.Fatalf("connector re-register expected 200, got %d body=%v", registerCode, registerBody)
 	}
 	for _, op := range []string{"validate", "approve", "activate"} {
-		code, body := ruleOpsPost(t, baseURL+"/v1/connectors/"+op, map[string]any{"connector_id": connectorID})
+		code, body := ruleOpsPostAs(t, baseURL+"/v1/connectors/"+op, map[string]any{"connector_id": connectorID}, adminSPIFFEIDForTest())
 		if code != http.StatusOK {
 			t.Fatalf("connector %s expected 200, got %d body=%v", op, code, body)
 		}
@@ -114,7 +114,7 @@ func TestIngressSubmitConnectorConformanceReplayAndFreshness(t *testing.T) {
 		t.Fatalf("ingress stale expected reason_code=INGRESS_FRESHNESS_STALE, got %q body=%v", reason, body)
 	}
 
-	code, body = ruleOpsPost(t, baseURL+"/v1/connectors/revoke", map[string]any{"connector_id": connectorID})
+	code, body = ruleOpsPostAs(t, baseURL+"/v1/connectors/revoke", map[string]any{"connector_id": connectorID}, adminSPIFFEIDForTest())
 	if code != http.StatusOK {
 		t.Fatalf("connector revoke expected 200, got %d body=%v", code, body)
 	}

@@ -1,11 +1,24 @@
 package middleware
 
 import (
+	"crypto/ed25519"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
+
+func writeSignedPolicyFile(t *testing.T, path string, content []byte, privKey ed25519.PrivateKey) {
+	t.Helper()
+	if err := os.WriteFile(path, content, 0644); err != nil {
+		t.Fatalf("Failed to write policy: %v", err)
+	}
+	sigB64 := signData(t, content, privKey)
+	if err := os.WriteFile(path+".sig", []byte(sigB64), 0644); err != nil {
+		t.Fatalf("Failed to write policy sig: %v", err)
+	}
+}
 
 // TestOPAEngineInitialization verifies OPA engine creation and policy loading
 func TestOPAEngineInitialization(t *testing.T) {
@@ -220,6 +233,165 @@ default allow := {
 	}
 	if !allowed {
 		t.Errorf("Expected updated policy to allow, got deny with reason: %s", reason)
+	}
+}
+
+func TestOPAEngineReload_AttestationEnabled_SignedUpdateAccepted(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	policyPath := filepath.Join(tmpDir, "mcp_policy.rego")
+
+	initialPolicy := []byte(`package mcp
+default allow := {
+	"allow": false,
+	"reason": "default_deny"
+}
+`)
+	writeSignedPolicyFile(t, policyPath, initialPolicy, privKey)
+
+	engine, err := NewOPAEngine(tmpDir, OPAEngineConfig{PolicyReloadPublicKeyPEM: pemPub})
+	if err != nil {
+		t.Fatalf("Failed to create OPA engine: %v", err)
+	}
+	defer func() {
+		_ = engine.Close()
+	}()
+
+	updatedPolicy := []byte(`package mcp
+default allow := {
+	"allow": true,
+	"reason": "signed_allow"
+}
+`)
+	writeSignedPolicyFile(t, policyPath, updatedPolicy, privKey)
+
+	result, err := engine.Reload()
+	if err != nil {
+		t.Fatalf("Reload failed: %v", err)
+	}
+	if !result.AttestationVerified {
+		t.Fatal("expected attestation to be verified")
+	}
+	if result.AttestationMode != "ed25519" {
+		t.Fatalf("expected attestation mode ed25519, got %q", result.AttestationMode)
+	}
+	if result.Rejected {
+		t.Fatalf("expected signed reload to be accepted, got rejection: %s", result.RejectionReason)
+	}
+
+	allowed, reason, err := engine.Evaluate(OPAInput{Tool: "anything"})
+	if err != nil {
+		t.Fatalf("Evaluate failed: %v", err)
+	}
+	if !allowed || reason != "signed_allow" {
+		t.Fatalf("expected signed policy to be active, got allow=%v reason=%q", allowed, reason)
+	}
+}
+
+func TestOPAEngineReload_AttestationEnabled_UnsignedUpdateRejectedPreservesOldPolicy(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	policyPath := filepath.Join(tmpDir, "mcp_policy.rego")
+
+	initialPolicy := []byte(`package mcp
+default allow := {
+	"allow": false,
+	"reason": "default_deny"
+}
+`)
+	writeSignedPolicyFile(t, policyPath, initialPolicy, privKey)
+
+	engine, err := NewOPAEngine(tmpDir, OPAEngineConfig{PolicyReloadPublicKeyPEM: pemPub})
+	if err != nil {
+		t.Fatalf("Failed to create OPA engine: %v", err)
+	}
+	defer func() {
+		_ = engine.Close()
+	}()
+
+	unsignedPolicy := []byte(`package mcp
+default allow := {
+	"allow": true,
+	"reason": "unsigned_allow"
+}
+`)
+	if err := os.Remove(policyPath + ".sig"); err != nil {
+		t.Fatalf("remove signature: %v", err)
+	}
+	if err := os.WriteFile(policyPath, unsignedPolicy, 0644); err != nil {
+		t.Fatalf("write unsigned policy: %v", err)
+	}
+
+	result, err := engine.Reload()
+	if err == nil {
+		t.Fatal("expected unsigned reload to be rejected")
+	}
+	if !result.Rejected {
+		t.Fatal("expected reload result to mark the update as rejected")
+	}
+	if result.AttestationVerified {
+		t.Fatal("expected rejected reload to report attestation_verified=false")
+	}
+	if !strings.Contains(result.RejectionReason, "policy attestation failed") {
+		t.Fatalf("expected attestation rejection reason, got %q", result.RejectionReason)
+	}
+
+	allowed, reason, evalErr := engine.Evaluate(OPAInput{Tool: "anything"})
+	if evalErr != nil {
+		t.Fatalf("Evaluate failed: %v", evalErr)
+	}
+	if allowed || reason != "default_deny" {
+		t.Fatalf("expected previous policy to remain active, got allow=%v reason=%q", allowed, reason)
+	}
+}
+
+func TestOPAEngineReload_AttestationEnabled_TamperedUpdateRejectedPreservesOldPolicy(t *testing.T) {
+	pemPub, privKey := generateTestKeyPair(t)
+	_, attackerPrivKey := generateTestKeyPair(t)
+	tmpDir := t.TempDir()
+	policyPath := filepath.Join(tmpDir, "mcp_policy.rego")
+
+	initialPolicy := []byte(`package mcp
+default allow := {
+	"allow": false,
+	"reason": "default_deny"
+}
+`)
+	writeSignedPolicyFile(t, policyPath, initialPolicy, privKey)
+
+	engine, err := NewOPAEngine(tmpDir, OPAEngineConfig{PolicyReloadPublicKeyPEM: pemPub})
+	if err != nil {
+		t.Fatalf("Failed to create OPA engine: %v", err)
+	}
+	defer func() {
+		_ = engine.Close()
+	}()
+
+	tamperedPolicy := []byte(`package mcp
+default allow := {
+	"allow": true,
+	"reason": "tampered_allow"
+}
+`)
+	writeSignedPolicyFile(t, policyPath, tamperedPolicy, attackerPrivKey)
+
+	result, err := engine.Reload()
+	if err == nil {
+		t.Fatal("expected tampered reload to be rejected")
+	}
+	if !result.Rejected {
+		t.Fatal("expected tampered reload to be marked rejected")
+	}
+	if !strings.Contains(result.RejectionReason, "signature verification failed") {
+		t.Fatalf("expected signature verification rejection, got %q", result.RejectionReason)
+	}
+
+	allowed, reason, evalErr := engine.Evaluate(OPAInput{Tool: "anything"})
+	if evalErr != nil {
+		t.Fatalf("Evaluate failed: %v", evalErr)
+	}
+	if allowed || reason != "default_deny" {
+		t.Fatalf("expected previous policy to remain active, got allow=%v reason=%q", allowed, reason)
 	}
 }
 

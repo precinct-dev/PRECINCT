@@ -63,25 +63,25 @@ func newResetSessionCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 8*time.Second)
 			defer cancel()
 
-			client, err := agw.NewKeyDBClient(keydbURL)
+			kdb, err := agw.NewKeyDB(keydbURL)
 			if err != nil {
 				return err
 			}
 			defer func() {
-				_ = client.Close()
+				_ = kdb.Close()
 			}()
 
 			var deleted int64
 			var keys []string
 			mode := "all"
 			if all {
-				deleted, keys, err = agw.DeleteAllSessionKeys(ctx, client)
+				deleted, keys, err = kdb.DeleteAllSessionKeys(ctx)
 				if err != nil {
 					return err
 				}
 			} else {
 				mode = "spiffe"
-				deleted, keys, err = agw.DeleteSessionKeysForSPIFFEID(ctx, client, spiffeID)
+				deleted, keys, err = kdb.DeleteSessionKeysForSPIFFEID(ctx, spiffeID)
 				if err != nil {
 					return err
 				}

@@ -6,7 +6,7 @@ Scope: unauthorized access attempts, attestation/provenance failures, policy byp
 ## 1. Event Intake
 
 - Capture timestamp, triggering detector, affected environment, and suspected blast radius.
-- Create/attach incident story in `bd` and assign incident commander + security lead.
+- Create/attach incident story in `nd` and assign incident commander + security lead.
 
 ## 2. Immediate Verification
 
@@ -46,5 +46,4 @@ make demo-compose
 
 - Root cause documented.
 - Control gap remediations captured as backlog stories.
-- Post-incident review added to `bd` evidence/proof notes.
-
+- Post-incident review added to `nd` evidence/proof notes.

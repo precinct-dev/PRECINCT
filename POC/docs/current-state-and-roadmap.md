@@ -1,7 +1,7 @@
 # Current State and Roadmap
 
-**As Of:** 2026-02-16
-**Last Updated:** 2026-02-16
+**As Of:** 2026-02-22
+**Last Updated:** 2026-03-10
 **Branch:** main (all epic branches merged and deleted)
 **Reference Architecture Version:** 2.4
 
@@ -10,15 +10,22 @@
 ## 0. As-Built Snapshot (2026-02-16)
 
 This document is a live status summary. Historical implementation detail is preserved
-below, but current planning truth is tracked by the active beads backlog and accepted
+below, but current planning truth is tracked by the active `nd` backlog and accepted
 story evidence.
 
-Current production-readiness closure status (`RFA-l6h6.7`) is tracked in:
+Current production-readiness closure status is tracked in:
 
 - `docs/status/production-readiness-state.json` (authoritative as-of snapshot)
-- `tests/e2e/validate_readiness_state_integrity.sh` (deterministic drift validator against live `bd`)
+- `tests/e2e/validate_readiness_state_integrity.sh` (deterministic drift validator against live `nd`)
 
-Current story-state snapshot (as-of 2026-02-16):
+Current `nd` story-state snapshot (as-of 2026-02-22):
+
+| Story | Status | Date Reference | Notes |
+|-------|--------|----------------|-------|
+| `oc-36m` | closed | closed 2026-02-21 | readiness reference epic from `docs/status/production-readiness-state.json` |
+| `oc-ko5` | closed | closed 2026-02-21 | readiness closure story validated by `make readiness-state-validate` |
+
+Historical closure-chain detail (beads-era RFA identifiers preserved for archival context only):
 
 | Story | Status | Date Reference | Notes |
 |-------|--------|----------------|-------|
@@ -43,10 +50,10 @@ Claim reconciliation summary:
 
 | Prior claim | Corrected as-built statement | Evidence source |
 |------------|------------------------------|-----------------|
-| “The project is development-complete.” | Production-readiness closure epic `RFA-l6h6.7` is accepted and closed. | beads epic `RFA-l6h6.7` |
-| “No open functional work remains.” | External-app latest-source secure-port closure chain is complete (`RFA-pnxr`, `RFA-ysa5`, `RFA-oo21`, `RFA-t1hb`, `RFA-6mp8`, `RFA-655e` all accepted/closed). | beads issues listed + final latest-source decision artifact |
+| “The project is development-complete.” | Production-readiness closure epic `RFA-l6h6.7` is accepted and closed. | Historical backlog snapshot in `docs/status/production-readiness-state.json` plus `nd` closure evidence |
+| “No open functional work remains.” | External-app latest-source secure-port closure chain is complete (`RFA-pnxr`, `RFA-ysa5`, `RFA-oo21`, `RFA-t1hb`, `RFA-6mp8`, `RFA-655e` all accepted/closed). | Historical decision artifact plus current `nd` state |
 | CI/security automation gaps listed as unresolved in hardening context | CI push/PR triggers, `security-scan.yml`, and `.github/dependabot.yml` now exist. | `.github/workflows/ci.yaml`, `.github/workflows/security-scan.yml`, `.github/dependabot.yml`, `RFA-l6h6.6.7` evidence |
-| `RFA-l6h6.5.1` evidence paths are currently executable from tracked repo state | Historical `RFA-l6h6.5.1` evidence references files removed in commit `ab60428` ("Relocate use-case-specific files to gitignored local directory"); reconciliation is tracked in `RFA-l6h6.6.16`. | `git show --name-status ab60428`, beads issues `RFA-l6h6.5.1`, `RFA-l6h6.6.16` |
+| `RFA-l6h6.5.1` evidence paths are currently executable from tracked repo state | Historical `RFA-l6h6.5.1` evidence references files removed in commit `ab60428` ("Relocate use-case-specific files to gitignored local directory"); reconciliation is tracked in `RFA-l6h6.6.16`. | `git show --name-status ab60428`, archived backlog references, and current `nd` notes |
 
 ---
 
@@ -66,7 +73,7 @@ Core Phase 1 capability gaps (SPIKE Nexus, deep scan, session persistence, mTLS,
 
 | Metric | Value |
 |--------|-------|
-| Issues tracked (beads) | 234 total (230 closed, 4 active in documentation epic) |
+| Issues tracked | Current work is tracked in `nd`; historical beads metrics in this document are archival only |
 | Closed epics | 29 |
 | Commits on main | ~235 |
 | Go source lines | ~16,700 |
@@ -351,7 +358,7 @@ opa test config/opa/ --v0-compatible -v
 # Compliance report
 make compliance-report               # Generates XLSX/CSV/PDF in reports/
 
-# Readiness state integrity (doc-state drift check against bd)
+# Readiness state integrity (doc-state drift check against nd)
 make readiness-state-validate
 
 # GDPR right-to-deletion

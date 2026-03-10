@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Go SDK Reference -- mcpgateway | PRECINCT</title>
+  <title>Go SDK Reference | mcpgateway | PRECINCT</title>
   <meta name="description" content="Complete API reference for the PRECINCT Go SDK (mcpgateway): GatewayClient, functional options, error handling, wire format, and mTLS configuration.">
   <meta name="keywords" content="PRECINCT Go SDK, mcpgateway, GatewayClient, SPIFFE, agentic AI, MCP gateway, Go, mTLS">
   <meta name="author" content="PRECINCT Contributors">
   <meta name="robots" content="index, follow">
 
-  <meta property="og:title" content="Go SDK Reference -- mcpgateway">
+  <meta property="og:title" content="Go SDK Reference | mcpgateway">
   <meta property="og:description" content="Complete API reference for the PRECINCT Go SDK (mcpgateway): GatewayClient, functional options, error handling, wire format, and mTLS configuration.">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://precinct.dev/pages/go-sdk.html">
@@ -69,7 +69,7 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="agents-of-chaos.html" class="nav-link">Agents of Chaos</a></li>
+        <li><a href="research.html" class="nav-link">Research</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Developer <span class="caret" aria-hidden="true"></span>
@@ -284,7 +284,7 @@ func main() {
 
     ctx := context.Background()
 
-    // Call a tool -- the SDK auto-wraps this as tools/call JSON-RPC.
+    // Call a tool. The SDK auto-wraps this as tools/call JSON-RPC.
     result, err := client.Call(ctx, "tavily_search", map[string]any{
         "query": "AI security best practices",
     })
@@ -341,12 +341,12 @@ func main() {
               </li>
             </ul>
 
-            <pre data-lang="go"><code>// Tool invocation (most common) -- auto-wrapped as tools/call
+            <pre data-lang="go"><code>// Tool invocation (most common): auto-wrapped as tools/call
 result, err := client.Call(ctx, "tavily_search", map[string]any{
     "query": "SPIFFE mTLS",
 })
 
-// Protocol method -- sent verbatim
+// Protocol method: sent verbatim
 result, err := client.Call(ctx, "tools/list", nil)
 
 // Initialize handshake
@@ -1034,7 +1034,7 @@ attempt 2:  4s  (backoffBase * 4)</code></pre>
               <code>context.Canceled</code> or <code>context.DeadlineExceeded</code>).
             </p>
 
-            <pre data-lang="go"><code>// Set a 5-second deadline -- will cancel retries if exceeded
+            <pre data-lang="go"><code>// Set a 5-second deadline. Will cancel retries if exceeded.
 ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 defer cancel()
 
@@ -1296,7 +1296,7 @@ ref := mcpgateway.BuildSPIKETokenRefWithScope("secrets/key", 3600, "")
 
       </div>
 
-      <p class="footer-citation">Validated against <a href="agents-of-chaos.html">Agents of Chaos</a> (Shapira et al., 2026, <a href="https://arxiv.org/abs/2602.20021">arXiv:2602.20021v1</a>)</p>
+      <p class="footer-citation">Architecture informed by peer-reviewed research. See <a href="../index.html#research">Research Foundations</a>.</p>
       <div class="footer-bottom">
         <p class="footer-license">
           Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.

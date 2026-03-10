@@ -11,8 +11,6 @@ import (
 	"strconv"
 	"testing"
 	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 func TestAgwPolicyTestRuntimeIntegration_Full13LayersAllowed(t *testing.T) {
@@ -20,16 +18,7 @@ func TestAgwPolicyTestRuntimeIntegration_Full13LayersAllowed(t *testing.T) {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
 
-	keydbURL := getEnvOrDefault("AGW_KEYDB_URL", "redis://localhost:6379")
-	opt, err := redis.ParseURL(keydbURL)
-	if err != nil {
-		t.Fatalf("parse keydb url %q: %v", keydbURL, err)
-	}
-	rdb := redis.NewClient(opt)
-	t.Cleanup(func() { _ = rdb.Close() })
-	if err := rdb.Ping(t.Context()).Err(); err != nil {
-		t.Fatalf("KeyDB not reachable at %s: %v", keydbURL, err)
-	}
+	keydbURL := integrationKeyDBURL()
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resetBody, err := json.Marshal(map[string]string{"tool": "tavily_search"})
@@ -41,7 +30,7 @@ func TestAgwPolicyTestRuntimeIntegration_Full13LayersAllowed(t *testing.T) {
 		t.Fatalf("build reset request: %v", err)
 	}
 	resetReq.Header.Set("Content-Type", "application/json")
-	resetReq.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
+	resetReq.Header.Set("X-SPIFFE-ID", adminSPIFFEIDForTest())
 	resetResp, err := client.Do(resetReq)
 	if err != nil {
 		t.Fatalf("reset circuit breaker: %v", err)
@@ -51,21 +40,15 @@ func TestAgwPolicyTestRuntimeIntegration_Full13LayersAllowed(t *testing.T) {
 		t.Fatalf("unexpected reset status=%d", resetResp.StatusCode)
 	}
 
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := "spiffe://poc.local/agents/mcp-client/runtime-researcher/dev"
 	sessionID := "sid-policy-runtime-" + strconv.FormatInt(time.Now().UnixNano(), 10)
 	sessionKey := "session:" + spiffeID + ":" + sessionID
 	tokensKey := "ratelimit:" + spiffeID + ":tokens"
 	lastFillKey := "ratelimit:" + spiffeID + ":last_fill"
 
-	if err := rdb.Set(t.Context(), sessionKey, `{"RiskScore":0.15}`, 2*time.Minute).Err(); err != nil {
-		t.Fatalf("seed session key: %v", err)
-	}
-	if err := rdb.Set(t.Context(), tokensKey, "55.0", 2*time.Minute).Err(); err != nil {
-		t.Fatalf("seed ratelimit tokens: %v", err)
-	}
-	if err := rdb.Set(t.Context(), lastFillKey, strconv.FormatInt(time.Now().UnixNano(), 10), 2*time.Minute).Err(); err != nil {
-		t.Fatalf("seed ratelimit last_fill: %v", err)
-	}
+	keydbSetValue(t, sessionKey, `{"RiskScore":0.15}`, 2*time.Minute)
+	keydbSetValue(t, tokensKey, "55.0", 2*time.Minute)
+	keydbSetValue(t, lastFillKey, strconv.FormatInt(time.Now().UnixNano(), 10), 2*time.Minute)
 
 	cmd := exec.Command(
 		"go", "run", "./cmd/agw", "policy", "test",

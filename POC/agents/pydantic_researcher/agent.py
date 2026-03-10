@@ -19,6 +19,7 @@ import pathlib
 import sys
 import uuid
 from dataclasses import dataclass
+from urllib.parse import urlparse
 
 from opentelemetry import trace
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
@@ -112,7 +113,11 @@ def setup_observability() -> trace.Tracer:
         }
     )
     provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=OTEL_ENDPOINT, insecure=True)
+    parsed = urlparse(OTEL_ENDPOINT if "://" in OTEL_ENDPOINT else f"http://{OTEL_ENDPOINT}")
+    exporter = OTLPSpanExporter(
+        endpoint=OTEL_ENDPOINT,
+        insecure=(parsed.hostname or "").lower() in {"localhost", "127.0.0.1", "::1"},
+    )
     # OpenInference processor enhances PydanticAI spans with AI-specific attributes
     provider.add_span_processor(OpenInferenceSpanProcessor())
     # Batch exporter sends spans to the OTLP collector

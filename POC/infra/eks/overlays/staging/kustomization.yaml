@@ -6,7 +6,7 @@
 #   - 2 replicas for gateway (test HA)
 #   - 1 replica for MCP server
 #   - Standard (info) logging
-#   - Staging image tags (promoted from dev via promote.yaml)
+#   - Staging image digests (promoted from dev via promote.yaml)
 #   - Admission control with cert-manager TLS for policy-controller
 # ------------------------------------------------------------------------------
 apiVersion: kustomize.config.k8s.io/v1beta1
@@ -22,10 +22,10 @@ resources:
 images:
   - name: mcp-security-gateway
     newName: ghcr.io/ramxx/agentic-ref-arch/mcp-security-gateway
-    newTag: staging  # mcp-security-gateway
+    digest: sha256:e008b908938fea7d06fd9681957b8e690bb72ce5c099878fb2bbaec12c0d331d  # managed by promote.yaml
   - name: python
     newName: ghcr.io/ramxx/agentic-ref-arch/s3-mcp-server
-    newTag: staging  # mcp-server
+    digest: sha256:a5b2686a81a98f4064c7d85f26e78c040f15b9840db0a69a0de3c82bcdf83b71  # managed by promote.yaml
 
 patches:
   # --------------------------------------------------------------------------
@@ -81,6 +81,8 @@ patches:
                       secretKeyRef:
                         name: gateway-runtime-secrets
                         key: approval_signing_key
+                  - name: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://agentic-ref-arch.poc/ns/ops/sa/gateway-admin"
                   - name: TOOL_REGISTRY_PUBLIC_KEY
                     value: "/config/attestation-ed25519.pub"
                   - name: MODEL_PROVIDER_CATALOG_PUBLIC_KEY

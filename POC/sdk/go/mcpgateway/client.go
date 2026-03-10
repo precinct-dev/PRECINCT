@@ -127,18 +127,20 @@ func (c *GatewayClient) SessionID() string {
 
 // CallModelChat sends an OpenAI-compatible chat completion request through the
 // gateway model egress endpoint (default: /openai/v1/chat/completions).
+// ModelChatRequest.Endpoint must be gateway-relative; absolute URLs are rejected.
 func (c *GatewayClient) CallModelChat(ctx context.Context, req ModelChatRequest) (map[string]any, error) {
 	endpoint := strings.TrimSpace(req.Endpoint)
 	if endpoint == "" {
 		endpoint = "/openai/v1/chat/completions"
 	}
+	if strings.HasPrefix(endpoint, "http://") || strings.HasPrefix(endpoint, "https://") {
+		return nil, fmt.Errorf("mcpgateway: CallModelChat only supports gateway-relative endpoints; absolute endpoints are not allowed")
+	}
 	targetURL := endpoint
-	if !strings.HasPrefix(endpoint, "http://") && !strings.HasPrefix(endpoint, "https://") {
-		if strings.HasPrefix(endpoint, "/") {
-			targetURL = c.url + endpoint
-		} else {
-			targetURL = c.url + "/" + endpoint
-		}
+	if strings.HasPrefix(endpoint, "/") {
+		targetURL = c.url + endpoint
+	} else {
+		targetURL = c.url + "/" + endpoint
 	}
 
 	provider := strings.TrimSpace(req.Provider)

@@ -46,5 +46,4 @@ make demo-compose
   - `docker compose logs --timestamps > build/incident/<timestamp>-compose.log`
 - Capture readiness snapshot:
   - `make production-readiness-validate`
-- Record incident timeline in the active `bd` story notes.
-
+- Record incident timeline in the active `nd` story notes.

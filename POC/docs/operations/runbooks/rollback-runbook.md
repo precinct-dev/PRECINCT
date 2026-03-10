@@ -49,5 +49,4 @@ make readiness-state-validate
 
 - Health checks recovered.
 - No unresolved critical alerts.
-- Rollback evidence attached in `bd` notes with command outcomes.
-
+- Rollback evidence attached in the active `nd` story notes with command outcomes.

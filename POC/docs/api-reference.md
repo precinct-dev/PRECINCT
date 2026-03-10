@@ -328,7 +328,7 @@ before upstream proxy forwarding:
 |-----------------|---------------|-------|
 | `/v1/ingress/submit`, `/v1/ingress/admit`, `/v1/context/admit`, `/v1/model/call`, `/v1/tool/execute`, `/v1/loop/check` | Phase 3 control-plane dispatcher | Ingress, context, model, tool, and loop policy decisions |
 | `/openai/v1/chat/completions` | OpenAI-compatible model egress entry | Mediated model egress with provider trust/fallback controls and optional policy-intent prepend (`MODEL_POLICY_INTENT_PREPEND_ENABLED`) |
-| `/v1/connectors/*` | Connector conformance authority entry | Register/validate/approve/activate/revoke/status/report lifecycle |
+| `/v1/connectors/*` | Connector conformance authority entry | `register`/`validate`/`approve`/`activate`/`revoke` require an admin-authorized SPIFFE principal; `status`/`report` remain SPIFFE-identity gated |
 | `/admin/dlp/rulesets*` | RuleOps admin entry | Governed DLP ruleset lifecycle |
 | `/admin/approvals*` | Approval capability admin entry | Human-in-the-loop step-up lifecycle |
 | `/admin/breakglass*` | Break-glass admin entry | Dual-authorization emergency override lifecycle |

@@ -61,6 +61,7 @@ SPIFFE identity mode behavior:
 | `MODEL_POLICY_INTENT_PREPEND_ENABLED` | `false` | Prepends compact policy-intent guidance to OpenAI-compatible model messages. Strict production-intent overlays set this to `true` |
 | `PROFILE_METADATA_EXPORT_PATH` | _(empty)_ | Optional path to write active profile metadata as JSON at startup |
 | `APPROVAL_SIGNING_KEY` | _(empty)_ | HMAC signing key for step-up approval capability tokens. In strict profiles (`prod_standard`, `prod_regulated_hipaa`), startup fails if missing, too short, or a known weak/default value |
+| `ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS` | _(empty)_ | Comma-separated admin SPIFFE IDs allowed to reach `/admin/*`. No implicit defaults are applied; in strict profiles startup fails if this is missing or empty |
 | `UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS` | _(empty)_ | Comma-separated upstream SPIFFE IDs allowed for mTLS peer pinning. When empty in strict profiles, secure defaults are auto-applied |
 | `KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS` | _(empty)_ | Comma-separated KeyDB SPIFFE IDs allowed for mTLS peer pinning. When empty in strict profiles, secure defaults are auto-applied |
 
@@ -94,6 +95,7 @@ Profile bundles and required controls:
 Migration notes for approval signing key hardening:
 
 - Strict profiles now fail fast at startup when `APPROVAL_SIGNING_KEY` is missing/weak. Existing deployments that relied on implicit fallback behavior must set this variable before enabling strict profiles.
+- Strict profiles now fail fast at startup when `ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS` is missing/empty. Dev/test admin access must be granted explicitly in configuration instead of relying on baked-in principals.
 - Use a high-entropy key with at least 32 characters and store it in your secret manager/Kubernetes Secret.
 - Dev profile behavior is intentionally bounded: when unset, the gateway generates an ephemeral process-local key at startup (not a static default). This is for local workflows only and tokens are not stable across restarts.
 
@@ -205,6 +207,7 @@ export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/
 | `OPA_POLICY_PATH` | `/config/opa/mcp_policy.rego` | Path to the main OPA authorization policy file |
 | `TOOL_REGISTRY_CONFIG_PATH` | `/config/tool-registry.yaml` | Path to the tool registry YAML with SHA-256 hashes |
 | `TOOL_REGISTRY_PUBLIC_KEY` | _(empty)_ | Path to PEM public key for tool registry attestation. Empty is allowed only in `dev`; strict profiles require this value and reject unsigned reload/startup artifacts |
+| `OPA_POLICY_PUBLIC_KEY` | _(empty)_ | Path to PEM public key for OPA policy reload attestation. Empty is allowed only in `dev`; strict profiles require this value and reject unsigned or tampered OPA reloads |
 | `DESTINATIONS_CONFIG_PATH` | `/config/destinations.yaml` | Path to the destination allowlist for step-up gating |
 | `RISK_THRESHOLDS_PATH` | `/config/risk_thresholds.yaml` | Path to risk thresholds and DLP policy YAML |
 | `UI_CAPABILITY_GRANTS_PATH` | `/config/opa/ui_capability_grants.yaml` | Path to UI capability grants YAML |
@@ -279,9 +282,9 @@ environment variables. Source: `docker-compose.yml` service definitions.
 | `SPIKE_NEXUS_TLS_PORT` | `:8443` | TLS listen port (format includes colon prefix) |
 | `SPIKE_NEXUS_BACKEND_STORE` | `sqlite` | Backend store type: `memory` or `sqlite` |
 | `SPIKE_NEXUS_DATA_DIR` | `/opt/spike/data` | Data directory for SQLite (AES-256-GCM encrypted) |
-| `SPIKE_NEXUS_KEEPER_PEERS` | `https://spike-keeper-1:8443` | Comma-separated list of Keeper URLs for Shamir recovery |
-| `SPIKE_NEXUS_SHAMIR_THRESHOLD` | `1` | Minimum Keeper shards needed for root key reconstruction |
-| `SPIKE_NEXUS_SHAMIR_SHARES` | `1` | Total Shamir shards (development uses 1; production should use 3+) |
+| `SPIKE_NEXUS_KEEPER_PEERS` | `https://spike-keeper-1:8443` (local demo) / `https://spike-keeper-1:8443,https://spike-keeper-2:8443,https://spike-keeper-3:8443` (production-intent compose) | Comma-separated list of Keeper URLs for Shamir recovery |
+| `SPIKE_NEXUS_SHAMIR_THRESHOLD` | `1` (local demo) / `2` (production-intent compose, EKS) | Minimum Keeper shards needed for root key reconstruction |
+| `SPIKE_NEXUS_SHAMIR_SHARES` | `1` (local demo) / `3` (production-intent compose, EKS) | Total Shamir shards; release-facing configs now require multi-share recovery |
 | `SPIKE_SYSTEM_LOG_LEVEL` | `INFO` | SPIKE logging level: `DEBUG`, `INFO`, `WARN`, `ERROR` |
 | `SPIKE_TRUST_ROOT` | `poc.local` | Base trust root |
 | `SPIKE_TRUST_ROOT_NEXUS` | `poc.local` | Trust root for Nexus validation (required for `IsNexus()` check) |
@@ -304,9 +307,15 @@ environment variables. Source: `docker-compose.yml` service definitions.
 | Variable | Value | Description |
 |----------|-------|-------------|
 | `SPIKE_NEXUS_API_URL` | `https://spike-nexus:8443` | Nexus URL for post-bootstrap verification |
-| `SPIKE_NEXUS_KEEPER_PEERS` | `https://spike-keeper-1:8443` | Keeper URL(s) to send shards to |
-| `SPIKE_NEXUS_SHAMIR_THRESHOLD` | `1` | Must match Nexus config |
-| `SPIKE_NEXUS_SHAMIR_SHARES` | `1` | Must match Nexus config |
+| `SPIKE_NEXUS_KEEPER_PEERS` | `https://spike-keeper-1:8443` (local demo) / `https://spike-keeper-1:8443,https://spike-keeper-2:8443,https://spike-keeper-3:8443` (production-intent compose) | Keeper URL(s) to send shards to |
+| `SPIKE_NEXUS_SHAMIR_THRESHOLD` | `1` (local demo) / `2` (production-intent compose, EKS release bundle) | Bootstrap must match the active Nexus recovery profile |
+| `SPIKE_NEXUS_SHAMIR_SHARES` | `1` (local demo) / `3` (production-intent compose, EKS release bundle) | Bootstrap must match the active Nexus recovery profile |
+
+Release-facing compose (`docker-compose.prod-intent.yml`) and the standalone
+SPIKE EKS bundle (`infra/eks/spike/`) now require multi-share keeper recovery
+(`2-of-3` in repo defaults). Keep the `1-of-1` values only for isolated local
+demo/bootstrap flows from `docker-compose.yml` and
+`infra/eks/overlays/local/spike-bootstrap-job.yaml`.
 
 ### SPIKE Secret Seeder
 

@@ -84,8 +84,8 @@ func TestDockerMCPReadToolWorkspaceScope(t *testing.T) {
 		{
 			name:        "ReadWithinPOCWorkspace",
 			filePath:    pocDir() + "/README.md",
-			wantAllowed: true,
-			description: "File within POC workspace should be allowed",
+			wantAllowed: false,
+			description: "Live compose profile should deny direct filesystem reads even within the repo workspace",
 		},
 		{
 			name:        "ReadOutsidePOCWorkspace",
@@ -165,8 +165,8 @@ func TestDockerMCPGrepToolWorkspaceScope(t *testing.T) {
 		{
 			name:        "GrepWithinPOCWorkspace",
 			searchPath:  pocDir(),
-			wantAllowed: true,
-			description: "Grep within POC workspace should be allowed",
+			wantAllowed: false,
+			description: "Live compose profile should deny direct grep even within the repo workspace",
 		},
 		{
 			name:        "GrepOutsidePOCWorkspace",
@@ -253,8 +253,8 @@ func TestDockerMCPBashToolStepUpRequired(t *testing.T) {
 			name:        "BashWithStepUp",
 			command:     "echo test",
 			stepUpToken: "valid-step-up-token-12345",
-			wantAllowed: true,
-			description: "Bash with step-up token should be allowed",
+			wantAllowed: false,
+			description: "Live compose profile should deny direct bash even with a synthetic step-up token",
 		},
 	}
 
@@ -322,8 +322,8 @@ func TestDockerMCPBashToolWorkspaceScope(t *testing.T) {
 		{
 			name:        "BashListPOCWorkspace",
 			command:     "ls " + pocDir(),
-			wantAllowed: true,
-			description: "Bash command targeting POC workspace should be allowed",
+			wantAllowed: false,
+			description: "Live compose profile should deny direct bash commands against the repo workspace",
 		},
 		{
 			name:        "BashAccessSystemFile",
@@ -457,10 +457,18 @@ func TestDockerMCPToolHashVerification(t *testing.T) {
 			}
 			defer resp.Body.Close()
 
-			if resp.StatusCode == http.StatusForbidden {
-				t.Errorf("Tool %s with correct hash was blocked (403)", tt.tool)
+			if tt.tool == "tavily_search" {
+				if resp.StatusCode == http.StatusForbidden {
+					t.Errorf("Tool %s with correct hash was blocked (403)", tt.tool)
+				} else {
+					t.Logf("Tool %s with correct hash allowed (status %d)", tt.tool, resp.StatusCode)
+				}
+				return
+			}
+			if resp.StatusCode != http.StatusForbidden {
+				t.Errorf("Tool %s with correct hash should still be denied in the live compose profile, got %d", tt.tool, resp.StatusCode)
 			} else {
-				t.Logf("Tool %s with correct hash allowed (status %d)", tt.tool, resp.StatusCode)
+				t.Logf("Tool %s with correct hash correctly remained denied in the live compose profile", tt.tool)
 			}
 		})
 

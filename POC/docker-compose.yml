@@ -124,7 +124,9 @@ services:
       - SPIKE_NEXUS_TLS_PORT=:8443
       - SPIKE_NEXUS_BACKEND_STORE=sqlite
       - SPIKE_NEXUS_DATA_DIR=/opt/spike/data  # RFA-oyg: explicit data dir for SQLite volume mount
-      # Keeper configuration for Shamir Secret Sharing root key recovery (RFA-oyg)
+      # Local demo profile: single Keeper and 1-of-1 recovery for easy bootstrap.
+      # Production-intent overrides in docker-compose.prod-intent.yml require
+      # multi-share recovery and additional keeper peers.
       - SPIKE_NEXUS_KEEPER_PEERS=https://spike-keeper-1:8443
       - SPIKE_NEXUS_SHAMIR_THRESHOLD=1
       - SPIKE_NEXUS_SHAMIR_SHARES=1
@@ -156,7 +158,8 @@ services:
       - /tmp
 
   # SPIKE Keeper 1 - Shamir key shard holder for Nexus root key recovery (RFA-oyg)
-  # Single Keeper with threshold=1, shares=1 is minimum viable for POC.
+  # Single Keeper with threshold=1, shares=1 is intentionally isolated to the
+  # local demo/dev compose path.
   # Keeper holds root encryption key shard in memory; Nexus contacts it on startup
   # to reconstruct the AES-256-GCM root key for SQLite backend encryption.
   spike-keeper-1:
@@ -575,6 +578,7 @@ services:
       - ALLOW_INSECURE_DEV_MODE=1
       - DEV_LISTEN_HOST=0.0.0.0
       - ALLOW_NON_LOOPBACK_DEV_BIND=1
+      - ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS=spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
       - ENFORCEMENT_PROFILE=dev
       - SPIFFE_TRUST_DOMAIN=poc.local
       - SPIFFE_LISTEN_PORT=9443

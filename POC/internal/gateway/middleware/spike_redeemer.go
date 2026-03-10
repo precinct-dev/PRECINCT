@@ -27,7 +27,7 @@ type SPIKENexusRedeemer struct {
 	devMode    bool                    // When true, auto-populate OwnerID if Nexus doesn't return it (POC accommodation)
 }
 
-// spikeSecretRequest is the JSON body for POST /v1/store/secret/get
+// spikeSecretRequest is the JSON body for POST /v1/store/secrets?action=get
 type spikeSecretRequest struct {
 	Path string `json:"path"`
 }
@@ -90,7 +90,7 @@ func NewSPIKENexusRedeemerWithClient(nexusURL string, client *http.Client) *SPIK
 // RedeemSecret calls SPIKE Nexus to retrieve the actual secret value for a
 // SPIKE token. The token's Ref field is used as the secret path in Nexus.
 //
-// The call is: POST <nexusURL>/v1/store/secret/get
+// The call is: POST <nexusURL>/v1/store/secrets?action=get
 // Body: {"path": "<token.Ref>"}
 // Response: {"data": {"value": "<secret>"}}
 func (s *SPIKENexusRedeemer) RedeemSecret(ctx context.Context, token *SPIKEToken) (*SPIKESecret, error) {
@@ -108,8 +108,7 @@ func (s *SPIKENexusRedeemer) RedeemSecret(ctx context.Context, token *SPIKEToken
 	}
 
 	// Create HTTP request.
-	// SPIKE Nexus v0.8.0 GET endpoint: POST /v1/store/secrets?action=get
-	// See spike-sdk-go/api/url/secret.go SecretGet() and config.go NexusSecrets.
+	// SPIKE Nexus get-secret endpoint is POST /v1/store/secrets?action=get.
 	url := fmt.Sprintf("%s/v1/store/secrets?action=get", s.nexusURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, strings.NewReader(string(bodyJSON)))
 	if err != nil {

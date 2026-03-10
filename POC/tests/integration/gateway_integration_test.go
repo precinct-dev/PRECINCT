@@ -35,10 +35,6 @@ func TestOPAIntegration(t *testing.T) {
 	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
-	if err := waitForService(opaURL+"/health", 30*time.Second); err != nil {
-		t.Fatalf("OPA not ready: %v", err)
-	}
-
 	tests := []struct {
 		name       string
 		spiffeID   string
@@ -225,10 +221,6 @@ func TestMiddlewareChainExecution(t *testing.T) {
 	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
-	if err := waitForService(opaURL+"/health", 30*time.Second); err != nil {
-		t.Fatalf("OPA not ready: %v", err)
-	}
-
 	// Send request that should pass through full chain
 	mcpReq := map[string]interface{}{
 		"jsonrpc": "2.0",

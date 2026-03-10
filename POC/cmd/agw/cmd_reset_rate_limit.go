@@ -68,16 +68,16 @@ func newResetRateLimitCmd() *cobra.Command {
 			ctx, cancel := context.WithTimeout(cmd.Context(), 5*time.Second)
 			defer cancel()
 
-			client, err := agw.NewKeyDBClient(keydbURL)
+			kdb, err := agw.NewKeyDB(keydbURL)
 			if err != nil {
 				return err
 			}
 			defer func() {
-				_ = client.Close()
+				_ = kdb.Close()
 			}()
 
 			if all {
-				n, err := agw.DeleteAllRateLimitKeys(ctx, client)
+				n, err := kdb.DeleteAllRateLimitKeys(ctx)
 				if err != nil {
 					return err
 				}
@@ -85,7 +85,7 @@ func newResetRateLimitCmd() *cobra.Command {
 				return nil
 			}
 
-			n, keys, err := agw.DeleteRateLimitKeysForSPIFFEID(ctx, client, spiffeID)
+			n, keys, err := kdb.DeleteRateLimitKeysForSPIFFEID(ctx, spiffeID)
 			if err != nil {
 				return err
 			}

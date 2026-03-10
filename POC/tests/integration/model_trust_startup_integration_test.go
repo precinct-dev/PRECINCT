@@ -1,6 +1,7 @@
 package integration
 
 import (
+	"encoding/base64"
 	"crypto/ed25519"
 	"crypto/x509"
 	"encoding/pem"
@@ -12,6 +13,42 @@ import (
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
 )
+
+func writeSignedStrictToolRegistryFixture(t *testing.T) (configPath, publicKeyPath string) {
+	t.Helper()
+
+	sourceRegistry := filepath.Join(testutil.ProjectRoot(), "config", "tool-registry.yaml")
+	registryBytes, err := os.ReadFile(sourceRegistry)
+	if err != nil {
+		t.Fatalf("read source tool registry: %v", err)
+	}
+
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate attestation key: %v", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("marshal attestation public key: %v", err)
+	}
+
+	fixtureDir := t.TempDir()
+	configPath = filepath.Join(fixtureDir, "tool-registry.yaml")
+	if err := os.WriteFile(configPath, registryBytes, 0o644); err != nil {
+		t.Fatalf("write signed registry fixture: %v", err)
+	}
+	sig := ed25519.Sign(priv, registryBytes)
+	if err := os.WriteFile(configPath+".sig", []byte(base64.StdEncoding.EncodeToString(sig)), 0o644); err != nil {
+		t.Fatalf("write registry signature: %v", err)
+	}
+
+	publicKeyPath = filepath.Join(fixtureDir, "attestation-ed25519.pub")
+	if err := os.WriteFile(publicKeyPath, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}), 0o644); err != nil {
+		t.Fatalf("write attestation public key: %v", err)
+	}
+
+	return configPath, publicKeyPath
+}
 
 func TestGatewayStartupFailsWithUnsignedModelProviderCatalogWhenKeyConfigured(t *testing.T) {
 	tmpDir := t.TempDir()
@@ -87,6 +124,7 @@ func TestGatewayStartupFailsClosedOnGuardArtifactDigestMismatch(t *testing.T) {
 	// Use the project's real signed model provider catalog so catalog
 	// signature verification passes and we reach the guard artifact check.
 	catalogPath := filepath.Join(testutil.ProjectRoot(), "config", "model-provider-catalog.v2.yaml")
+	toolRegistryPath, toolRegistryPubKey := writeSignedStrictToolRegistryFixture(t)
 
 	// Strict profile (prod_standard) requires all security fields to be set.
 	// Supply everything except a correct guard artifact digest so the digest
@@ -95,12 +133,14 @@ func TestGatewayStartupFailsClosedOnGuardArtifactDigestMismatch(t *testing.T) {
 		Port:                          0,
 		UpstreamURL:                   "https://localhost:8080",
 		OPAPolicyDir:                  testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath:        testutil.ToolRegistryConfigPath(),
-		ToolRegistryPublicKey:         projectPubKey,
+		OPAPolicyPublicKey:            toolRegistryPubKey,
+		ToolRegistryConfigPath:        toolRegistryPath,
+		ToolRegistryPublicKey:         toolRegistryPubKey,
 		AuditLogPath:                  "",
 		OPAPolicyPath:                 testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:           1024 * 1024,
 		SPIFFEMode:                    "prod",
+		AdminAuthzAllowedSPIFFEIDs:    []string{"spiffe://poc.local/admin/security"},
 		DestinationsConfigPath:        destinationsPath,
 		RiskThresholdsPath:            filepath.Join(testutil.ProjectRoot(), "config", "risk_thresholds.yaml"),
 		RateLimitRPM:                  100000,

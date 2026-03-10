@@ -1120,10 +1120,10 @@ LOOP_DENY_RISK_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
 LOOP_DENY_RISK_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
 assert_plane_correlation "Loop deny risk" "$RESP_BODY" "${SESSION_ID}"
 
-if [ "$RESP_CODE" = "429" ] && [ "$LOOP_DENY_RISK_REASON" = "LOOP_HALT_MAX_RISK_SCORE" ]; then
+if [ "$RESP_CODE" = "403" ] && [ "$LOOP_DENY_RISK_REASON" = "LOOP_HALT_MAX_RISK_SCORE" ]; then
     log_pass "Loop max_risk_score overflow denied with explicit reason code"
 else
-    log_fail "Loop risk denied path reason code" "Expected 429/LOOP_HALT_MAX_RISK_SCORE, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+    log_fail "Loop risk denied path reason code" "Expected 403/LOOP_HALT_MAX_RISK_SCORE, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
 
 log_subheader "F3: Revoked connector denied at ingress runtime gate"

@@ -125,17 +125,29 @@ gateway_request() {
         shift
     done
 
-    local full_response
-    full_response=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/" \
-        -H "Content-Type: application/json" \
-        -H "X-SPIFFE-ID: ${spiffe_id}" \
-        "${extra_headers[@]}" \
+    local curl_args=(
+        -s
+        -w "\n%{http_code}"
+        -X POST "${GATEWAY_URL}/"
+        -H "Content-Type: application/json"
+        -H "X-SPIFFE-ID: ${spiffe_id}"
+    )
+
+    if [ ${#extra_headers[@]} -gt 0 ]; then
+        curl_args+=("${extra_headers[@]}")
+    fi
+
+    curl_args+=(
         -d "{
             \"jsonrpc\": \"2.0\",
             \"method\": \"${tool_method}\",
             \"params\": ${params_json},
             \"id\": 1
-        }" 2>&1) || true
+        }"
+    )
+
+    local full_response
+    full_response=$(curl "${curl_args[@]}" 2>&1) || true
 
     RESP_CODE=$(echo "$full_response" | tail -n1)
         # Use sed instead of head -n -1 for macOS compatibility

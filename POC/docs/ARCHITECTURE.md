@@ -118,7 +118,7 @@ Agent                     Gateway                    SPIKE Nexus
 1. SPIKE Nexus starts with SPIRE agent socket mounted (same as other services).
 2. SPIKE Bootstrap runs as a one-shot init container (like `spire-token-generator`) to generate and deliver the root key.
 3. SPIKE Pilot (CLI) is used by the setup script to seed initial secrets: `spike secret put external-apis/groq-key value=$GROQ_API_KEY`.
-4. The gateway's `SecretRedeemer` implementation makes mTLS calls to `https://spike-nexus:8443/v1/store/secret/get` to redeem tokens.
+4. The gateway's `SecretRedeemer` implementation makes mTLS calls to `https://spike-nexus:8443/v1/store/secrets?action=get` to redeem tokens.
 
 **Gateway code (as-built):**
 - The gateway uses `SPIKENexusRedeemer` in `internal/gateway/middleware/spike_redeemer.go`, which calls SPIKE Nexus via mTLS (raw HTTP with SPIRE X.509 SVIDs).
@@ -916,7 +916,7 @@ Every integration point between components is explicitly documented here. This i
 
 | Direction | Protocol | Endpoint | Data |
 |-----------|----------|----------|------|
-| Gateway -> Nexus | HTTPS (mTLS via SVID) | `POST /v1/store/secret/get` | Token ref, requesting SPIFFE ID |
+| Gateway -> Nexus | HTTPS (mTLS via SVID) | `POST /v1/store/secrets?action=get` | Token ref, requesting SPIFFE ID |
 | Nexus -> Gateway | HTTPS response | -- | Secret value (AES-256-GCM decrypted) |
 | Bootstrap -> Nexus | HTTPS (mTLS via SVID) | `POST /v1/store/secret/put` | Initial secrets |
 | CLI -> Nexus (via Pilot) | HTTPS (mTLS via SVID) | `spike secret put <path> <key=value>` | Secret creation |
@@ -1044,7 +1044,7 @@ Agent:
 Gateway (step 13):
   3. Parse $SPIKE{ref:7f3a9b2c} from request body
   4. Validate: ownership (SPIFFE ID match), expiry, scope
-  5. Redeem: mTLS call to SPIKE Nexus /v1/store/secret/get
+  5. Redeem: mTLS call to SPIKE Nexus /v1/store/secrets?action=get
   6. Substitute: replace token with real secret in outbound request
   7. Audit: log substitution event (ref, spiffe_id, scope -- NOT secret value)
 

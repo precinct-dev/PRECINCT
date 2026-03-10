@@ -6,7 +6,7 @@
 #   - 3 replicas for gateway (HA)
 #   - 2 replicas for MCP server
 #   - Structured logging with audit enabled
-#   - Production image tags (promoted from staging via promote.yaml)
+#   - Production image digests (promoted from staging via promote.yaml)
 #   - Increased resource limits
 #   - Pod disruption budgets for availability
 #   - Admission control with cert-manager TLS for policy-controller
@@ -27,10 +27,10 @@ resources:
 images:
   - name: mcp-security-gateway
     newName: ghcr.io/ramxx/agentic-ref-arch/mcp-security-gateway
-    newTag: prod  # mcp-security-gateway
+    digest: sha256:abaa43d59681dfb78ee948f87c11cc34d3017ad55e3c68345a5010b3b08ca388  # managed by promote.yaml
   - name: python
     newName: ghcr.io/ramxx/agentic-ref-arch/s3-mcp-server
-    newTag: prod  # mcp-server
+    digest: sha256:aa82e523c90ddfc16fb41abd928a3850cfc1706eba60aea5a63ce06536b1ec8e  # managed by promote.yaml
 
 patches:
   # --------------------------------------------------------------------------
@@ -90,6 +90,8 @@ patches:
                       secretKeyRef:
                         name: gateway-runtime-secrets
                         key: approval_signing_key
+                  - name: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://agentic-ref-arch.poc/ns/ops/sa/gateway-admin"
                   - name: TOOL_REGISTRY_PUBLIC_KEY
                     value: "/config/attestation-ed25519.pub"
                   - name: MODEL_PROVIDER_CATALOG_PUBLIC_KEY

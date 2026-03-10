@@ -17,12 +17,40 @@ require_cmd() {
 
 [[ -n "${STORY_ID}" ]] || fail "usage: $(basename "$0") <story-id>"
 
-require_cmd bd
+require_cmd nd
 require_cmd jq
 require_cmd rg
 
-notes="$(bd show "${STORY_ID}" --json | jq -r '.[0].notes // empty')"
+notes="$(nd show "${STORY_ID}" --json | jq -r '.Body // empty')"
 [[ -n "${notes}" ]] || fail "story ${STORY_ID} has no notes to validate"
+
+notes_section="$(printf '%s\n' "${notes}" | awk '
+  /^## Notes$/ { in_notes = 1; next }
+  in_notes && /^## History$/ { exit }
+  in_notes { print }
+')"
+
+if [[ -z "${notes_section}" ]]; then
+  notes_section="${notes}"
+fi
+
+authoritative_notes="$(printf '%s\n' "${notes_section}" | awk '
+  /^## Implementation Evidence \(DELIVERED\)$/ { capture = 1; print; next }
+  capture && /^## / { exit }
+  capture { print }
+')"
+
+if [[ -z "${authoritative_notes}" ]]; then
+  authoritative_notes="$(printf '%s\n' "${notes_section}" | awk '
+    /^## nd_contract$/ { capture = 1; print; next }
+    capture && /^## / { exit }
+    capture { print }
+  ')"
+fi
+
+if [[ -z "${authoritative_notes}" ]]; then
+  authoritative_notes="${notes_section}"
+fi
 
 mapfile -t candidates < <(
   while IFS= read -r line; do
@@ -30,18 +58,19 @@ mapfile -t candidates < <(
     if printf '%s' "${lower}" | rg -q 'missing|absent|not present'; then
       continue
     fi
-    printf '%s\n' "${line}" | rg -o 'POC/[A-Za-z0-9._/-]+' || true
-  done < <(printf '%s\n' "${notes}") | sort -u
+    printf '%s\n' "${line}" | rg -o '(POC/)?(AGENTS\.md|README\.md|Makefile|(?:docs|tests|scripts|internal|infra|sdk|ports|config)/[A-Za-z0-9._/-]*\.[A-Za-z0-9]+)' || true
+  done < <(printf '%s\n' "${authoritative_notes}") | sort -u
 )
 [[ "${#candidates[@]}" -gt 0 ]] || fail "no POC evidence paths found in notes for ${STORY_ID}"
 
 missing=0
 for rel in "${candidates[@]}"; do
-  abs="${REPO_ROOT}/${rel}"
+  clean_rel="${rel#POC/}"
+  abs="${POC_DIR}/${clean_rel}"
   if [[ -e "${abs}" ]]; then
-    echo "[PASS] ${rel}"
+    echo "[PASS] ${clean_rel}"
   else
-    echo "[MISSING] ${rel}"
+    echo "[MISSING] ${clean_rel}"
     missing=$((missing + 1))
   fi
 done

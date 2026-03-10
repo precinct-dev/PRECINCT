@@ -124,21 +124,21 @@ func DeleteGDPRSubjectData(ctx context.Context, p GDPRDeleteParams) (GDPRDeleteR
 		reportsDir = "reports"
 	}
 
-	client, err := NewKeyDBClient(keydbURL)
+	kdb, err := NewKeyDB(keydbURL)
 	if err != nil {
 		return GDPRDeleteReport{}, err
 	}
 	defer func() {
-		_ = client.Close()
+		_ = kdb.Close()
 	}()
 
-	_, sessionKeys, err := DeleteSessionKeysForSPIFFEID(ctx, client, spiffeID)
+	_, sessionKeys, err := kdb.DeleteSessionKeysForSPIFFEID(ctx, spiffeID)
 	if err != nil {
 		return GDPRDeleteReport{}, err
 	}
 	sessionsDeleted := countUniqueSessionsFromKeys(spiffeID, sessionKeys)
 
-	rateLimitDeleted, _, err := DeleteRateLimitKeysForSPIFFEID(ctx, client, spiffeID)
+	rateLimitDeleted, _, err := kdb.DeleteRateLimitKeysForSPIFFEID(ctx, spiffeID)
 	if err != nil {
 		return GDPRDeleteReport{}, err
 	}
@@ -195,12 +195,12 @@ func ExportGDPRDSAR(ctx context.Context, p GDPRAuditParams) (DSARExportResult, e
 		now = time.Now().UTC()
 	}
 
-	client, err := NewKeyDBClient(keydbURL)
+	kdb, err := NewKeyDB(keydbURL)
 	if err != nil {
 		return DSARExportResult{}, err
 	}
 	defer func() {
-		_ = client.Close()
+		_ = kdb.Close()
 	}()
 
 	auditEntries, err := LoadAuditEntries(ctx, p.AuditSource, projectRoot, p.AuditLogPath)
@@ -209,11 +209,11 @@ func ExportGDPRDSAR(ctx context.Context, p GDPRAuditParams) (DSARExportResult, e
 	}
 	filteredAudit := filterAuditEntriesBySPIFFEID(auditEntries, spiffeID)
 
-	sessions, err := collectDSARSessions(ctx, client, spiffeID)
+	sessions, err := kdb.CollectDSARSessions(ctx, spiffeID)
 	if err != nil {
 		return DSARExportResult{}, err
 	}
-	rateLimitData, err := collectDSARRateLimitData(ctx, client, spiffeID)
+	rateLimitData, err := kdb.CollectDSARRateLimitData(ctx, spiffeID)
 	if err != nil {
 		return DSARExportResult{}, err
 	}

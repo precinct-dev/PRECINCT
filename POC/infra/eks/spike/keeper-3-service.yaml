@@ -1,0 +1,22 @@
+# ------------------------------------------------------------------------------
+# SPIKE Keeper 3 Service
+# Release-facing multi-share recovery service for keeper instance 3.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: spike-keeper-3
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-keeper
+    app.kubernetes.io/part-of: spike
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: spike-keeper
+    app.kubernetes.io/instance: keeper-3
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+      protocol: TCP

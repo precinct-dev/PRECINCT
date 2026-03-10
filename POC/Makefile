@@ -95,9 +95,7 @@ clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
 	rm -rf build/sbom/ build/bin/
 	@echo "Clearing SPIRE data directories (stale SVIDs prevent clean restart)..."
 	rm -rf data/spire-server/ data/spire-agent/
-	@if [ -f .beads/daemon.log ]; then \
-		: > .beads/daemon.log; \
-	fi
+	@if [ -d build/logs ]; then rm -rf build/logs/*; fi
 
 repave: ## Repave containers (COMPONENT=<name> for single, default: all)
 	@if [ -n "$(COMPONENT)" ]; then \
@@ -193,7 +191,7 @@ observability-reset: ## Destroy all observability backend data (Phoenix + OpenSe
 # 5. CI / Quality (ci, lint, test, production-readiness-validate)
 # ===========================================================================
 
-.PHONY: ci lint test production-readiness-validate story-evidence-validate
+.PHONY: ci lint test test-unit test-integration test-opa test-e2e production-readiness-validate story-evidence-validate tracker-surface-validate
 
 ci: lint test conformance build-images ## Full CI pipeline (lint + test + conformance + build)
 	@echo "CI pipeline complete"
@@ -206,13 +204,25 @@ lint: ## Run linters
 		go vet ./...; \
 	fi
 
-test: ## Run all tests (Go packages + integration/unit suites + OPA)
+test: test-unit test-integration test-opa ## Run all tests (unit + tagged integration + OPA)
+	@echo "Test suite complete"
+
+test-unit: ## Run unit tests (Go packages and non-tagged suites)
 	@echo "Running unit tests..."
 	go test ./internal/gateway/... -v -cover
 	go test ./internal/gateway/middleware/... -v -cover
 	go test ./tests/unit/... -v
-	go test ./tests/integration/... -v
+
+test-integration: ## Run tagged integration tests against an ensured local stack
+	@echo "Ensuring local stack is healthy for tagged integration tests..."
+	@bash scripts/ensure-stack.sh --resilient
 	@echo ""
+	@echo "Running tagged integration tests..."
+	@keydb_url="$$(bash scripts/resolve-keydb-url.sh)"; \
+	echo "Using AGW_KEYDB_URL=$$keydb_url"; \
+	AGW_KEYDB_URL="$$keydb_url" go test -tags=integration ./tests/integration/... -v -timeout 30m
+
+test-opa: ## Run OPA policy tests
 	@echo "Running OPA policy tests..."
 	@if command -v opa >/dev/null 2>&1; then \
 		opa test config/opa/ -v; \
@@ -220,15 +230,55 @@ test: ## Run all tests (Go packages + integration/unit suites + OPA)
 		echo "WARNING: opa not installed, skipping OPA tests"; \
 	fi
 
+test-e2e: demo ## Run the full E2E demo suite (Compose + K8s)
+
 production-readiness-validate: security-scan-strict security-scan-validate manifest-policy-check control-matrix-check ## Strict production-readiness security evidence gate
 	@echo "production-readiness-validate: PASS"
 
-story-evidence-validate: ## Validate evidence paths in a bd story (STORY_ID=<id>)
+story-evidence-validate: ## Validate evidence paths in an nd story (STORY_ID=<id>)
 	@if [ -z "$(STORY_ID)" ]; then \
-		echo "ERROR: STORY_ID is required (ex: make story-evidence-validate STORY_ID=RFA-l6h6.6.11)"; \
+		echo "ERROR: STORY_ID is required (ex: make story-evidence-validate STORY_ID=RFA-565d)"; \
 		exit 1; \
 	fi
 	tests/e2e/validate_story_evidence_paths.sh "$(STORY_ID)"
+
+tracker-surface-validate: ## Audit active release workflow surfaces for stale tracker references
+	@bash -eu -o pipefail -c ' \
+		files=( \
+			"AGENTS.md" \
+			"README.md" \
+			"Makefile" \
+			"docs/current-state-and-roadmap.md" \
+			"docs/deployment-guide.md" \
+			"docs/security/evidence-collection.md" \
+			"docs/operations/runbooks/incident-triage-and-response.md" \
+			"docs/operations/runbooks/rollback-runbook.md" \
+			"docs/operations/runbooks/security-event-response.md" \
+			"tests/e2e/validate_story_evidence_paths.sh" \
+			"tests/e2e/validate_readiness_state_integrity.sh" \
+		); \
+		found=0; \
+		for rel in "$${files[@]}"; do \
+			abs="$(CURDIR)/$$rel"; \
+			while IFS= read -r match; do \
+				[[ -n "$$match" ]] || continue; \
+				line_text="$${match#*:}"; \
+				lower=$$(printf "%s" "$$line_text" | tr "[:upper:]" "[:lower:]"); \
+				case "$$lower" in \
+					*historical*|*archiv*|*legacy*|*compatibility*|*"does not require"*|*"canonical tracker"*|*"rg -n"*) \
+						continue \
+						;; \
+				esac; \
+				echo "[STALE] $$match"; \
+				found=1; \
+			done < <(rg -n "\\bbd\\b|beads" "$$abs" || true); \
+		done; \
+		if [[ "$$found" -ne 0 ]]; then \
+			echo "[FAIL] found non-archival bd/beads references in active release workflow surfaces" >&2; \
+			exit 1; \
+		fi; \
+		echo "[PASS] release workflow surfaces use nd as the active tracker; remaining beads references are archival only" \
+	'
 
 # ===========================================================================
 # 5. Demos (demo, demo-compose, demo-k8s, demo-cli)
@@ -335,7 +385,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 		fi; \
 	}
 	@echo "Applying SPIKE Bootstrap job (after SPIRE registration)..."
-	-kubectl -n spike-system apply -f infra/eks/spike/bootstrap-job.yaml >/dev/null 2>&1 || true
+	-kubectl -n spike-system apply -f infra/eks/overlays/local/spike-bootstrap-job.yaml >/dev/null 2>&1 || true
 	@echo "Waiting for SPIKE Bootstrap job..."
 	-kubectl -n spike-system wait --for=condition=complete job/spike-bootstrap --timeout=240s 2>/dev/null || \
 		echo "WARNING: SPIKE Bootstrap not yet complete"
@@ -426,8 +476,12 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 	done; \
 	echo "Validating admission wiring (namespace scope, include labels, keyless identity bounds)..."; \
 	tests/e2e/admission/verify-admission-manifest-wiring.sh; \
+	echo "Validating staging/prod overlay image digests against Gatekeeper semantics..."; \
+	bash tests/e2e/admission/verify-overlay-image-digests.sh; \
 	echo "Validating network policy hardening wiring..."; \
 	tests/e2e/network-policy/verify-network-policy-manifest-wiring.sh; \
+	echo "Validating local K8s demo identity wiring..."; \
+	tests/e2e/validate_local_demo_identity_wiring.sh; \
 	echo "Validating strict runtime wiring (K8s + Compose)..."; \
 	tests/e2e/validate_strict_runtime_wiring.sh; \
 	echo "Validating strict overlay operationalization (no placeholders/literal runtime secrets)..."; \
@@ -493,8 +547,10 @@ validate-k8s:
 .PHONY: managed-cloud-bootstrap-prereqs-validate framework-taxonomy-mappings-validate
 .PHONY: app-pack-model-validate app-integration-strategy-docs-validate
 .PHONY: gateway-bypass-case26-validate observability-evidence-gate-validate
+.PHONY: spike-shamir-validate
 
 compose-production-intent-preflight:
+	@bash tests/e2e/validate_spike_shamir_profiles.sh
 	@bash scripts/compose-production-intent-preflight.sh
 
 compose-production-intent-preflight-signature-prereqs:
@@ -525,9 +581,12 @@ gateway-bypass-case26-validate:
 observability-evidence-gate-validate:
 	@bash tests/e2e/validate_observability_evidence_gate.sh
 
+spike-shamir-validate:
+	@bash tests/e2e/validate_spike_shamir_profiles.sh
+
 # Individual K8s validation targets (demoted from visible)
 .PHONY: strict-runtime-validate strict-overlay-operationalization-validate
-.PHONY: promotion-identity-validate ci-gate-parity-validate
+.PHONY: promotion-identity-validate ci-gate-parity-validate k8s-overlay-digest-validate
 .PHONY: local-k8s-runtime-campaign-artifacts-validate production-reality-closure-local-artifacts-validate
 
 strict-runtime-validate:
@@ -535,6 +594,9 @@ strict-runtime-validate:
 
 strict-overlay-operationalization-validate:
 	tests/e2e/validate_strict_overlay_operationalization.sh
+
+k8s-overlay-digest-validate:
+	OVERLAYS="$(OVERLAYS)" bash tests/e2e/admission/verify-overlay-image-digests.sh
 
 promotion-identity-validate:
 	tests/e2e/validate_promotion_identity_policy.sh
@@ -943,8 +1005,8 @@ k8s-runtime-campaign:
 operations-backup-restore-drill:
 	@bash scripts/operations/run_backup_restore_drill.sh
 
-readiness-state-validate:
-	tests/e2e/validate_readiness_state_integrity.sh
+readiness-state-validate: ## Validate readiness docs/state snapshot against live nd status
+	tests/e2e/validate_readiness_state_integrity.sh "$(SNAPSHOT)"
 
 validate-setup-time:
 	@if [ -z "$(MODE)" ]; then \
@@ -983,4 +1045,4 @@ k8s-local-down: k8s-down
 k8s-local-opensearch-up: k8s-opensearch-up
 k8s-local-opensearch-down: k8s-opensearch-down
 clean-logs:
-	@if [ -f .beads/daemon.log ]; then : > .beads/daemon.log; fi
+	@if [ -d build/logs ]; then rm -rf build/logs/*; fi

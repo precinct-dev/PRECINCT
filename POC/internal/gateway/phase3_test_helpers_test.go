@@ -29,6 +29,9 @@ func newPhase3TestGateway(t *testing.T) (*Gateway, *Config) {
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
 		SPIFFEMode:             "dev",
+		AdminAuthzAllowedSPIFFEIDs: []string{
+			"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+		},
 		DestinationsConfigPath: destinationsPath,
 	}
 
