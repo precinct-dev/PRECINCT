@@ -42,7 +42,7 @@ jobs:
         working-directory: POC
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -70,7 +70,7 @@ jobs:
         working-directory: POC
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -114,7 +114,7 @@ jobs:
         working-directory: POC
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install OPA
         run: |
@@ -142,7 +142,7 @@ jobs:
         working-directory: POC
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install readiness tooling
         run: |
@@ -182,7 +182,7 @@ jobs:
         working-directory: POC
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Execute compose demo parity path
         run: |
@@ -226,7 +226,7 @@ jobs:
         working-directory: POC
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Install kustomize
         run: |
@@ -265,7 +265,7 @@ jobs:
             context: POC
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Validate referenced paths exist
         run: |
