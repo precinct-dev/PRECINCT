@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway"
+	"github.com/precinct-dev/PRECINCT/POC/internal/testutil"
 	"github.com/alicebob/miniredis/v2"
 )
 

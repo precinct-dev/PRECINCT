@@ -40,7 +40,7 @@ spec:
     - glob: "ghcr.io/spiffe/**"
     - glob: "ghcr.io/spiffe/*"
     # Custom-built images signed during CI
-    - glob: "ghcr.io/*/agentic-ref-arch/**"
+    - glob: "ghcr.io/*/precinct/**"
   authorities:
     # Keyless OIDC verification via Fulcio + Rekor (GitHub Actions)
     - keyless:
@@ -51,8 +51,8 @@ spec:
           - issuer: https://token.actions.githubusercontent.com
             # Subject pattern tightened to this repository's workflow identities.
             # Example subject format:
-            #   https://github.com/RamXX/agentic_reference_architecture/.github/workflows/<workflow>@refs/heads/<branch>
-            subjectRegExp: "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/[^@]+@refs/heads/.+$"
+            #   https://github.com/precinct-dev/PRECINCT/.github/workflows/<workflow>@refs/heads/<branch>
+            subjectRegExp: "^https://github.com/precinct-dev/PRECINCT/.github/workflows/[^@]+@refs/heads/.+$"
       # Verify signatures against Rekor transparency log
       ctlog:
         url: https://rekor.sigstore.dev

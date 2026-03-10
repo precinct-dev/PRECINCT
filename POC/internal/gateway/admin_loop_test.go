@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/internal/testutil"
 )
 
 // ---------------------------------------------------------------------------

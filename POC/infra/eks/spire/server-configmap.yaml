@@ -3,7 +3,7 @@
 # Story: RFA-9fv.3
 #
 # Adapted from POC/config/spire/server.conf for Kubernetes:
-#   - Trust domain: agentic-ref-arch.poc
+#   - Trust domain: precinct.poc
 #   - k8s_psat NodeAttestor (replaces join_token for EKS)
 #   - SQLite3 data store (sufficient for POC)
 #   - OIDC Discovery enabled for federation via EKS OIDC provider
@@ -23,7 +23,7 @@ data:
         bind_address = "0.0.0.0"
         bind_port = "8081"
         socket_path = "/tmp/spire-server/private/api.sock"
-        trust_domain = "agentic-ref-arch.poc"
+        trust_domain = "precinct.poc"
         data_dir = "/opt/spire/data"
         log_level = "INFO"
 
@@ -46,7 +46,7 @@ data:
         NodeAttestor "k8s_psat" {
             plugin_data {
                 clusters = {
-                    "agentic-ref-arch-poc" = {
+                    "precinct-poc" = {
                         # The service_account_allow_list restricts which service
                         # accounts can attest as SPIRE agents.
                         service_account_allow_list = ["spire-system:spire-agent"]

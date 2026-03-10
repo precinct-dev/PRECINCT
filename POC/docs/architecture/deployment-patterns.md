@@ -229,7 +229,7 @@ different underlying mechanisms.
 | **SVID issuance** | SPIRE Server issues X.509 SVIDs | SPIRE Server issues X.509 SVIDs |
 | **Node attestation** | `join_token` (one-time bootstrap) | `k8s_psat` (OIDC-backed, see 2.6) |
 | **Workload attestation** | `docker` attestor (container labels) | `k8s` attestor (namespace, service account, pod labels) |
-| **Trust domain** | `poc.local` | `agentic-ref-arch.poc` |
+| **Trust domain** | `poc.local` | `precinct.poc` |
 | **SVID rotation** | Automatic via go-spiffe v2 X509Source | Automatic via go-spiffe v2 X509Source |
 | **Outcome** | mTLS between gateway, MCP servers, KeyDB | mTLS between gateway, MCP servers, KeyDB |
 

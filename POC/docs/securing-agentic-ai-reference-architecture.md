@@ -381,4 +381,4 @@ For regulated profiles, any indexed evidence backend must follow the same trust 
 
 ---
 
-*The full source is available at [github.com/RamXX/agentic_reference_architecture](https://github.com/RamXX/agentic_reference_architecture). Website: [precinct.dev](https://precinct.dev). Contributions welcome.*
+*The full source is available at [github.com/precinct-dev/PRECINCT](https://github.com/precinct-dev/PRECINCT). Website: [precinct.dev](https://precinct.dev). Contributions welcome.*

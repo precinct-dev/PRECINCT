@@ -1,4 +1,4 @@
-module github.com/RamXX/agentic_reference_architecture/POC
+module github.com/precinct-dev/PRECINCT/POC
 
 go 1.24.6
 

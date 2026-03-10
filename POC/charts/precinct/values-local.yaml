@@ -8,7 +8,7 @@
 
 global:
   environment: local
-  trustDomain: agentic-ref-arch.poc
+  trustDomain: precinct.poc
 
 gateway:
   replicas: 1

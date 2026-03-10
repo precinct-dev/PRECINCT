@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
+	"github.com/precinct-dev/PRECINCT/POC/internal/testutil"
 )
 
 // TestStructuredLogging_Integration verifies that structured log output is

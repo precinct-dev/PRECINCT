@@ -92,7 +92,7 @@ is ignored.
 
 ## Section 2: Go SDK Reference
 
-**Package:** `github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway`
+**Package:** `github.com/precinct-dev/PRECINCT/POC/sdk/go/mcpgateway`
 **Min Go version:** 1.24.6
 **External dependency:** `github.com/google/uuid`
 
@@ -726,7 +726,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway"
+    "github.com/precinct-dev/PRECINCT/POC/sdk/go/mcpgateway"
 )
 
 func main() {
@@ -839,7 +839,7 @@ import (
     "log"
     "net/http"
 
-    "github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway"
+    "github.com/precinct-dev/PRECINCT/POC/sdk/go/mcpgateway"
     "github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 

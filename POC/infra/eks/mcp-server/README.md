@@ -27,7 +27,7 @@ All tool servers in the `tools` namespace share the ServiceAccount `mcp-tool`,
 which maps to SPIFFE ID:
 
 ```
-spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool
+spiffe://precinct.poc/ns/tools/sa/mcp-tool
 ```
 
 For production, consider per-tool ServiceAccounts for finer-grained identity.

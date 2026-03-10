@@ -15,9 +15,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
-	"github.com/RamXX/agentic_reference_architecture/POC/ports/discord"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/ports/discord"
 )
 
 // integrationMockGateway satisfies gateway.PortGatewayServices with minimal

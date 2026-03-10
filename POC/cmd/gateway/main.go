@@ -13,11 +13,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
-	gwmetrics "github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/metrics"
-	"github.com/RamXX/agentic_reference_architecture/POC/ports/discord"
-	"github.com/RamXX/agentic_reference_architecture/POC/ports/email"
-	"github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway"
+	gwmetrics "github.com/precinct-dev/PRECINCT/POC/internal/gateway/metrics"
+	"github.com/precinct-dev/PRECINCT/POC/ports/discord"
+	"github.com/precinct-dev/PRECINCT/POC/ports/email"
+	"github.com/precinct-dev/PRECINCT/POC/ports/openclaw"
 )
 
 func main() {

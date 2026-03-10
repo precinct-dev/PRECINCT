@@ -139,8 +139,8 @@ Backward-compatibility behavior:
 Example explicit allowlists:
 
 ```bash
-export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool,spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool-canary"
-export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb,spiffe://agentic-ref-arch.poc/ns/data/sa/keydb-blue"
+export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/tools/sa/mcp-tool,spiffe://precinct.poc/ns/tools/sa/mcp-tool-canary"
+export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb,spiffe://precinct.poc/ns/data/sa/keydb-blue"
 ```
 
 ### Guard Model (Deep Scan)
@@ -944,5 +944,5 @@ reg "spiffe://poc.local/gateways/mcp-security-gateway/dev" \
 ### K8s Attestation (Local Overlay)
 
 In the Kubernetes local overlay (`infra/eks/overlays/local/`), the trust domain
-changes to `agentic-ref-arch.poc` and SPIRE uses `join_token` attestation
+changes to `precinct.poc` and SPIRE uses `join_token` attestation
 instead of Docker labels.

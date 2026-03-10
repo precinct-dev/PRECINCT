@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
 )
 
 // TestTokenSubstitutionMiddleware_FullFlow tests the complete token substitution flow

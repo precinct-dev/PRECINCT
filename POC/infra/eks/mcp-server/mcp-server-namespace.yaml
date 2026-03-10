@@ -10,7 +10,7 @@
 # The "name: tools" label is required by NetworkPolicy namespaceSelector rules
 # that control which namespaces can receive traffic from the gateway.
 #
-# SPIFFE ID for workloads: spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool
+# SPIFFE ID for workloads: spiffe://precinct.poc/ns/tools/sa/mcp-tool
 # (Registered in RFA-9fv.3 spire/registration-entries.yaml)
 # ------------------------------------------------------------------------------
 apiVersion: v1

@@ -33,7 +33,7 @@ locals {
   public_subnets  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
 
   common_tags = {
-    Project     = "agentic-ref-arch"
+    Project     = "precinct"
     Environment = var.environment
     ManagedBy   = "opentofu"
     Story       = "RFA-9fv.2"

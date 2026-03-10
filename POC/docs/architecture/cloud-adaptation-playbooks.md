@@ -22,7 +22,7 @@ Use this with:
 2. Install tools: `kubectl`, `kustomize`, `helm`, `cosign`, `jq`.
 3. Clone repo and set working dir:
 ```bash
-cd /path/to/agentic_reference_architecture/POC
+cd /path/to/PRECINCT/POC
 ```
 4. Define target context variables:
 ```bash

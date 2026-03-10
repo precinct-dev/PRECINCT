@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/tools"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/internal/tools"
 )
 
 // TestContextFetcherIntegration tests the context fetcher with real HTTP requests

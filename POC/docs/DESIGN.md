@@ -585,7 +585,7 @@ Phase 2 standardizes ALL gateway error responses to a single JSON envelope:
       "pattern_type": "aws_access_key"
     },
     "remediation": "Remove or redact credentials from the request payload. Use $SPIKE{ref:path/to/secret} token references instead of raw credentials.",
-    "docs_url": "https://github.com/example/agentic-ref-arch/blob/main/docs/errors/dlp-credentials.md"
+    "docs_url": "https://github.com/example/precinct/blob/main/docs/errors/dlp-credentials.md"
   }
 }
 ```
@@ -741,7 +741,7 @@ curl -s -X POST http://localhost:9090 \
 For Go-based agents or tools:
 
 ```go
-import "github.com/RamXX/agentic_reference_architecture/POC/sdk/gateway"
+import "github.com/precinct-dev/PRECINCT/POC/sdk/gateway"
 
 client := gateway.NewClient(
     gateway.WithURL("http://localhost:9090"),

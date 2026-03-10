@@ -5,13 +5,13 @@
 #
 #   1. Create the S3 bucket:
 #      aws s3api create-bucket \
-#        --bucket agentic-ref-arch-tfstate \
+#        --bucket precinct-tfstate \
 #        --region us-west-2 \
 #        --create-bucket-configuration LocationConstraint=us-west-2
 #
 #   2. Enable versioning:
 #      aws s3api put-bucket-versioning \
-#        --bucket agentic-ref-arch-tfstate \
+#        --bucket precinct-tfstate \
 #        --versioning-configuration Status=Enabled
 #
 #   3. Create the DynamoDB lock table:
@@ -27,7 +27,7 @@
 
 # terraform {
 #   backend "s3" {
-#     bucket         = "agentic-ref-arch-tfstate"
+#     bucket         = "precinct-tfstate"
 #     key            = "eks/terraform.tfstate"
 #     region         = "us-west-2"
 #     dynamodb_table = "terraform-lock"

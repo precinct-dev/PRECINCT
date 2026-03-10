@@ -26,10 +26,10 @@ resources:
 
 images:
   - name: mcp-security-gateway
-    newName: ghcr.io/ramxx/agentic-ref-arch/mcp-security-gateway
+    newName: ghcr.io/precinct-dev/precinct/mcp-security-gateway
     digest: sha256:abaa43d59681dfb78ee948f87c11cc34d3017ad55e3c68345a5010b3b08ca388  # managed by promote.yaml
   - name: python
-    newName: ghcr.io/ramxx/agentic-ref-arch/s3-mcp-server
+    newName: ghcr.io/precinct-dev/precinct/s3-mcp-server
     digest: sha256:aa82e523c90ddfc16fb41abd928a3850cfc1706eba60aea5a63ce06536b1ec8e  # managed by promote.yaml
 
 patches:
@@ -91,7 +91,7 @@ patches:
                         name: gateway-runtime-secrets
                         key: approval_signing_key
                   - name: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS
-                    value: "spiffe://agentic-ref-arch.poc/ns/ops/sa/gateway-admin"
+                    value: "spiffe://precinct.poc/ns/ops/sa/gateway-admin"
                   - name: TOOL_REGISTRY_PUBLIC_KEY
                     value: "/config/attestation-ed25519.pub"
                   - name: MODEL_PROVIDER_CATALOG_PUBLIC_KEY
@@ -105,9 +105,9 @@ patches:
                   - name: GUARD_ARTIFACT_PUBLIC_KEY
                     value: "/config/attestation-ed25519.pub"
                   - name: UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS
-                    value: "spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool"
+                    value: "spiffe://precinct.poc/ns/tools/sa/mcp-tool"
                   - name: KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS
-                    value: "spiffe://agentic-ref-arch.poc/ns/data/sa/keydb"
+                    value: "spiffe://precinct.poc/ns/data/sa/keydb"
                 resources:
                   requests:
                     cpu: 250m
@@ -142,7 +142,7 @@ patches:
                   - name: AWS_REGION
                     value: "us-west-2"
                   - name: ALLOWED_BUCKETS
-                    value: "agentic-ref-arch-prod:gateway/"
+                    value: "precinct-prod:gateway/"
                 resources:
                   requests:
                     cpu: 200m

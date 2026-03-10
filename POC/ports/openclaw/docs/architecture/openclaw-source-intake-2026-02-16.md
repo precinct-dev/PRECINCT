@@ -72,4 +72,4 @@ Establish implementation-truth intake for secure OpenClaw porting using live sou
 ## Command Snapshot
 - `rg -n "POST /v1/responses|POST /tools/invoke|Gateway auth|sandbox|exec approval|trusted-proxy|allowTailscale" ...`
 - `bd show RFA-l6h6.5.1 --json | jq -r '.[0].notes' | rg -n "POC/internal/integrations/openclaw|openclaw_walking_skeleton" -S`
-- `rg --files /Users/ramirosalas/workspace/agentic_reference_architecture/POC | rg "openclaw|integrations/openclaw|openclaw_walking" -S`
+- `rg --files /Users/ramirosalas/workspace/PRECINCT/POC | rg "openclaw|integrations/openclaw|openclaw_walking" -S`

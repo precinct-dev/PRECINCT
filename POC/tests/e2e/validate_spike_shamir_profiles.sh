@@ -126,9 +126,9 @@ assert_demo_profile "docker-compose.yml spike-bootstrap" "${local_bootstrap_thre
 prod_compose_json="${TMP_DIR}/compose-prod-intent.json"
 STRICT_UPSTREAM_URL="https://strict-upstream.example.com/mcp" \
 APPROVAL_SIGNING_KEY="compose-production-intent-approval-key-material-32chars" \
-ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/ops/sa/gateway-admin" \
-UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool" \
-KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb" \
+ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/ops/sa/gateway-admin" \
+UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/tools/sa/mcp-tool" \
+KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb" \
 docker compose --profile strict \
   --env-file config/compose-production-intent.env \
   -f docker-compose.yml \

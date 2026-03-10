@@ -4,8 +4,24 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
 )
+
+// PortRouteAuth declares a route authorization rule that a port adapter
+// contributes to the core OPA policy via data injection. This keeps the
+// core policy generic -- port-specific routes never appear in core .rego files.
+type PortRouteAuth struct {
+	// Path is the URL path (exact match).
+	Path string `json:"path"`
+	// PathPrefix is a URL path prefix match (ignored if Path is set).
+	PathPrefix string `json:"path_prefix,omitempty"`
+	// Methods lists allowed HTTP methods (e.g., ["POST"]).
+	Methods []string `json:"methods"`
+	// AuthModel describes the authorization model the adapter enforces
+	// internally (e.g., "model_plane", "webhook_inbound", "tool_plane").
+	// Informational -- logged in audit events.
+	AuthModel string `json:"auth_model"`
+}
 
 // PortAdapter is the extension point for third-party agent integrations.
 // Each adapter claims a set of URL paths and handles matching requests.
@@ -16,6 +32,12 @@ type PortAdapter interface {
 	// TryServeHTTP inspects the request and, if the path belongs to this port,
 	// serves it and returns true. Returns false if the request is not handled.
 	TryServeHTTP(w http.ResponseWriter, r *http.Request) bool
+
+	// RouteAuthorizations returns the OPA route authorization rules this port
+	// requires. These are injected into the OPA data store so the core policy
+	// can grant destination_allowed for port-claimed routes without hardcoding
+	// port-specific paths. Return nil if the port has no special route needs.
+	RouteAuthorizations() []PortRouteAuth
 }
 
 // PortGatewayServices is the narrow facade that port adapters use to access

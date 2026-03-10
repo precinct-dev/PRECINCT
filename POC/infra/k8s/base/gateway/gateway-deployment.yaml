@@ -19,7 +19,7 @@
 # Image: Set to a generic local name. Override via Kustomize overlay to point
 # to your container registry (ECR, GCR, ACR, Docker Hub, ghcr.io, etc.).
 #
-# SPIFFE ID: spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway
+# SPIFFE ID: spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway
 # ------------------------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment

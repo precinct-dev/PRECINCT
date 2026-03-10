@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/agw"
+	"github.com/precinct-dev/PRECINCT/POC/internal/agw"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

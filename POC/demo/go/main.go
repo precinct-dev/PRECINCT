@@ -19,7 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/sdk/go/mcpgateway"
+	"github.com/precinct-dev/PRECINCT/POC/sdk/go/mcpgateway"
 )
 
 const (

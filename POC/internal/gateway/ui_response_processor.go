@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
 )
 
 // UIResponseProcessor orchestrates UI-specific response processing.

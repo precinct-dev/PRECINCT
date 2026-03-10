@@ -2,9 +2,9 @@
 # OpenSearch ServiceAccounts
 #
 # SPIFFE IDs expected via SPIRE registration:
-#   - spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch
-#   - spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-dashboards
-#   - spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-audit-forwarder
+#   - spiffe://precinct.poc/ns/observability/sa/opensearch
+#   - spiffe://precinct.poc/ns/observability/sa/opensearch-dashboards
+#   - spiffe://precinct.poc/ns/observability/sa/opensearch-audit-forwarder
 # ------------------------------------------------------------------------------
 apiVersion: v1
 kind: ServiceAccount

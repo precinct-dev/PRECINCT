@@ -62,7 +62,7 @@ check_keyless_identity_scope() {
   [ -n "$doc" ] || fail "missing ClusterImagePolicy/require-cosign-signatures manifest"
   line="$(echo "$doc" | grep -E 'subjectRegExp:' || true)"
   [ -n "$line" ] || fail "missing keyless subjectRegExp in ClusterImagePolicy"
-  echo "$line" | grep -F 'RamXX/agentic_reference_architecture/.github/workflows/' >/dev/null \
+  echo "$line" | grep -F 'precinct-dev/PRECINCT/.github/workflows/' >/dev/null \
     || fail "keyless subjectRegExp is not repository/workflow scoped"
   echo "$line" | grep -F '@refs/heads/' >/dev/null \
     || fail "keyless subjectRegExp is missing branch scoping"

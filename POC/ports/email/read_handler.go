@@ -14,9 +14,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
-	"github.com/RamXX/agentic_reference_architecture/POC/ports/email/protocol"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/ports/email/protocol"
 )
 
 // sensitivePatterns are compiled regexes for detecting sensitive data in email content.

@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
+	"github.com/precinct-dev/PRECINCT/POC/internal/testutil"
 )
 
 func newDemoRugpullGateway(t *testing.T, upstreamURL string, auditPath string, enabled bool) *Gateway {

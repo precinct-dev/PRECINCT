@@ -6,7 +6,7 @@
 # the SPIRE Agent k8s workload attestor (matches namespace + service account
 # to issue the correct SVID).
 #
-# SPIFFE ID: spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway
+# SPIFFE ID: spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway
 # (Registered in RFA-9fv.3 spire/registration-entries.yaml)
 #
 # The gateway does not need Kubernetes API access beyond its own identity,

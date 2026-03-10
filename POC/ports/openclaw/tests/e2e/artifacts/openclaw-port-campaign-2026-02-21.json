@@ -1,7 +1,7 @@
 {
   "campaign_id": "openclaw-port-validation-2026-02-21",
   "executed_at": "2026-02-21T20:11:02Z",
-  "log_path": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC/tests/e2e/artifacts/openclaw-port-campaign-2026-02-21.log",
+  "log_path": "/Users/ramirosalas/workspace/PRECINCT/POC/tests/e2e/artifacts/openclaw-port-campaign-2026-02-21.log",
   "checks": [
     {
       "name": "required_integration_suite",

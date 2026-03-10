@@ -74,11 +74,11 @@ spec:
             - name: SPIKE_NEXUS_API_URL
               value: 'https://spike-nexus.spike-system.svc.cluster.local:8443'
             - name: SPIKE_TRUST_ROOT
-              value: 'agentic-ref-arch.poc'
+              value: 'precinct.poc'
             - name: SPIKE_TRUST_ROOT_NEXUS
-              value: 'agentic-ref-arch.poc'
+              value: 'precinct.poc'
             - name: SPIKE_TRUST_ROOT_PILOT
-              value: 'agentic-ref-arch.poc'
+              value: 'precinct.poc'
           volumeMounts:
             - name: spire-agent-socket
               mountPath: /run/spire/sockets

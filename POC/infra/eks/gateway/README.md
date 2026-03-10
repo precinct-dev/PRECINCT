@@ -33,8 +33,8 @@ audit, etc.) before proxying requests to tool servers.
 
 | Namespace | Purpose | SPIFFE ID |
 |-----------|---------|-----------|
-| `gateway` | PRECINCT Gateway | `spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway` |
-| `tools`   | MCP tool servers | `spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool` |
+| `gateway` | PRECINCT Gateway | `spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway` |
+| `tools`   | MCP tool servers | `spiffe://precinct.poc/ns/tools/sa/mcp-tool` |
 
 ### NetworkPolicy Enforcement
 

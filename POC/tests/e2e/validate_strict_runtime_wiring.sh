@@ -74,9 +74,9 @@ done
 echo "[INFO] Validating strict Compose runtime wiring..."
 export STRICT_UPSTREAM_URL="https://strict-upstream.example.com/mcp"
 export APPROVAL_SIGNING_KEY="compose-approval-signing-key-material-at-least-32"
-export ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/ops/sa/gateway-admin"
-export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool"
-export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb"
+export ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/ops/sa/gateway-admin"
+export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/tools/sa/mcp-tool"
+export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb"
 
 compose_out="${TMP_DIR}/compose-strict.yaml"
 docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.yml config >"${compose_out}"

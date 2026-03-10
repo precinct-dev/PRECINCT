@@ -8,7 +8,7 @@
 # an IAM role that grants read-only S3 access to specific buckets/prefixes.
 #
 # SPIFFE ID (shared with other tool servers):
-#   spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool
+#   spiffe://precinct.poc/ns/tools/sa/mcp-tool
 #
 # For production, consider a dedicated ServiceAccount per tool server for
 # finer-grained IAM permissions. In the POC, all tool servers share the

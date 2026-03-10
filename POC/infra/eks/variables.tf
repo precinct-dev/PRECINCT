@@ -7,7 +7,7 @@
 variable "cluster_name" {
   description = "Name of the EKS cluster"
   type        = string
-  default     = "agentic-ref-arch-poc"
+  default     = "precinct-poc"
 }
 
 variable "region" {

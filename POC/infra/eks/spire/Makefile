@@ -58,23 +58,23 @@ deploy-entries: ## Register workload entries (gateway, tools, spike)
 	$(KUBECTL) -n $(NAMESPACE) exec spire-server-0 -- sh -c '\
 		SOCK="/tmp/spire-server/private/api.sock" && \
 		/opt/spire/bin/spire-server entry create -socketPath $$SOCK -node \
-			-spiffeID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
-			-selector k8s_psat:cluster:agentic-ref-arch-poc \
+			-spiffeID spiffe://precinct.poc/agent/k8s-psat \
+			-selector k8s_psat:cluster:precinct-poc \
 			-selector k8s_psat:agent_ns:spire-system \
 			-selector k8s_psat:agent_sa:spire-agent 2>/dev/null || true && \
 		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
-			-parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
-			-spiffeID spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway \
+			-parentID spiffe://precinct.poc/agent/k8s-psat \
+			-spiffeID spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway \
 			-selector k8s:ns:gateway -selector k8s:sa:mcp-security-gateway \
 			-dns mcp-security-gateway \
 			-dns mcp-security-gateway.gateway.svc.cluster.local 2>/dev/null || true && \
 		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
-			-parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
-			-spiffeID spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool \
+			-parentID spiffe://precinct.poc/agent/k8s-psat \
+			-spiffeID spiffe://precinct.poc/ns/tools/sa/mcp-tool \
 			-selector k8s:ns:tools -selector k8s:sa:mcp-tool 2>/dev/null || true && \
 		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
-			-parentID spiffe://agentic-ref-arch.poc/agent/k8s-psat \
-			-spiffeID spiffe://agentic-ref-arch.poc/ns/spike-system/sa/spike-nexus \
+			-parentID spiffe://precinct.poc/agent/k8s-psat \
+			-spiffeID spiffe://precinct.poc/ns/spike-system/sa/spike-nexus \
 			-selector k8s:ns:spike-system -selector k8s:sa:spike-nexus \
 			-dns spike-nexus \
 			-dns spike-nexus.spike-system.svc.cluster.local 2>/dev/null || true && \

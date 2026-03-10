@@ -186,7 +186,7 @@ mtls_client = httpx.Client(
 
 client = GatewayClient(
     url="https://gateway.internal:9443",
-    spiffe_id="spiffe://agentic-ref-arch.poc/ns/agents/sa/my-agent",
+    spiffe_id="spiffe://precinct.poc/ns/agents/sa/my-agent",
     http_client=mtls_client,
 )
 ```

@@ -19,7 +19,7 @@
 #   - Non-root, read-only root filesystem
 #   - Listens on port 8081
 #
-# SPIFFE ID: spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool
+# SPIFFE ID: spiffe://precinct.poc/ns/tools/sa/mcp-tool
 # ------------------------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment

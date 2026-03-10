@@ -1171,7 +1171,7 @@ services:
   mcp-security-gateway:
     # Inherits from reference architecture
     extends:
-      file: ../agentic_reference_architecture/POC/docker-compose.yml
+      file: ../PRECINCT/POC/docker-compose.yml
       service: mcp-security-gateway
     networks: [axiom-net]
 
