@@ -19,6 +19,7 @@ import (
 // Only ValidateConnector and WriteGatewayError are exercised; others panic if called.
 type mockWebhookGatewayServices struct {
 	validateConnectorFunc func(connectorID, signature string) (bool, string)
+	scanContentFunc       func(content string) middleware.ScanResult
 	writeGatewayErrorFunc func(w http.ResponseWriter, r *http.Request, httpCode int, errorCode string, message string, middlewareName string, reason gateway.ReasonCode, details map[string]any)
 }
 
@@ -44,6 +45,13 @@ func (m *mockWebhookGatewayServices) WriteGatewayError(w http.ResponseWriter, r 
 		"reason":     string(reason),
 		"details":    details,
 	})
+}
+
+func (m *mockWebhookGatewayServices) ScanContent(content string) middleware.ScanResult {
+	if m.scanContentFunc != nil {
+		return m.scanContentFunc(content)
+	}
+	return middleware.ScanResult{}
 }
 
 // Unused interface methods -- panic if called so test fails loudly.

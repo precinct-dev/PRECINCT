@@ -585,6 +585,10 @@ docker compose --profile strict \
   -f docker-compose.prod-intent.yml up -d
 ```
 
+Release-gate expectation:
+
+- `go vet ./...` must pass cleanly before release sign-off. `make lint` enforces this gate directly when `golangci-lint` is unavailable, and operators may run `go vet ./...` standalone when triaging release blockers.
+
 Production-intent compose requirements:
 
 - Required services must set `pull_policy: always` and use digest-pinned immutable image refs from `config/compose-production-intent.env`.
