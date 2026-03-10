@@ -50,7 +50,7 @@ func newGDPRDeleteCmd() *cobra.Command {
 				projectRoot = "."
 			}
 
-			ctx, cancel := context.WithTimeout(cmd.Context(), 25*time.Second)
+			ctx, cancel := context.WithTimeout(cmd.Context(), 60*time.Second)
 			defer cancel()
 
 			report, err := gdprDeleteSubjectData(ctx, agw.GDPRDeleteParams{

@@ -194,7 +194,7 @@ func TestSPIKENexusRedeemer_ConnectionFailure(t *testing.T) {
 }
 
 // TestSPIKENexusRedeemer_CorrectEndpoint verifies the redeemer calls the
-// correct API endpoint: POST /v1/store/secrets?action=get (SPIKE Nexus v0.8.0)
+// current SPIKE Nexus API endpoint: POST /v1/store/secrets?action=get.
 func TestSPIKENexusRedeemer_CorrectEndpoint(t *testing.T) {
 	var requestedPath string
 	var requestedQuery string
@@ -224,9 +224,8 @@ func TestSPIKENexusRedeemer_CorrectEndpoint(t *testing.T) {
 	if requestedPath != expectedPath {
 		t.Errorf("Expected path %s, got %s", expectedPath, requestedPath)
 	}
-	expectedQuery := "action=get"
-	if requestedQuery != expectedQuery {
-		t.Errorf("Expected query %s, got %s", expectedQuery, requestedQuery)
+	if requestedQuery != "action=get" {
+		t.Errorf("Expected query action=get, got %s", requestedQuery)
 	}
 }
 

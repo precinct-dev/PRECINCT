@@ -35,6 +35,7 @@ import (
 // verify that the response firewall intercepts and handle-izes sensitive responses.
 func buildTestGateway(t *testing.T, handleTTL int) (*httptest.Server, func()) {
 	t.Helper()
+	t.Setenv("ALLOWED_BASE_PATH", pocDir())
 
 	// Create a test upstream that returns MCP tool responses
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -75,6 +76,10 @@ func buildTestGateway(t *testing.T, handleTTL int) (*httptest.Server, func()) {
 		CircuitResetTimeout:     30,
 		CircuitSuccessThreshold: 2,
 		HandleTTL:               handleTTL,
+		ApprovalSigningKey:      "response-firewall-approval-signing-key-12345",
+		AdminAuthzAllowedSPIFFEIDs: []string{
+			adminSPIFFEIDForTest(),
+		},
 	}
 
 	gw, err := gateway.New(cfg)
@@ -91,6 +96,44 @@ func buildTestGateway(t *testing.T, handleTTL int) (*httptest.Server, func()) {
 	}
 
 	return gwServer, cleanup
+}
+
+func approvalTokenForToolCall(t *testing.T, gwURL, spiffeID, sessionID, tool string) string {
+	t.Helper()
+
+	scope := map[string]any{
+		"action":          "tool.call",
+		"resource":        tool,
+		"actor_spiffe_id": spiffeID,
+		"session_id":      sessionID,
+	}
+
+	code, body := approvalAdminPost(t, gwURL+"/admin/approvals/request", map[string]any{
+		"scope":        scope,
+		"requested_by": "response-firewall@test",
+		"ttl_seconds":  120,
+	})
+	if code != http.StatusOK {
+		t.Fatalf("approval request expected 200, got %d body=%v", code, body)
+	}
+	requestID := nestedRuleOpsField(body, "record", "request_id")
+	if requestID == "" {
+		t.Fatalf("approval request missing request_id body=%v", body)
+	}
+
+	code, body = approvalAdminPost(t, gwURL+"/admin/approvals/grant", map[string]any{
+		"request_id":  requestID,
+		"approved_by": "security@test",
+		"reason":      "response-firewall-integration",
+	})
+	if code != http.StatusOK {
+		t.Fatalf("approval grant expected 200, got %d body=%v", code, body)
+	}
+	token := stringField(body["capability_token"])
+	if token == "" {
+		t.Fatalf("approval grant missing capability_token body=%v", body)
+	}
+	return token
 }
 
 // sendMCPRequestWithParams sends a JSON-RPC request with specific params and optional extra headers.
@@ -149,30 +192,29 @@ func sendDereferenceRequest(t *testing.T, gwURL, handleRef, spiffeID string) *ht
 }
 
 // sensitiveToolCall sends a request for the "bash" tool (risk_level=critical -> sensitive)
-// with all required OPA parameters: command param (for destination check) and step-up token.
-func sensitiveToolCall(t *testing.T, gwURL, spiffeID string) *http.Response {
+// with a real approval capability token scoped to this SPIFFE ID + session.
+func sensitiveToolCall(t *testing.T, gwURL, spiffeID, sessionID string) *http.Response {
 	t.Helper()
-	// bash requires:
-	// - command param (destination_allowed checks it doesn't contain curl/wget/http)
-	// - X-Step-Up-Token header (step_up_satisfied requires non-empty token for requires_step_up=true tools)
 	params := map[string]interface{}{
-		"command": "ls -la /tmp",
+		"command": "pwd",
 	}
+	token := approvalTokenForToolCall(t, gwURL, spiffeID, sessionID, "bash")
 	headers := map[string]string{
-		"X-Step-Up-Token": "integration-test-step-up-token",
+		"X-Step-Up-Token": token,
+		"X-Session-ID":    sessionID,
 	}
 	return sendMCPRequestWithParams(t, gwURL, "bash", spiffeID, params, headers)
 }
 
-// publicToolCall sends a request for the "read" tool (risk_level=low -> public)
-// with the required file_path param within the POC directory.
+// publicToolCall sends a request for the "messaging_status" tool (risk_level=low -> public)
+// which avoids path-based policy checks in the in-process gateway harness.
 func publicToolCall(t *testing.T, gwURL, spiffeID string) *http.Response {
 	t.Helper()
-	// read requires file_path starting with POC directory
 	params := map[string]interface{}{
-		"file_path": pocDir() + "/README.md",
+		"platform":   "slack",
+		"message_id": "msg-123",
 	}
-	return sendMCPRequestWithParams(t, gwURL, "read", spiffeID, params, nil)
+	return sendMCPRequestWithParams(t, gwURL, "messaging_status", spiffeID, params, nil)
 }
 
 // TestResponseFirewall_SensitiveToolReturnsHandle verifies that calling a sensitive-classified
@@ -184,7 +226,7 @@ func TestResponseFirewall_SensitiveToolReturnsHandle(t *testing.T) {
 
 	// "bash" has risk_level=critical -> ClassificationSensitive
 	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
-	resp := sensitiveToolCall(t, gwServer.URL, spiffeID)
+	resp := sensitiveToolCall(t, gwServer.URL, spiffeID, "rfw-sensitive-handle")
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
@@ -254,7 +296,7 @@ func TestResponseFirewall_DereferenceWithSameSPIFFEID(t *testing.T) {
 
 	// Step 1: Call sensitive tool to get a handle
 	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
-	resp := sensitiveToolCall(t, gwServer.URL, spiffeID)
+	resp := sensitiveToolCall(t, gwServer.URL, spiffeID, "rfw-deref-same")
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -316,7 +358,7 @@ func TestResponseFirewall_DereferenceAfterExpiry(t *testing.T) {
 
 	// Step 1: Call sensitive tool to get a handle
 	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
-	resp := sensitiveToolCall(t, gwServer.URL, spiffeID)
+	resp := sensitiveToolCall(t, gwServer.URL, spiffeID, "rfw-deref-expiry")
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -371,7 +413,7 @@ func TestResponseFirewall_DereferenceWithDifferentSPIFFEID(t *testing.T) {
 
 	// Step 1: Call sensitive tool as the gateway agent
 	originalSPIFFE := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
-	resp := sensitiveToolCall(t, gwServer.URL, originalSPIFFE)
+	resp := sensitiveToolCall(t, gwServer.URL, originalSPIFFE, "rfw-deref-mismatch")
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
 
@@ -422,7 +464,7 @@ func TestResponseFirewall_PublicToolRawResponse(t *testing.T) {
 	gwServer, cleanup := buildTestGateway(t, 300)
 	defer cleanup()
 
-	// "read" has risk_level=low -> ClassificationPublic
+	// "messaging_status" has risk_level=low -> ClassificationPublic
 	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
 	resp := publicToolCall(t, gwServer.URL, spiffeID)
 	defer resp.Body.Close()

@@ -24,16 +24,15 @@ func TestWalkingSkeleton(t *testing.T) {
 	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
-	if err := waitForService(opaURL+"/health", 30*time.Second); err != nil {
-		t.Fatalf("OPA not ready: %v", err)
-	}
 
-	// Create MCP request for file_read tool (lowest risk, simple test)
+	// Embedded OPA is the live runtime contract, so this test only gates on
+	// the gateway health endpoint and sends a runtime-valid, hash-attested tool call.
 	mcpReq := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "read",
 		"params": map[string]interface{}{
-			"file_path": pocDir() + "/README.md",
+			"file_path": "/app/gateway",
+			"tool_hash": "c4fbe869591f047985cd812915ed87d2c9c77de445089dcbc507416a86491453",
 		},
 		"id": 1,
 	}

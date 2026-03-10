@@ -139,6 +139,41 @@ func (c *GatewayClient) SessionID() string
 Returns the session ID used by this client. Auto-generated as a UUID unless overridden
 with `WithSessionID`.
 
+### CallModelChat
+
+```go
+func (c *GatewayClient) CallModelChat(ctx context.Context, req ModelChatRequest) (map[string]any, error)
+```
+
+Sends an OpenAI-compatible chat completion request through PRECINCT Gateway model egress.
+
+`CallModelChat` is a mediated gateway API only:
+
+- Default endpoint: `/openai/v1/chat/completions`
+- Custom `ModelChatRequest.Endpoint` values must stay gateway-relative
+- Absolute `http://` and `https://` URLs are rejected to prevent silent bypass of gateway enforcement
+
+The Go SDK does not provide a direct-to-provider chat helper. If you intentionally need unmanaged
+direct egress, use your own `http.Client` so that call site remains explicit and cannot be mistaken
+for PRECINCT-mediated traffic.
+
+```go
+resp, err := client.CallModelChat(context.Background(), mcpgateway.ModelChatRequest{
+    Model:     "llama-3.3-70b-versatile",
+    Messages:  []map[string]any{{"role": "user", "content": "hello"}},
+    Provider:  "groq",
+    APIKeyRef: "Bearer $SPIKE{ref:deadbeef,exp:3600}",
+    Endpoint:  "/openai/v1/chat/completions",
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(resp["id"])
+```
+
+This returns a plain `error` for client-side contract violations such as absolute endpoints, and a
+`*GatewayError` when the gateway itself denies the request.
+
 ## Configuration Options
 
 All options are passed to `NewClient` as functional options.

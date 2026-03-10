@@ -1,9 +1,12 @@
 services:
-  # Production-intent strict runtime override.
+  # Strict runtime hardening override for the gateway surface.
   # Use with:
   #   docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.yml up -d
   # This override intentionally replaces inherited dev/demo listener + env state
   # from docker-compose.yml so the strict render is HTTPS-only.
+  # Release-facing SPIKE multi-share recovery is supplied by
+  # docker-compose.prod-intent.yml, which adds keeper-2/3 and overrides the
+  # Shamir settings for that topology.
   mcp-security-gateway:
     profiles:
       - strict
@@ -39,6 +42,7 @@ services:
       RATE_LIMIT_BURST: "${RATE_LIMIT_BURST:-10}"
       UPSTREAM_URL: "${STRICT_UPSTREAM_URL:?STRICT_UPSTREAM_URL must be set for strict profile}"
       APPROVAL_SIGNING_KEY: "${APPROVAL_SIGNING_KEY:?APPROVAL_SIGNING_KEY must be set for strict profile}"
+      ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS: "${ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS:?ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS must be set for strict profile}"
       UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS: "${UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS:?UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS must be set for strict profile}"
       KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS: "${KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS:?KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS must be set for strict profile}"
       TOOL_REGISTRY_PUBLIC_KEY: /config/attestation-ed25519.pub

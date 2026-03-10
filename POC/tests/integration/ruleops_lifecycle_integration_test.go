@@ -123,6 +123,9 @@ func newRuleOpsTestServerURL(t *testing.T) string {
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
 		SPIFFEMode:             "dev",
+		AdminAuthzAllowedSPIFFEIDs: []string{
+			adminSPIFFEIDForTest(),
+		},
 		DestinationsConfigPath: destinationsPath,
 		RateLimitRPM:           100000,
 		RateLimitBurst:         100000,
@@ -139,6 +142,11 @@ func newRuleOpsTestServerURL(t *testing.T) string {
 
 func ruleOpsPost(t *testing.T, url string, payload map[string]any) (int, map[string]any) {
 	t.Helper()
+	return ruleOpsPostAs(t, url, payload, adminSPIFFEIDForTest())
+}
+
+func ruleOpsPostAs(t *testing.T, url string, payload map[string]any, spiffeID string) (int, map[string]any) {
+	t.Helper()
 	raw, err := json.Marshal(payload)
 	if err != nil {
 		t.Fatalf("marshal payload: %v", err)
@@ -148,7 +156,7 @@ func ruleOpsPost(t *testing.T, url string, payload map[string]any) (int, map[str
 		t.Fatalf("new request: %v", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	req.Header.Set("X-SPIFFE-ID", spiffeID)
 
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
@@ -164,11 +172,16 @@ func ruleOpsPost(t *testing.T, url string, payload map[string]any) (int, map[str
 
 func ruleOpsGet(t *testing.T, url string) (int, map[string]any) {
 	t.Helper()
+	return ruleOpsGetAs(t, url, adminSPIFFEIDForTest())
+}
+
+func ruleOpsGetAs(t *testing.T, url string, spiffeID string) (int, map[string]any) {
+	t.Helper()
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	req.Header.Set("X-SPIFFE-ID", spiffeID)
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {

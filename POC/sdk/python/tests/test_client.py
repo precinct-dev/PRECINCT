@@ -15,6 +15,7 @@ Tests cover:
   - Connection error handling
 """
 
+import json
 import re
 import time
 import uuid
@@ -26,6 +27,29 @@ from mcp_gateway_sdk import GatewayClient, GatewayError
 
 
 SPIFFE_ID = "spiffe://poc.local/agents/mcp-client/test/dev"
+
+
+class _FakeSpan:
+    def __init__(self, name: str, attributes: dict[str, object]):
+        self.name = name
+        self.attributes = dict(attributes)
+        self.ended = False
+
+    def set_attribute(self, key: str, value: object) -> None:
+        self.attributes[key] = value
+
+    def end(self) -> None:
+        self.ended = True
+
+
+class _FakeTracer:
+    def __init__(self):
+        self.spans: list[_FakeSpan] = []
+
+    def start_span(self, name: str, attributes: dict[str, object]) -> _FakeSpan:
+        span = _FakeSpan(name, attributes)
+        self.spans.append(span)
+        return span
 
 
 # ---------------------------------------------------------------------------
@@ -76,6 +100,35 @@ class TestGatewayClientConstructor:
         with GatewayClient(url=url, spiffe_id=SPIFFE_ID) as client:
             result = client.call("tavily_search", query="test")
             assert "results" in result
+
+    def test_custom_http_client_supports_production_transport(self):
+        """A caller can inject a preconfigured httpx.Client for production mTLS."""
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            body = json.loads(request.content.decode("utf-8"))
+            assert str(request.url) == "https://gateway.internal"
+            assert body["method"] == "tools/call"
+            return httpx.Response(
+                200,
+                json={"jsonrpc": "2.0", "result": {"ok": True}, "id": body["id"]},
+            )
+
+        injected_client = httpx.Client(
+            transport=httpx.MockTransport(handler),
+            base_url="https://gateway.internal",
+        )
+        client = GatewayClient(
+            url="https://gateway.internal",
+            spiffe_id=SPIFFE_ID,
+            http_client=injected_client,
+        )
+
+        result = client.call("read", file_path="/tmp/example.txt")
+
+        assert result == {"ok": True}
+        assert client._client is injected_client
+        client.close()
+        injected_client.close()
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +205,28 @@ class TestHeaders:
         client.close()
 
 
+class _FakeSpan:
+    def __init__(self, attributes):
+        self.attributes = dict(attributes)
+        self.ended = False
+
+    def set_attribute(self, key, value):
+        self.attributes[key] = value
+
+    def end(self):
+        self.ended = True
+
+
+class _FakeTracer:
+    def __init__(self):
+        self.spans = []
+
+    def start_span(self, _name, attributes):
+        span = _FakeSpan(attributes)
+        self.spans.append(span)
+        return span
+
+
 # ---------------------------------------------------------------------------
 # Model egress helper tests
 # ---------------------------------------------------------------------------
@@ -197,6 +272,49 @@ class TestModelChatHelper:
         err = exc_info.value
         assert err.http_status == 403
         assert err.code == "authz_policy_denied"
+        client.close()
+
+    def test_model_chat_rejects_absolute_endpoint(self, mock_gateway):
+        url, _ = mock_gateway
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID)
+
+        with pytest.raises(ValueError, match="gateway-relative endpoints"):
+            client.call_model_chat(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": "hello"}],
+                endpoint="https://api.openai.com/v1/chat/completions",
+            )
+
+        client.close()
+
+    def test_model_chat_rejects_absolute_endpoints(self, mock_gateway):
+        url, _ = mock_gateway
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID)
+
+        with pytest.raises(ValueError) as exc_info:
+            client.call_model_chat(
+                model="llama-3.3-70b-versatile",
+                messages=[{"role": "user", "content": "hello"}],
+                endpoint="https://api.openai.com/v1/chat/completions",
+            )
+
+        assert "gateway-relative endpoints" in str(exc_info.value)
+        client.close()
+
+
+class TestObservabilityRedaction:
+    def test_tool_call_span_redacts_arguments(self, mock_gateway):
+        url, _ = mock_gateway
+        tracer = _FakeTracer()
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID, tracer=tracer)
+
+        client.call("read", file_path="/tmp/secret.txt", token="super-secret")
+
+        assert len(tracer.spans) == 1
+        attrs = tracer.spans[0].attributes
+        assert attrs["mcp.tool.arguments_redacted"] is True
+        assert attrs["mcp.tool.argument_keys"] == "file_path,token"
+        assert "mcp.tool.arguments" not in attrs
         client.close()
 
 
@@ -562,4 +680,43 @@ class TestCallWithMetadata:
         err = exc_info.value
         assert err.http_status == 503
         assert len(handler.call_log) == 2  # 1 initial + 1 retry
+        client.close()
+
+
+class TestTracingPrivacy:
+    """Tracing defaults should not leak raw tool arguments."""
+
+    def test_tool_arguments_redacted_by_default(self, mock_gateway):
+        url, _ = mock_gateway
+        tracer = _FakeTracer()
+
+        client = GatewayClient(url=url, spiffe_id=SPIFFE_ID, tracer=tracer)
+        client.call("tavily_search", query="secret", max_results=2)
+
+        span = tracer.spans[0]
+        assert span.attributes["mcp.tool.arguments_redacted"] is True
+        assert span.attributes["mcp.tool.argument_count"] == 2
+        assert span.attributes["mcp.tool.argument_keys"] == "max_results,query"
+        assert "mcp.tool.arguments" not in span.attributes
+        assert span.ended is True
+        client.close()
+
+    def test_raw_tool_arguments_require_explicit_opt_in(self, mock_gateway):
+        url, _ = mock_gateway
+        tracer = _FakeTracer()
+
+        client = GatewayClient(
+            url=url,
+            spiffe_id=SPIFFE_ID,
+            tracer=tracer,
+            trace_tool_arguments=True,
+        )
+        client.call("read", file_path="/tmp/secret.txt")
+
+        span = tracer.spans[0]
+        assert span.attributes["mcp.tool.arguments_redacted"] is False
+        assert span.attributes["mcp.tool.arguments"] == json.dumps(
+            {"file_path": "/tmp/secret.txt"},
+            sort_keys=True,
+        )
         client.close()

@@ -40,7 +40,7 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 	}
 
 	// Connector lifecycle bootstrap for ingress runtime gate.
-	registerCode, registerResp := ruleOpsPost(t, baseURL+"/v1/connectors/register", map[string]any{
+	registerCode, registerResp := ruleOpsPostAs(t, baseURL+"/v1/connectors/register", map[string]any{
 		"connector_id": "compose-webhook",
 		"manifest": map[string]any{
 			"connector_id":     "compose-webhook",
@@ -53,7 +53,7 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 				"value":     "bootstrap-signature",
 			},
 		},
-	})
+	}, adminSPIFFEIDForTest())
 	if registerCode != 200 {
 		t.Fatalf("connector register expected 200, got %d body=%v", registerCode, registerResp)
 	}
@@ -61,7 +61,7 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 	if connectorSig == "" {
 		t.Fatalf("connector register missing expected_signature body=%v", registerResp)
 	}
-	registerCode, registerResp = ruleOpsPost(t, baseURL+"/v1/connectors/register", map[string]any{
+	registerCode, registerResp = ruleOpsPostAs(t, baseURL+"/v1/connectors/register", map[string]any{
 		"connector_id": "compose-webhook",
 		"manifest": map[string]any{
 			"connector_id":     "compose-webhook",
@@ -74,12 +74,12 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 				"value":     connectorSig,
 			},
 		},
-	})
+	}, adminSPIFFEIDForTest())
 	if registerCode != 200 {
 		t.Fatalf("connector re-register expected 200, got %d body=%v", registerCode, registerResp)
 	}
 	for _, op := range []string{"validate", "approve", "activate"} {
-		code, body := ruleOpsPost(t, baseURL+"/v1/connectors/"+op, map[string]any{"connector_id": "compose-webhook"})
+		code, body := ruleOpsPostAs(t, baseURL+"/v1/connectors/"+op, map[string]any{"connector_id": "compose-webhook"}, adminSPIFFEIDForTest())
 		if code != 200 {
 			t.Fatalf("connector %s expected 200, got %d body=%v", op, code, body)
 		}
@@ -445,7 +445,7 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 			},
 		},
 	})
-	assertPlaneDecision("loop deny risk", code, body, 429, "LOOP_HALT_MAX_RISK_SCORE", loopRiskDenyRunID)
+	assertPlaneDecision("loop deny risk", code, body, 403, "LOOP_HALT_MAX_RISK_SCORE", loopRiskDenyRunID)
 
 	loopDenyRunID := "phase3-it-loop-deny"
 	code, body = ruleOpsPost(t, baseURL+"/v1/loop/check", map[string]any{
@@ -492,7 +492,7 @@ func TestPhase3WalkingSkeleton_AllPlanesAllowAndDeny(t *testing.T) {
 	})
 	assertPlaneDecision("loop deny", code, body, 429, "LOOP_HALT_MAX_STEPS", loopDenyRunID)
 
-	revokeCode, revokeBody := ruleOpsPost(t, baseURL+"/v1/connectors/revoke", map[string]any{"connector_id": "compose-webhook"})
+	revokeCode, revokeBody := ruleOpsPostAs(t, baseURL+"/v1/connectors/revoke", map[string]any{"connector_id": "compose-webhook"}, adminSPIFFEIDForTest())
 	if revokeCode != 200 {
 		t.Fatalf("connector revoke expected 200, got %d body=%v", revokeCode, revokeBody)
 	}

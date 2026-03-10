@@ -4,14 +4,15 @@
 #
 # Manual trigger (workflow_dispatch) to promote container images between
 # environments. Verifies image signatures before promotion and updates
-# Kustomize overlay image tags.
+# Kustomize overlay image digests.
 #
 # Flow:
 #   1. Verify source image signature with cosign
 #   2. Re-tag image for target environment
 #   3. Sign the promoted image
 #   4. Update Kustomize overlay with new image digest
-#   5. Commit overlay change (optional, controlled by input)
+#   5. Validate the rendered target overlay against digest policy semantics
+#   6. Commit overlay change (optional, controlled by input)
 # ------------------------------------------------------------------------------
 name: Promote
 
@@ -113,9 +114,31 @@ jobs:
       - name: Install crane
         uses: imjasonh/setup-crane@v0.4
 
+      - name: Install kustomize
+        run: |
+          curl -sSfL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/kustomize
+          kustomize version
+
+      - name: Resolve source image reference
+        id: source_ref
+        env:
+          INPUT_SOURCE_TAG: ${{ inputs.source_tag }}
+        run: |
+          SOURCE_BASE="${REGISTRY}/${IMAGE_PREFIX}/${{ inputs.image }}"
+          if [[ "${INPUT_SOURCE_TAG}" == *@sha256:* ]]; then
+            SOURCE_IMAGE="${INPUT_SOURCE_TAG}"
+          elif [[ "${INPUT_SOURCE_TAG}" == sha256:* ]]; then
+            SOURCE_IMAGE="${SOURCE_BASE}@${INPUT_SOURCE_TAG}"
+          else
+            SOURCE_IMAGE="${SOURCE_BASE}:${INPUT_SOURCE_TAG}"
+          fi
+          echo "Resolved source image: ${SOURCE_IMAGE}"
+          echo "source_image=${SOURCE_IMAGE}" >> "${GITHUB_OUTPUT}"
+
       - name: Verify source image signature
         env:
-          SOURCE_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}:${{ inputs.source_tag }}
+          SOURCE_IMAGE: ${{ steps.source_ref.outputs.source_image }}
           COSIGN_EXPERIMENTAL: "1"
           SOURCE_CERT_IDENTITY_REGEX: ${{ env.SOURCE_CERT_IDENTITY_REGEX }}
           SOURCE_CERT_OIDC_ISSUER: ${{ env.SOURCE_CERT_OIDC_ISSUER }}
@@ -129,7 +152,7 @@ jobs:
 
       - name: Copy image to target tag
         env:
-          SOURCE_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}:${{ inputs.source_tag }}
+          SOURCE_IMAGE: ${{ steps.source_ref.outputs.source_image }}
           TARGET_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}:${{ inputs.target_env }}
         run: |
           echo "Copying ${SOURCE_IMAGE} -> ${TARGET_IMAGE}"
@@ -161,15 +184,33 @@ jobs:
             exit 0
           fi
 
-          # Update the image tag in the kustomization.yaml
-          # Uses sed to update the newTag or digest field
+          case "${IMAGE_NAME}" in
+            mcp-security-gateway)
+              OVERLAY_IMAGE_NAME="mcp-security-gateway"
+              ;;
+            s3-mcp-server)
+              OVERLAY_IMAGE_NAME="python"
+              ;;
+            *)
+              echo "ERROR: Unsupported overlay image mapping for ${IMAGE_NAME}"
+              exit 1
+              ;;
+          esac
+
+          (
+            cd "${OVERLAY_DIR}"
+            kustomize edit set image "${OVERLAY_IMAGE_NAME}=${FULL_IMAGE}@${PROMOTED_DIGEST}"
+          )
+
           KUSTOMIZATION="${OVERLAY_DIR}/kustomization.yaml"
-          if [ -f "${KUSTOMIZATION}" ]; then
-            # Update newTag to the promoted digest
-            sed -i "s|newTag:.*# ${IMAGE_NAME}|newTag: \"${PROMOTED_DIGEST}\" # ${IMAGE_NAME}|" "${KUSTOMIZATION}"
-            echo "Updated ${KUSTOMIZATION} with digest ${PROMOTED_DIGEST}"
-            cat "${KUSTOMIZATION}"
-          fi
+          echo "Updated ${KUSTOMIZATION} with digest ${PROMOTED_DIGEST}"
+          cat "${KUSTOMIZATION}"
+
+      - name: Validate rendered target overlay
+        env:
+          TARGET_ENV: ${{ inputs.target_env }}
+        run: |
+          make -C POC k8s-overlay-digest-validate OVERLAYS="${TARGET_ENV}"
 
       - name: Commit overlay update
         if: inputs.commit_overlay

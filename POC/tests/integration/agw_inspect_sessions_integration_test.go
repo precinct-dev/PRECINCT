@@ -16,8 +16,12 @@ func TestAgwInspectSessionsIntegration_JSON(t *testing.T) {
 	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
 		t.Skipf("Gateway not ready (requires running stack: make up): %v", err)
 	}
+	if keydbUsesCompose(integrationKeyDBURL()) {
+		t.Skip("compose://keydb mode validates targeted session reset flows; live session enumeration is too expensive for compose exec")
+	}
 
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := "spiffe://poc.local/agents/mcp-client/inspect-sessions-researcher/dev"
+	resetCircuitBreakerForTool(t, "tavily_search")
 	// Generate real session activity through the gateway.
 	for i := 0; i < 2; i++ {
 		reqBody := []byte(`{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"session-inspect-test"},"id":1}`)

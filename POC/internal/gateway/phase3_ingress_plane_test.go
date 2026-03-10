@@ -477,6 +477,60 @@ func TestIngressPlane_Integration_CanonicalEnvelope_FullHTTPFlow(t *testing.T) {
 	}
 }
 
+func TestIngressPlane_Integration_MetadataLikePIIPassesToPlaneHandler(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
+	h := gw.Handler()
+
+	spiffe := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	now := time.Now().UTC()
+
+	payload := map[string]any{
+		"envelope": map[string]any{
+			"run_id":          "phase3-compose-1773129666",
+			"session_id":      "phase3-compose-session-1773129666",
+			"tenant":          "tenant-a",
+			"actor_spiffe_id": spiffe,
+			"plane":           "ingress",
+		},
+		"policy": map[string]any{
+			"envelope": map[string]any{
+				"run_id":          "phase3-compose-1773129666",
+				"session_id":      "phase3-compose-session-1773129666",
+				"tenant":          "tenant-a",
+				"actor_spiffe_id": spiffe,
+				"plane":           "ingress",
+			},
+			"action":   "ingress.admit",
+			"resource": "ingress/event",
+			"attributes": map[string]any{
+				"connector_type":   "webhook",
+				"source_id":        "connector-integ-phoney",
+				"source_principal": spiffe,
+				"event_id":         "evt-integ-phoney",
+				"nonce":            "nonce-integ-phoney",
+				"event_timestamp":  now.Format(time.RFC3339),
+				"payload":          map[string]any{"message": "integration-test"},
+			},
+		},
+	}
+
+	code, resp := postGatewayJSON(t, h, http.MethodPost, "/v1/ingress/submit", payload)
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 with structured phase3 decision, got %d body=%v", code, resp)
+	}
+	if got, _ := resp["reason_code"].(string); got != string(ReasonIngressAllow) {
+		t.Fatalf("expected reason_code=%s, got %v", ReasonIngressAllow, resp["reason_code"])
+	}
+	if got, _ := resp["middleware"].(string); got == "dlp_scan" {
+		t.Fatalf("expected phase3 ingress handler response, got generic dlp response: %v", resp)
+	}
+	envelope, _ := resp["envelope"].(map[string]any)
+	if got, _ := envelope["session_id"].(string); got != "phase3-compose-session-1773129666" {
+		t.Fatalf("expected response envelope session_id to round-trip, got %v", envelope["session_id"])
+	}
+}
+
 func TestIngressPlane_Integration_WithoutCanonicalFields_BackwardCompat(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())

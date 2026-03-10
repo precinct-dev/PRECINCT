@@ -11,8 +11,6 @@ import (
 	"os/exec"
 	"testing"
 	"time"
-
-	"github.com/redis/go-redis/v9"
 )
 
 func TestAgwResetRateLimitIntegration(t *testing.T) {
@@ -23,17 +21,15 @@ func TestAgwResetRateLimitIntegration(t *testing.T) {
 
 	// Use a known-allowed identity from the compose stack so we can reach the
 	// rate limiter stage (step 11) instead of failing earlier on authz.
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := "spiffe://poc.local/agents/mcp-client/reset-researcher/dev"
 
-	// KeyDB in compose (default).
-	rdb := redis.NewClient(&redis.Options{Addr: "localhost:6379"})
-	t.Cleanup(func() { _ = rdb.Close() })
+	keydbURL := integrationKeyDBURL()
 
 	tokensKey := "ratelimit:" + spiffeID + ":tokens"
 	lastFillKey := "ratelimit:" + spiffeID + ":last_fill"
 
 	// Ensure we start unblocked: delete any existing bucket state.
-	_, _ = rdb.Del(t.Context(), tokensKey, lastFillKey).Result()
+	keydbDeleteKeys(t, tokensKey, lastFillKey)
 
 	// 1) Send a request (should not be 429 under fresh bucket)
 	if code := postMCP(t, spiffeID); code == http.StatusTooManyRequests {
@@ -41,20 +37,16 @@ func TestAgwResetRateLimitIntegration(t *testing.T) {
 	}
 
 	// 2) Force a rate-limited state deterministically (tokens=0, last_fill=now)
-	now := time.Now().UnixNano()
-	if err := rdb.Set(t.Context(), tokensKey, "0", 2*time.Minute).Err(); err != nil {
-		t.Fatalf("set tokens: %v", err)
-	}
-	if err := rdb.Set(t.Context(), lastFillKey, fmt.Sprintf("%d", now), 2*time.Minute).Err(); err != nil {
-		t.Fatalf("set last_fill: %v", err)
-	}
+	now := time.Now().Add(30 * time.Second).UnixNano()
+	keydbSetValue(t, tokensKey, "0", 2*time.Minute)
+	keydbSetValue(t, lastFillKey, fmt.Sprintf("%d", now), 2*time.Minute)
 
 	if code := postMCP(t, spiffeID); code != http.StatusTooManyRequests {
 		t.Fatalf("expected 429 after forcing tokens=0, got %d", code)
 	}
 
 	// 3) Reset via CLI (must delete the keys)
-	cmd := exec.Command("go", "run", "./cmd/agw", "reset", "rate-limit", spiffeID, "--confirm", "--keydb-url", "redis://localhost:6379")
+	cmd := exec.Command("go", "run", "./cmd/agw", "reset", "rate-limit", spiffeID, "--confirm", "--keydb-url", keydbURL)
 	cmd.Dir = pocDir()
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -62,11 +54,8 @@ func TestAgwResetRateLimitIntegration(t *testing.T) {
 	}
 
 	// Verify keys are gone
-	if err := rdb.Get(t.Context(), tokensKey).Err(); err != redis.Nil {
-		t.Fatalf("expected tokensKey deleted (redis.Nil), got %v", err)
-	}
-	if err := rdb.Get(t.Context(), lastFillKey).Err(); err != redis.Nil {
-		t.Fatalf("expected lastFillKey deleted (redis.Nil), got %v", err)
+	if exists := keydbExists(t, tokensKey, lastFillKey); exists != 0 {
+		t.Fatalf("expected rate limit keys deleted, exists=%d", exists)
 	}
 
 	// 4) Post-reset, request should not be rate-limited

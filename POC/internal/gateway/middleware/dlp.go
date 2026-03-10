@@ -280,6 +280,28 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
+func shouldSkipDLPScan(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+
+	switch r.URL.Path {
+	case "/v1/ingress/submit",
+		"/v1/ingress/admit",
+		"/v1/context/admit",
+		"/v1/model/call",
+		"/v1/tool/execute",
+		"/v1/loop/check":
+		// Phase 3 routes carry structured governance contracts whose envelope
+		// metadata often includes IDs/timestamps that look like PII to the raw
+		// regex scanner. These routes apply plane-specific safety policy after
+		// contract validation, so bypass the generic body-wide DLP pass here.
+		return true
+	default:
+		return false
+	}
+}
+
 // DLPMiddleware creates middleware for DLP scanning with configurable policy.
 // The policy controls whether each content category (credentials, injection, PII)
 // is blocked (HTTP 403) or flagged (added to safezone_flags, request continues).
@@ -303,6 +325,15 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 			),
 		)
 		defer span.End()
+
+		if shouldSkipDLPScan(r) {
+			span.SetAttributes(
+				attribute.String("mcp.result", "skipped"),
+				attribute.String("mcp.reason", "phase3 route contract-owned"),
+			)
+			next.ServeHTTP(w, r.WithContext(ctx))
+			return
+		}
 
 		// Get captured request body from context
 		body := GetRequestBody(ctx)

@@ -28,8 +28,8 @@ func TestRateLimiterIntegration(t *testing.T) {
 		// Verify rate limit headers are present in normal responses
 		mcpReq := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"method":  "file_read",
-			"params":  map[string]interface{}{"path": "/test"},
+			"method":  "tavily_search",
+			"params":  map[string]interface{}{"query": "rate-limit-headers-present"},
 			"id":      1,
 		}
 		reqBody, _ := json.Marshal(mcpReq)
@@ -69,8 +69,8 @@ func TestRateLimiterIntegration(t *testing.T) {
 		// Verify different agents have independent rate limits
 		mcpReq := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"method":  "file_read",
-			"params":  map[string]interface{}{"path": "/test"},
+			"method":  "tavily_search",
+			"params":  map[string]interface{}{"query": "rate-limit-independent-agents"},
 			"id":      1,
 		}
 		reqBody, _ := json.Marshal(mcpReq)
@@ -119,14 +119,14 @@ func TestRateLimiterIntegration(t *testing.T) {
 
 		mcpReq := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"method":  "file_read",
-			"params":  map[string]interface{}{"path": "/test"},
+			"method":  "tavily_search",
+			"params":  map[string]interface{}{"query": "rate-limit-retry-after"},
 			"id":      1,
 		}
 		reqBody, _ := json.Marshal(mcpReq)
 
 		// Use a unique agent for this test to avoid interference
-		testAgent := "spiffe://poc.local/agents/test/rate-limit-test"
+		testAgent := "spiffe://poc.local/agents/mcp-client/ratelimit-researcher/dev"
 
 		// Send multiple requests rapidly to test rate limiting
 		// With 100 req/min + 20 burst, we won't hit the limit in this test

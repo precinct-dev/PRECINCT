@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Research Foundations | PRECINCT</title>
+  <meta name="description" content="Peer-reviewed research informing PRECINCT's threat model, defense architecture, and governance design. Covers Agents of Chaos, MCP security, prompt injection, and Recursive Language Models.">
+  <meta name="keywords" content="PRECINCT, research, agentic AI security, Agents of Chaos, MCP security, prompt injection, RLM, Recursive Language Models">
+  <meta name="author" content="PRECINCT Contributors">
+  <meta name="robots" content="index, follow">
+
+  <meta property="og:title" content="Research Foundations | PRECINCT">
+  <meta property="og:description" content="Peer-reviewed research informing PRECINCT's threat model, defense architecture, and governance design.">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://precinct.dev/pages/research.html">
+  <meta property="og:site_name" content="PRECINCT">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="../css/style.css">
+  <script src="../js/main.js" defer></script>
+</head>
+<body>
+
+  <!-- ============================================================ -->
+  <!-- HEADER / NAV                                                  -->
+  <!-- ============================================================ -->
+  <header class="site-header">
+    <nav class="nav-container" aria-label="Primary navigation">
+      <div class="nav-brand">
+        <a href="../index.html" class="logo-link">
+          <span class="logo-text">PRECINCT</span>
+          <span class="logo-tagline">Secure Agentic AI</span>
+        </a>
+      </div>
+
+      <button class="nav-toggle" aria-label="Toggle navigation menu" aria-expanded="false">
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+        <span class="nav-toggle-bar"></span>
+      </button>
+
+      <ul class="nav-links">
+        <li><a href="../index.html" class="nav-link">Home</a></li>
+        <li><a href="architecture.html" class="nav-link">Architecture</a></li>
+        <li><a href="capabilities.html" class="nav-link">Capabilities</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Components <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="gateway.html" role="menuitem">Gateway</a></li>
+            <li role="none"><a href="spiffe-spire.html" role="menuitem">SPIFFE/SPIRE</a></li>
+            <li role="none"><a href="spike.html" role="menuitem">SPIKE</a></li>
+            <li role="none"><a href="opa.html" role="menuitem">OPA</a></li>
+          </ul>
+        </li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Deployment <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="docker-compose.html" role="menuitem">Docker Compose</a></li>
+            <li role="none"><a href="kubernetes.html" role="menuitem">Kubernetes</a></li>
+            <li role="none"><a href="helm.html" role="menuitem">Helm</a></li>
+          </ul>
+        </li>
+        <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
+        <li><a href="case-study.html" class="nav-link">Case Study</a></li>
+        <li><a href="research.html" class="nav-link active">Research</a></li>
+        <li class="nav-dropdown">
+          <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
+            Developer <span class="caret" aria-hidden="true"></span>
+          </button>
+          <ul class="dropdown-menu" role="menu">
+            <li role="none"><a href="integration-guide.html" role="menuitem">Integration Guide</a></li>
+            <li role="none"><a href="secure-your-agent.html" role="menuitem">Secure Your Agent</a></li>
+            <li role="none"><a href="building-adapters.html" role="menuitem">Building Adapters</a></li>
+            <li role="none"><a href="sdks.html" role="menuitem">SDKs</a></li>
+            <li role="none"><a href="python-sdk.html" role="menuitem">Python SDK</a></li>
+            <li role="none"><a href="go-sdk.html" role="menuitem">Go SDK</a></li>
+            <li role="none"><a href="cli.html" role="menuitem">CLI Reference</a></li>
+            <li role="none"><a href="getting-started.html" role="menuitem">Getting Started</a></li>
+          </ul>
+        </li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="https://github.com/RamXX/agentic_reference_architecture" class="nav-github" target="_blank" rel="noopener noreferrer" aria-label="View on GitHub">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+          </svg>
+        </a>
+        <button class="theme-toggle" aria-label="Toggle light/dark theme" title="Toggle theme">
+          <svg class="icon-sun" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="12" cy="12" r="5"/>
+            <line x1="12" y1="1" x2="12" y2="3"/>
+            <line x1="12" y1="21" x2="12" y2="23"/>
+            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/>
+            <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+            <line x1="1" y1="12" x2="3" y2="12"/>
+            <line x1="21" y1="12" x2="23" y2="12"/>
+            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/>
+            <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+          <svg class="icon-moon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+          </svg>
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- ============================================================ -->
+  <!-- MAIN CONTENT                                                  -->
+  <!-- ============================================================ -->
+  <main class="page-content">
+    <div class="container">
+      <div class="layout-with-sidebar">
+
+        <aside class="sidebar" aria-label="Page sections">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#agents-of-chaos">Agents of Chaos</a></li>
+                <li><a href="#securing-mcp">Securing MCP</a></li>
+                <li><a href="#prompt-injection">Prompt Injection</a></li>
+                <li><a href="#rlm">Recursive Language Models</a></li>
+              </ul>
+            </div>
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">Related</div>
+              <ul>
+                <li><a href="architecture.html">Architecture</a></li>
+                <li><a href="capabilities.html">Capabilities</a></li>
+                <li><a href="gateway.html">Gateway</a></li>
+                <li><a href="case-study.html">Case Study</a></li>
+              </ul>
+            </div>
+          </nav>
+        </aside>
+
+        <button class="sidebar-toggle" aria-label="Toggle page navigation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+          Page Navigation
+        </button>
+
+        <div class="sidebar-mobile" aria-label="Page sections (mobile)">
+          <nav class="sidebar-nav">
+            <div class="sidebar-nav-group">
+              <div class="sidebar-nav-title">On This Page</div>
+              <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#agents-of-chaos">Agents of Chaos</a></li>
+                <li><a href="#securing-mcp">Securing MCP</a></li>
+                <li><a href="#prompt-injection">Prompt Injection</a></li>
+                <li><a href="#rlm">Recursive Language Models</a></li>
+              </ul>
+            </div>
+          </nav>
+        </div>
+        <div class="sidebar-overlay"></div>
+
+        <article class="layout-main content">
+
+          <!-- ======================================================== -->
+          <!-- OVERVIEW                                                  -->
+          <!-- ======================================================== -->
+          <h1>Research Foundations</h1>
+          <p class="lead">
+            PRECINCT's threat model, defense architecture, and governance design are
+            informed by peer-reviewed security research, not invented in isolation.
+            Four published papers shape how PRECINCT reasons about threats, structures
+            defenses, and governs recursive agent execution.
+          </p>
+
+          <section id="overview">
+            <div class="card-grid card-grid-2">
+              <div class="card">
+                <h3 class="mt-0"><a href="#agents-of-chaos">Agents of Chaos</a></h3>
+                <p>Red-teaming exercise producing 16 threat case studies. Validates PRECINCT's defense-in-depth coverage and the boundary-vs-cognition distinction.</p>
+                <span class="badge badge-error">Threat Model</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0"><a href="#securing-mcp">Securing MCP</a></h3>
+                <p>Five-layer defense framework for MCP security. PRECINCT implements all five layers across its identity, policy, and gateway subsystems.</p>
+                <span class="badge badge-accent">Defense Framework</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0"><a href="#prompt-injection">Prompt Injection</a></h3>
+                <p>Demonstrates 85%+ attack success on agentic coding tools. Validates PRECINCT's tiered deep scan and step-up gating at the infrastructure level.</p>
+                <span class="badge badge-warning">Attack Validation</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0"><a href="#rlm">Recursive Language Models</a></h3>
+                <p>Introduces LLM recursive self-calling over unbounded contexts. PRECINCT's RLM Governance Engine enforces depth, subcall, and budget limits on these chains.</p>
+                <span class="badge badge-success">Governance Model</span>
+              </div>
+            </div>
+          </section>
+
+
+          <!-- ======================================================== -->
+          <!-- AGENTS OF CHAOS                                           -->
+          <!-- ======================================================== -->
+          <section id="agents-of-chaos">
+            <h2>Agents of Chaos</h2>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Citation
+              </div>
+              <p>
+                Shapira, N. et al. (2026). <em>Agents of Chaos</em>.
+                arXiv:<a href="https://arxiv.org/abs/2602.20021v1" target="_blank" rel="noopener noreferrer">2602.20021v1</a>.
+              </p>
+            </div>
+
+            <p>
+              <em>Agents of Chaos</em> reports on a structured red-teaming exercise
+              in which 20 researchers spent 2 weeks probing OpenClaw-based autonomous
+              agents in a live lab environment. The agents had access to Discord,
+              email, shell commands, and persistent memory. A realistic surface area
+              for enterprise agentic deployments. The exercise produced 16 case studies,
+              of which 11 resulted in successful attacks.
+            </p>
+
+            <p>
+              The paper demonstrates that autonomous agents are vulnerable not only to
+              traditional prompt injection but also to social-engineering vectors,
+              identity spoofing, cross-channel manipulation, and resource exhaustion
+              attacks that exploit the gap between agent cognition and infrastructure
+              enforcement.
+            </p>
+
+            <div class="card-grid card-grid-3">
+              <div class="card">
+                <h3 class="mt-0">20 Researchers</h3>
+                <p>Adversarial team probing agent defenses across multiple attack surfaces simultaneously.</p>
+                <span class="badge badge-accent">Red Team Scale</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">16 Case Studies</h3>
+                <p>Covering identity spoofing, social engineering, data exfiltration, resource exhaustion, and more.</p>
+                <span class="badge badge-warning">Attack Surface</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">11 Successful Attacks</h3>
+                <p>69% success rate against unprotected agents, demonstrating the need for infrastructure-level defense.</p>
+                <span class="badge badge-error">Impact</span>
+              </div>
+            </div>
+
+            <h3>Threat Taxonomy: All 16 Case Studies</h3>
+            <p>
+              Each case study is mapped to the PRECINCT defense layers that
+              address it. Coverage indicates how the threat is handled:
+              <strong>Full Coverage</strong> means infrastructure enforcement completely
+              mitigates the vector without agent cooperation;
+              <strong>Defense-in-Depth</strong> means multiple independent layers combine
+              to address the vector;
+              <strong>Infrastructure-Assisted</strong> means infrastructure provides
+              detection, flagging, and containment while agent reasoning integrity
+              contributes to complete defense.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">All 16 Agents of Chaos case studies with PRECINCT defense mapping</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">#</th>
+                    <th scope="col">Case Study</th>
+                    <th scope="col">PRECINCT Defense</th>
+                    <th scope="col">Coverage</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>1</td>
+                    <td>Agent Forgetting / Gradual Escalation</td>
+                    <td>Escalation score tracking, Irreversibility gating, Rate limiting (step 11)</td>
+                    <td><span class="badge badge-warning">Infrastructure-Assisted</span></td>
+                  </tr>
+                  <tr>
+                    <td>2</td>
+                    <td>Non-Owner Compliance</td>
+                    <td>OPA policy (step 6), Principal hierarchy, Irreversibility gating</td>
+                    <td><span class="badge badge-accent">Defense-in-Depth</span></td>
+                  </tr>
+                  <tr>
+                    <td>3</td>
+                    <td>Sensitive Data Disclosure via Email</td>
+                    <td>DLP scanning (step 7), Email adapter mediation</td>
+                    <td><span class="badge badge-accent">Defense-in-Depth</span></td>
+                  </tr>
+                  <tr>
+                    <td>4</td>
+                    <td>Agent-to-Agent Discord Loop</td>
+                    <td>Rate limiting (step 11), Discord adapter mediation</td>
+                    <td><span class="badge badge-accent">Defense-in-Depth</span></td>
+                  </tr>
+                  <tr>
+                    <td>5</td>
+                    <td>DoS via Storage Exhaustion</td>
+                    <td>Request size limit (step 1), Rate limiting (step 11)</td>
+                    <td><span class="badge badge-success">Full Coverage</span></td>
+                  </tr>
+                  <tr>
+                    <td>6</td>
+                    <td>Provider Bias Exploitation</td>
+                    <td>Audit log (step 4), Model egress governance</td>
+                    <td><span class="badge badge-warning">Infrastructure-Assisted</span></td>
+                  </tr>
+                  <tr>
+                    <td>7</td>
+                    <td>Gaslighting / Social Pressure</td>
+                    <td>Concession accumulator, Escalation detection</td>
+                    <td><span class="badge badge-warning">Infrastructure-Assisted</span></td>
+                  </tr>
+                  <tr>
+                    <td>8</td>
+                    <td>Identity Spoofing via Display Name</td>
+                    <td>SPIFFE/SPIRE (step 3), Deep scan (step 10)</td>
+                    <td><span class="badge badge-success">Full Coverage</span></td>
+                  </tr>
+                  <tr>
+                    <td>9</td>
+                    <td>Cross-Channel Impersonation Reset</td>
+                    <td>Principal hierarchy metadata, OPA (step 6)</td>
+                    <td><span class="badge badge-accent">Defense-in-Depth</span></td>
+                  </tr>
+                  <tr>
+                    <td>10</td>
+                    <td>Agent Corruption via External Config</td>
+                    <td>Data source integrity registry, Tool registry hash (step 5)</td>
+                    <td><span class="badge badge-accent">Defense-in-Depth</span></td>
+                  </tr>
+                  <tr>
+                    <td>11</td>
+                    <td>Libelous Mass Broadcast</td>
+                    <td>Mass-send step-up gating, Principal hierarchy</td>
+                    <td><span class="badge badge-accent">Defense-in-Depth</span></td>
+                  </tr>
+                  <tr>
+                    <td>12</td>
+                    <td>Prompt Injection via Channels</td>
+                    <td>Deep scan (step 10), DLP scanning (step 7)</td>
+                    <td><span class="badge badge-success">Full Coverage</span></td>
+                  </tr>
+                  <tr>
+                    <td>13</td>
+                    <td>Credential Exfiltration</td>
+                    <td>DLP scanning (step 7), SPIKE token substitution (step 13)</td>
+                    <td><span class="badge badge-success">Full Coverage</span></td>
+                  </tr>
+                  <tr>
+                    <td>14</td>
+                    <td>Session Fixation</td>
+                    <td>SPIFFE/SPIRE rotation (step 3), Session context (step 8)</td>
+                    <td><span class="badge badge-success">Full Coverage</span></td>
+                  </tr>
+                  <tr>
+                    <td>15</td>
+                    <td>Memory Poisoning</td>
+                    <td>Tool registry verification (step 5), Data source integrity registry</td>
+                    <td><span class="badge badge-accent">Defense-in-Depth</span></td>
+                  </tr>
+                  <tr>
+                    <td>16</td>
+                    <td>Instruction Override</td>
+                    <td>Step-up gating (step 9), Deep scan (step 10)</td>
+                    <td><span class="badge badge-warning">Infrastructure-Assisted</span></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="card-grid card-grid-3">
+              <div class="card">
+                <h3 class="mt-0">5 Full Coverage</h3>
+                <p>Infrastructure enforcement completely mitigates the vector. No agent cooperation required.</p>
+                <span class="badge badge-success">Infrastructure-Enforced</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">7 Defense-in-Depth</h3>
+                <p>Multiple independent enforcement layers combine to address the vector with redundant coverage.</p>
+                <span class="badge badge-accent">Multi-Layer</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">4 Infrastructure-Assisted</h3>
+                <p>Infrastructure provides detection, flagging, and containment. Agent reasoning integrity contributes to complete defense.</p>
+                <span class="badge badge-warning">Assisted</span>
+              </div>
+            </div>
+
+            <h3>Defense-in-Depth: Threat-to-Layer Mapping</h3>
+            <p>
+              PRECINCT's 13-layer middleware chain provides defense-in-depth against the
+              Agents of Chaos threats. The table below shows which gateway layers participate
+              in defending against each threat category, demonstrating that most attacks
+              are intercepted by multiple independent layers.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">Architecture mapping: threats to PRECINCT middleware layers</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Threat Category</th>
+                    <th scope="col">Case Studies</th>
+                    <th scope="col">Primary Layer(s)</th>
+                    <th scope="col">Secondary Layer(s)</th>
+                    <th scope="col">Defense Mechanism</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Identity &amp; Spoofing</strong></td>
+                    <td>#8, #9, #14</td>
+                    <td>SPIFFE Auth (step 3)</td>
+                    <td>Session Context (step 8), OPA (step 6)</td>
+                    <td>Cryptographic workload identity eliminates display-name spoofing. SPIRE-issued SVIDs rotate automatically, preventing session fixation. OPA enforces principal hierarchy for cross-channel requests.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Data Exfiltration</strong></td>
+                    <td>#3, #13</td>
+                    <td>DLP Scanning (step 7)</td>
+                    <td>Token Substitution (step 13)</td>
+                    <td>DLP blocks outbound credential patterns and sensitive content before they reach adapters. SPIKE token substitution ensures secrets are never exposed in agent-visible payloads. They are only resolved at egress.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Prompt Injection &amp; Override</strong></td>
+                    <td>#12, #16</td>
+                    <td>Deep Scan (step 10)</td>
+                    <td>Step-Up Gating (step 9), DLP (step 7)</td>
+                    <td>Guard model inspection detects adversarial payloads in channel messages. Step-up gating requires additional authorization for elevated-risk operations triggered by suspicious instructions.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Resource Exhaustion &amp; Loops</strong></td>
+                    <td>#4, #5</td>
+                    <td>Rate Limiting (step 11)</td>
+                    <td>Request Size Limit (step 1), Circuit Breaker (step 12)</td>
+                    <td>Per-identity rate limits prevent runaway agent-to-agent loops. Request size limits block storage exhaustion payloads at ingress. Circuit breakers isolate upstream failures from cascading.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Social Engineering &amp; Manipulation</strong></td>
+                    <td>#1, #2, #7</td>
+                    <td>OPA Policy (step 6)</td>
+                    <td>Session Context (step 8), Audit Log (step 4)</td>
+                    <td>OPA enforces owner-only compliance rules regardless of social pressure. Escalation score tracking detects gradual privilege creep across sessions. Concession accumulators flag patterns of agent capitulation.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Integrity &amp; Poisoning</strong></td>
+                    <td>#10, #15</td>
+                    <td>Tool Registry Verify (step 5)</td>
+                    <td>Deep Scan (step 10)</td>
+                    <td>Hash-based tool registry verification detects tampered configurations. Data source integrity registry validates external config sources before they influence agent behavior.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Broadcast &amp; Amplification</strong></td>
+                    <td>#6, #11</td>
+                    <td>Step-Up Gating (step 9)</td>
+                    <td>Audit Log (step 4), Rate Limiting (step 11)</td>
+                    <td>Mass-send operations require step-up authorization. Audit logs provide forensic evidence for bias exploitation investigations. Rate limits bound the blast radius of amplification attacks.</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Irreversible Action Gating</strong></td>
+                    <td>#1, #2</td>
+                    <td>Step-Up Gating (step 9)</td>
+                    <td>OPA Policy (step 6), Principal Hierarchy</td>
+                    <td>Actions classified as irreversible (Score=3: delete, shutdown, purge, wipe) are forced to the Deny gate when requested by non-owner principals (Level&nbsp;&gt;&nbsp;1) or during escalated sessions (EscalationScore&nbsp;&gt;&nbsp;15). The <code>X-Precinct-Reversibility</code> and <code>X-Precinct-Backup-Recommended</code> headers communicate classification results to downstream callers.</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Defense-in-Depth Coverage
+              </div>
+              <p>
+                Every Agents of Chaos threat is addressed by at least two independent
+                PRECINCT layers. This means that even if one defense is bypassed, a secondary
+                layer provides a backstop. That is the core principle of defense-in-depth architecture.
+              </p>
+            </div>
+
+            <h3>Boundary vs. Cognition</h3>
+            <p>
+              The paper exposes a fundamental tension in agentic AI security:
+              some threats can be stopped entirely by infrastructure enforcement (boundary
+              defenses), while others require the agent itself to reason correctly (cognitive
+              defenses). Understanding this boundary is critical for realistic security postures.
+            </p>
+
+            <div class="card-grid card-grid-2">
+              <div class="card">
+                <h3 class="mt-0">What Infrastructure Can Solve</h3>
+                <p>
+                  Boundary defenses operate at the network, identity, and policy layers --
+                  they do not require the agent to cooperate or even be aware of them.
+                  PRECINCT's gateway middleware chain is a boundary defense.
+                </p>
+                <ul>
+                  <li><strong>Identity spoofing (#8, #14)</strong>:Cryptographic identity (SPIFFE/SPIRE) makes display-name spoofing irrelevant. The infrastructure verifies identity, not the agent.</li>
+                  <li><strong>Credential exfiltration (#13)</strong>:Late-binding token substitution means agents never see real secrets. There is nothing to exfiltrate.</li>
+                  <li><strong>Storage exhaustion (#5)</strong>:Request size limits and rate limiting are enforced before payloads reach the agent.</li>
+                  <li><strong>Prompt injection (#12)</strong>:Deep scan inspection occurs in the middleware chain, before the payload reaches the agent's context window.</li>
+                  <li><strong>Session fixation (#14)</strong>:SVID rotation is automatic and infrastructure-managed. The agent cannot prevent or interfere with it.</li>
+                </ul>
+                <span class="badge badge-success">Infrastructure-Enforced</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">What Infrastructure Cannot Solve Alone</h3>
+                <p>
+                  Cognitive defenses require the agent to maintain reasoning integrity under
+                  adversarial pressure. Infrastructure can detect and flag these situations,
+                  but cannot guarantee correct agent behavior.
+                </p>
+                <ul>
+                  <li><strong>Provider bias (#6)</strong>:Infrastructure can audit model selection and flag anomalies, but cannot determine whether a model's output reflects genuine bias or legitimate reasoning.</li>
+                  <li><strong>Instruction override (#16)</strong>:Deep scan can detect known injection patterns, but novel override techniques that pass semantic inspection require the agent to distinguish legitimate from adversarial instructions.</li>
+                  <li><strong>Gaslighting (#7)</strong>:Escalation detection can flag patterns of capitulation, but the agent must ultimately decide whether to comply with persistent social pressure.</li>
+                  <li><strong>Gradual escalation (#1)</strong>:Infrastructure tracks escalation scores across sessions, but the boundary between legitimate task evolution and adversarial escalation is context-dependent.</li>
+                </ul>
+                <span class="badge badge-warning">Requires Cognitive Cooperation</span>
+              </div>
+            </div>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                The Security Gap
+              </div>
+              <p>
+                PRECINCT's position: infrastructure should do everything it can to enforce
+                security boundaries without relying on agent cooperation. For the remaining
+                cognitive-layer threats, infrastructure provides <strong>detection,
+                flagging, and escalation</strong>:shifting the problem from "the agent
+                must be perfectly secure" to "the agent must respond correctly when the
+                infrastructure tells it something is wrong."
+              </p>
+              <p>
+                This is a meaningful reduction in attack surface: instead of requiring agents
+                to detect and defend against all 16 threat vectors independently, PRECINCT
+                reduces the cognitive burden to 4 scenarios where infrastructure provides
+                supporting signals.
+              </p>
+            </div>
+          </section>
+
+
+          <!-- ======================================================== -->
+          <!-- SECURING MCP                                              -->
+          <!-- ======================================================== -->
+          <section id="securing-mcp">
+            <h2>Securing the Model Context Protocol</h2>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Citation
+              </div>
+              <p>
+                <em>Securing the Model Context Protocol: A Five-Layer Defense Framework</em>.
+                arXiv:<a href="https://arxiv.org/abs/2511.20920" target="_blank" rel="noopener noreferrer">2511.20920</a>.
+              </p>
+            </div>
+
+            <p>
+              This paper proposes a structured five-layer defense framework for securing
+              the Model Context Protocol (MCP), which has become the standard interface
+              between LLM agents and external tools. The framework addresses the full
+              lifecycle of MCP interactions, from identity verification through runtime
+              policy enforcement to centralized governance.
+            </p>
+
+            <p>
+              PRECINCT implements all five layers. The table below maps each layer from
+              the paper to the concrete PRECINCT subsystem that fulfills it.
+            </p>
+
+            <h3>Five-Layer Framework Implementation</h3>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">MCP five-layer defense framework mapped to PRECINCT components</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Paper Layer</th>
+                    <th scope="col">Purpose</th>
+                    <th scope="col">PRECINCT Implementation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Authentication &amp; Authorization</strong></td>
+                    <td>Verify identity and enforce fine-grained permissions</td>
+                    <td>SPIFFE/SPIRE for cryptographic workload identity (step 3); OPA for policy-based authorization (step 6)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Provenance Tracking</strong></td>
+                    <td>Verify origin and integrity of tools and data</td>
+                    <td>Tool Registry with SHA-256 hash verification (step 5); detects rug-pull attacks when tool descriptions or schemas change post-deployment</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Isolation &amp; Sandboxing</strong></td>
+                    <td>Contain breaches and limit blast radius</td>
+                    <td>Container isolation via Docker/Kubernetes; NetworkPolicy enforcement; optional gVisor sandboxing for high-risk workloads</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Inline Policy Enforcement</strong></td>
+                    <td>Inspect and filter traffic in real time</td>
+                    <td>13-layer gateway middleware chain: DLP scanning (step 7), deep scan (step 10), rate limiting (step 11), step-up gating (step 9), circuit breaker (step 12)</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Centralized Governance</strong></td>
+                    <td>Single control point for policies and audit</td>
+                    <td>OPA policy bundles with centralized authoring; OpenTelemetry tracing for distributed audit; in-process policy evaluation for sub-millisecond enforcement</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>MCP Attack Vectors</h3>
+            <p>
+              The paper identifies six categories of MCP-specific attacks. PRECINCT
+              addresses each through its middleware chain and supporting infrastructure.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">MCP attack vectors and PRECINCT defenses</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Attack Vector</th>
+                    <th scope="col">Description</th>
+                    <th scope="col">PRECINCT Defense</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Tool Poisoning</strong></td>
+                    <td>Malicious instructions embedded in tool descriptions, invisible to users but processed by LLMs</td>
+                    <td>Tool Registry hash verification (step 5) detects description changes; deep scan (step 10) inspects tool-sourced content</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Rug Pull</strong></td>
+                    <td>Tool behavior changes after initial approval: same URI, different behavior</td>
+                    <td>Continuous hash verification monitors for post-deployment changes; mismatch triggers alerts and optional blocking</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Cross-Tool Manipulation</strong></td>
+                    <td>Malicious tool descriptions influence other tools through shared context</td>
+                    <td>Tool isolation via separate registrations; DLP scanning of tool descriptions; OPA policies enforce per-tool permissions</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Credential Exfiltration</strong></td>
+                    <td>Compromised LLM uses obfuscation, chunking, encoding, or steganography to extract secrets</td>
+                    <td>Late-binding SPIKE token substitution (step 13). Agents see only handles like <code>$SPIKE{ref:9f3c2a,exp:86400}</code>, never real secrets</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Data Exfiltration via Legitimate Tools</strong></td>
+                    <td>Injected instructions cause agents to query sensitive data and send it through authorized tools</td>
+                    <td>DLP scanning (step 7) on both inbound and outbound payloads; output firewall with response handle-ization</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Active Content via MCP-UI</strong></td>
+                    <td><code>ui://</code> resources deliver executable HTML+JavaScript to agent interfaces</td>
+                    <td>CSP enforcement, permission mediation, and content scanning for MCP-UI resources</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Complete Framework Coverage
+              </div>
+              <p>
+                PRECINCT implements all five layers of the MCP defense framework and
+                addresses all six documented attack vectors. The framework's emphasis on
+                <strong>layered, independent defenses</strong> aligns directly with
+                PRECINCT's 13-layer middleware chain architecture.
+              </p>
+            </div>
+          </section>
+
+
+          <!-- ======================================================== -->
+          <!-- PROMPT INJECTION                                          -->
+          <!-- ======================================================== -->
+          <section id="prompt-injection">
+            <h2>Prompt Injection on Agentic Coding Assistants</h2>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Citation
+              </div>
+              <p>
+                <em>Prompt Injection on Agentic Coding Assistants</em>.
+                arXiv:<a href="https://arxiv.org/abs/2601.17548" target="_blank" rel="noopener noreferrer">2601.17548</a>.
+              </p>
+            </div>
+
+            <p>
+              This paper evaluates the resilience of state-of-the-art agentic coding
+              assistants against prompt injection attacks. The findings are stark: attack
+              success rates exceed 85% across multiple commercial tools. The attacks
+              require no special access. They are embedded in seemingly benign repository
+              files, documentation, and tool outputs that agents process as part of
+              normal operation.
+            </p>
+
+            <p>
+              These results validate a core PRECINCT design decision: prompt injection
+              defense cannot be left to the agent alone. It must be enforced at the
+              infrastructure level, before adversarial content reaches the agent's
+              context window.
+            </p>
+
+            <div class="card-grid card-grid-3">
+              <div class="card">
+                <h3 class="mt-0">85%+ Success Rate</h3>
+                <p>Attacks succeed against state-of-the-art agentic coding tools with minimal effort.</p>
+                <span class="badge badge-error">Finding</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Zero Special Access</h3>
+                <p>Injections hide in repository files, docs, and tool outputs. No elevated privileges needed.</p>
+                <span class="badge badge-warning">Attack Surface</span>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Infrastructure-Level Defense</h3>
+                <p>PRECINCT's tiered deep scan intercepts injections before they enter the agent's context.</p>
+                <span class="badge badge-success">PRECINCT Response</span>
+              </div>
+            </div>
+
+            <h3>Tiered Deep Scan Architecture</h3>
+            <p>
+              PRECINCT addresses prompt injection through a two-tier scanning architecture
+              that balances latency with detection depth. The fast path handles most
+              requests synchronously; the deep path is triggered only when risk indicators
+              are present.
+            </p>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">PRECINCT deep scan architecture tiers</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Tier</th>
+                    <th scope="col">Guard Model</th>
+                    <th scope="col">Latency</th>
+                    <th scope="col">Trigger</th>
+                    <th scope="col">Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Fast Path</strong></td>
+                    <td>Prompt Guard 2 (86M params)</td>
+                    <td>10-20ms local, 50-150ms via Groq</td>
+                    <td>All requests through step-up gating (step 9) for high-risk tools</td>
+                    <td>Synchronous block if injection probability &gt; 0.30 on high-risk tools; async flag otherwise</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Deep Path</strong></td>
+                    <td>Llama Guard 4 (12B params)</td>
+                    <td>200-550ms via Groq</td>
+                    <td>Conditional: only when Prompt Guard flags content or session risk score &gt; 0.5</td>
+                    <td>Content classification, alert generation, session risk update, optional blocking</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Triggering Logic</h3>
+            <p>
+              Deep scanning is not applied uniformly. It is triggered by risk signals
+              from other layers in the middleware chain, keeping latency low for normal
+              traffic while ensuring thorough inspection when warranted.
+            </p>
+
+            <div class="card-grid card-grid-3">
+              <div class="card">
+                <h3 class="mt-0">DLP Signal</h3>
+                <p>DLP scanning (step 7) flags <code>potential_injection</code> patterns, triggering deep scan for semantic confirmation.</p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Session Risk</h3>
+                <p>Accumulated session risk score exceeds 0.5, indicating elevated threat context from prior interactions.</p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">New Agent Baseline</h3>
+                <p>First 100 requests from newly registered agents are scanned unconditionally to establish behavioral baseline.</p>
+              </div>
+            </div>
+
+            <div class="callout callout-warning">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                Fail-Closed Design
+              </div>
+              <p>
+                When the guard model is unavailable (network failure, timeout, service
+                degradation), PRECINCT defaults to <strong>blocking high-risk tool
+                invocations</strong> rather than allowing them through unscanned. This
+                fail-closed behavior ensures that a scanning outage does not become
+                a security bypass.
+              </p>
+            </div>
+          </section>
+
+
+          <!-- ======================================================== -->
+          <!-- RECURSIVE LANGUAGE MODELS                                 -->
+          <!-- ======================================================== -->
+          <section id="rlm">
+            <h2>Recursive Language Models</h2>
+
+            <div class="callout callout-info">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                Citation
+              </div>
+              <p>
+                Zhang, H., Kraska, T. &amp; Khattab, O. (2025). <em>Recursive Language Models</em>.
+                arXiv:<a href="https://arxiv.org/abs/2512.24601" target="_blank" rel="noopener noreferrer">2512.24601</a>.
+              </p>
+            </div>
+
+            <p>
+              The RLM paper introduces a framework enabling LLMs to recursively decompose
+              tasks and make self-calls over unbounded contexts via a REPL (Read-Eval-Print
+              Loop) environment. This is a powerful pattern for agentic systems. It allows
+              agents to process arbitrarily long documents, recursively delegate subtasks,
+              and compose results across depth levels without context window limitations.
+            </p>
+
+            <p>
+              RLM recursion is also inherently risky. Without governance, a recursive
+              agent can spiral into unbounded depth, consume unlimited resources, and
+              bypass mediation controls by making direct sub-calls. PRECINCT's
+              <strong>RLM Governance Engine</strong> provides observable and controllable
+              execution through per-lineage resource limits.
+            </p>
+
+            <h3>RLM Governance Controls</h3>
+
+            <div class="table-wrapper">
+              <table>
+                <caption class="sr-only">PRECINCT RLM governance controls</caption>
+                <thead>
+                  <tr>
+                    <th scope="col">Control</th>
+                    <th scope="col">Default Limit</th>
+                    <th scope="col">Denial Code</th>
+                    <th scope="col">Purpose</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Depth Limit</strong></td>
+                    <td>6 levels</td>
+                    <td><code>RLM_HALT_MAX_DEPTH</code> (429)</td>
+                    <td>Caps maximum nesting depth for recursive agent calls, preventing unbounded recursion</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Subcall Budget</strong></td>
+                    <td>64 subcalls</td>
+                    <td><code>RLM_HALT_MAX_SUBCALLS</code> (429)</td>
+                    <td>Limits total number of subcalls per lineage, bounding resource consumption</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Budget Units</strong></td>
+                    <td>128 units</td>
+                    <td><code>RLM_HALT_MAX_SUBCALL_BUDGET</code> (429)</td>
+                    <td>Per-lineage cost accounting with per-call cost attribution, preventing cost explosions</td>
+                  </tr>
+                  <tr>
+                    <td><strong>UASGS Mediation</strong></td>
+                    <td>Required</td>
+                    <td><code>RLM_BYPASS_DENIED</code> (403)</td>
+                    <td>Subcalls without <code>uasgs_mediated=true</code> are denied, ensuring all recursion is gateway-mediated</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <h3>Governance Invariants</h3>
+            <p>
+              The RLM Governance Engine enforces four structural invariants on every
+              recursive call chain:
+            </p>
+
+            <div class="card-grid card-grid-2">
+              <div class="card">
+                <h3 class="mt-0">Validated Context Only</h3>
+                <p>
+                  The prompt variable in the REPL must be built from the external-context
+                  validation pipeline, not raw web content or unscanned inputs. This
+                  ensures every level of recursion operates on content that has passed
+                  through the gateway's inspection layers.
+                </p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Gateway-Mediated Sub-Calls</h3>
+                <p>
+                  Any REPL module making recursive calls must route through the gateway
+                  for policy evaluation, classification, and egress control. Direct
+                  sub-LM calls that bypass the gateway are denied.
+                </p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Mandatory Sub-Call Budgets</h3>
+                <p>
+                  Recursion depth, total sub-calls, and max bytes per sub-call are all
+                  budgeted per lineage. These limits prevent cost explosions and resource
+                  exhaustion from runaway recursive decomposition.
+                </p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0">Restricted REPL API</h3>
+                <p>
+                  The default REPL surface is a whitelisted string-only API. File access,
+                  network access, imports, and reflective APIs are blocked unless
+                  explicitly permitted by policy.
+                </p>
+              </div>
+            </div>
+
+            <div class="callout callout-success">
+              <div class="callout-title">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                Design Philosophy
+              </div>
+              <p>
+                PRECINCT does not block RLM recursion. It governs it. The gateway provides
+                <strong>observable and controllable execution</strong> through budgets and
+                mandatory mediation, allowing teams to use RLM's powerful recursive
+                decomposition within defined risk bounds. The goal is to make recursive
+                agents safe to deploy, not to prevent their use.
+              </p>
+            </div>
+          </section>
+
+
+          <!-- ======================================================== -->
+          <!-- RELATED PAGES                                             -->
+          <!-- ======================================================== -->
+          <section id="related-pages">
+            <h2>Related Pages</h2>
+            <div class="card-grid card-grid-4">
+              <div class="card">
+                <h3 class="mt-0"><a href="architecture.html">Architecture</a></h3>
+                <p>The full PRECINCT reference architecture document with design rationale and component relationships.</p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0"><a href="capabilities.html">Capabilities</a></h3>
+                <p>Complete capability map covering all 13 runtime layers, governed planes, and deployment modes.</p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0"><a href="gateway.html">Gateway</a></h3>
+                <p>Deep dive into the 13-layer middleware chain that enforces the defense-in-depth controls referenced on this page.</p>
+              </div>
+              <div class="card">
+                <h3 class="mt-0"><a href="case-study.html">Case Study</a></h3>
+                <p>Reference port adapter implementation showing how PRECINCT enforcement applies to a real application.</p>
+              </div>
+            </div>
+          </section>
+
+        </article>
+      </div>
+    </div>
+  </main>
+
+  <!-- ============================================================ -->
+  <!-- FOOTER                                                        -->
+  <!-- ============================================================ -->
+  <footer class="site-footer">
+    <div class="container">
+      <div class="footer-content">
+
+        <div class="footer-brand">
+          <span class="footer-logo">PRECINCT</span>
+          <p class="footer-description">
+            Policy-driven Runtime Enforcement and Cryptographic Identity
+            for Networked Compute and Tools.
+          </p>
+        </div>
+
+        <div class="footer-links">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://github.com/RamXX/agentic_reference_architecture" target="_blank" rel="noopener noreferrer">GitHub</a></li>
+            <li><a href="architecture.html">Architecture Spec</a></li>
+            <li><a href="capabilities.html">Capabilities</a></li>
+            <li><a href="getting-started.html">Getting Started</a></li>
+            <li><a href="sdks.html">SDKs</a></li>
+            <li><a href="building-adapters.html">Building Adapters</a></li>
+            <li><a href="cli.html">CLI Reference</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Components</h4>
+          <ul>
+            <li><a href="gateway.html">Gateway</a></li>
+            <li><a href="spiffe-spire.html">SPIFFE/SPIRE</a></li>
+            <li><a href="spike.html">SPIKE</a></li>
+            <li><a href="opa.html">OPA</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-links">
+          <h4>Deploy</h4>
+          <ul>
+            <li><a href="docker-compose.html">Docker Compose</a></li>
+            <li><a href="kubernetes.html">Kubernetes</a></li>
+            <li><a href="helm.html">Helm</a></li>
+            <li><a href="for-auditors.html">For Auditors</a></li>
+          </ul>
+        </div>
+
+      </div>
+
+      <p class="footer-citation">Architecture informed by peer-reviewed research. See <a href="../index.html#research">Research Foundations</a>.</p>
+      <div class="footer-bottom">
+        <p class="footer-license">
+          Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
+        </p>
+        <p class="footer-copyright">
+          &copy; 2026 PRECINCT Contributors.
+          Sponsored by <a href="https://cibertrend.com" target="_blank" rel="noopener noreferrer">Cibertrend, Inc.</a> and <a href="https://hextropian.ai" target="_blank" rel="noopener noreferrer">Hextropian Systems, Inc.</a>
+        </p>
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>

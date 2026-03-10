@@ -475,3 +475,52 @@ func TestModelPlane_DirectEgressBypassDenied(t *testing.T) {
 		t.Fatalf("expected policy_gate=direct_egress_blocked, got %v", metadata["policy_gate"])
 	}
 }
+
+func TestModelPlane_RegulatedPromptUsesPhase3DecisionEnvelope(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	code, resp := postPlaneJSON(t, handler, "/v1/model/call", map[string]any{
+		"envelope": map[string]any{
+			"run_id":          "phase3-compose-1773129666-deny-model",
+			"session_id":      "phase3-compose-session-1773129666",
+			"tenant":          "tenant-a",
+			"actor_spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+			"plane":           "model",
+		},
+		"policy": map[string]any{
+			"envelope": map[string]any{
+				"run_id":          "phase3-compose-1773129666-deny-model",
+				"session_id":      "phase3-compose-session-1773129666",
+				"tenant":          "tenant-a",
+				"actor_spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+				"plane":           "model",
+			},
+			"action":   "model.call",
+			"resource": "model/inference",
+			"attributes": map[string]any{
+				"provider":           "openai",
+				"model":              "gpt-4o",
+				"compliance_profile": "hipaa",
+				"model_scope":        "external",
+				"prompt_has_phi":     true,
+				"prompt_action":      "deny",
+				"prompt":             "Patient record with SSN 123-45-6789",
+			},
+		},
+	})
+
+	if code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%v", code, resp)
+	}
+	if got, _ := resp["reason_code"].(string); got != string(ReasonPromptSafetyRawDenied) {
+		t.Fatalf("expected reason_code=%s, got %v", ReasonPromptSafetyRawDenied, resp["reason_code"])
+	}
+	if got, _ := resp["middleware"].(string); got == "dlp_scan" {
+		t.Fatalf("expected phase3 model decision, got generic dlp response: %v", resp)
+	}
+	envelope, _ := resp["envelope"].(map[string]any)
+	if got, _ := envelope["session_id"].(string); got != "phase3-compose-session-1773129666" {
+		t.Fatalf("expected response envelope session_id to round-trip, got %v", envelope["session_id"])
+	}
+}

@@ -154,6 +154,8 @@ patches:
                     value: "dev"
                   - name: ALLOW_INSECURE_DEV_MODE
                     value: "1"
+                  - name: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
                   # go-spiffe Workload API socket (used for SPIKE Nexus mTLS, KeyDB mTLS, etc.)
                   - name: SPIFFE_ENDPOINT_SOCKET
                     value: "unix:///run/spire/sockets/agent.sock"
@@ -195,7 +197,9 @@ patches:
                   - name: MCP_TRANSPORT_MODE
                     value: "mcp"
                   - name: SPIFFE_TRUST_DOMAIN
-                    value: "agentic-ref-arch.poc"
+                    # Local K8s demo clients authenticate via X-SPIFFE-ID in dev mode
+                    # using the canonical demo identities under spiffe://poc.local/...
+                    value: "poc.local"
                   - name: DESTINATIONS_CONFIG_PATH
                     value: "/config/destinations/destinations.yaml"
                   - name: EXTENSION_REGISTRY_PATH
@@ -204,13 +208,27 @@ patches:
                   - name: config-destinations
                     mountPath: /config/destinations
                     readOnly: true
+                readinessProbe:
+                  exec:
+                    command: ["/app/gateway", "health"]
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  timeoutSeconds: 5
+                  failureThreshold: 6
+                livenessProbe:
+                  exec:
+                    command: ["/app/gateway", "health"]
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 6
                 resources:
                   requests:
-                    cpu: 50m
-                    memory: 64Mi
-                  limits:
                     cpu: 100m
                     memory: 128Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
             volumes:
               - name: config-destinations
                 configMap:
@@ -465,6 +483,21 @@ patches:
                     cpu: 100m
                     memory: 256Mi
 
+  - target:
+      kind: ConfigMap
+      name: spike-nexus-config
+      namespace: spike-system
+    patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: spike-nexus-config
+        namespace: spike-system
+      data:
+        SPIKE_NEXUS_KEEPER_PEERS: "https://spike-keeper-1.spike-system.svc.cluster.local:8443"
+        SPIKE_NEXUS_SHAMIR_THRESHOLD: "1"
+        SPIKE_NEXUS_SHAMIR_SHARES: "1"
+
   # --------------------------------------------------------------------------
   # SPIKE Keeper: local registry image, reduced resources + debug flags (local only)
   # --------------------------------------------------------------------------
@@ -497,6 +530,54 @@ patches:
                   limits:
                     cpu: 100m
                     memory: 256Mi
+
+  - target:
+      kind: Deployment
+      name: spike-keeper-2
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: spike-keeper-2
+        namespace: spike-system
+
+  - target:
+      kind: Deployment
+      name: spike-keeper-3
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: spike-keeper-3
+        namespace: spike-system
+
+  - target:
+      kind: Service
+      name: spike-keeper-2
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: spike-keeper-2
+        namespace: spike-system
+
+  - target:
+      kind: Service
+      name: spike-keeper-3
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: spike-keeper-3
+        namespace: spike-system
 
   # --------------------------------------------------------------------------
   # SPIKE Jobs: delete from local overlay output (applied by `make k8s-up` only

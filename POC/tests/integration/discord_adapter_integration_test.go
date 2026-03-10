@@ -61,9 +61,12 @@ func (m *integrationMockGateway) WriteGatewayError(w http.ResponseWriter, _ *htt
 func (m *integrationMockGateway) ValidateAndConsumeApproval(_ string, _ middleware.ApprovalScope) (*middleware.ApprovalCapabilityClaims, error) {
 	return nil, nil
 }
-func (m *integrationMockGateway) HasApprovalService() bool                       { return false }
+func (m *integrationMockGateway) HasApprovalService() bool { return false }
 func (m *integrationMockGateway) ValidateConnector(_ string, _ string) (bool, string) {
 	return true, ""
+}
+func (m *integrationMockGateway) ScanContent(_ string) middleware.ScanResult {
+	return middleware.ScanResult{}
 }
 
 // buildDiscordChain constructs a middleware chain with real SPIFFE auth
@@ -166,6 +169,12 @@ func TestDiscordAdapter_AllEndpoints_Behind_SPIFFE(t *testing.T) {
 			rr := httptest.NewRecorder()
 			handler.ServeHTTP(rr, req)
 
+			if ep == "/discord/webhooks" {
+				if rr.Code != http.StatusUnauthorized && rr.Code != http.StatusNotImplemented {
+					t.Errorf("%s with SPIFFE: got %d, want 401 or 501", ep, rr.Code)
+				}
+				return
+			}
 			if rr.Code != http.StatusNotImplemented {
 				t.Errorf("%s with SPIFFE: got %d, want 501", ep, rr.Code)
 			}

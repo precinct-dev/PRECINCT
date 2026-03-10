@@ -19,7 +19,7 @@ func TestAgwInspectRateLimitIntegration_JSON(t *testing.T) {
 		t.Skipf("Gateway not ready (requires running stack: make up): %v", err)
 	}
 
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := "spiffe://poc.local/agents/mcp-client/inspect-ratelimit-researcher/dev"
 
 	// Send a few MCP requests to create/update rate limit keys for this identity.
 	for i := 0; i < 3; i++ {
@@ -80,6 +80,10 @@ func TestAgwInspectRateLimitIntegration_JSON(t *testing.T) {
 	}
 	if parsed.RateLimits[0].Remaining < 0 {
 		t.Fatalf("expected remaining >= 0, got %+v", parsed.RateLimits[0])
+	}
+
+	if keydbUsesCompose(integrationKeyDBURL()) {
+		t.Skip("compose://keydb mode validates targeted rate-limit inspection; all-active enumeration is too expensive for live compose exec")
 	}
 
 	// Inspect all active rate limits (should include the same identity).

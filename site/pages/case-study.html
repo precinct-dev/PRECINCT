@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Case Study: Securing OpenClaw Without Changing Its Code -- PRECINCT</title>
+  <title>Case Study: Securing OpenClaw Without Changing Its Code | PRECINCT</title>
   <meta name="description" content="How PRECINCT secured OpenClaw, a real AI assistant framework with 13+ messaging channels and shell access, without modifying a single line of its source code.">
   <meta name="keywords" content="PRECINCT case study, OpenClaw, agentic AI security, adapter pattern, boundary enforcement, zero-trust, SPIFFE, OPA">
   <meta name="author" content="PRECINCT Contributors">
@@ -11,7 +11,7 @@
 
   <!-- Open Graph -->
   <meta property="og:title" content="Case Study: Securing OpenClaw Without Changing Its Code">
-  <meta property="og:description" content="How PRECINCT secured a real AI assistant framework with shell access and 13+ messaging channels -- without modifying a single line of its source code.">
+  <meta property="og:description" content="How PRECINCT secured a real AI assistant framework with shell access and 13+ messaging channels, without modifying a single line of its source code.">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://precinct.dev/pages/case-study.html">
   <meta property="og:site_name" content="PRECINCT">
@@ -70,7 +70,7 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link active">Case Study</a></li>
-        <li><a href="agents-of-chaos.html" class="nav-link">Agents of Chaos</a></li>
+        <li><a href="research.html" class="nav-link">Research</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Developer <span class="caret" aria-hidden="true"></span>
@@ -188,10 +188,10 @@
 
             <p class="callout-note">
               <a href="https://github.com/openclaw/openclaw" target="_blank" rel="noopener noreferrer">OpenClaw</a>
-              is a personal AI assistant that operates across multiple channels -- HTTP API, WebSocket,
+              is a personal AI assistant that operates across multiple channels, including HTTP API, WebSocket,
               and command-line interfaces. It was chosen as the PRECINCT case study because it represents
               a complex, real-world agentic application: it has shell access, invokes potentially dangerous tools,
-              and manages multi-turn conversations -- exactly the kind of agent that needs governance.
+              and manages multi-turn conversations. It is exactly the kind of agent that needs governance.
             </p>
 
           <!-- ========== The Challenge ========== -->
@@ -363,7 +363,7 @@ sequenceDiagram
 
             <div class="card-grid card-grid-2">
               <div class="card">
-                <h3 class="mt-0"><code>tavily_search</code> -- Allowed</h3>
+                <h3 class="mt-0"><code>tavily_search</code>: Allowed</h3>
                 <ul>
                   <li>Risk classification: <strong>medium</strong></li>
                   <li>Session risk score impact: +3</li>
@@ -376,7 +376,7 @@ sequenceDiagram
                 </p>
               </div>
               <div class="card">
-                <h3 class="mt-0"><code>bash</code> -- Denied</h3>
+                <h3 class="mt-0"><code>bash</code>: Denied</h3>
                 <ul>
                   <li>Risk classification: <strong>critical</strong></li>
                   <li>Session risk score impact: +8</li>
@@ -669,7 +669,7 @@ async def search(ctx, query: str) -> str:
 
       </div>
 
-      <p class="footer-citation">Validated against <a href="agents-of-chaos.html">Agents of Chaos</a> (Shapira et al., 2026, <a href="https://arxiv.org/abs/2602.20021">arXiv:2602.20021v1</a>)</p>
+      <p class="footer-citation">Architecture informed by peer-reviewed research. See <a href="../index.html#research">Research Foundations</a>.</p>
       <div class="footer-bottom">
         <p class="footer-license">
           Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.

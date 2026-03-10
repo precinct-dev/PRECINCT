@@ -31,6 +31,9 @@ func newRuleOpsTestServerURLWithKeyDB(t *testing.T, keydbURL string) string {
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
 		SPIFFEMode:             "dev",
+		AdminAuthzAllowedSPIFFEIDs: []string{
+			adminSPIFFEIDForTest(),
+		},
 		DestinationsConfigPath: destinationsPath,
 		RateLimitRPM:           100000,
 		RateLimitBurst:         100000,

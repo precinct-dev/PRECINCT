@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kubernetes Deployment -- PRECINCT</title>
+  <title>Kubernetes Deployment | PRECINCT</title>
   <meta name="description" content="Production-grade PRECINCT deployment on any conformant Kubernetes cluster. Namespace architecture, security hardening, Kustomize overlays, and production checklist.">
   <meta name="keywords" content="PRECINCT, Kubernetes, deployment, production, EKS, GKE, AKS, zero-trust, SPIFFE, Kustomize">
   <meta name="author" content="PRECINCT Contributors">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="Kubernetes Deployment -- PRECINCT">
+  <meta property="og:title" content="Kubernetes Deployment | PRECINCT">
   <meta property="og:description" content="Production-grade PRECINCT deployment on any conformant Kubernetes cluster with full zero-trust networking and default-deny NetworkPolicies.">
   <meta property="og:type" content="article">
 
@@ -68,7 +68,7 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="agents-of-chaos.html" class="nav-link">Agents of Chaos</a></li>
+        <li><a href="research.html" class="nav-link">Research</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Developer <span class="caret" aria-hidden="true"></span>
@@ -220,8 +220,8 @@ make k8s-down      # Tear down</code></pre>
               <strong>Local Kubernetes options:</strong> Before deploying to a cloud provider,
               you can test PRECINCT on a local Kubernetes cluster:
               <ul>
-                <li><strong>Docker Desktop</strong> -- Enable the built-in Kubernetes cluster from Settings &gt; Kubernetes. Simplest option for single-node testing.</li>
-                <li><a href="https://kind.sigs.k8s.io/" target="_blank" rel="noopener noreferrer"><strong>Kind</strong></a> (Kubernetes in Docker) -- Creates multi-node clusters inside Docker containers. Better for testing realistic multi-node topologies.</li>
+                <li><strong>Docker Desktop</strong>: Enable the built-in Kubernetes cluster from Settings &gt; Kubernetes. Simplest option for single-node testing.</li>
+                <li><a href="https://kind.sigs.k8s.io/" target="_blank" rel="noopener noreferrer"><strong>Kind</strong></a> (Kubernetes in Docker): Creates multi-node clusters inside Docker containers. Better for testing realistic multi-node topologies.</li>
               </ul>
               Both options work with the Helm charts and manifests documented below.
             </div>
@@ -799,7 +799,7 @@ allow if {
 
       </div>
 
-      <p class="footer-citation">Validated against <a href="agents-of-chaos.html">Agents of Chaos</a> (Shapira et al., 2026, <a href="https://arxiv.org/abs/2602.20021">arXiv:2602.20021v1</a>)</p>
+      <p class="footer-citation">Architecture informed by peer-reviewed research. See <a href="../index.html#research">Research Foundations</a>.</p>
       <div class="footer-bottom">
         <p class="footer-license">
           Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.

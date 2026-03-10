@@ -15,6 +15,10 @@ resources:
   - keeper-rbac.yaml
   - keeper-service.yaml
   - keeper-deployment.yaml
+  - keeper-2-service.yaml
+  - keeper-2-deployment.yaml
+  - keeper-3-service.yaml
+  - keeper-3-deployment.yaml
   # Bootstrap
   - bootstrap-rbac.yaml
   - bootstrap-job.yaml

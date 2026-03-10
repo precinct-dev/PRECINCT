@@ -74,6 +74,7 @@ done
 echo "[INFO] Validating strict Compose runtime wiring..."
 export STRICT_UPSTREAM_URL="https://strict-upstream.example.com/mcp"
 export APPROVAL_SIGNING_KEY="compose-approval-signing-key-material-at-least-32"
+export ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/ops/sa/gateway-admin"
 export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool"
 export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb"
 
@@ -90,6 +91,7 @@ assert_contains "${compose_out}" 'target:[[:space:]]*9443' "compose strict: HTTP
 assert_not_contains "${compose_out}" 'published:[[:space:]]*"9090"' "compose strict: dev HTTP listener port 9090 must not be published"
 assert_contains "${compose_out}" 'UPSTREAM_URL:[[:space:]]*https://' "compose strict: UPSTREAM_URL must be https"
 assert_contains "${compose_out}" 'APPROVAL_SIGNING_KEY:[[:space:]]+' "compose strict: APPROVAL_SIGNING_KEY must be set"
+assert_contains "${compose_out}" 'ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS:[[:space:]]+' "compose strict: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS must be set"
 assert_contains "${compose_out}" 'UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS:[[:space:]]+' "compose strict: UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS must be set"
 assert_contains "${compose_out}" 'KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS:[[:space:]]+' "compose strict: KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS must be set"
 assert_contains "${compose_out}" 'TOOL_REGISTRY_PUBLIC_KEY:[[:space:]]+/config/attestation-ed25519\.pub' "compose strict: TOOL_REGISTRY_PUBLIC_KEY must point to /config/attestation-ed25519.pub"

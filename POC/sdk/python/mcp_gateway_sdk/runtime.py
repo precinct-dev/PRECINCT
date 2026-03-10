@@ -12,6 +12,7 @@ These helpers centralize repeated setup code that appeared in multiple demos:
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
 from typing import Any, Optional
 
 
@@ -95,6 +96,8 @@ def setup_observability(
     session_id: str,
     otel_endpoint: str,
     instrument_dspy: bool = False,
+    allow_insecure_local: bool = True,
+    allow_insecure_non_local: bool = False,
 ) -> Any:
     """Configure OpenTelemetry tracing and return a tracer for the service.
 
@@ -117,7 +120,14 @@ def setup_observability(
     )
 
     provider = TracerProvider(resource=resource)
-    exporter = OTLPSpanExporter(endpoint=otel_endpoint, insecure=True)
+    exporter = OTLPSpanExporter(
+        endpoint=otel_endpoint,
+        insecure=_should_use_insecure_otlp(
+            otel_endpoint,
+            allow_insecure_local=allow_insecure_local,
+            allow_insecure_non_local=allow_insecure_non_local,
+        ),
+    )
     provider.add_span_processor(BatchSpanProcessor(exporter))
     trace.set_tracer_provider(provider)
 
@@ -127,6 +137,26 @@ def setup_observability(
         DSPyInstrumentor().instrument()
 
     return trace.get_tracer(service_name)
+
+
+def _is_local_otel_endpoint(otel_endpoint: str) -> bool:
+    endpoint = (otel_endpoint or "").strip()
+    if not endpoint:
+        return False
+    parsed = urlparse(endpoint if "://" in endpoint else f"http://{endpoint}")
+    host = (parsed.hostname or "").strip().lower()
+    return host in {"localhost", "127.0.0.1", "::1"}
+
+
+def _should_use_insecure_otlp(
+    otel_endpoint: str,
+    *,
+    allow_insecure_local: bool,
+    allow_insecure_non_local: bool,
+) -> bool:
+    if _is_local_otel_endpoint(otel_endpoint):
+        return allow_insecure_local
+    return allow_insecure_non_local
 
 
 def build_dspy_gateway_lm(

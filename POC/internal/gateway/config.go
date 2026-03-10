@@ -65,6 +65,7 @@ type Config struct {
 	KeyDBPoolMax                    int       // Maximum connections in KeyDB pool (default 20)
 	SessionTTL                      int       // Session TTL in seconds (default 3600)
 	ToolRegistryPublicKey           string    // RFA-lo1.4: Path to PEM public key for registry attestation (empty = dev mode)
+	OPAPolicyPublicKey              string    // RFA-aszr: Path to PEM public key for OPA policy reload attestation (empty = dev mode)
 	ModelProviderCatalogPath        string    // RFA-l6h6.2.6: versioned model provider catalog path
 	ModelProviderCatalogPublicKey   string    // RFA-l6h6.2.6: PEM public key path for provider catalog signature
 	GuardArtifactPath               string    // RFA-l6h6.2.6: local guard artifact path for integrity verification
@@ -272,14 +273,15 @@ func ConfigFromEnv() *Config {
 	}
 
 	adminAuthzAllowedSPIFFEIDs := parseListEnv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS")
-	if len(adminAuthzAllowedSPIFFEIDs) == 0 {
-		adminAuthzAllowedSPIFFEIDs = defaultAdminAuthzAllowedSPIFFEIDs()
-	}
 	enforcementProfile := getEnvOrDefault("ENFORCEMENT_PROFILE", enforcementProfileDev)
+	spiffeMode := strings.ToLower(strings.TrimSpace(getEnvOrDefault("SPIFFE_MODE", "prod")))
+	if spiffeMode == "" {
+		spiffeMode = "prod"
+	}
 
 	upstreamAuthzAllowedSPIFFEIDs := parseListEnv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS")
 	keyDBAuthzAllowedSPIFFEIDs := parseListEnv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS")
-	if isStrictEnforcementProfileName(enforcementProfile) {
+	if shouldApplyDefaultSPIFFEPeerAllowlists(spiffeMode, enforcementProfile) {
 		if len(upstreamAuthzAllowedSPIFFEIDs) == 0 {
 			upstreamAuthzAllowedSPIFFEIDs = defaultUpstreamAuthzAllowedSPIFFEIDs(spiffeTrustDomain)
 		}
@@ -291,11 +293,6 @@ func ConfigFromEnv() *Config {
 	enforceModelMediationGate := parseEnvBool("ENFORCE_MODEL_MEDIATION_GATE", true)
 	enforceHIPAAPromptSafetyGate := parseEnvBool("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", true)
 	modelPolicyIntentPrependEnabled := parseEnvBool("MODEL_POLICY_INTENT_PREPEND_ENABLED", false)
-	spiffeMode := strings.ToLower(strings.TrimSpace(getEnvOrDefault("SPIFFE_MODE", "prod")))
-	if spiffeMode == "" {
-		spiffeMode = "prod"
-	}
-
 	return &Config{
 		Port:                            port,
 		UpstreamURL:                     getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
@@ -343,6 +340,7 @@ func ConfigFromEnv() *Config {
 		KeyDBPoolMax:                    keyDBPoolMax,
 		SessionTTL:                      sessionTTL,
 		ToolRegistryPublicKey:           getEnvOrDefault("TOOL_REGISTRY_PUBLIC_KEY", ""),
+		OPAPolicyPublicKey:              strings.TrimSpace(os.Getenv("OPA_POLICY_PUBLIC_KEY")),
 		ModelProviderCatalogPath:        strings.TrimSpace(os.Getenv("MODEL_PROVIDER_CATALOG_PATH")),
 		ModelProviderCatalogPublicKey:   strings.TrimSpace(os.Getenv("MODEL_PROVIDER_CATALOG_PUBLIC_KEY")),
 		GuardArtifactPath:               strings.TrimSpace(os.Getenv("GUARD_ARTIFACT_PATH")),
@@ -409,14 +407,4 @@ func parseListEnv(key string) []string {
 		normalized = append(normalized, value)
 	}
 	return normalized
-}
-
-func defaultAdminAuthzAllowedSPIFFEIDs() []string {
-	// Keep defaults explicit and minimal for local/dev workflows.
-	return []string{
-		"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
-		"spiffe://poc.local/gateways/mcp-security-gateway/dev",
-		"spiffe://poc.local/agents/test",
-		"spiffe://poc.local/agents/test/dev",
-	}
 }

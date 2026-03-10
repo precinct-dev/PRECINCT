@@ -159,6 +159,13 @@ func isStrictEnforcementProfileName(profile string) bool {
 	}
 }
 
+func shouldApplyDefaultSPIFFEPeerAllowlists(spiffeMode, enforcementProfile string) bool {
+	if strings.EqualFold(strings.TrimSpace(spiffeMode), "prod") {
+		return true
+	}
+	return isStrictEnforcementProfileName(enforcementProfile)
+}
+
 func defaultUpstreamAuthzAllowedSPIFFEIDs(trustDomain string) []string {
 	td := strings.TrimSpace(trustDomain)
 	if td == "" {

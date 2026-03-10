@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -317,6 +318,14 @@ func (w *circuitBreakerResponseWriter) Flush() {
 	_ = http.NewResponseController(w.ResponseWriter).Flush()
 }
 
+func shouldBypassCircuitBreaker(r *http.Request) bool {
+	if r == nil || r.URL == nil {
+		return false
+	}
+	path := r.URL.Path
+	return path == "/admin" || strings.HasPrefix(path, "/admin/")
+}
+
 // CircuitBreakerMiddleware creates HTTP middleware that implements the circuit
 // breaker pattern. When the circuit is open, requests immediately receive
 // HTTP 503 without hitting upstream.
@@ -324,6 +333,11 @@ func (w *circuitBreakerResponseWriter) Flush() {
 // Position: Step 12 in the middleware chain (after rate limiting, before token substitution)
 func CircuitBreakerMiddleware(next http.Handler, cb *CircuitBreaker) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if shouldBypassCircuitBreaker(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// RFA-m6j.2: Create OTel span for step 12
 		ctx, span := tracer.Start(r.Context(), "gateway.circuit_breaker",
 			trace.WithAttributes(

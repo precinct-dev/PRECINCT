@@ -26,6 +26,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 import httpx
 
@@ -37,6 +38,11 @@ logger = logging.getLogger("mcp_gateway_sdk")
 _DEFAULT_MAX_RETRIES = 3
 _DEFAULT_BACKOFF_BASE = 1.0  # seconds
 _DEFAULT_TIMEOUT = 30.0  # seconds
+
+
+def _is_local_gateway_url(url: str) -> bool:
+    host = (urlparse(url).hostname or "").strip().lower()
+    return host in {"", "localhost", "127.0.0.1", "::1"}
 
 
 @dataclass
@@ -118,8 +124,9 @@ def _parse_response_meta(headers: httpx.Headers) -> ResponseMeta:
 class GatewayClient:
     """HTTP client for MCP JSON-RPC calls through the security gateway.
 
-    All tool calls go through the gateway. Authenticates with the
-    ``X-SPIFFE-ID`` header (dev-mode identity assertion).
+    All tool calls go through the gateway. The ``X-SPIFFE-ID`` header is a
+    dev-mode identity assertion; production authentication must come from the
+    underlying HTTP transport, such as an mTLS-configured ``httpx.Client``.
 
     Handles:
       - MCP JSON-RPC envelope construction
@@ -140,17 +147,24 @@ class GatewayClient:
         timeout: float = _DEFAULT_TIMEOUT,
         max_retries: int = _DEFAULT_MAX_RETRIES,
         backoff_base: float = _DEFAULT_BACKOFF_BASE,
+        http_client: Optional[httpx.Client] = None,
+        trace_tool_arguments: bool = False,
     ) -> None:
         """Create a new GatewayClient.
 
         Args:
             url:           Gateway base URL (e.g. ``http://localhost:9090``).
-            spiffe_id:     SPIFFE identity for X-SPIFFE-ID header.
+            spiffe_id:     SPIFFE identity for X-SPIFFE-ID header in dev mode.
             session_id:    Optional session ID. Auto-generated UUID if omitted.
             tracer:        Optional OpenTelemetry Tracer for span creation.
             timeout:       HTTP request timeout in seconds (default 30).
             max_retries:   Max retry attempts for 503 responses (default 3).
             backoff_base:  Base for exponential backoff in seconds (default 1.0).
+            http_client:   Optional preconfigured ``httpx.Client`` for custom
+                           transports such as production mTLS.
+            trace_tool_arguments:
+                           When ``True``, export raw tool arguments in spans.
+                           Defaults to ``False`` so sensitive params stay out of telemetry.
         """
         self.url = url
         self.spiffe_id = spiffe_id
@@ -158,12 +172,19 @@ class GatewayClient:
         self.tracer = tracer
         self.max_retries = max_retries
         self.backoff_base = backoff_base
+        self.trace_tool_arguments = trace_tool_arguments
         self._request_id = 0
-        self._client = httpx.Client(timeout=timeout)
+        self._owns_client = http_client is None
+        self._client = http_client or httpx.Client(timeout=timeout)
+        if not _is_local_gateway_url(url):
+            logger.warning(
+                "GatewayClient sends X-SPIFFE-ID only for dev-mode identity. For production gateways, provide an mTLS-configured http_client."
+            )
 
     def close(self) -> None:
         """Close the underlying HTTP client."""
-        self._client.close()
+        if self._owns_client:
+            self._client.close()
 
     def __enter__(self) -> GatewayClient:
         return self
@@ -195,15 +216,25 @@ class GatewayClient:
         """
         span = None
         if self.tracer:
+            span_attributes = {
+                "mcp.method": "tools/call",
+                "mcp.tool.name": tool_name,
+                "spiffe.id": self.spiffe_id,
+                "session.id": self.session_id,
+            }
+            if self.trace_tool_arguments:
+                span_attributes["mcp.tool.arguments"] = json.dumps(params, sort_keys=True)
+                span_attributes["mcp.tool.arguments_redacted"] = False
+            else:
+                span_attributes["mcp.tool.arguments_redacted"] = True
+                span_attributes["mcp.tool.argument_count"] = len(params)
+                if params:
+                    span_attributes["mcp.tool.argument_keys"] = ",".join(
+                        sorted(str(key) for key in params)
+                    )
             span = self.tracer.start_span(
                 f"gateway.tool_call.{tool_name}",
-                attributes={
-                    "mcp.method": "tools/call",
-                    "mcp.tool.name": tool_name,
-                    "mcp.tool.arguments": json.dumps(params),
-                    "spiffe.id": self.spiffe_id,
-                    "session.id": self.session_id,
-                },
+                attributes=span_attributes,
             )
 
         try:
@@ -287,12 +318,23 @@ class GatewayClient:
         This helper keeps model calls behind the gateway's model-plane controls
         while preserving a simple SDK interface for agent frameworks.
         """
+        if endpoint.startswith("http://") or endpoint.startswith("https://"):
+            raise ValueError(
+                "call_model_chat only supports gateway-relative endpoints; "
+                "absolute endpoints are not allowed"
+            )
+
         payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
         }
         payload.update(extra_payload)
 
+        if endpoint.startswith(("http://", "https://")):
+            raise ValueError(
+                "call_model_chat only accepts gateway-relative endpoints; "
+                "absolute model URLs bypass gateway mediation"
+            )
         path = endpoint if endpoint.startswith("/") else f"/{endpoint}"
         url = f"{self.url}{path}"
         headers = {

@@ -7,19 +7,26 @@
 package integration
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/redis/go-redis/v9"
 )
 
 // Common service URLs used by integration tests
 var (
-	gatewayURL    = getEnvOrDefault("GATEWAY_URL", "http://localhost:9090")
-	opaURL        = getEnvOrDefault("OPA_URL", "http://localhost:8181")
-	adminSPIFFEID = getEnvOrDefault("ADMIN_SPIFFE_ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	gatewayURL = getEnvOrDefault("GATEWAY_URL", "http://localhost:9090")
+	opaURL     = getEnvOrDefault("OPA_URL", "http://localhost:8181")
 )
 
 // pocDir returns the absolute path to the POC project root.
@@ -79,4 +86,176 @@ func getEnvOrDefault(key, defaultValue string) string {
 		return v
 	}
 	return defaultValue
+}
+
+func resetCircuitBreakerForTool(t *testing.T, tool string) {
+	t.Helper()
+	body := fmt.Sprintf(`{"tool":%q}`, tool)
+	req, err := http.NewRequest(http.MethodPost, gatewayURL+"/admin/circuit-breakers/reset", strings.NewReader(body))
+	if err != nil {
+		t.Fatalf("build circuit-breaker reset request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", adminSPIFFEIDForTest())
+
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("reset circuit-breaker %s: %v", tool, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("reset circuit-breaker %s returned %d", tool, resp.StatusCode)
+	}
+}
+
+func postGatewayRPCMethod(t *testing.T, spiffeID, method string, params map[string]any) int {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  method,
+		"params":  params,
+		"id":      1,
+	})
+	if err != nil {
+		t.Fatalf("marshal request: %v", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, gatewayURL, bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", spiffeID)
+
+	resp, err := (&http.Client{Timeout: 5 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("gateway request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode
+}
+
+func integrationKeyDBURL() string {
+	if v := strings.TrimSpace(os.Getenv("AGW_KEYDB_URL")); v != "" {
+		return v
+	}
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:6379", 500*time.Millisecond)
+	if err == nil {
+		_ = conn.Close()
+		return "redis://127.0.0.1:6379"
+	}
+	return "compose://keydb"
+}
+
+func keydbUsesCompose(url string) bool {
+	return strings.HasPrefix(strings.TrimSpace(url), "compose://")
+}
+
+func keydbComposeService(url string) string {
+	service := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(url), "compose://"))
+	if service == "" {
+		return "keydb"
+	}
+	return service
+}
+
+func keydbSetValue(t *testing.T, key, value string, ttl time.Duration) {
+	t.Helper()
+	keydbURL := integrationKeyDBURL()
+	if keydbUsesCompose(keydbURL) {
+		seconds := strconv.Itoa(int(ttl / time.Second))
+		runComposeKeyDBCLI(t, keydbComposeService(keydbURL), "SET", key, value, "EX", seconds)
+		return
+	}
+
+	opt, err := redis.ParseURL(keydbURL)
+	if err != nil {
+		t.Fatalf("parse keydb url %q: %v", keydbURL, err)
+	}
+	rdb := redis.NewClient(opt)
+	defer func() { _ = rdb.Close() }()
+	if err := rdb.Set(t.Context(), key, value, ttl).Err(); err != nil {
+		t.Fatalf("set %s: %v", key, err)
+	}
+}
+
+func keydbRPushValues(t *testing.T, key string, values ...string) {
+	t.Helper()
+	keydbURL := integrationKeyDBURL()
+	if keydbUsesCompose(keydbURL) {
+		args := append([]string{"RPUSH", key}, values...)
+		runComposeKeyDBCLI(t, keydbComposeService(keydbURL), args...)
+		return
+	}
+
+	opt, err := redis.ParseURL(keydbURL)
+	if err != nil {
+		t.Fatalf("parse keydb url %q: %v", keydbURL, err)
+	}
+	rdb := redis.NewClient(opt)
+	defer func() { _ = rdb.Close() }()
+	items := make([]any, len(values))
+	for i, value := range values {
+		items[i] = value
+	}
+	if err := rdb.RPush(t.Context(), key, items...).Err(); err != nil {
+		t.Fatalf("rpush %s: %v", key, err)
+	}
+}
+
+func keydbDeleteKeys(t *testing.T, keys ...string) {
+	t.Helper()
+	keydbURL := integrationKeyDBURL()
+	if keydbUsesCompose(keydbURL) {
+		args := append([]string{"DEL"}, keys...)
+		runComposeKeyDBCLI(t, keydbComposeService(keydbURL), args...)
+		return
+	}
+
+	opt, err := redis.ParseURL(keydbURL)
+	if err != nil {
+		t.Fatalf("parse keydb url %q: %v", keydbURL, err)
+	}
+	rdb := redis.NewClient(opt)
+	defer func() { _ = rdb.Close() }()
+	if _, err := rdb.Del(t.Context(), keys...).Result(); err != nil {
+		t.Fatalf("del %v: %v", keys, err)
+	}
+}
+
+func keydbExists(t *testing.T, keys ...string) int64 {
+	t.Helper()
+	keydbURL := integrationKeyDBURL()
+	if keydbUsesCompose(keydbURL) {
+		out := runComposeKeyDBCLI(t, keydbComposeService(keydbURL), append([]string{"EXISTS"}, keys...)...)
+		n, err := strconv.ParseInt(strings.TrimSpace(out), 10, 64)
+		if err != nil {
+			t.Fatalf("parse EXISTS output %q: %v", out, err)
+		}
+		return n
+	}
+
+	opt, err := redis.ParseURL(keydbURL)
+	if err != nil {
+		t.Fatalf("parse keydb url %q: %v", keydbURL, err)
+	}
+	rdb := redis.NewClient(opt)
+	defer func() { _ = rdb.Close() }()
+	n, err := rdb.Exists(t.Context(), keys...).Result()
+	if err != nil {
+		t.Fatalf("exists %v: %v", keys, err)
+	}
+	return n
+}
+
+func runComposeKeyDBCLI(t *testing.T, service string, args ...string) string {
+	t.Helper()
+	cmdArgs := append([]string{"compose", "exec", "-T", service, "keydb-cli", "--raw"}, args...)
+	cmd := exec.Command("docker", cmdArgs...)
+	cmd.Dir = pocDir()
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("docker %s failed: %v output=%q", strings.Join(cmdArgs, " "), err, string(out))
+	}
+	return string(out)
 }

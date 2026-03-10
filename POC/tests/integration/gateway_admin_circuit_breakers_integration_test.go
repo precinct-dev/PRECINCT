@@ -21,7 +21,7 @@ func TestGatewayAdminCircuitBreakersIntegration_NonEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("build request: %v", err)
 	}
-	req.Header.Set("X-SPIFFE-ID", adminSPIFFEID)
+	req.Header.Set("X-SPIFFE-ID", adminSPIFFEIDForTest())
 	resp, err := client.Do(req)
 	if err != nil {
 		t.Fatalf("GET /admin/circuit-breakers: %v", err)

@@ -28,6 +28,10 @@ type SessionsOutput struct {
 }
 
 func (k *KeyDB) ListSessions(ctx context.Context, spiffeID string) ([]SessionEntry, error) {
+	if k.composeService != "" {
+		return k.composeListSessions(ctx, spiffeID)
+	}
+
 	var cursor uint64
 	out := make([]SessionEntry, 0, 32)
 	for {
@@ -49,6 +53,32 @@ func (k *KeyDB) ListSessions(ctx context.Context, spiffeID string) ([]SessionEnt
 			break
 		}
 	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].SPIFFEID == out[j].SPIFFEID {
+			return out[i].SessionID < out[j].SessionID
+		}
+		return out[i].SPIFFEID < out[j].SPIFFEID
+	})
+	return out, nil
+}
+
+func (k *KeyDB) composeListSessions(ctx context.Context, spiffeID string) ([]SessionEntry, error) {
+	keys, err := k.composeScan(ctx, "session:*")
+	if err != nil {
+		return nil, fmt.Errorf("scan session keys: %w", err)
+	}
+
+	out := make([]SessionEntry, 0, len(keys))
+	for _, key := range keys {
+		e, ok, err := k.composeSessionEntryFromKey(ctx, key, spiffeID)
+		if err != nil {
+			return nil, err
+		}
+		if ok {
+			out = append(out, e)
+		}
+	}
+
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].SPIFFEID == out[j].SPIFFEID {
 			return out[i].SessionID < out[j].SessionID
@@ -100,6 +130,58 @@ func (k *KeyDB) sessionEntryFromKey(ctx context.Context, key, spiffeFilter strin
 		return SessionEntry{}, false, fmt.Errorf("ttl for session key %s: %w", key, err)
 	}
 	ttlSeconds := int(ttl.Seconds())
+	if ttlSeconds < 0 {
+		ttlSeconds = 0
+	}
+
+	return SessionEntry{
+		SessionID:     sessionID,
+		SPIFFEID:      spiffeID,
+		RiskScore:     session.RiskScore,
+		ToolsAccessed: int(toolsAccessed),
+		TTLSeconds:    ttlSeconds,
+	}, true, nil
+}
+
+func (k *KeyDB) composeSessionEntryFromKey(ctx context.Context, key, spiffeFilter string) (SessionEntry, bool, error) {
+	if !strings.HasPrefix(key, "session:") || strings.HasSuffix(key, ":actions") {
+		return SessionEntry{}, false, nil
+	}
+	rest := strings.TrimPrefix(key, "session:")
+	idx := strings.LastIndex(rest, ":")
+	if idx <= 0 || idx+1 >= len(rest) {
+		return SessionEntry{}, false, nil
+	}
+	spiffeID := rest[:idx]
+	sessionID := rest[idx+1:]
+	if strings.TrimSpace(spiffeFilter) != "" && spiffeID != strings.TrimSpace(spiffeFilter) {
+		return SessionEntry{}, false, nil
+	}
+
+	raw, ok, err := k.composeGet(ctx, key)
+	if err != nil {
+		return SessionEntry{}, false, fmt.Errorf("get session key %s: %w", key, err)
+	}
+	if !ok {
+		return SessionEntry{}, false, nil
+	}
+
+	var session struct {
+		RiskScore float64 `json:"RiskScore"`
+	}
+	if err := json.Unmarshal([]byte(raw), &session); err != nil {
+		return SessionEntry{}, false, fmt.Errorf("unmarshal session key %s: %w", key, err)
+	}
+
+	toolsAccessed, err := k.composeLLen(ctx, key+":actions")
+	if err != nil {
+		return SessionEntry{}, false, fmt.Errorf("llen actions key %s: %w", key+":actions", err)
+	}
+
+	ttlSeconds, err := k.composeTTL(ctx, key)
+	if err != nil {
+		return SessionEntry{}, false, fmt.Errorf("ttl for session key %s: %w", key, err)
+	}
 	if ttlSeconds < 0 {
 		ttlSeconds = 0
 	}

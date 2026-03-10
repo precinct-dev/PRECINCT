@@ -31,6 +31,22 @@ PF_PID_MCP=""
 DOCKER_ADD_HOST=""
 COMPOSE_TORN_DOWN=false
 K8S_TORN_DOWN=false
+COMPOSE_DEMO_CONTAINER_NAMES=(
+    mcp-security-gateway
+    spike-nexus
+    spike-secret-seeder
+    spike-bootstrap
+    spike-keeper-1
+    spire-entry-registrar
+    spire-agent
+    spire-token-generator
+    spire-server
+    keydb
+    mock-mcp-server
+    mock-guard-model
+    content-scanner
+    messaging-sim
+)
 
 # Lua script for targeted rate-limit key cleanup (avoids FLUSHALL).
 # Scans for ratelimit:* keys only, leaving other KeyDB data intact.
@@ -145,7 +161,21 @@ build_images() {
 # --------------------------------------------------------------------------
 # Infrastructure management
 # --------------------------------------------------------------------------
+cleanup_compose_demo_containers() {
+    log "Removing lingering fixed-name compose demo containers (local-only)"
+    local name
+    for name in "${COMPOSE_DEMO_CONTAINER_NAMES[@]}"; do
+        docker rm -f "$name" >/dev/null 2>&1 || true
+    done
+}
+
 start_compose() {
+    log "Resetting Docker Compose stack to avoid stale named-container conflicts"
+    (
+        cd "$POC_DIR"
+        docker compose down --remove-orphans >/dev/null 2>&1 || true
+    )
+    cleanup_compose_demo_containers
     log "Starting Docker Compose stack"
     make -C "$POC_DIR" up
 }
@@ -184,7 +214,7 @@ start_k8s() {
 # --------------------------------------------------------------------------
 wait_for_health() {
     local url="$1"
-    local timeout=60
+    local timeout="${DEMO_GATEWAY_HEALTH_TIMEOUT:-90}"
     local elapsed=0
 
     log "Waiting for gateway health at ${url}/health (timeout: ${timeout}s)"
@@ -199,6 +229,14 @@ wait_for_health() {
         printf "."
     done
     echo ""
+    if [ "$MODE" = "compose" ]; then
+        warn "Compose gateway health timed out; dumping compose status and recent gateway logs"
+        (
+            cd "$POC_DIR"
+            docker compose ps || true
+            docker compose logs --tail 80 mcp-security-gateway || true
+        )
+    fi
     err "Gateway did not become healthy within ${timeout}s"
     return 1
 }
@@ -357,12 +395,17 @@ k8s_wait_ready() {
 run_go_demo() {
     local url="$1"
     local network="$2"
+    local dlp_pii_env=""
+    if [ "$MODE" = "compose" ]; then
+        dlp_pii_env="-e DEMO_EXPECT_DLP_PII_BLOCK=1"
+    fi
     log "Running Go SDK demo (container)"
     docker run --rm --network "$network" \
         ${DOCKER_ADD_HOST} \
         ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
         ${DEMO_K8S_EGRESS_PROBE_RESULT:+-e DEMO_K8S_EGRESS_PROBE_RESULT=$DEMO_K8S_EGRESS_PROBE_RESULT} \
         ${DEMO_RUGPULL_ADMIN_URL:+-e DEMO_RUGPULL_ADMIN_URL=$DEMO_RUGPULL_ADMIN_URL} \
+        ${dlp_pii_env} \
         "$GO_IMAGE" --gateway-url="$url"
     return $?
 }
@@ -370,12 +413,17 @@ run_go_demo() {
 run_python_demo() {
     local url="$1"
     local network="$2"
+    local dlp_pii_env=""
+    if [ "$MODE" = "compose" ]; then
+        dlp_pii_env="-e DEMO_EXPECT_DLP_PII_BLOCK=1"
+    fi
     log "Running Python SDK demo (container)"
     docker run --rm --network "$network" \
         ${DOCKER_ADD_HOST} \
         ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
         ${DEMO_K8S_EGRESS_PROBE_RESULT:+-e DEMO_K8S_EGRESS_PROBE_RESULT=$DEMO_K8S_EGRESS_PROBE_RESULT} \
         ${DEMO_RUGPULL_ADMIN_URL:+-e DEMO_RUGPULL_ADMIN_URL=$DEMO_RUGPULL_ADMIN_URL} \
+        ${dlp_pii_env} \
         "$PY_IMAGE" --gateway-url="$url"
     return $?
 }

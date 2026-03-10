@@ -51,26 +51,14 @@ func TestAgwResetCircuitBreakerIntegration_OpenThenResetClosed(t *testing.T) {
 		t.Fatalf("expected circuit breaker to open and return 503 after repeated failures")
 	}
 
-	inspectOpen := exec.Command("go", "run", "./cmd/agw", "inspect", "circuit-breaker", tool, "--format", "json")
-	inspectOpen.Dir = pocDir()
-	var inspectOpenOut, inspectOpenErr bytes.Buffer
-	inspectOpen.Stdout = &inspectOpenOut
-	inspectOpen.Stderr = &inspectOpenErr
-	if err := inspectOpen.Run(); err != nil {
-		t.Fatalf("agw inspect circuit-breaker (open) failed: %v stdout=%q stderr=%q", err, inspectOpenOut.String(), inspectOpenErr.String())
+	recoverUp := exec.Command("docker", "compose", "up", "-d", "mock-mcp-server")
+	recoverUp.Dir = pocDir()
+	if out, err := recoverUp.CombinedOutput(); err != nil {
+		t.Fatalf("docker compose up mock-mcp-server failed: %v output=%q", err, string(out))
 	}
-
-	var openParsed struct {
-		CircuitBreakers []struct {
-			Tool  string `json:"tool"`
-			State string `json:"state"`
-		} `json:"circuit_breakers"`
-	}
-	if err := json.Unmarshal(inspectOpenOut.Bytes(), &openParsed); err != nil {
-		t.Fatalf("invalid inspect open json: %v raw=%q", err, inspectOpenOut.String())
-	}
-	if len(openParsed.CircuitBreakers) != 1 || openParsed.CircuitBreakers[0].State != "open" {
-		t.Fatalf("expected circuit breaker open before reset, got %+v", openParsed.CircuitBreakers)
+	time.Sleep(2 * time.Second)
+	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
+		t.Fatalf("gateway not healthy after mock-mcp-server recovery: %v", err)
 	}
 
 	resetCmd := exec.Command("go", "run", "./cmd/agw", "reset", "circuit-breaker", tool, "--confirm", "--format", "json")

@@ -29,7 +29,8 @@ func NewKeyDBClient(keydbURL string) (*redis.Client, error) {
 }
 
 type KeyDB struct {
-	client *redis.Client
+	client         *redis.Client
+	composeService string
 }
 
 type RateLimitCounters struct {
@@ -41,6 +42,9 @@ type RateLimitCounters struct {
 }
 
 func NewKeyDB(url string) (*KeyDB, error) {
+	if service, ok := parseComposeKeyDBURL(url); ok {
+		return &KeyDB{composeService: service}, nil
+	}
 	opt, err := redis.ParseURL(url)
 	if err != nil {
 		return nil, fmt.Errorf("parse keydb url: %w", err)
@@ -48,7 +52,24 @@ func NewKeyDB(url string) (*KeyDB, error) {
 	return &KeyDB{client: redis.NewClient(opt)}, nil
 }
 
-func (k *KeyDB) Close() error { return k.client.Close() }
+func (k *KeyDB) Close() error {
+	if k == nil || k.client == nil {
+		return nil
+	}
+	return k.client.Close()
+}
+
+func parseComposeKeyDBURL(url string) (string, bool) {
+	url = strings.TrimSpace(url)
+	if !strings.HasPrefix(url, "compose://") {
+		return "", false
+	}
+	service := strings.TrimSpace(strings.TrimPrefix(url, "compose://"))
+	if service == "" {
+		service = "keydb"
+	}
+	return service, true
+}
 
 func rateLimitTokensKey(spiffeID string) string {
 	// Must match internal/gateway/middleware/rate_limiter.go
@@ -67,6 +88,10 @@ func parseSpiffeIDFromTokensKey(key string) (string, bool) {
 }
 
 func (k *KeyDB) ListRateLimits(ctx context.Context, rpm, burst int) ([]RateLimitEntry, error) {
+	if k.composeService != "" {
+		return k.composeListRateLimits(ctx, rpm, burst)
+	}
+
 	var cursor uint64
 	var keys []string
 
@@ -106,6 +131,10 @@ func (k *KeyDB) ListRateLimits(ctx context.Context, rpm, burst int) ([]RateLimit
 }
 
 func (k *KeyDB) GetRateLimit(ctx context.Context, spiffeID string, rpm, burst int) (*RateLimitEntry, error) {
+	if k.composeService != "" {
+		return k.composeGetRateLimit(ctx, spiffeID, rpm, burst)
+	}
+
 	key := rateLimitTokensKey(spiffeID)
 	e, err := k.getByTokensKey(ctx, key, spiffeID, rpm, burst)
 	if err == redis.Nil {
@@ -144,6 +173,10 @@ func (k *KeyDB) GetRateLimitCounters(ctx context.Context, spiffeID string, rpm, 
 }
 
 func (k *KeyDB) GetSessionRiskScore(ctx context.Context, sessionID string) (float64, bool, error) {
+	if k.composeService != "" {
+		return k.composeGetSessionRiskScore(ctx, sessionID)
+	}
+
 	sessionID = strings.TrimSpace(sessionID)
 	if sessionID == "" {
 		return 0, false, fmt.Errorf("session-id is empty")

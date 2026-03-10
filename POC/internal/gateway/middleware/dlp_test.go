@@ -1281,6 +1281,28 @@ func TestDLPMiddleware_IncludesRulesetMetadataInDecision(t *testing.T) {
 	}
 }
 
+func TestDLPMiddleware_SkipsPhase3Routes(t *testing.T) {
+	scanner := NewBuiltInScanner()
+	nextCalled := false
+	handler := DLPMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusAccepted)
+	}), scanner, DLPPolicy{Credentials: "block", Injection: "block", PII: "block"})
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/model/call", nil)
+	req = req.WithContext(WithRequestBody(req.Context(), []byte(`{"envelope":{"session_id":"phase3-compose-session-1773129666"}}`)))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !nextCalled {
+		t.Fatal("expected phase3 route to bypass generic DLP scanning")
+	}
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected next handler status to pass through, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
 type errorScanner struct{}
 
 func (e *errorScanner) Scan(content string) ScanResult {

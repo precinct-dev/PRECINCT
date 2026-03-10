@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Capabilities -- Complete PRECINCT Feature Map</title>
+  <title>Capabilities | Complete PRECINCT Feature Map</title>
   <meta name="description" content="Complete capability map for PRECINCT: 13-layer runtime controls, governed planes, SDKs, reference port adapter, compliance tooling, observability, security scans, and deployment options.">
   <meta name="keywords" content="PRECINCT capabilities, agentic AI security, port adapter, SPIFFE, SPIKE, OPA, compliance, observability, Kubernetes, Docker Compose">
   <meta name="author" content="PRECINCT Contributors">
@@ -66,7 +66,7 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="agents-of-chaos.html" class="nav-link">Agents of Chaos</a></li>
+        <li><a href="research.html" class="nav-link">Research</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Developer <span class="caret" aria-hidden="true"></span>
@@ -135,7 +135,7 @@
               <div class="sidebar-nav-title">Related</div>
               <ul>
                 <li><a href="architecture.html">Architecture</a></li>
-                <li><a href="agents-of-chaos.html">Agents of Chaos</a></li>
+                <li><a href="research.html">Research</a></li>
                 <li><a href="case-study.html">Adapter Case Study</a></li>
                 <li><a href="for-auditors.html">For Auditors</a></li>
               </ul>
@@ -211,7 +211,7 @@
           <section id="new-capabilities">
             <h2>Extended Capabilities</h2>
             <p>
-              New defense layers inspired by the <a href="agents-of-chaos.html">Agents of Chaos</a>
+              New defense layers inspired by the <a href="research.html">Research</a>
               threat research. These capabilities extend the existing 13-layer chain with targeted
               mitigations for cross-channel manipulation, data integrity attacks, and gradual
               escalation patterns.
@@ -229,7 +229,7 @@
                   <li>Email: <code>/email/send</code> (outbound with DLP), <code>/email/read</code> (inbound, auto-classifies sensitive content)</li>
                   <li>Prevents agent-to-agent loops and libelous mass broadcast (Case Studies #4, #11)</li>
                 </ul>
-                <a href="agents-of-chaos.html">Related threat defenses</a>
+                <a href="research.html#agents-of-chaos">Related threat defenses</a>
                 <span class="badge badge-accent">Channel Security</span>
               </div>
               <div class="card">
@@ -259,7 +259,7 @@
                   <li>Thresholds: Warning &ge; 15, Critical &ge; 25, Emergency &ge; 40</li>
                   <li>Detects gradual escalation and gaslighting (Case Studies #1, #7)</li>
                 </ul>
-                <a href="agents-of-chaos.html#defense-mapping">Defense mapping</a>
+                <a href="research.html#agents-of-chaos">Defense mapping</a>
                 <span class="badge badge-accent">Behavioral Analysis</span>
               </div>
               <div class="card">
@@ -340,9 +340,9 @@
                   for all admin operations.
                 </p>
                 <ul>
-                  <li><code>GET /admin/loop/runs</code> -- list all runs (sorted by last update)</li>
-                  <li><code>GET /admin/loop/runs/&lt;id&gt;</code> -- per-run detail with full state and usage</li>
-                  <li><code>POST /admin/loop/runs/&lt;id&gt;/halt</code> -- operator halt (human kill switch)</li>
+                  <li><code>GET /admin/loop/runs</code>: list all runs (sorted by last update)</li>
+                  <li><code>GET /admin/loop/runs/&lt;id&gt;</code>: per-run detail with full state and usage</li>
+                  <li><code>POST /admin/loop/runs/&lt;id&gt;/halt</code>: operator halt (human kill switch)</li>
                   <li>All operations emit structured audit events</li>
                 </ul>
                 <span class="badge badge-accent">Admin API</span>
@@ -353,10 +353,10 @@
                   Four-tier memory classification system with tier-specific enforcement rules:
                 </p>
                 <ul>
-                  <li><code>ephemeral</code> -- no persistence constraints</li>
-                  <li><code>session</code> -- session-scoped context</li>
-                  <li><code>long_term</code> -- writes require <code>dlp_classification=clean</code></li>
-                  <li><code>regulated</code> -- reads require step-up authorization</li>
+                  <li><code>ephemeral</code>: no persistence constraints</li>
+                  <li><code>session</code>: session-scoped context</li>
+                  <li><code>long_term</code>: writes require <code>dlp_classification=clean</code></li>
+                  <li><code>regulated</code>: reads require step-up authorization</li>
                 </ul>
                 <span class="badge badge-accent">Data Governance</span>
               </div>
@@ -496,7 +496,7 @@
             <h2>Decision Types</h2>
             <p>
               Every plane and middleware decision resolves to one of four possible outcomes.
-              These are not HTTP-specific -- they are semantic decision types that determine
+              These are not HTTP-specific; they are semantic decision types that determine
               what happens to the request and how the calling agent should respond.
             </p>
             <div class="table-wrapper">
@@ -736,14 +736,14 @@ make security-scan-strict</code></pre>
 
       </div>
 
-      <p class="footer-citation">Validated against <a href="agents-of-chaos.html">Agents of Chaos</a> (Shapira et al., 2026, <a href="https://arxiv.org/abs/2602.20021">arXiv:2602.20021v1</a>)</p>
+      <p class="footer-citation">Architecture informed by peer-reviewed research. See <a href="../index.html#research">Research Foundations</a>.</p>
       <div class="footer-bottom">
         <p class="footer-license">
           Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
         </p>
         <p class="footer-copyright">
           &copy; 2026 PRECINCT Contributors.
-          Sponsored by <a href="../index.html#sponsors">Cibertrend, Inc.</a> and <a href="../index.html#sponsors">Hextropian Systems, Inc.</a>
+          Sponsored by <a href="https://cibertrend.com" target="_blank" rel="noopener noreferrer">Cibertrend, Inc.</a> and <a href="https://hextropian.ai" target="_blank" rel="noopener noreferrer">Hextropian Systems, Inc.</a>
         </p>
       </div>
     </div>

@@ -715,6 +715,9 @@ func resolveGatewayURL(opts RunOptions) (baseURL string, cleanup func(), err err
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
 		SPIFFEMode:             "dev",
+		AdminAuthzAllowedSPIFFEIDs: []string{
+			opts.SPIFFEID,
+		},
 		DestinationsConfigPath: destinationsPath,
 		RateLimitRPM:           100000,
 		RateLimitBurst:         100000,

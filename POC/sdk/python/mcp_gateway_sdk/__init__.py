@@ -5,6 +5,9 @@ Provides a minimal, framework-independent client for calling MCP tools
 through the security gateway. Works with PydanticAI, DSPy, LangGraph,
 CrewAI, or raw HTTP.
 
+Identity is asserted with the ``X-SPIFFE-ID`` header for local/dev gateway
+workflows. Production SPIFFE mTLS transport is not implemented in this SDK.
+
 Usage:
     from mcp_gateway_sdk import GatewayClient, GatewayError
 

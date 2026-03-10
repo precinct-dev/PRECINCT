@@ -91,7 +91,7 @@ with GatewayClient(
     print(result)
 ```
 
-This is equivalent to calling `client.close()` in a `finally` block. The context manager is the recommended pattern for production use.
+This is equivalent to calling `client.close()` in a `finally` block. The context manager is the recommended pattern for long-lived client usage.
 
 ---
 
@@ -135,6 +135,8 @@ class GatewayClient:
         timeout: float = 30.0,
         max_retries: int = 3,
         backoff_base: float = 1.0,
+        http_client: Optional[httpx.Client] = None,
+        trace_tool_arguments: bool = False,
     ) -> None: ...
 ```
 
@@ -143,12 +145,16 @@ class GatewayClient:
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `url` | `str` | *required* | Gateway base URL (e.g., `"http://localhost:9090"`). |
-| `spiffe_id` | `str` | *required* | SPIFFE identity string sent as the `X-SPIFFE-ID` header. Used by the gateway for authentication and authorization. |
+| `spiffe_id` | `str` | *required* | SPIFFE identity string sent as the `X-SPIFFE-ID` header for local/dev gateways. For production gateways, pair it with a preconfigured `http_client` that handles mTLS/auth transport. |
 | `session_id` | `Optional[str]` | `None` | Custom session ID. If `None`, a UUID is auto-generated. Sent as `X-Session-ID` header. Use the same session ID across related calls for session tracking. |
 | `tracer` | `Any` | `None` | Optional OpenTelemetry `Tracer` instance. When provided, the client creates spans for each `call()`. See [OpenTelemetry Integration](#opentelemetry-integration). |
 | `timeout` | `float` | `30.0` | HTTP request timeout in seconds. Passed to the underlying `httpx.Client`. |
 | `max_retries` | `int` | `3` | Maximum retry attempts for HTTP 503 responses. Set to `0` to disable retries. |
 | `backoff_base` | `float` | `1.0` | Base for exponential backoff between retries, in seconds. Actual delay is `backoff_base * 2^attempt`. |
+| `http_client` | `Optional[httpx.Client]` | `None` | Optional preconfigured client for custom transports such as production mTLS. When omitted, the SDK builds its own plain `httpx.Client`. |
+| `trace_tool_arguments` | `bool` | `False` | Opt-in escape hatch to export raw tool arguments in spans. Leave disabled unless you have an approved telemetry/privacy reason. |
+
+`call_model_chat()` only accepts gateway-relative endpoints such as `/openai/v1/chat/completions`. Absolute `http://` or `https://` model URLs are rejected so the helper cannot silently bypass gateway mediation.
 
 **Example with all parameters:**
 
@@ -159,12 +165,29 @@ tracer = trace.get_tracer("my-agent")
 
 client = GatewayClient(
     url="http://gateway.internal:9090",
-    spiffe_id="spiffe://poc.local/agents/my-agent/prod",
+    spiffe_id="spiffe://poc.local/agents/my-agent/dev",
     session_id="session-abc-123",
     tracer=tracer,
     timeout=15.0,
     max_retries=5,
     backoff_base=0.5,
+)
+```
+
+**Production transport note:** for production gateways, provide a preconfigured `httpx.Client` that handles your mTLS/auth transport. The SDK's `X-SPIFFE-ID` header remains a dev-mode convenience signal.
+
+```python
+import httpx
+
+mtls_client = httpx.Client(
+    verify="/var/run/spire/ca.pem",
+    cert=("/var/run/spire/svid.pem", "/var/run/spire/svid-key.pem"),
+)
+
+client = GatewayClient(
+    url="https://gateway.internal:9443",
+    spiffe_id="spiffe://agentic-ref-arch.poc/ns/agents/sa/my-agent",
+    http_client=mtls_client,
 )
 ```
 
@@ -448,9 +471,13 @@ client = GatewayClient(
 | Attribute | Value |
 |-----------|-------|
 | `mcp.method` | The tool name |
-| `mcp.params` | JSON-serialized params dict |
+| `mcp.tool.arguments_redacted` | `True` by default; `False` only when `trace_tool_arguments=True` |
+| `mcp.tool.argument_count` | Number of tool arguments sent |
+| `mcp.tool.argument_keys` | Comma-separated argument names only |
 | `spiffe.id` | The client's SPIFFE ID |
 | `session.id` | The client's session ID |
+
+When `trace_tool_arguments=True`, the client also emits `mcp.tool.arguments` with the raw serialized payload. Keep that disabled unless your telemetry path is explicitly approved for sensitive request data.
 
 **Span attributes set on completion:**
 
@@ -461,6 +488,8 @@ client = GatewayClient(
 | `mcp.error.code` | On `GatewayError` | The error code string |
 | `mcp.error.http_status` | On `GatewayError` | The HTTP status code |
 | `mcp.error` | On other exceptions | String representation |
+
+**Transport note:** local collectors (`localhost`, `127.0.0.1`, `::1`) default to insecure OTLP for dev convenience. Non-local collectors default to TLS unless you explicitly opt into insecure transport in code.
 
 **Install the optional OTel dependency:**
 
@@ -541,7 +570,7 @@ The SDK parses this into a `GatewayError` exception via `GatewayError.from_respo
 | Header | Value | Purpose |
 |--------|-------|---------|
 | `Content-Type` | `application/json` | Required for JSON-RPC |
-| `X-SPIFFE-ID` | Client's SPIFFE identity | Authentication (step 3) |
+| `X-SPIFFE-ID` | Client's SPIFFE identity | Dev-mode identity assertion; production auth should come from the underlying transport |
 | `X-Session-ID` | Client's session ID | Session tracking (step 8) |
 
 ---

@@ -23,8 +23,15 @@ func BodyCapture(next http.Handler) http.Handler {
 		)
 		defer span.End()
 
-		// Generate IDs for this request
-		sessionID := uuid.New().String()
+		// Honor caller-provided session IDs so session-aware controls can
+		// accumulate risk across requests. Generate one only when absent.
+		sessionID := r.Header.Get("X-Session-ID")
+		if sessionID == "" {
+			sessionID = r.Header.Get("Mcp-Session-Id")
+		}
+		if sessionID == "" {
+			sessionID = uuid.New().String()
+		}
 		decisionID := uuid.New().String()
 		traceID := uuid.New().String()
 

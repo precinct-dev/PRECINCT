@@ -5,6 +5,7 @@ from mcp_gateway_sdk import (
     normalize_model_name,
     resolve_model_api_key_ref,
 )
+from mcp_gateway_sdk.runtime import _is_local_otel_endpoint, _should_use_insecure_otlp
 
 
 def test_normalize_model_name():
@@ -38,3 +39,22 @@ def test_resolve_model_api_key_ref_from_env(monkeypatch):
     monkeypatch.setenv("GROQ_LM_SPIKE_REF", "from-env")
     token = resolve_model_api_key_ref()
     assert token == "Bearer $SPIKE{ref:from-env,exp:3600}"
+
+
+def test_is_local_otel_endpoint():
+    assert _is_local_otel_endpoint("http://localhost:4317")
+    assert _is_local_otel_endpoint("127.0.0.1:4317")
+    assert not _is_local_otel_endpoint("https://otel.example.com:4317")
+
+
+def test_should_use_insecure_otlp_defaults():
+    assert _should_use_insecure_otlp(
+        "http://localhost:4317",
+        allow_insecure_local=True,
+        allow_insecure_non_local=False,
+    )
+    assert not _should_use_insecure_otlp(
+        "https://otel.example.com:4317",
+        allow_insecure_local=True,
+        allow_insecure_non_local=False,
+    )

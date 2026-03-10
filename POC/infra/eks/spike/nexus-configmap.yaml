@@ -27,9 +27,9 @@ data:
   SPIKE_NEXUS_BACKEND_STORE: "sqlite"
   SPIKE_NEXUS_DATA_DIR: "/opt/spike/data"
   # Keeper integration for Shamir secret sharing (root encryption key recovery)
-  SPIKE_NEXUS_KEEPER_PEERS: "https://spike-keeper-1.spike-system.svc.cluster.local:8443"
-  SPIKE_NEXUS_SHAMIR_THRESHOLD: "1"
-  SPIKE_NEXUS_SHAMIR_SHARES: "1"
+  SPIKE_NEXUS_KEEPER_PEERS: "https://spike-keeper-1.spike-system.svc.cluster.local:8443,https://spike-keeper-2.spike-system.svc.cluster.local:8443,https://spike-keeper-3.spike-system.svc.cluster.local:8443"
+  SPIKE_NEXUS_SHAMIR_THRESHOLD: "2"
+  SPIKE_NEXUS_SHAMIR_SHARES: "3"
   SPIKE_SYSTEM_LOG_LEVEL: "INFO"
   # Trust roots for all SPIKE components (must match SPIRE trust domain)
   SPIKE_TRUST_ROOT: "agentic-ref-arch.poc"

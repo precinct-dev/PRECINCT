@@ -75,7 +75,7 @@ $SPIKE{ref:<hex>,exp:<seconds>,scope:<scope>}
 - Audit logging to stdout
 
 **Production Mode** (`SPIKE_NEXUS_URL` configured):
-- `SPIKENexusRedeemer` calls SPIKE Nexus via mTLS at `https://spike-nexus:8443/v1/store/secret`
+- `SPIKENexusRedeemer` calls SPIKE Nexus via mTLS at `https://spike-nexus:8443/v1/store/secrets?action=get`
 - mTLS certificate chain verified via SPIRE X.509 SVIDs
 - Parses SPIKE response for actual secret and metadata
 - devMode flag enables OwnerID fallback to requesting agent's SPIFFE ID

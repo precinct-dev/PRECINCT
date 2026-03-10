@@ -50,6 +50,12 @@ func adminMiddlewareForPath(path string) string {
 		return v24MiddlewareCircuitBreakerAdmin
 	case strings.HasPrefix(path, "/admin/policy/reload"):
 		return v24MiddlewarePolicyReloadAdmin
+	case path == "/v1/connectors/register",
+		path == "/v1/connectors/validate",
+		path == "/v1/connectors/approve",
+		path == "/v1/connectors/activate",
+		path == "/v1/connectors/revoke":
+		return v24MiddlewareConnectorAuth
 	default:
 		return v24MiddlewareAdminAuthz
 	}

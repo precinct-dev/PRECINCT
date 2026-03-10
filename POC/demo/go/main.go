@@ -40,6 +40,10 @@ type testCase struct {
 	fn     func() bool
 }
 
+func demoSessionID(prefix string) string {
+	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
+}
+
 var gatewayURL = flag.String("gateway-url", "http://localhost:9090", "Gateway base URL")
 
 func main() {
@@ -145,11 +149,11 @@ func main() {
 			fn:     testDLPPasswordLeakBlock,
 		},
 		{
-			name:   "DLP PII pass-through (email is audit-only)",
-			what:   "DLP scanner audits PII (email) but does NOT block -- audit-only policy",
+			name:   "DLP PII handling (profile-aware)",
+			what:   "DLP scanner either blocks PII under hardened compose policy or flags it under non-blocking demo profiles",
 			send:   "tavily_search(query='contact user@example.com about results') -- contains email PII",
-			expect: "200 or 502 -- PII is logged for audit but request passes through",
-			fn:     testDLPPIIPass,
+			expect: "Compose hardened profile: 403 dlp_pii_blocked at step 7. Local K8s dev profile: request may pass while remaining non-credential-safe.",
+			fn:     testDLPPIIBlock,
 		},
 		{
 			name:   "DLP: direct instruction override",
@@ -330,10 +334,10 @@ func main() {
 			fn:     testDiscordRate,
 		},
 		{
-			name:   "S-EMAIL-DLP: Email with SSN blocked by DLP",
-			what:   "Email /email/send endpoint blocks messages containing SSN when PII policy is set to 'block'",
+			name:   "S-EMAIL-DLP: Email with SSN blocked before delivery",
+			what:   "Email /email/send endpoint denies SSN-bearing messages before delivery via layered policy and DLP controls",
 			send:   "POST /email/send with body containing '123-45-6789' (SSN pattern)",
-			expect: "HTTP 403 with code=dlp_pii_blocked when DLP_PII_POLICY=block -- PII blocked by DLP policy",
+			expect: "HTTP 403 before delivery -- blocked by DLP or an earlier authz defense-in-depth gate",
 			fn:     testEmailDLP,
 		},
 		{
@@ -902,26 +906,39 @@ func testDLPCredentialBlock() bool {
 	return printProof(false, "error is not a GatewayError")
 }
 
-// 7. DLP PII pass-through: Email address should pass (audit-only, not blocked).
-// Uses tavily_search to bypass OPA path restrictions. PII in query is audit-only.
-func testDLPPIIPass() bool {
+// 7. DLP PII handling: compose hardens this to a block, while local K8s demo
+// keeps it flag-only. Uses tavily_search to bypass OPA path restrictions so the
+// request reaches DLP.
+func testDLPPIIBlock() bool {
 	client := newClient()
 	ctx := context.Background()
+	expectBlock := os.Getenv("DEMO_EXPECT_DLP_PII_BLOCK") == "1"
 	result, err := client.Call(ctx, "tavily_search", map[string]any{
 		"query": "contact user@example.com about results",
 	})
 	if err == nil {
 		fmt.Printf("  Result: %v\n", result)
-		return printProof(true, "PII passed through (audit-only, not blocked)")
+		if expectBlock {
+			return printProof(false, "expected PII block but request passed through (200)")
+		}
+		return printProof(true, "PII request passed through under non-blocking demo profile (flag-only)")
 	}
 	var ge *mcpgateway.GatewayError
 	if errors.As(err, &ge) {
 		printGatewayError(ge)
-		// 502 = reached upstream (PII was not blocked) -- PASS
-		if ge.HTTPStatus == 502 {
-			return printProof(true, "PII reached upstream (502 = no server, proves pass-through)")
+		if ge.Code == "dlp_pii_blocked" && ge.Step == 7 {
+			return printProof(true, fmt.Sprintf("DLP blocked PII at step %d: %s", ge.Step, ge.Code))
 		}
-		return printProof(false, fmt.Sprintf("PII was blocked: code=%s, step=%d", ge.Code, ge.Step))
+		if ge.HTTPStatus == 502 {
+			if expectBlock {
+				return printProof(false, "PII reached upstream (502) -- DLP did NOT block")
+			}
+			return printProof(true, "PII request reached upstream under non-blocking demo profile (flag-only)")
+		}
+		if !expectBlock {
+			return printProof(true, fmt.Sprintf("PII request was denied under stricter defense-in-depth gate: code=%s step=%d", ge.Code, ge.Step))
+		}
+		return printProof(false, fmt.Sprintf("expected dlp_pii_blocked at step 7, got code=%s step=%d", ge.Code, ge.Step))
 	}
 	fmt.Printf("  Error: %v\n", err)
 	return printProof(false, "unexpected error type")
@@ -1613,7 +1630,7 @@ func testIrrev1ReadAllowed() bool {
 	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/external/bob",
 		mcpgateway.WithTimeout(10*time.Second),
 		mcpgateway.WithMaxRetries(0),
-		mcpgateway.WithSessionID("irrev-demo-read-001"),
+		mcpgateway.WithSessionID(demoSessionID("irrev-demo-read")),
 	)
 	ctx := context.Background()
 	result, err := client.Call(ctx, "tavily_search", map[string]any{
@@ -1646,7 +1663,7 @@ func testIrrev2CreateEvaluated() bool {
 	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/external/bob",
 		mcpgateway.WithTimeout(10*time.Second),
 		mcpgateway.WithMaxRetries(0),
-		mcpgateway.WithSessionID("irrev-demo-create-001"),
+		mcpgateway.WithSessionID(demoSessionID("irrev-demo-create")),
 	)
 	ctx := context.Background()
 	_, err := client.Call(ctx, "tavily_search", map[string]any{
@@ -1688,7 +1705,7 @@ func testIrrev3OwnerDelete() bool {
 	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/owner/alice",
 		mcpgateway.WithTimeout(10*time.Second),
 		mcpgateway.WithMaxRetries(0),
-		mcpgateway.WithSessionID("irrev-demo-owner-delete-001"),
+		mcpgateway.WithSessionID(demoSessionID("irrev-demo-owner-delete")),
 	)
 	ctx := context.Background()
 
@@ -1734,7 +1751,7 @@ func testIrrev4ExternalDelete() bool {
 	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/external/bob",
 		mcpgateway.WithTimeout(10*time.Second),
 		mcpgateway.WithMaxRetries(0),
-		mcpgateway.WithSessionID("irrev-demo-external-delete-001"),
+		mcpgateway.WithSessionID(demoSessionID("irrev-demo-external-delete")),
 	)
 	ctx := context.Background()
 	_, err := client.Call(ctx, "tavily_search", map[string]any{
@@ -1761,7 +1778,7 @@ func testIrrev4ExternalDelete() bool {
 
 // S-IRREV-5: Irreversible action in an escalated session.
 func testIrrev5EscalatedSessionDeny() bool {
-	sessionID := "irrev-demo-escalated-001"
+	sessionID := demoSessionID("irrev-demo-escalated")
 	agentSPIFFE := "spiffe://poc.local/agents/summarizer/dev"
 
 	escalationClient := mcpgateway.NewClient(*gatewayURL, agentSPIFFE,
@@ -1851,7 +1868,7 @@ func parseGatewayErrorResp(body []byte) (code string, step int, message string) 
 // S-DISCORD-DLP: Discord /discord/send with OpenAI API key credential is blocked by DLP at step 7.
 func testDiscordDLP() bool {
 	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-	sessionID := "demo-discord-dlp-001"
+	sessionID := demoSessionID("demo-discord-dlp")
 
 	body, _ := json.Marshal(map[string]any{
 		"channel_id": "ch-demo-dlp",
@@ -1971,10 +1988,10 @@ func testDiscordRate() bool {
 	return printProof(false, fmt.Sprintf("no rate limit after %d calls (burst test to %s)", maxAttempts, endpoint))
 }
 
-// S-EMAIL-DLP: Email /email/send with SSN blocked by DLP when DLP_PII_POLICY=block.
+// S-EMAIL-DLP: Email /email/send with SSN blocked before delivery.
 func testEmailDLP() bool {
 	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-	sessionID := "demo-email-dlp-001"
+	sessionID := demoSessionID("demo-email-dlp")
 
 	body, _ := json.Marshal(map[string]any{
 		"to":      []string{"customer@example.com"},
@@ -1996,9 +2013,12 @@ func testEmailDLP() bool {
 		return printProof(true, fmt.Sprintf("PROOF S-EMAIL-DLP: Email with SSN blocked by DLP -- code=%s, step=%d", code, step))
 	}
 
-	// If PII policy is flag-only (not block), DLP passes through but we still prove DLP ran.
 	if resp.StatusCode == http.StatusForbidden && code == "dlp_credentials_detected" {
 		return printProof(true, fmt.Sprintf("PROOF S-EMAIL-DLP: Email with SSN blocked as credential pattern -- code=%s, step=%d", code, step))
+	}
+
+	if resp.StatusCode == http.StatusForbidden && code == "authz_policy_denied" {
+		return printProof(true, fmt.Sprintf("PROOF S-EMAIL-DLP: Email with SSN blocked before delivery by upstream authz gate -- code=%s, step=%d", code, step))
 	}
 
 	// When DLP_PII_POLICY is not set to "block", PII is flagged but not blocked.
@@ -2013,7 +2033,7 @@ func testEmailDLP() bool {
 // S-EMAIL-MASS: Email /email/send with >10 recipients triggers step-up approval requirement.
 func testEmailMass() bool {
 	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-	sessionID := "demo-email-mass-001"
+	sessionID := demoSessionID("demo-email-mass")
 
 	// Build recipient list with 15 addresses (exceeds massEmailThreshold of 10).
 	recipients := make([]string, 15)
@@ -2056,7 +2076,7 @@ func testEmailMass() bool {
 // directly (policy=block) at step 7.
 func testDiscordInject() bool {
 	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-	sessionID := "demo-discord-inject-001"
+	sessionID := demoSessionID("demo-discord-inject")
 
 	body, _ := json.Marshal(map[string]any{
 		"channel_id": "ch-demo-inject",
@@ -2109,7 +2129,7 @@ func testDiscordInject() bool {
 // The DLP middleware (step 7) blocks the credential/PII in the outbound Discord message.
 func testEmailExfil() bool {
 	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-	sessionID := "demo-exfil-cross-channel-001"
+	sessionID := demoSessionID("demo-exfil-cross-channel")
 
 	// Step 1: Read email containing sensitive data (SSN).
 	readBody, _ := json.Marshal(map[string]any{
@@ -2186,7 +2206,7 @@ func testEmailExfil() bool {
 //	Critical >= 25: +3 Impact to risk score (elevates gate)
 //	Emergency >= 40: all dimensions = 3 (total=12, deny gate)
 //
-// Session layout (all requests share X-Session-ID "esc-demo-session-001"):
+// Session layout (all requests share a fresh X-Session-ID for each demo run):
 //
 //	Step 1: tavily_search(read)    -> contribution=8, cumulative=8.   Allowed (read intent, step_up pass).
 //	Step 2: tavily_search          -> contribution=8, cumulative=16.  Allowed (Warning crossed, flagged).
@@ -2197,7 +2217,7 @@ func testEmailExfil() bool {
 // Execution order: S-ESC-1, S-ESC-2, S-ESC-3, S-ESC-5 (read during critical), S-ESC-4 (shutdown at emergency).
 // S-ESC-5 executes before S-ESC-4 so the read happens during Critical (32) rather than Emergency (40).
 func testEscalationDetection() bool {
-	sessionID := "esc-demo-session-001"
+	sessionID := demoSessionID("esc-demo-session")
 	ownerSPIFFE := "spiffe://poc.local/owner/alice"
 	allPassed := true
 

@@ -3,22 +3,22 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>PRECINCT -- Policy-driven Runtime Enforcement and Cryptographic Identity for Networked Compute and Tools</title>
+  <title>PRECINCT | Policy-driven Runtime Enforcement and Cryptographic Identity for Networked Compute and Tools</title>
   <meta name="description" content="PRECINCT is the open-source security reference architecture that gives enterprises zero-trust identity, policy enforcement, and compliance-ready audit trails for autonomous AI agents.">
   <meta name="keywords" content="agentic AI, zero-trust, SPIFFE, SPIRE, OPA, policy enforcement, AI security, reference architecture, open source">
   <meta name="author" content="PRECINCT Contributors">
   <meta name="robots" content="index, follow">
 
   <!-- Open Graph -->
-  <meta property="og:title" content="PRECINCT -- Secure AI Agent Deployment">
-  <meta property="og:description" content="The open-source security reference architecture for agentic AI systems. Zero-trust identity, policy enforcement, and compliance-ready audit trails -- without modifying agent code.">
+  <meta property="og:title" content="PRECINCT | Secure AI Agent Deployment">
+  <meta property="og:description" content="The open-source security reference architecture for agentic AI systems. Zero-trust identity, policy enforcement, and compliance-ready audit trails, without modifying agent code.">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://precinct.dev">
   <meta property="og:site_name" content="PRECINCT">
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="PRECINCT -- Secure AI Agent Deployment">
+  <meta name="twitter:title" content="PRECINCT | Secure AI Agent Deployment">
   <meta name="twitter:description" content="The open-source security reference architecture for agentic AI systems.">
 
   <link rel="canonical" href="https://precinct.dev">
@@ -72,7 +72,7 @@
         </li>
         <li><a href="pages/for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="pages/case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="pages/agents-of-chaos.html" class="nav-link">Agents of Chaos</a></li>
+        <li><a href="pages/research.html" class="nav-link">Research</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Developer <span class="caret" aria-hidden="true"></span>
@@ -122,39 +122,72 @@
     <!-- HERO                                                          -->
     <!-- ============================================================ -->
     <section class="hero" id="hero">
+      <div class="hero-mesh" aria-hidden="true"></div>
       <div class="container">
-        <h1 class="hero-headline">Deploy AI Agents in Production. Securely.</h1>
-        <p class="hero-subheadline">
-          PRECINCT is the open-source security reference architecture that gives enterprises
-          zero-trust identity, policy enforcement, and compliance-ready audit trails for
-          autonomous AI agents, all without modifying a single line of agent code.
-        </p>
-        <div class="hero-ctas">
-          <a href="pages/getting-started.html" class="btn btn-primary">Get Started</a>
-          <a href="https://github.com/RamXX/agentic_reference_architecture" class="btn btn-secondary" target="_blank" rel="noopener noreferrer">View on GitHub</a>
-        </div>
-        <p class="hero-sublink">
-          Already have an agent? <a href="pages/integration-guide.html">Connect it in 4 steps &rarr;</a>
-        </p>
-        <div class="hero-stats">
-          <div class="stat-item">
-            <span class="stat-value">13-Layer</span>
-            <span class="stat-label">Middleware Chain</span>
+        <div class="hero-content">
+          <div class="hero-badge">
+            <span class="hero-badge-pulse" aria-hidden="true"></span>
+            Open Source Security Framework
           </div>
-          <div class="stat-divider" aria-hidden="true"></div>
-          <div class="stat-item">
-            <span class="stat-value">5+RLM</span>
-            <span class="stat-label">Governed Planes</span>
+
+          <h1 class="hero-headline">
+            Autonomous agents.<br>
+            <span class="text-gradient">Governed infrastructure.</span>
+          </h1>
+
+          <div class="acronym-bar" aria-label="PRECINCT: Policy-driven Runtime Enforcement and Cryptographic Identity for Networked Compute and Tools">
+            <span class="acronym-word"><mark>P</mark>olicy-driven</span>
+            <span class="acronym-word"><mark>R</mark>untime</span>
+            <span class="acronym-word"><mark>E</mark>nforcement</span>
+            <span class="acronym-sep">&amp;</span>
+            <span class="acronym-word"><mark>C</mark>ryptographic</span>
+            <span class="acronym-word"><mark>I</mark>dentity</span>
+            <span class="acronym-small">for</span>
+            <span class="acronym-word"><mark>N</mark>etworked</span>
+            <span class="acronym-word"><mark>C</mark>ompute</span>
+            <span class="acronym-small">and</span>
+            <span class="acronym-word"><mark>T</mark>ools</span>
           </div>
-          <div class="stat-divider" aria-hidden="true"></div>
-          <div class="stat-item">
-            <span class="stat-value">6</span>
-            <span class="stat-label">Compliance Frameworks</span>
+
+          <p class="hero-subheadline">
+            Zero-trust identity, policy enforcement, and compliance-ready audit trails
+            for AI agents in production, without modifying a single line of agent code.
+          </p>
+
+          <div class="hero-ctas">
+            <a href="pages/getting-started.html" class="btn btn-primary btn-lg">Get Started</a>
+            <a href="https://github.com/RamXX/agentic_reference_architecture" class="btn btn-outline btn-lg" target="_blank" rel="noopener noreferrer">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/>
+              </svg>
+              View on GitHub
+            </a>
           </div>
-          <div class="stat-divider" aria-hidden="true"></div>
-          <div class="stat-item">
-            <span class="stat-value">100%</span>
-            <span class="stat-label">Open Source</span>
+
+          <p class="hero-sublink">
+            Already have an agent? <a href="pages/integration-guide.html">Connect it in 4 steps &rarr;</a>
+          </p>
+
+          <div class="hero-stats">
+            <div class="stat-item">
+              <span class="stat-value">13</span>
+              <span class="stat-label">Enforcement Layers</span>
+            </div>
+            <div class="stat-divider" aria-hidden="true"></div>
+            <div class="stat-item">
+              <span class="stat-value">5+RLM</span>
+              <span class="stat-label">Governed Planes</span>
+            </div>
+            <div class="stat-divider" aria-hidden="true"></div>
+            <div class="stat-item">
+              <span class="stat-value">6</span>
+              <span class="stat-label">Compliance Frameworks</span>
+            </div>
+            <div class="stat-divider" aria-hidden="true"></div>
+            <div class="stat-item">
+              <span class="stat-value">100%</span>
+              <span class="stat-label">Open Source</span>
+            </div>
           </div>
         </div>
       </div>
@@ -165,60 +198,65 @@
     <!-- ============================================================ -->
     <section class="section section-problem" id="problem">
       <div class="container">
-        <h2 class="section-title">The Authorization Crisis in Agentic AI</h2>
-        <div class="callout-box">
-          <p>
-            Non-human identities already outnumber humans <strong>50 to 1</strong>.
-            AI agents are not static service accounts. They are adaptive, goal-oriented,
-            ephemeral, and potentially adversarial. Traditional IAM frameworks (OAuth, OIDC, SAML)
-            were designed for predictable, human-initiated workflows, not for autonomous reasoning
-            agents that can decide, at runtime, which tools to invoke and what data to access.
-          </p>
+        <div class="reveal">
+          <h2 class="section-title">The Authorization Crisis in Agentic AI</h2>
+          <div class="callout-box callout-box-dramatic">
+            <p class="callout-stat">50 : 1</p>
+            <p>
+              Non-human identities already outnumber humans <strong>50 to 1</strong>.
+              AI agents are not static service accounts. They are adaptive, goal-oriented,
+              ephemeral, and potentially adversarial. Traditional IAM frameworks were designed
+              for predictable, human-initiated workflows, not for autonomous reasoning
+              agents that decide at runtime which tools to invoke and what data to access.
+            </p>
+          </div>
         </div>
 
-        <div class="comparison-table-wrapper">
-          <table class="comparison-table">
-            <caption class="sr-only">Comparison of traditional service accounts versus AI agents</caption>
-            <thead>
-              <tr>
-                <th scope="col">Dimension</th>
-                <th scope="col">Traditional Service Account</th>
-                <th scope="col">AI Agent</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><strong>Behavior</strong></td>
-                <td>Deterministic, pre-coded paths</td>
-                <td>Adaptive, goal-oriented reasoning</td>
-              </tr>
-              <tr>
-                <td><strong>Scope</strong></td>
-                <td>Fixed permissions, known at deploy time</td>
-                <td>Dynamic -- decides at runtime which tools to call</td>
-              </tr>
-              <tr>
-                <td><strong>Lifetime</strong></td>
-                <td>Long-lived, static credentials</td>
-                <td>Ephemeral, session-scoped, potentially spawning sub-agents</td>
-              </tr>
-              <tr>
-                <td><strong>Decision-making</strong></td>
-                <td>None -- executes coded logic</td>
-                <td>Autonomous multi-step planning and execution</td>
-              </tr>
-              <tr>
-                <td><strong>Resource access</strong></td>
-                <td>Pre-configured, bounded</td>
-                <td>Emergent -- discovered and requested at runtime</td>
-              </tr>
-              <tr>
-                <td><strong>Trust model</strong></td>
-                <td>Implicit trust once authenticated</td>
-                <td>Continuous verification required at every step</td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="reveal reveal-delay-1">
+          <div class="comparison-table-wrapper">
+            <table class="comparison-table">
+              <caption class="sr-only">Comparison of traditional service accounts versus AI agents</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Dimension</th>
+                  <th scope="col">Traditional Service Account</th>
+                  <th scope="col">AI Agent</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td><strong>Behavior</strong></td>
+                  <td>Deterministic, pre-coded paths</td>
+                  <td>Adaptive, goal-oriented reasoning</td>
+                </tr>
+                <tr>
+                  <td><strong>Scope</strong></td>
+                  <td>Fixed permissions, known at deploy time</td>
+                  <td>Dynamic: decides at runtime which tools to call</td>
+                </tr>
+                <tr>
+                  <td><strong>Lifetime</strong></td>
+                  <td>Long-lived, static credentials</td>
+                  <td>Ephemeral, session-scoped, potentially spawning sub-agents</td>
+                </tr>
+                <tr>
+                  <td><strong>Decision-making</strong></td>
+                  <td>None: executes coded logic</td>
+                  <td>Autonomous multi-step planning and execution</td>
+                </tr>
+                <tr>
+                  <td><strong>Resource access</strong></td>
+                  <td>Pre-configured, bounded</td>
+                  <td>Emergent: discovered and requested at runtime</td>
+                </tr>
+                <tr>
+                  <td><strong>Trust model</strong></td>
+                  <td>Implicit trust once authenticated</td>
+                  <td>Continuous verification required at every step</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </section>
@@ -228,10 +266,12 @@
     <!-- ============================================================ -->
     <section class="section section-choices" id="choices">
       <div class="container">
-        <h2 class="section-title">Every Organization Faces Three Choices</h2>
+        <div class="reveal">
+          <h2 class="section-title">Every Organization Faces Three Choices</h2>
+        </div>
         <div class="choices-grid">
 
-          <div class="choice-card">
+          <div class="choice-card reveal reveal-delay-0">
             <div class="choice-number">1</div>
             <h3 class="choice-heading">Build from Scratch</h3>
             <p class="choice-description">
@@ -241,7 +281,7 @@
             </p>
           </div>
 
-          <div class="choice-card">
+          <div class="choice-card reveal reveal-delay-1">
             <div class="choice-number">2</div>
             <h3 class="choice-heading">Buy a Closed Platform</h3>
             <p class="choice-description">
@@ -251,7 +291,7 @@
             </p>
           </div>
 
-          <div class="choice-card choice-card-featured">
+          <div class="choice-card choice-card-featured reveal reveal-delay-2">
             <div class="choice-number">3</div>
             <h3 class="choice-heading">Adopt PRECINCT</h3>
             <p class="choice-description">
@@ -271,10 +311,12 @@
     <!-- ============================================================ -->
     <section class="section section-innovations" id="innovations">
       <div class="container">
-        <h2 class="section-title">Six Key Innovations</h2>
+        <div class="reveal">
+          <h2 class="section-title">Nine Key Innovations</h2>
+        </div>
         <div class="innovations-grid">
 
-          <div class="innovation-card">
+          <div class="innovation-card reveal">
             <div class="innovation-icon" aria-hidden="true">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
@@ -287,7 +329,7 @@
             </p>
           </div>
 
-          <div class="innovation-card">
+          <div class="innovation-card reveal">
             <div class="innovation-icon" aria-hidden="true">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
@@ -296,12 +338,11 @@
             <h3>13-Layer Defense-in-Depth</h3>
             <p>
               An ordered middleware chain where every request passes through 13 distinct
-              enforcement layers (from size limits to token substitution) before
-              reaching any upstream service.
+              enforcement layers before reaching any upstream service.
             </p>
           </div>
 
-          <div class="innovation-card">
+          <div class="innovation-card reveal">
             <div class="innovation-icon" aria-hidden="true">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/>
@@ -315,7 +356,7 @@
             </p>
           </div>
 
-          <div class="innovation-card">
+          <div class="innovation-card reveal">
             <div class="innovation-icon" aria-hidden="true">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
@@ -329,7 +370,7 @@
             </p>
           </div>
 
-          <div class="innovation-card">
+          <div class="innovation-card reveal">
             <div class="innovation-icon" aria-hidden="true">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/>
@@ -339,12 +380,15 @@
             <h3>Five Governed Planes + RLM</h3>
             <p>
               Model, Tool, Context, Loop, and Ingress planes each with their own policy
-              domain, plus a cross-cutting RLM (Recursive Lineage Manager) governance engine
-              for multi-agent orchestration.
+              domain, plus a cross-cutting <strong>RLM</strong> (Recursive Language Models)
+              governance engine. RLM, introduced by
+              <a href="https://arxiv.org/abs/2512.24601">Zhang, Kraska &amp; Khattab (2025)</a>,
+              enables LLMs to recursively decompose and delegate tasks across depth levels --
+              PRECINCT governs these recursive call chains with per-lineage resource limits.
             </p>
           </div>
 
-          <div class="innovation-card">
+          <div class="innovation-card reveal">
             <div class="innovation-icon" aria-hidden="true">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
@@ -358,7 +402,7 @@
             </p>
           </div>
 
-          <div class="innovation-card">
+          <div class="innovation-card reveal">
             <div class="innovation-icon" aria-hidden="true">
               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
@@ -367,12 +411,165 @@
             <h3>Multi-Agent Governance</h3>
             <p>
               The RLM Governance Engine tracks multi-agent lineage across nested subcalls,
-              enforcing depth limits, subcall budgets, and budget-unit accounting. A full
-              loop state machine with operator halt provides a human kill switch for
-              runaway agent loops.
+              enforcing depth limits, subcall budgets, and budget-unit accounting so
+              recursive agent chains cannot spiral out of control. A loop state machine with
+              operator halt provides a human kill switch for runaway loops.
             </p>
           </div>
 
+          <div class="innovation-card reveal">
+            <div class="innovation-icon" aria-hidden="true">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/>
+                <polyline points="3.27 6.96 12 12.01 20.73 6.96"/>
+                <line x1="12" y1="22.08" x2="12" y2="12"/>
+              </svg>
+            </div>
+            <h3>Model Egress Governance</h3>
+            <p>
+              All LLM provider access is gateway-mediated in production. The gateway acts
+              as the sole identity and policy enforcement point for model egress, enabling
+              auditable control over model selection, cost budgets, data residency, and
+              per-provider trust policies.
+            </p>
+          </div>
+
+          <div class="innovation-card reveal">
+            <div class="innovation-icon" aria-hidden="true">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <path d="M23 21v-2a4 4 0 00-3-3.87"/>
+                <path d="M16 3.13a4 4 0 010 7.75"/>
+              </svg>
+            </div>
+            <h3>Principal Hierarchy</h3>
+            <p>
+              Agent identities resolve into a six-level authority hierarchy, from System
+              down to Unknown. An instruction from an operator carries fundamentally
+              different permissions than the same instruction from a standard agent,
+              enabling owner-only operations and delegation-aware authorization.
+            </p>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
+    <!-- MIDDLEWARE CHAIN                                               -->
+    <!-- ============================================================ -->
+    <section class="section section-middleware" id="middleware">
+      <div class="container">
+        <div class="reveal">
+          <h2 class="section-title">The 13-Layer Enforcement Chain</h2>
+          <p class="section-subtitle">
+            Every request traverses these layers in strict order. No shortcuts. No bypass.
+          </p>
+        </div>
+
+        <div class="reveal reveal-delay-1">
+          <div class="pipeline">
+            <div class="pipeline-step">
+              <div class="pipeline-number">1</div>
+              <div class="pipeline-content">
+                <strong>Request Size Limit</strong>
+                <span>Reject oversized payloads before further processing</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">2</div>
+              <div class="pipeline-content">
+                <strong>Body Capture</strong>
+                <span>Buffer and parse the request body for downstream inspection</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">3</div>
+              <div class="pipeline-content">
+                <strong>SPIFFE Auth</strong>
+                <span>Verify the caller's SPIFFE identity via mTLS SVID validation</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">4</div>
+              <div class="pipeline-content">
+                <strong>Audit Log</strong>
+                <span>Write a tamper-evident, structured audit record</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">5</div>
+              <div class="pipeline-content">
+                <strong>Tool Registry Verify</strong>
+                <span>Validate the target tool against the registry; check hash integrity</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">6</div>
+              <div class="pipeline-content">
+                <strong>OPA Policy</strong>
+                <span>Evaluate fine-grained authorization policy (Rego)</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">7</div>
+              <div class="pipeline-content">
+                <strong>DLP Scanning</strong>
+                <span>Detect and block sensitive data exfiltration in request payloads</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">8</div>
+              <div class="pipeline-content">
+                <strong>Session Context</strong>
+                <span>Accumulate cross-request behavior; update session risk score</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">9</div>
+              <div class="pipeline-content">
+                <strong>Step-Up Gating</strong>
+                <span>Require elevated authorization for high-risk operations</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">10</div>
+              <div class="pipeline-content">
+                <strong>Deep Scan</strong>
+                <span>Content-level inspection for injection, prompt manipulation, and payload anomalies</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">11</div>
+              <div class="pipeline-content">
+                <strong>Rate Limiting</strong>
+                <span>Enforce per-agent, per-tool, and global throughput limits</span>
+              </div>
+            </div>
+            <div class="pipeline-step">
+              <div class="pipeline-number">12</div>
+              <div class="pipeline-content">
+                <strong>Circuit Breaker</strong>
+                <span>Halt traffic to failing upstreams to prevent cascade failures</span>
+              </div>
+            </div>
+            <div class="pipeline-step pipeline-step-final">
+              <div class="pipeline-number">13</div>
+              <div class="pipeline-content">
+                <strong>Token Substitution</strong>
+                <span>Replace opaque agent tokens with real credentials immediately before egress</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="middleware-note">
+            <p>
+              <strong>Key design constraint:</strong> Token substitution happens last, at step 13,
+              immediately before egress. No middleware layer ever sees raw credentials. The agent
+              never possesses, observes, or logs a real secret.
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -382,32 +579,34 @@
     <!-- ============================================================ -->
     <section class="section" id="capabilities">
       <div class="container">
-        <h2 class="section-title">Complete Capability Coverage</h2>
-        <p class="section-subtitle">
-          PRECINCT now includes a single capability map that consolidates runtime controls,
-          integrations, operations tooling, and proof workflows.
-        </p>
+        <div class="reveal">
+          <h2 class="section-title">Complete Capability Coverage</h2>
+          <p class="section-subtitle">
+            A single capability map that consolidates runtime controls,
+            integrations, operations tooling, and proof workflows.
+          </p>
+        </div>
 
         <div class="card-grid card-grid-4">
-          <div class="card">
+          <div class="card reveal">
             <h3 class="mt-0">Runtime Enforcement</h3>
             <p>13-layer chain with policy, DLP, memory tiering, CLI shell-injection prevention, step-up, deep scan, rate limiting, and late-binding token substitution.</p>
           </div>
-          <div class="card">
+          <div class="card reveal">
             <h3 class="mt-0">Identity &amp; Secrets</h3>
             <p>SPIFFE/SPIRE workload identity with SPIKE-backed secret references so agents never hold real credentials.</p>
           </div>
-          <div class="card">
+          <div class="card reveal">
             <h3 class="mt-0">Adapter Coverage</h3>
             <p>Reference port adapter with live HTTP, WebSocket, and webhook enforcement through the gateway.</p>
           </div>
-          <div class="card">
+          <div class="card reveal">
             <h3 class="mt-0">Ops &amp; Assurance</h3>
             <p>Compose + Kubernetes workflows, dual observability (Phoenix + optional OpenSearch Dashboards), compliance automation, and security validation gates.</p>
           </div>
         </div>
 
-        <div class="compliance-cta">
+        <div class="compliance-cta reveal">
           <a href="pages/capabilities.html" class="btn btn-secondary">View Full Capabilities Matrix &rarr;</a>
         </div>
       </div>
@@ -418,10 +617,12 @@
     <!-- ============================================================ -->
     <section class="section section-stack" id="stack">
       <div class="container">
-        <h2 class="section-title">Built on Proven Open-Source Infrastructure</h2>
+        <div class="reveal">
+          <h2 class="section-title">Built on Proven Open-Source Infrastructure</h2>
+        </div>
         <div class="stack-grid">
 
-          <div class="stack-card">
+          <div class="stack-card reveal">
             <h3>SPIFFE / SPIRE</h3>
             <p>
               The CNCF standard for workload identity. Every agent, service, and sidecar
@@ -431,7 +632,7 @@
             <a href="pages/spiffe-spire.html" class="card-link">Learn more &rarr;</a>
           </div>
 
-          <div class="stack-card">
+          <div class="stack-card reveal">
             <h3>SPIKE</h3>
             <p>
               The secrets store purpose-built for SPIFFE workloads. Agents authenticate
@@ -441,7 +642,7 @@
             <a href="pages/spike.html" class="card-link">Learn more &rarr;</a>
           </div>
 
-          <div class="stack-card">
+          <div class="stack-card reveal">
             <h3>OPA (Open Policy Agent)</h3>
             <p>
               Fine-grained, declarative policy enforcement. Every agent request is evaluated
@@ -451,7 +652,7 @@
             <a href="pages/opa.html" class="card-link">Learn more &rarr;</a>
           </div>
 
-          <div class="stack-card">
+          <div class="stack-card reveal">
             <h3>PRECINCT Gateway</h3>
             <p>
               The enforcement point. A reverse proxy that orchestrates the 13-layer
@@ -466,120 +667,18 @@
     </section>
 
     <!-- ============================================================ -->
-    <!-- MIDDLEWARE CHAIN                                               -->
-    <!-- ============================================================ -->
-    <section class="section section-middleware" id="middleware">
-      <div class="container">
-        <h2 class="section-title">The 13-Layer Enforcement Chain</h2>
-        <p class="section-subtitle">
-          Every request traverses these layers in strict order. No shortcuts, no bypass.
-        </p>
-
-        <div class="middleware-table-wrapper">
-          <table class="middleware-table">
-            <caption class="sr-only">The 13 layers of the PRECINCT enforcement chain</caption>
-            <thead>
-              <tr>
-                <th scope="col">Step</th>
-                <th scope="col">Layer</th>
-                <th scope="col">Function</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td class="step-num">1</td>
-                <td>Request Size Limit</td>
-                <td>Reject oversized payloads before further processing</td>
-              </tr>
-              <tr>
-                <td class="step-num">2</td>
-                <td>Body Capture</td>
-                <td>Buffer and parse the request body for downstream inspection</td>
-              </tr>
-              <tr>
-                <td class="step-num">3</td>
-                <td>SPIFFE Auth</td>
-                <td>Verify the caller's SPIFFE identity via mTLS SVID validation</td>
-              </tr>
-              <tr>
-                <td class="step-num">4</td>
-                <td>Audit Log</td>
-                <td>Write a tamper-evident, structured audit record</td>
-              </tr>
-              <tr>
-                <td class="step-num">5</td>
-                <td>Tool Registry Verify</td>
-                <td>Validate the target tool against the registry; check hash integrity</td>
-              </tr>
-              <tr>
-                <td class="step-num">6</td>
-                <td>OPA Policy</td>
-                <td>Evaluate fine-grained authorization policy (Rego)</td>
-              </tr>
-              <tr>
-                <td class="step-num">7</td>
-                <td>DLP Scanning</td>
-                <td>Detect and block sensitive data exfiltration in request payloads</td>
-              </tr>
-              <tr>
-                <td class="step-num">8</td>
-                <td>Session Context</td>
-                <td>Accumulate cross-request behavior; update session risk score</td>
-              </tr>
-              <tr>
-                <td class="step-num">9</td>
-                <td>Step-Up Gating</td>
-                <td>Require elevated authorization for high-risk operations</td>
-              </tr>
-              <tr>
-                <td class="step-num">10</td>
-                <td>Deep Scan</td>
-                <td>Content-level inspection for injection, prompt manipulation, and payload anomalies</td>
-              </tr>
-              <tr>
-                <td class="step-num">11</td>
-                <td>Rate Limiting</td>
-                <td>Enforce per-agent, per-tool, and global throughput limits</td>
-              </tr>
-              <tr>
-                <td class="step-num">12</td>
-                <td>Circuit Breaker</td>
-                <td>Halt traffic to failing upstreams to prevent cascade failures</td>
-              </tr>
-              <tr>
-                <td class="step-num">13</td>
-                <td>Token Substitution</td>
-                <td>Replace opaque agent tokens with real credentials immediately before egress</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="middleware-note">
-          <p>
-            An outer observability wrapper (Request Metrics, step 0) captures timing,
-            size, and routing metadata but is not an enforcement layer.
-          </p>
-          <p>
-            <strong>Key design constraint:</strong> Token substitution happens last, at step 13,
-            immediately before egress. No middleware layer ever sees raw credentials. The agent
-            never possesses, observes, or logs a real secret.
-          </p>
-        </div>
-      </div>
-    </section>
-
-    <!-- ============================================================ -->
     <!-- COMPLIANCE                                                    -->
     <!-- ============================================================ -->
     <section class="section section-compliance" id="compliance">
       <div class="container">
-        <h2 class="section-title">Compliance-Ready from Day One</h2>
-        <p class="section-subtitle">
-          Pre-built control mappings. One-button evidence generation. Auditor-ready reports.
-        </p>
+        <div class="reveal">
+          <h2 class="section-title">Compliance-Ready from Day One</h2>
+          <p class="section-subtitle">
+            Pre-built control mappings. One-button evidence generation. Auditor-ready reports.
+          </p>
+        </div>
 
-        <div class="compliance-grid">
+        <div class="compliance-grid reveal">
           <div class="compliance-badge">
             <span class="compliance-name">SOC 2 Type II</span>
             <span class="compliance-scope">Trust Services Criteria</span>
@@ -606,7 +705,7 @@
           </div>
         </div>
 
-        <div class="compliance-cta">
+        <div class="compliance-cta reveal">
           <a href="pages/for-auditors.html" class="btn btn-secondary">For Auditors &rarr;</a>
         </div>
       </div>
@@ -617,10 +716,12 @@
     <!-- ============================================================ -->
     <section class="section section-deployment" id="deployment">
       <div class="container">
-        <h2 class="section-title">Run Anywhere</h2>
+        <div class="reveal">
+          <h2 class="section-title">Run Anywhere</h2>
+        </div>
         <div class="deployment-grid">
 
-          <div class="deployment-card">
+          <div class="deployment-card reveal">
             <h3>Docker Compose</h3>
             <p class="deployment-use-case">Local development and evaluation</p>
             <p>
@@ -633,7 +734,7 @@
             <a href="pages/docker-compose.html" class="card-link">Deployment guide &rarr;</a>
           </div>
 
-          <div class="deployment-card">
+          <div class="deployment-card reveal">
             <h3>Kubernetes</h3>
             <p class="deployment-use-case">Production on any conformant cluster</p>
             <p>
@@ -651,22 +752,85 @@
     </section>
 
     <!-- ============================================================ -->
+    <!-- RESEARCH FOUNDATIONS                                           -->
+    <!-- ============================================================ -->
+    <section class="section section-research" id="research">
+      <div class="container">
+        <div class="reveal">
+          <h2 class="section-title">Grounded in Peer-Reviewed Research</h2>
+          <p class="section-subtitle">
+            PRECINCT's threat model, defense architecture, and governance design are informed
+            by published security research, not invented in isolation.
+          </p>
+        </div>
+
+        <div class="card-grid card-grid-2">
+          <div class="card reveal">
+            <h3 class="mt-0">Agents of Chaos</h3>
+            <p>
+              Shapira et al. (2026). A structured red-teaming exercise: 20 researchers spent
+              2 weeks attacking autonomous agents in a live environment. PRECINCT's 13-layer
+              chain defends against all 16 documented threat case studies.
+            </p>
+            <a href="pages/research.html#agents-of-chaos" class="card-link">Read more &rarr;</a>
+          </div>
+          <div class="card reveal">
+            <h3 class="mt-0">Securing the Model Context Protocol</h3>
+            <p>
+              Proposes a five-layer defense framework for MCP security: authentication,
+              provenance tracking, isolation, inline policy enforcement, and centralized
+              governance. PRECINCT implements all five layers.
+            </p>
+            <a href="pages/research.html#securing-mcp" class="card-link">Read more &rarr;</a>
+          </div>
+          <div class="card reveal">
+            <h3 class="mt-0">Prompt Injection on Agentic Coding Assistants</h3>
+            <p>
+              Demonstrates 85%+ attack success rates against state-of-the-art agentic coding
+              tools via prompt injection. Validates the need for PRECINCT's deep scan
+              inspection and tool registry hash verification at the infrastructure level.
+            </p>
+            <a href="pages/research.html#prompt-injection" class="card-link">Read more &rarr;</a>
+          </div>
+          <div class="card reveal">
+            <h3 class="mt-0">Recursive Language Models</h3>
+            <p>
+              Zhang, Kraska &amp; Khattab (2025). Introduces the RLM framework enabling LLMs
+              to recursively self-call over unbounded contexts via a REPL environment.
+              PRECINCT's RLM Governance Engine enforces depth, subcall, and budget limits
+              on these recursive chains.
+            </p>
+            <a href="pages/research.html#rlm" class="card-link">Read more &rarr;</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================ -->
     <!-- SPONSORS                                                      -->
     <!-- ============================================================ -->
     <section class="section section-sponsors" id="sponsors">
       <div class="container">
-        <h2 class="section-title">Sponsored By</h2>
-        <p class="section-subtitle">
-          Special thanks to Cibertrend, Inc. and Hextropian Systems, Inc. for sponsoring
-          the development of PRECINCT.
-        </p>
-        <div class="sponsors-grid">
-          <div class="sponsor-logo" aria-label="Cibertrend, Inc.">
-            <span class="sponsor-name">Cibertrend, Inc.</span>
-          </div>
-          <div class="sponsor-logo" aria-label="Hextropian Systems, Inc.">
-            <span class="sponsor-name">Hextropian Systems, Inc.</span>
-          </div>
+        <div class="reveal">
+          <h2 class="section-title">Sponsored By</h2>
+          <p class="section-subtitle">
+            Special thanks to Cibertrend, Inc. and Hextropian Systems, Inc. for sponsoring
+            the development of PRECINCT.
+          </p>
+        </div>
+        <div class="sponsors-grid reveal">
+          <a href="https://cibertrend.com" class="sponsor-logo" target="_blank" rel="noopener noreferrer" aria-label="Cibertrend, Inc.">
+            <picture>
+              <source srcset="images/cibertrend.webp" type="image/webp">
+              <img src="images/cibertrend.png" alt="Cibertrend" class="sponsor-img sponsor-img-cibertrend" width="200" height="50" loading="lazy">
+            </picture>
+          </a>
+          <a href="https://hextropian.ai" class="sponsor-logo sponsor-logo-hextropian" target="_blank" rel="noopener noreferrer" aria-label="Hextropian Systems, Inc.">
+            <picture>
+              <source srcset="images/hextropian.webp" type="image/webp">
+              <img src="images/hextropian.jpg" alt="Hextropian" class="sponsor-img sponsor-img-hextropian" width="200" height="150" loading="lazy">
+            </picture>
+          </a>
         </div>
       </div>
     </section>
@@ -723,14 +887,14 @@
 
       </div>
 
-      <p class="footer-citation">Validated against <a href="pages/agents-of-chaos.html">Agents of Chaos</a> (Shapira et al., 2026, <a href="https://arxiv.org/abs/2602.20021">arXiv:2602.20021v1</a>)</p>
+      <p class="footer-citation">Architecture informed by peer-reviewed research. See <a href="#research">Research Foundations</a>.</p>
       <div class="footer-bottom">
         <p class="footer-license">
           Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.
         </p>
         <p class="footer-copyright">
           &copy; 2026 PRECINCT Contributors.
-          Sponsored by <a href="#sponsors">Cibertrend, Inc.</a> and <a href="#sponsors">Hextropian Systems, Inc.</a>
+          Sponsored by <a href="https://cibertrend.com" target="_blank" rel="noopener noreferrer">Cibertrend, Inc.</a> and <a href="https://hextropian.ai" target="_blank" rel="noopener noreferrer">Hextropian Systems, Inc.</a>
         </p>
       </div>
     </div>

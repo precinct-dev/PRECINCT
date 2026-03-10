@@ -133,6 +133,8 @@ Strict overlay notes:
 
 - `infra/eks/overlays/staging` and `infra/eks/overlays/prod` set `ENFORCEMENT_PROFILE=prod_standard`.
 - Strict overlays pin `MCP_TRANSPORT_MODE=mcp`, `SPIFFE_MODE=prod`, and `UPSTREAM_URL=https://...`.
+- Strict overlays use Kustomize `digest:` image pins; `.github/workflows/promote.yaml` is the supported path for rewriting those digests during `dev -> staging -> prod` promotion.
+- Run `make k8s-overlay-digest-validate OVERLAYS="staging prod"` before applying strict overlays to confirm the rendered gateway/tools manifests still satisfy the rendered `RequireImageDigest` Gatekeeper policy.
 - `APPROVAL_SIGNING_KEY` is wired via `gateway-runtime-secrets` (`approval_signing_key` key), but the secret is expected to be provisioned out-of-band (external secret manager/cluster secret bootstrap). Staging/prod overlays intentionally do not ship literal signing-key defaults in-repo.
 
 ## Updating OPA Policies

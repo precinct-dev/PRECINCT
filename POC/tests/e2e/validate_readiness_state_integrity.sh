@@ -20,13 +20,13 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
 }
 
-read_bd_field() {
+read_nd_field() {
   local issue_id="$1"
   local jq_expr="$2"
-  bd show "${issue_id}" --json | jq -r "${jq_expr}"
+  nd show "${issue_id}" --json | jq -r "${jq_expr}"
 }
 
-require_cmd bd
+require_cmd nd
 require_cmd jq
 
 [[ -f "${SNAPSHOT_PATH}" ]] || fail "snapshot file not found: ${SNAPSHOT_PATH}"
@@ -41,15 +41,15 @@ while IFS= read -r row; do
   expected_status="$(jq -r '.expected_status' <<<"${row}")"
   expected_closed_on="$(jq -r '.expected_closed_on // empty' <<<"${row}")"
 
-  actual_status="$(read_bd_field "${id}" '.[0].status // empty')"
-  [[ -n "${actual_status}" ]] || fail "unable to read bd status for ${id}"
+  actual_status="$(read_nd_field "${id}" '.Status // empty')"
+  [[ -n "${actual_status}" ]] || fail "unable to read nd status for ${id}"
 
   if [[ "${actual_status}" != "${expected_status}" ]]; then
     fail "status drift for ${id}: expected ${expected_status}, got ${actual_status}"
   fi
 
   if [[ -n "${expected_closed_on}" ]]; then
-    actual_closed_on="$(read_bd_field "${id}" '.[0].closed_at // empty' | cut -d'T' -f1)"
+    actual_closed_on="$(read_nd_field "${id}" '.ClosedAt // empty' | cut -d'T' -f1)"
     if [[ -z "${actual_closed_on}" ]]; then
       fail "closed date missing for ${id}: expected ${expected_closed_on}"
     fi
@@ -67,17 +67,24 @@ if [[ "${gate_type}" != "null" && "${gate_type}" != "" ]]; then
   expected_gate_status="$(jq -r '.external_app_full_port_gate.expected_status' "${SNAPSHOT_PATH}")"
   required_blocker_story_id="$(jq -r '.external_app_full_port_gate.required_blocker_story_id' "${SNAPSHOT_PATH}")"
 
-  actual_gate_status="$(read_bd_field "${gate_story_id}" '.[0].status // empty')"
-  [[ -n "${actual_gate_status}" ]] || fail "unable to read bd status for ${gate_story_id}"
+  actual_gate_status="$(read_nd_field "${gate_story_id}" '.Status // empty')"
+  [[ -n "${actual_gate_status}" ]] || fail "unable to read nd status for ${gate_story_id}"
 
   if [[ "${actual_gate_status}" != "${expected_gate_status}" ]]; then
     fail "External-app full-port gate status drift for ${gate_story_id}: expected ${expected_gate_status}, got ${actual_gate_status}"
   fi
 
-  dependency_present="$(bd show "${gate_story_id}" --json | jq -r --arg blocker "${required_blocker_story_id}" 'if ((.[0].dependencies // []) | map(select(.id == $blocker and .dependency_type == "blocks")) | length) > 0 then 1 else 0 end')"
+  dependency_present="$(nd show "${gate_story_id}" --json | jq -r --arg blocker "${required_blocker_story_id}" '
+    def rel_ids:
+      if . == null then []
+      elif type == "array" then map(if type == "string" then . elif type == "object" then (.ID // .Id // .id // "") else "" end)
+      else []
+      end;
+    if ((.BlockedBy | rel_ids) | map(select(. == $blocker)) | length) > 0 then 1 else 0 end
+  ')"
   [[ "${dependency_present}" -eq 1 ]] || fail "External-app full-port story ${gate_story_id} is missing blocker dependency on ${required_blocker_story_id}"
 
-  blocker_status="$(read_bd_field "${required_blocker_story_id}" '.[0].status // empty')"
+  blocker_status="$(read_nd_field "${required_blocker_story_id}" '.Status // empty')"
   allowed_blocker_status_match="$(jq -r --arg status "${blocker_status}" '.external_app_full_port_gate.required_blocker_statuses | any(. == $status) | if . then 1 else 0 end' "${SNAPSHOT_PATH}")"
   if [[ "${allowed_blocker_status_match}" -ne 1 ]]; then
     fail "blocker story ${required_blocker_story_id} status ${blocker_status} is outside allowed gate statuses"

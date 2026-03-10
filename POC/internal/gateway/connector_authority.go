@@ -94,33 +94,7 @@ type connectorConformanceAuthority struct {
 }
 
 func newConnectorConformanceAuthority() *connectorConformanceAuthority {
-	cca := &connectorConformanceAuthority{connectors: map[string]*connectorRecord{}}
-
-	// Seed a dev connector so existing compose scenarios can activate quickly,
-	// but still require signature and lifecycle promotion before ingress allow.
-	seed := connectorManifest{
-		ConnectorID:     "compose-webhook",
-		ConnectorType:   "webhook",
-		SourcePrincipal: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
-		Version:         "1.0",
-		Capabilities:    []string{"ingress.submit"},
-	}
-	expected := computeConnectorExpectedSignature(seed)
-	seed.Signature = connectorManifestSignature{Algorithm: connectorSignatureAlgorithm, Value: expected}
-	created := time.Now().UTC()
-	cca.connectors[seed.ConnectorID] = &connectorRecord{
-		ConnectorID:     seed.ConnectorID,
-		State:           connectorStateActive,
-		Manifest:        seed,
-		SchemaVersion:   connectorManifestSchemaVersion,
-		ExpectedSig:     expected,
-		CreatedAt:       created,
-		UpdatedAt:       created,
-		LastOperation:   "seed",
-		LastReason:      "seeded for local compose compatibility",
-		LastValidatedAt: created,
-	}
-	return cca
+	return &connectorConformanceAuthority{connectors: map[string]*connectorRecord{}}
 }
 
 func validateConnectorManifestSchema(manifest connectorManifest) error {
@@ -352,9 +326,60 @@ type connectorLifecycleRequest struct {
 	Manifest    connectorManifest `json:"manifest"`
 }
 
+func isConnectorMutationPath(path string) bool {
+	switch path {
+	case "/v1/connectors/register",
+		"/v1/connectors/validate",
+		"/v1/connectors/approve",
+		"/v1/connectors/activate",
+		"/v1/connectors/revoke":
+		return true
+	default:
+		return false
+	}
+}
+
+func (g *Gateway) authorizeConnectorMutationRequest(w http.ResponseWriter, r *http.Request) bool {
+	principal := g.requestPrincipal(r)
+	if principal == "" {
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusUnauthorized,
+			middleware.ErrAuthMissingIdentity,
+			"connector lifecycle mutation requires SPIFFE identity",
+			v24MiddlewareConnectorAuth,
+			ReasonContractInvalid,
+			map[string]any{"path": r.URL.Path},
+		)
+		return false
+	}
+	if !g.isAdminPrincipalAuthorized(principal) {
+		writeV24GatewayError(
+			w,
+			r,
+			http.StatusForbidden,
+			middleware.ErrAuthzPolicyDenied,
+			"connector lifecycle mutation requires admin authorization",
+			v24MiddlewareConnectorAuth,
+			ReasonContractInvalid,
+			map[string]any{
+				"path":      r.URL.Path,
+				"spiffe_id": principal,
+			},
+		)
+		return false
+	}
+	return true
+}
+
 func (g *Gateway) handleConnectorAuthorityEntry(w http.ResponseWriter, r *http.Request) bool {
 	if !strings.HasPrefix(r.URL.Path, "/v1/connectors/") {
 		return false
+	}
+
+	if isConnectorMutationPath(r.URL.Path) && !g.authorizeConnectorMutationRequest(w, r) {
+		return true
 	}
 
 	switch r.URL.Path {
@@ -426,6 +451,9 @@ func (g *Gateway) decodeConnectorLifecycleRequest(w http.ResponseWriter, r *http
 }
 
 func (g *Gateway) handleConnectorRegister(w http.ResponseWriter, r *http.Request) {
+	if !g.authorizeAdminRequest(w, r) {
+		return
+	}
 	req, ok := g.decodeConnectorLifecycleRequest(w, r)
 	if !ok {
 		return
@@ -440,6 +468,9 @@ func (g *Gateway) handleConnectorRegister(w http.ResponseWriter, r *http.Request
 }
 
 func (g *Gateway) handleConnectorValidate(w http.ResponseWriter, r *http.Request) {
+	if !g.authorizeAdminRequest(w, r) {
+		return
+	}
 	req, ok := g.decodeConnectorLifecycleRequest(w, r)
 	if !ok {
 		return
@@ -453,6 +484,9 @@ func (g *Gateway) handleConnectorValidate(w http.ResponseWriter, r *http.Request
 }
 
 func (g *Gateway) handleConnectorApprove(w http.ResponseWriter, r *http.Request) {
+	if !g.authorizeAdminRequest(w, r) {
+		return
+	}
 	req, ok := g.decodeConnectorLifecycleRequest(w, r)
 	if !ok {
 		return
@@ -466,6 +500,9 @@ func (g *Gateway) handleConnectorApprove(w http.ResponseWriter, r *http.Request)
 }
 
 func (g *Gateway) handleConnectorActivate(w http.ResponseWriter, r *http.Request) {
+	if !g.authorizeAdminRequest(w, r) {
+		return
+	}
 	req, ok := g.decodeConnectorLifecycleRequest(w, r)
 	if !ok {
 		return
@@ -479,6 +516,9 @@ func (g *Gateway) handleConnectorActivate(w http.ResponseWriter, r *http.Request
 }
 
 func (g *Gateway) handleConnectorRevoke(w http.ResponseWriter, r *http.Request) {
+	if !g.authorizeAdminRequest(w, r) {
+		return
+	}
 	req, ok := g.decodeConnectorLifecycleRequest(w, r)
 	if !ok {
 		return

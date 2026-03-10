@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Integration Guide -- Connect Your Agent | PRECINCT</title>
+  <title>Integration Guide | Connect Your Agent | PRECINCT</title>
   <meta name="description" content="Connect your existing AI agent to PRECINCT in 4 steps: register identity, register tools, write a policy, and route traffic through the gateway.">
   <meta name="keywords" content="PRECINCT integration, connect agent, SPIFFE registration, OPA policy, MCP gateway, agent onboarding, SDK integration">
   <meta name="author" content="PRECINCT Contributors">
   <meta name="robots" content="index, follow">
 
-  <meta property="og:title" content="Integration Guide -- Connect Your Agent to PRECINCT">
+  <meta property="og:title" content="Integration Guide | Connect Your Agent to PRECINCT">
   <meta property="og:description" content="Connect your existing AI agent to PRECINCT in 4 steps: identity, tools, policy, and routing.">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://precinct.dev/pages/integration-guide.html">
@@ -69,7 +69,7 @@
         </li>
         <li><a href="for-auditors.html" class="nav-link">For Auditors</a></li>
         <li><a href="case-study.html" class="nav-link">Case Study</a></li>
-        <li><a href="agents-of-chaos.html" class="nav-link">Agents of Chaos</a></li>
+        <li><a href="research.html" class="nav-link">Research</a></li>
         <li class="nav-dropdown">
           <button class="nav-link dropdown-toggle" aria-expanded="false" aria-haspopup="true">
             Developer <span class="caret" aria-hidden="true"></span>
@@ -429,7 +429,7 @@ agw policy eval \
               the gateway:
             </p>
             <pre data-lang="bash"><code>agw policy reload
-# Policies are now active -- no gateway restart required</code></pre>
+# Policies are now active. No gateway restart required.</code></pre>
 
             <div class="callout callout-info">
               <div class="callout-title">
@@ -457,10 +457,10 @@ agw policy eval \
               If your agent already uses an MCP client, change the server URL to
               point at the PRECINCT gateway:
             </p>
-            <pre data-lang="python"><code># Before -- direct connection to MCP server
+            <pre data-lang="python"><code># Before: direct connection to MCP server
 client = MCPClient(server_url="http://mcp-server:8080")
 
-# After -- routed through PRECINCT gateway
+# After: routed through PRECINCT gateway
 client = MCPClient(server_url="http://localhost:9090")</code></pre>
             <p>
               That is the entire change. The gateway speaks the same MCP protocol
@@ -474,12 +474,12 @@ client = MCPClient(server_url="http://localhost:9090")</code></pre>
             </p>
 
             <h4>Python</h4>
-            <pre data-lang="python"><code># Before -- direct HTTP to tool
+            <pre data-lang="python"><code># Before: direct HTTP to tool
 import httpx
 resp = httpx.post("http://my-tool:8080/search", json={"query": "AI security"})
 result = resp.json()
 
-# After -- routed through PRECINCT gateway
+# After: routed through PRECINCT gateway
 from mcp_gateway_sdk import GatewayClient
 
 client = GatewayClient(
@@ -489,11 +489,11 @@ client = GatewayClient(
 result = await client.call_tool("my_tool", {"query": "AI security"})</code></pre>
 
             <h4>Go</h4>
-            <pre data-lang="go"><code>// Before -- direct HTTP to tool
+            <pre data-lang="go"><code>// Before: direct HTTP to tool
 resp, err := http.Post("http://my-tool:8080/search",
     "application/json", bytes.NewReader(payload))
 
-// After -- routed through PRECINCT gateway
+// After: routed through PRECINCT gateway
 client, _ := mcpgateway.NewClient(
     "http://localhost:9090",
     mcpgateway.WithSPIFFEID("spiffe://poc.local/agents/mcp-client/my-agent/dev"),
@@ -690,7 +690,7 @@ agw audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
 
       </div>
 
-      <p class="footer-citation">Validated against <a href="agents-of-chaos.html">Agents of Chaos</a> (Shapira et al., 2026, <a href="https://arxiv.org/abs/2602.20021">arXiv:2602.20021v1</a>)</p>
+      <p class="footer-citation">Architecture informed by peer-reviewed research. See <a href="../index.html#research">Research Foundations</a>.</p>
       <div class="footer-bottom">
         <p class="footer-license">
           Licensed under the <a href="https://www.apache.org/licenses/LICENSE-2.0" target="_blank" rel="noopener noreferrer">Apache License 2.0</a>.

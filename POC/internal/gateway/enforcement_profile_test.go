@@ -18,8 +18,10 @@ func newStrictProfileTestConfig(profile string) *Config {
 		EnforceModelMediationGate:     true,
 		EnforceHIPAAPromptSafetyGate:  true,
 		ApprovalSigningKey:            "prod-approval-signing-key-material-at-least-32",
+		AdminAuthzAllowedSPIFFEIDs:    []string{"spiffe://poc.local/admin/security"},
 		ToolRegistryConfigPath:        "/config/tool-registry.yaml",
 		ToolRegistryPublicKey:         "/config/attestation-ed25519.pub",
+		OPAPolicyPublicKey:            "/config/attestation-ed25519.pub",
 		ModelProviderCatalogPath:      "/config/model-provider-catalog.v2.yaml",
 		ModelProviderCatalogPublicKey: "/config/attestation-ed25519.pub",
 		GuardArtifactPath:             "/config/guard-artifact.bin",
@@ -130,6 +132,19 @@ func TestResolveEnforcementProfile_StrictFailsWithoutKeyDBURL(t *testing.T) {
 	}
 }
 
+func TestResolveEnforcementProfile_StrictFailsWithoutAdminAllowlist(t *testing.T) {
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.AdminAuthzAllowedSPIFFEIDs = []string{" ", ""}
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure when admin authz allowlist is empty")
+	}
+	if !strings.Contains(err.Error(), "admin_authz_allowed_spiffe_ids must be set") {
+		t.Fatalf("expected admin authz allowlist requirement error, got: %v", err)
+	}
+}
+
 func TestResolveEnforcementProfile_StrictFailsWithoutRegistryPublicKey(t *testing.T) {
 	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
 	cfg.ToolRegistryPublicKey = ""
@@ -140,6 +155,19 @@ func TestResolveEnforcementProfile_StrictFailsWithoutRegistryPublicKey(t *testin
 	}
 	if !strings.Contains(err.Error(), "tool_registry_public_key must be set") {
 		t.Fatalf("expected tool registry key requirement error, got: %v", err)
+	}
+}
+
+func TestResolveEnforcementProfile_StrictFailsWithoutOPAPolicyPublicKey(t *testing.T) {
+	cfg := newStrictProfileTestConfig(enforcementProfileProdStandard)
+	cfg.OPAPolicyPublicKey = ""
+
+	_, err := resolveEnforcementProfile(cfg)
+	if err == nil {
+		t.Fatal("expected strict profile startup failure when OPA policy key is missing")
+	}
+	if !strings.Contains(err.Error(), "opa_policy_public_key must be set") {
+		t.Fatalf("expected OPA policy key requirement error, got: %v", err)
 	}
 }
 

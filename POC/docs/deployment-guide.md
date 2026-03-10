@@ -149,7 +149,8 @@ The Docker Compose stack runs 11 services plus 3 one-shot init containers. Servi
 | Service | Role | Notes |
 |---------|------|-------|
 | `spike-nexus` | Secret store | Late-binding token redemption via SPIFFE mTLS. AES-256-GCM encrypted SQLite backend. Port 8443 |
-| `spike-keeper-1` | Key shard holder | Holds Shamir secret shard for Nexus root key recovery. Threshold=1, shares=1 for development |
+| `spike-keeper-1` | Key shard holder | Holds the demo/local shard and participates in the release `2-of-3` keeper set |
+| `spike-keeper-2` + `spike-keeper-3` | Additional release keepers | Enabled by `docker-compose.prod-intent.yml` and `infra/eks/spike/` for multi-share keeper recovery |
 | `spike-bootstrap` | One-shot init | Generates root key, splits via Shamir, sends shards to Keeper(s) |
 | `spike-secret-seeder` | One-shot init | Seeds demo secrets (`ref=deadbeef`) and creates gateway-read ACL policy via SPIKE Pilot CLI |
 
@@ -180,7 +181,10 @@ keydb (healthy) -> mcp-security-gateway
 mock-mcp-server (healthy) -> mcp-security-gateway
 ```
 
-The gateway is the last service to start because it requires all identity, secret, session, and upstream services to be operational.
+The gateway is the last service to start because it requires all identity, secret,
+session, and upstream services to be operational. The startup chain above shows
+the local/demo single-keeper path; the production-intent compose overlay expands
+the keeper stage to `spike-keeper-1`, `spike-keeper-2`, and `spike-keeper-3`.
 
 ---
 
@@ -487,6 +491,7 @@ Use this set as a baseline when validating production-readiness transport postur
 | `UPSTREAM_URL` | `https://<mcp-upstream>/mcp` |
 | `APPROVAL_SIGNING_KEY` | strong non-default key (>=32 chars) |
 | `TOOL_REGISTRY_PUBLIC_KEY` | `/config/attestation-ed25519.pub` |
+| `OPA_POLICY_PUBLIC_KEY` | `/config/attestation-ed25519.pub` |
 | `MODEL_PROVIDER_CATALOG_PUBLIC_KEY` | `/config/attestation-ed25519.pub` |
 | `GUARD_ARTIFACT_PATH` | `/config/guard-artifact.bin` |
 | `GUARD_ARTIFACT_SHA256` | `8232540100ebde3b5682c2b47d1eee50764f6dadca3842400157061656fc95a3` |
@@ -497,6 +502,7 @@ Notes:
 - Strict startup fails if `UPSTREAM_URL` is not `https://...` in MCP mode.
 - Strict MCP transport fails closed if SPIFFE mTLS upstream transport is not initialized.
 - Strict startup fails when signed tool registry/catalog/guard artifact material is missing or invalid.
+- Strict OPA reloads require `OPA_POLICY_PUBLIC_KEY`; unsigned or tampered policy changes are rejected and the prior policy remains active.
 - Strict tool registry hot-reload rejects unsigned/invalid updates without permissive fallback.
 - Keep `UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS` explicit for blue/green/canary identity overlap windows.
 
@@ -549,11 +555,12 @@ Docker Compose dev mode:
 docker compose -f docker-compose.yml up -d
 ```
 
-Docker Compose strict production-intent mode:
+Docker Compose strict hardening mode:
 
 ```bash
 export STRICT_UPSTREAM_URL="https://<strict-upstream>/mcp"
 export APPROVAL_SIGNING_KEY="<strong-signing-key-32+>"
+export ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/ops/sa/gateway-admin"
 export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool"
 export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb"
 docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.yml up -d
@@ -574,10 +581,16 @@ Strict compose mode expects these files in `./config`:
 - `model-provider-catalog.v2.yaml` and `model-provider-catalog.v2.yaml.sig`
 - `guard-artifact.bin` and `guard-artifact.bin.sig`
 
+This strict-only overlay hardens the gateway transport/profile, but it does not add
+the extra SPIKE keepers needed for release recovery posture. For release-facing
+compose, layer `docker-compose.prod-intent.yml` on top of the strict overlay.
+
 Compose production-intent supply-chain mode (release gate path):
 
 ```bash
 make compose-production-intent-preflight
+export PROD_SPIKE_NEXUS_SHAMIR_THRESHOLD="2"
+export PROD_SPIKE_NEXUS_SHAMIR_SHARES="3"
 docker compose --profile strict \
   --env-file config/compose-production-intent.env \
   -f docker-compose.yml \
@@ -593,13 +606,15 @@ Production-intent compose requirements:
 
 - Required services must set `pull_policy: always` and use digest-pinned immutable image refs from `config/compose-production-intent.env`.
 - Provenance/signature policy requirements are codified in `config/compose-production-intent-policy.json`.
+- SPIKE keeper recovery defaults to `2-of-3` with three keeper peers; only the local demo/dev paths may remain `1-of-1`.
 - Deterministic validation command: `make compose-production-intent-validate` (includes supply-chain and egress-control negative-path failure tests).
 
 Migration notes:
 
 - Dev/demo path remains unchanged (`docker-compose.yml`, `make demo-compose`).
-- Production-intent path is explicit and separate (`docker-compose.prod-intent.yml` + lock/policy files).
+- Strict hardening mode is a local/runtime validation layer; release-facing compose is explicit and separate (`docker-compose.prod-intent.yml` + lock/policy files) and defaults SPIKE keeper recovery to `2-of-3`.
 - Do not reuse dev/demo local tags for production-intent releases.
+- Validate the split between demo and release keeper profiles with `make spike-shamir-validate`.
 
 K8s dev/local mode:
 
@@ -607,13 +622,25 @@ K8s dev/local mode:
 kustomize build infra/eks/overlays/local | kubectl apply -f -
 ```
 
+Validate the SPIKE recovery posture before release sign-off:
+
+```bash
+make spike-shamir-validate
+```
+
 K8s strict production-intent mode:
 
 ```bash
+make k8s-overlay-digest-validate OVERLAYS="staging prod"
 kustomize build infra/eks/overlays/staging | kubectl apply -f -
 # or
 kustomize build infra/eks/overlays/prod | kubectl apply -f -
 ```
+
+The strict overlays now consume workflow-managed `digest:` pins in each
+`kustomization.yaml`. The repo-root `.github/workflows/promote.yaml` workflow
+rewrites those digests with `kustomize edit set image ...@sha256:<digest>` and
+validates the rendered target overlay before any optional commit.
 
 Strict runtime wiring validation (fail-fast):
 
@@ -641,11 +668,14 @@ Required operator checks before any external-app promotion/reassessment:
 make strict-runtime-validate
 make production-readiness-validate
 make readiness-state-validate
-bd show RFA-l6h6.6.10 --json
-bd show RFA-l6h6.6.17.1 --json
-bd dep tree RFA-l6h6.7
+nd show oc-ko5 --json
+nd show oc-36m --json
 cd <upstream-reference-app-repo> && git rev-parse HEAD
 ```
+
+Historical note: the `RFA-*` identifiers in this section are archival beads-era
+campaign IDs preserved for audit context. The active tracker checks above use the
+current `nd` IDs referenced by `docs/status/production-readiness-state.json`.
 
 Current gate interpretation:
 - **GO past framework-closure gate** when `RFA-l6h6.7.7`, `RFA-l6h6.6.10`, and `RFA-l6h6.6.17.1` are accepted/closed and validation evidence is current.
@@ -696,6 +726,8 @@ workflow continuity, but that is not equivalent evidence for cloud release sign-
 |--------|-------------|
 | `make help` | Show all documented targets |
 | `make compose-verify` | Verify compose third-party images and Dockerfile base images are digest-pinned |
+| `make k8s-overlay-digest-validate` | Render staging/prod overlays and fail if gateway/tools workloads violate the Gatekeeper digest policy |
+| `make spike-shamir-validate` | Verify local demo keeps 1-of-1 recovery isolated while strict compose/EKS configs require multi-share keeper recovery |
 | `make compose-production-intent-preflight` | Validate production-intent compose image lock + provenance policy wiring |
 | `make compose-production-intent-preflight-signature-prereqs` | Validate fail-closed live-signature credential prerequisite behavior |
 | `make compose-production-intent-validate` | Run production-intent compose gate with deterministic supply-chain + egress negative-path failure tests |
@@ -706,7 +738,7 @@ workflow continuity, but that is not equivalent evidence for cloud release sign-
 | `make up` | Start Docker Compose stack (waits for all services healthy) |
 | `make down` | Stop Docker Compose stack |
 | `make clean` | Full cleanup (containers, volumes, build artifacts) |
-| `make test` | Run unit tests (Go + OPA) |
+| `make test` | Run all tests (unit + tagged integration + OPA) |
 | `make lint` | Run linters |
 | `make build` | Build gateway container image |
 | `make demo-compose` | Run E2E demo against Docker Compose |
@@ -738,12 +770,14 @@ workflow continuity, but that is not equivalent evidence for cloud release sign-
 | `make security-scan` | Run security scans and emit artifact bundle (`build/security-scan/latest`) |
 | `make security-scan-strict` | Run security scans in strict mode (fail on skipped/failed scanners) |
 | `make security-scan-validate` | Validate required security evidence artifacts + manifest hashes |
-| `make readiness-state-validate` | Validate readiness docs/state snapshot against live `bd` status and external-app gate dependency |
+| `make readiness-state-validate` | Validate readiness docs/state snapshot against live `nd` status and external-app gate dependency |
 | `make production-readiness-validate` | Enforce strict security scan evidence gate for production readiness |
 | `make ci-gate-parity-validate` | Validate manual-only CI workflow policy (strict readiness + demo coverage + manual K8s policy gate) |
 | `make observability-evidence-gate-validate` | Validate strict/non-strict observability evidence gate behavior |
 | `make compliance-report` | Generate compliance report |
+| `make test-unit` | Run unit tests (Go packages + non-tagged suites) |
 | `make test-integration` | Run integration tests |
 | `make test-opa` | Run OPA policy tests |
+| `make test-e2e` | Run the full E2E demo suite (Compose + K8s) |
 | `make validate-setup-time` | Validate 30-minute setup claim |
 | `make gdpr-delete` | GDPR right-to-deletion for a SPIFFE ID |

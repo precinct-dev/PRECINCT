@@ -94,6 +94,12 @@ reg "spiffe://$DOMAIN/spike/nexus" \
 reg "spiffe://$DOMAIN/spike/keeper/1" \
     -selector docker:label:spiffe-id:spike-keeper-1
 
+reg "spiffe://$DOMAIN/spike/keeper/2" \
+    -selector docker:label:spiffe-id:spike-keeper-2
+
+reg "spiffe://$DOMAIN/spike/keeper/3" \
+    -selector docker:label:spiffe-id:spike-keeper-3
+
 # SPIKE Bootstrap - Root key delivery via 'spike init' (RFA-oyg)
 # Bootstrap needs a SPIFFE ID matching IsBootstrap() check for root key operations.
 reg "spiffe://$DOMAIN/spike/bootstrap" \

@@ -125,6 +125,55 @@ func TestCallModelChat_HeadersAndEndpoint(t *testing.T) {
 	}
 }
 
+func TestCallModelChat_RelativeEndpointsStayOnGateway(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		endpoint string
+		wantPath string
+	}{
+		{
+			name:     "leading slash",
+			endpoint: "/model/v1/chat/completions",
+			wantPath: "/model/v1/chat/completions",
+		},
+		{
+			name:     "no leading slash",
+			endpoint: "model/v1/chat/completions",
+			wantPath: "/model/v1/chat/completions",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			var gotPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPath = r.URL.Path
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"id":"chatcmpl-2","choices":[{"index":0}]}`))
+			}))
+			defer srv.Close()
+
+			c := NewClient(srv.URL, "spiffe://test/agent", WithHTTPClient(srv.Client()))
+			_, err := c.CallModelChat(context.Background(), ModelChatRequest{
+				Model:    "llama-3.3-70b-versatile",
+				Messages: []map[string]any{{"role": "user", "content": "hello"}},
+				Endpoint: tt.endpoint,
+			})
+			if err != nil {
+				t.Fatalf("CallModelChat failed: %v", err)
+			}
+			if gotPath != tt.wantPath {
+				t.Fatalf("path=%q want=%q", gotPath, tt.wantPath)
+			}
+		})
+	}
+}
+
 func TestCallModelChat_DenialParsesGatewayError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -147,6 +196,21 @@ func TestCallModelChat_DenialParsesGatewayError(t *testing.T) {
 	}
 	if ge.Code != "authz_policy_denied" {
 		t.Fatalf("code=%q want=authz_policy_denied", ge.Code)
+	}
+}
+
+func TestCallModelChat_RejectsAbsoluteEndpoints(t *testing.T) {
+	c := NewClient("http://localhost:9090", "spiffe://test/agent")
+	_, err := c.CallModelChat(context.Background(), ModelChatRequest{
+		Model:    "llama-3.3-70b-versatile",
+		Messages: []map[string]any{{"role": "user", "content": "hello"}},
+		Endpoint: "https://api.openai.com/v1/chat/completions",
+	})
+	if err == nil {
+		t.Fatal("expected absolute endpoint to be rejected")
+	}
+	if !strings.Contains(err.Error(), "gateway-relative endpoints") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

@@ -453,6 +453,39 @@ func TestCircuitBreakerMiddleware_OpenState_Returns503(t *testing.T) {
 	}
 }
 
+func TestCircuitBreakerMiddleware_AdminPathBypassesOpenCircuit(t *testing.T) {
+	now := time.Now()
+	cb := NewCircuitBreaker(CircuitBreakerConfig{
+		FailureThreshold: 1,
+		ResetTimeout:     30 * time.Second,
+	}, nil)
+	cb.now = func() time.Time { return now }
+	cb.RecordFailure()
+	cb.now = func() time.Time { return now.Add(1 * time.Second) }
+
+	nextCalled := false
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := CircuitBreakerMiddleware(next, cb)
+
+	req := httptest.NewRequest(http.MethodPost, "/admin/circuit-breakers/reset", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if !nextCalled {
+		t.Fatal("expected admin control-plane request to bypass circuit breaker")
+	}
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200 for admin bypass, got %d", rec.Code)
+	}
+	if cb.State() != CircuitOpen {
+		t.Fatalf("expected bypass to leave circuit state unchanged, got %v", cb.State())
+	}
+}
+
 func TestCircuitBreakerMiddleware_Records5xxAsFailure(t *testing.T) {
 	cb := NewCircuitBreaker(CircuitBreakerConfig{
 		FailureThreshold: 3,

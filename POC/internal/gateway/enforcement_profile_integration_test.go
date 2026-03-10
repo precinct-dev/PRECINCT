@@ -1,24 +1,75 @@
 package gateway
 
 import (
+	"crypto/ecdsa"
+	"crypto/ed25519"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
 	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
 )
+
+func writeSignedStrictToolRegistryFixture(t *testing.T) (configPath, publicKeyPath string) {
+	t.Helper()
+
+	projectRoot := testutil.ProjectRoot()
+	sourceRegistry := filepath.Join(projectRoot, "config", "tool-registry.yaml")
+	registryBytes, err := os.ReadFile(sourceRegistry)
+	if err != nil {
+		t.Fatalf("read source tool registry: %v", err)
+	}
+
+	pub, priv, err := ed25519.GenerateKey(nil)
+	if err != nil {
+		t.Fatalf("generate attestation key: %v", err)
+	}
+	pubDER, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("marshal attestation public key: %v", err)
+	}
+
+	fixtureDir := t.TempDir()
+	configPath = filepath.Join(fixtureDir, "tool-registry.yaml")
+	if err := os.WriteFile(configPath, registryBytes, 0644); err != nil {
+		t.Fatalf("write signed registry fixture: %v", err)
+	}
+	sig := ed25519.Sign(priv, registryBytes)
+	if err := os.WriteFile(configPath+".sig", []byte(base64.StdEncoding.EncodeToString(sig)), 0644); err != nil {
+		t.Fatalf("write registry signature: %v", err)
+	}
+
+	publicKeyPath = filepath.Join(fixtureDir, "attestation-ed25519.pub")
+	if err := os.WriteFile(publicKeyPath, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER}), 0644); err != nil {
+		t.Fatalf("write attestation public key: %v", err)
+	}
+
+	return configPath, publicKeyPath
+}
 
 func setStrictAttestationFixtureEnv(t *testing.T) {
 	t.Helper()
 
 	projectRoot := testutil.ProjectRoot()
-	attestationPubKey := filepath.Join(projectRoot, "config", "attestation-ed25519.pub")
-	toolRegistryPath := filepath.Join(projectRoot, "config", "tool-registry.yaml")
+	toolRegistryPath, registryAttestationPubKey := writeSignedStrictToolRegistryFixture(t)
+	projectAttestationPubKey := filepath.Join(projectRoot, "config", "attestation-ed25519.pub")
 	modelCatalogPath := filepath.Join(projectRoot, "config", "model-provider-catalog.v2.yaml")
 	guardArtifactPath := filepath.Join(projectRoot, "config", "guard-artifact.bin")
 	destinationsPath := filepath.Join(projectRoot, "config", "destinations.yaml")
@@ -32,15 +83,17 @@ func setStrictAttestationFixtureEnv(t *testing.T) {
 	guardDigest := hex.EncodeToString(guardSum[:])
 
 	t.Setenv("TOOL_REGISTRY_CONFIG_PATH", toolRegistryPath)
-	t.Setenv("TOOL_REGISTRY_PUBLIC_KEY", attestationPubKey)
+	t.Setenv("TOOL_REGISTRY_PUBLIC_KEY", registryAttestationPubKey)
+	t.Setenv("OPA_POLICY_PUBLIC_KEY", registryAttestationPubKey)
 	t.Setenv("MODEL_PROVIDER_CATALOG_PATH", modelCatalogPath)
-	t.Setenv("MODEL_PROVIDER_CATALOG_PUBLIC_KEY", attestationPubKey)
+	t.Setenv("MODEL_PROVIDER_CATALOG_PUBLIC_KEY", projectAttestationPubKey)
 	t.Setenv("GUARD_ARTIFACT_PATH", guardArtifactPath)
 	t.Setenv("GUARD_ARTIFACT_SHA256", guardDigest)
 	t.Setenv("GUARD_ARTIFACT_SIGNATURE_PATH", guardArtifactPath+".sig")
-	t.Setenv("GUARD_ARTIFACT_PUBLIC_KEY", attestationPubKey)
+	t.Setenv("GUARD_ARTIFACT_PUBLIC_KEY", projectAttestationPubKey)
 	t.Setenv("DESTINATIONS_CONFIG_PATH", destinationsPath)
 	t.Setenv("RISK_THRESHOLDS_PATH", riskThresholdsPath)
+	t.Setenv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS", "spiffe://poc.local/admin/security")
 }
 
 func TestEnforcementProfile_StrictStartupFailsFastWithoutApprovalSigningKey(t *testing.T) {
@@ -109,21 +162,103 @@ func TestEnforcementProfile_StrictStartupPassesWithStrongApprovalSigningKey(t *t
 	}()
 }
 
+func TestEnforcementProfile_StrictStartupFailsWithoutAdminAllowlist(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UPSTREAM_URL", upstream.URL)
+	t.Setenv("OPA_POLICY_DIR", testutil.OPAPolicyDir())
+	t.Setenv("OPA_POLICY_PATH", testutil.OPAPolicyPath())
+	setStrictAttestationFixtureEnv(t)
+	t.Setenv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS", "")
+	t.Setenv("AUDIT_LOG_PATH", filepath.Join(t.TempDir(), "audit.jsonl"))
+	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileProdStandard)
+	t.Setenv("SPIFFE_MODE", "prod")
+	t.Setenv("KEYDB_URL", "redis://keydb:6379")
+	t.Setenv("MCP_TRANSPORT_MODE", "mcp")
+	t.Setenv("ENFORCE_MODEL_MEDIATION_GATE", "true")
+	t.Setenv("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", "true")
+	t.Setenv("APPROVAL_SIGNING_KEY", "prod-approval-signing-key-material-at-least-32")
+
+	cfg := ConfigFromEnv()
+	if len(cfg.AdminAuthzAllowedSPIFFEIDs) != 0 {
+		t.Fatalf("expected empty admin authz allowlist from env, got %v", cfg.AdminAuthzAllowedSPIFFEIDs)
+	}
+
+	_, err := New(cfg)
+	if err == nil {
+		t.Fatal("expected strict startup failure when ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS is missing")
+	}
+	if !strings.Contains(err.Error(), "admin_authz_allowed_spiffe_ids must be set") {
+		t.Fatalf("expected missing admin authz allowlist error, got: %v", err)
+	}
+}
+
+func TestEnforcementProfile_StrictProdDeniesDevResearcherAdminIdentity(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	t.Setenv("UPSTREAM_URL", upstream.URL)
+	t.Setenv("OPA_POLICY_DIR", testutil.OPAPolicyDir())
+	t.Setenv("OPA_POLICY_PATH", testutil.OPAPolicyPath())
+	setStrictAttestationFixtureEnv(t)
+	t.Setenv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS", "spiffe://poc.local/admin/security")
+	t.Setenv("AUDIT_LOG_PATH", filepath.Join(t.TempDir(), "audit.jsonl"))
+	t.Setenv("ENFORCEMENT_PROFILE", enforcementProfileProdStandard)
+	t.Setenv("SPIFFE_MODE", "prod")
+	t.Setenv("KEYDB_URL", "redis://keydb:6379")
+	t.Setenv("MCP_TRANSPORT_MODE", "mcp")
+	t.Setenv("ENFORCE_MODEL_MEDIATION_GATE", "true")
+	t.Setenv("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", "true")
+	t.Setenv("APPROVAL_SIGNING_KEY", "prod-approval-signing-key-material-at-least-32")
+
+	cfg := ConfigFromEnv()
+	gw, err := New(cfg)
+	if err != nil {
+		t.Fatalf("new strict gateway: %v", err)
+	}
+	defer func() { _ = gw.Close() }()
+
+	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
+	gw.sessionStore = middleware.NewInMemoryStore()
+	gw.sessionContext = middleware.NewSessionContext(gw.sessionStore)
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/circuit-breakers", nil)
+	req.TLS = &tls.ConnectionState{
+		PeerCertificates: []*x509.Certificate{
+			createStrictTestClientCert(t, "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"),
+		},
+	}
+	rec := httptest.NewRecorder()
+
+	gw.Handler().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403 for dev researcher identity in strict prod config, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode body: %v body=%s", err, rec.Body.String())
+	}
+	if got, _ := body["code"].(string); got != middleware.ErrAuthzPolicyDenied {
+		t.Fatalf("expected code=%q, got %q body=%v", middleware.ErrAuthzPolicyDenied, got, body)
+	}
+}
+
 func TestEnforcementProfile_StrictStartupFailsWithUnsignedToolRegistry(t *testing.T) {
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	defer upstream.Close()
 
-	projectRoot := testutil.ProjectRoot()
-	sourceRegistry := filepath.Join(projectRoot, "config", "tool-registry.yaml")
-	registryBytes, err := os.ReadFile(sourceRegistry)
-	if err != nil {
-		t.Fatalf("read source tool registry: %v", err)
-	}
-	tmpRegistryPath := filepath.Join(t.TempDir(), "tool-registry.yaml")
-	if err := os.WriteFile(tmpRegistryPath, registryBytes, 0644); err != nil {
-		t.Fatalf("write temporary tool registry: %v", err)
+	tmpRegistryPath, _ := writeSignedStrictToolRegistryFixture(t)
+	if err := os.Remove(tmpRegistryPath + ".sig"); err != nil {
+		t.Fatalf("remove temporary tool registry signature: %v", err)
 	}
 
 	t.Setenv("UPSTREAM_URL", upstream.URL)
@@ -141,7 +276,7 @@ func TestEnforcementProfile_StrictStartupFailsWithUnsignedToolRegistry(t *testin
 	t.Setenv("APPROVAL_SIGNING_KEY", "prod-approval-signing-key-material-at-least-32")
 
 	cfg := ConfigFromEnv()
-	_, err = New(cfg)
+	_, err := New(cfg)
 	if err == nil {
 		t.Fatal("expected strict startup failure when tool registry signature is missing")
 	}
@@ -230,4 +365,40 @@ func TestEnforcementProfile_DevAllowsFallbackToDefaults(t *testing.T) {
 		t.Fatalf("expected dev profile startup to allow fallback defaults, got: %v", err)
 	}
 	defer func() { _ = gw.Close() }()
+}
+
+func createStrictTestClientCert(t *testing.T, rawSPIFFEID string) *x509.Certificate {
+	t.Helper()
+
+	spiffeURI, err := url.Parse(rawSPIFFEID)
+	if err != nil {
+		t.Fatalf("parse SPIFFE ID: %v", err)
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject: pkix.Name{
+			CommonName: "strict-admin-authz-test-client",
+		},
+		NotBefore: time.Now().Add(-time.Hour),
+		NotAfter:  time.Now().Add(time.Hour),
+		URIs:      []*url.URL{spiffeURI},
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		t.Fatalf("parse certificate: %v", err)
+	}
+
+	return cert
 }

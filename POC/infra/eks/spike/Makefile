@@ -21,16 +21,31 @@ help: ## Show this help message
 # Deployment targets
 # ---------------------------------------------------------------------------
 
-deploy: ## Deploy SPIKE Nexus (namespace, RBAC, ConfigMap, Deployment, Service)
-	@echo "=== Deploying SPIKE Nexus ==="
+deploy: ## Deploy SPIKE keeper+nexus runtime surfaces (jobs remain operator-triggered)
+	@echo "=== Deploying SPIKE keeper+nexus runtime surfaces ==="
 	$(KUBECTL) apply -f namespace.yaml
+	$(KUBECTL) apply -f keeper-rbac.yaml
 	$(KUBECTL) apply -f nexus-rbac.yaml
+	$(KUBECTL) apply -f bootstrap-rbac.yaml
+	$(KUBECTL) apply -f seeder-rbac.yaml
 	$(KUBECTL) apply -f nexus-configmap.yaml
+	$(KUBECTL) apply -f nexus-pvc.yaml
+	$(KUBECTL) apply -f keeper-service.yaml
+	$(KUBECTL) apply -f keeper-deployment.yaml
+	$(KUBECTL) apply -f keeper-2-service.yaml
+	$(KUBECTL) apply -f keeper-2-deployment.yaml
+	$(KUBECTL) apply -f keeper-3-service.yaml
+	$(KUBECTL) apply -f keeper-3-deployment.yaml
 	$(KUBECTL) apply -f nexus-deployment.yaml
 	$(KUBECTL) apply -f nexus-service.yaml
+	$(KUBECTL) apply -f spike-networkpolicies.yaml
+	@echo "Waiting for SPIKE Keeper pods to be ready..."
+	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/spike-keeper --timeout=120s
+	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/spike-keeper-2 --timeout=120s
+	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/spike-keeper-3 --timeout=120s
 	@echo "Waiting for SPIKE Nexus pod to be ready..."
 	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/spike-nexus --timeout=120s
-	@echo "SPIKE Nexus deployed."
+	@echo "SPIKE keeper+nexus runtime surfaces deployed."
 
 # ---------------------------------------------------------------------------
 # Verification targets
@@ -64,16 +79,20 @@ logs: ## Tail SPIKE Nexus logs
 # Dry run (validation without a cluster)
 # ---------------------------------------------------------------------------
 
-dry-run: ## Validate all manifests (kubeconform or kubectl dry-run)
+dry-run: ## Validate SPIKE keeper+nexus manifests (kubeconform or kubectl dry-run)
 	@if command -v kubeconform >/dev/null 2>&1; then \
 		echo "=== Validating with kubeconform (offline) ==="; \
 		kubeconform -summary -strict \
-			namespace.yaml nexus-rbac.yaml nexus-configmap.yaml \
-			nexus-deployment.yaml nexus-service.yaml; \
+			namespace.yaml keeper-rbac.yaml nexus-rbac.yaml bootstrap-rbac.yaml seeder-rbac.yaml \
+			nexus-configmap.yaml nexus-pvc.yaml keeper-service.yaml keeper-deployment.yaml \
+			keeper-2-service.yaml keeper-2-deployment.yaml keeper-3-service.yaml keeper-3-deployment.yaml \
+			nexus-deployment.yaml nexus-service.yaml bootstrap-job.yaml seeder-job.yaml spike-networkpolicies.yaml; \
 	else \
 		echo "=== Validating with kubectl dry-run (requires cluster) ==="; \
-		for f in namespace.yaml nexus-rbac.yaml nexus-configmap.yaml \
-			nexus-deployment.yaml nexus-service.yaml; do \
+		for f in namespace.yaml keeper-rbac.yaml nexus-rbac.yaml bootstrap-rbac.yaml seeder-rbac.yaml \
+			nexus-configmap.yaml nexus-pvc.yaml keeper-service.yaml keeper-deployment.yaml \
+			keeper-2-service.yaml keeper-2-deployment.yaml keeper-3-service.yaml keeper-3-deployment.yaml \
+			nexus-deployment.yaml nexus-service.yaml bootstrap-job.yaml seeder-job.yaml spike-networkpolicies.yaml; do \
 			$(KUBECTL) apply --dry-run=client -f "$$f"; \
 		done; \
 	fi
@@ -83,11 +102,24 @@ dry-run: ## Validate all manifests (kubeconform or kubectl dry-run)
 # Cleanup
 # ---------------------------------------------------------------------------
 
-undeploy: ## Remove all SPIKE resources
-	@echo "=== Removing SPIKE Nexus ==="
+undeploy: ## Remove SPIKE keeper+nexus runtime surfaces
+	@echo "=== Removing SPIKE keeper+nexus runtime surfaces ==="
+	-$(KUBECTL) delete -f spike-networkpolicies.yaml --ignore-not-found
+	-$(KUBECTL) delete -f nexus-service.yaml --ignore-not-found
+	-$(KUBECTL) delete -f nexus-deployment.yaml --ignore-not-found
+	-$(KUBECTL) delete -f keeper-3-service.yaml --ignore-not-found
+	-$(KUBECTL) delete -f keeper-3-deployment.yaml --ignore-not-found
+	-$(KUBECTL) delete -f keeper-2-service.yaml --ignore-not-found
+	-$(KUBECTL) delete -f keeper-2-deployment.yaml --ignore-not-found
+	-$(KUBECTL) delete -f keeper-service.yaml --ignore-not-found
+	-$(KUBECTL) delete -f keeper-deployment.yaml --ignore-not-found
+	-$(KUBECTL) delete -f nexus-pvc.yaml --ignore-not-found
+	-$(KUBECTL) delete -f seeder-rbac.yaml --ignore-not-found
+	-$(KUBECTL) delete -f bootstrap-rbac.yaml --ignore-not-found
+	-$(KUBECTL) delete -f keeper-rbac.yaml --ignore-not-found
 	-$(KUBECTL) delete -f nexus-service.yaml --ignore-not-found
 	-$(KUBECTL) delete -f nexus-deployment.yaml --ignore-not-found
 	-$(KUBECTL) delete -f nexus-configmap.yaml --ignore-not-found
 	-$(KUBECTL) delete -f nexus-rbac.yaml --ignore-not-found
 	-$(KUBECTL) delete -f namespace.yaml --ignore-not-found
-	@echo "SPIKE Nexus removed."
+	@echo "SPIKE keeper+nexus runtime surfaces removed."
