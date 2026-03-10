@@ -271,7 +271,6 @@ func defaultToolCapabilityRules() map[string]toolCapabilityRule {
 				"echo": {},
 				"cat":  {},
 				"grep": {},
-				"bash": {},
 			},
 			MaxArgs:         10,
 			DeniedArgTokens: []string{";", "&&", "||", "|", "$(", "`", ">", "<"},
@@ -346,8 +345,8 @@ func defaultToolCapabilityRules() map[string]toolCapabilityRule {
 				"discord": {},
 			},
 			AllowTools: map[string]struct{}{
-				"messaging_send":   {},
-				"discord_command":  {},
+				"messaging_send":  {},
+				"discord_command": {},
 			},
 			Actions: []toolActionRule{
 				{
@@ -440,7 +439,8 @@ func (t *toolPlanePolicyEngine) evaluate(req PlaneRequestV2) toolPlaneEvalResult
 		}
 	}
 
-	// CLI protocol adapter: enforce command allowlist, arg count, and denied tokens.
+	// CLI protocol adapter: enforce command allowlist, arg count, denied tokens,
+	// and reject nested shell interpreters that would bypass mediation.
 	if adapter == "cli" {
 		command := strings.TrimSpace(getStringAttr(attrs, "command", ""))
 		if command == "" {
@@ -457,6 +457,11 @@ func (t *toolPlanePolicyEngine) evaluate(req PlaneRequestV2) toolPlaneEvalResult
 
 		args := parseStringSlice(attrs["args"])
 		resultMetadata["args_count"] = len(args)
+
+		if isDeniedCLIInterpreterCommand(command) {
+			resultMetadata["cli_error"] = "nested shell interpreter commands are not permitted"
+			return deny(ReasonToolCLICommandDenied, resultMetadata)
+		}
 
 		if len(rule.AllowedCommands) > 0 {
 			if _, allowed := rule.AllowedCommands[command]; !allowed {
@@ -584,6 +589,15 @@ func hasDeniedCLIArgToken(args, deniedTokens []string) bool {
 		}
 	}
 	return false
+}
+
+func isDeniedCLIInterpreterCommand(command string) bool {
+	switch strings.ToLower(strings.TrimSpace(command)) {
+	case "ash", "bash", "dash", "ksh", "sh", "zsh":
+		return true
+	default:
+		return false
+	}
 }
 
 // parseStringSlice coerces a raw attribute value into a []string.
