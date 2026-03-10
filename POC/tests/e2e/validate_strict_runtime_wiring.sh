@@ -24,6 +24,15 @@ assert_contains() {
   grep -Eq "${pattern}" "${file}" || fail "${message}"
 }
 
+assert_not_contains() {
+  local file="$1"
+  local pattern="$2"
+  local message="$3"
+  if grep -Eq "${pattern}" "${file}"; then
+    fail "${message}"
+  fi
+}
+
 require_cmd kustomize
 require_cmd docker
 
@@ -78,6 +87,7 @@ assert_contains "${compose_out}" 'MODEL_POLICY_INTENT_PREPEND_ENABLED:[[:space:]
 assert_contains "${compose_out}" 'SPIFFE_MODE:[[:space:]]*prod' "compose strict: SPIFFE_MODE must be prod"
 assert_contains "${compose_out}" 'SPIFFE_LISTEN_PORT:[[:space:]]*"?9443"?' "compose strict: SPIFFE_LISTEN_PORT must be 9443"
 assert_contains "${compose_out}" 'target:[[:space:]]*9443' "compose strict: HTTPS listener port 9443 must be published"
+assert_not_contains "${compose_out}" 'published:[[:space:]]*"9090"' "compose strict: dev HTTP listener port 9090 must not be published"
 assert_contains "${compose_out}" 'UPSTREAM_URL:[[:space:]]*https://' "compose strict: UPSTREAM_URL must be https"
 assert_contains "${compose_out}" 'APPROVAL_SIGNING_KEY:[[:space:]]+' "compose strict: APPROVAL_SIGNING_KEY must be set"
 assert_contains "${compose_out}" 'UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS:[[:space:]]+' "compose strict: UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS must be set"
@@ -87,5 +97,11 @@ assert_contains "${compose_out}" 'MODEL_PROVIDER_CATALOG_PUBLIC_KEY:[[:space:]]+
 assert_contains "${compose_out}" 'GUARD_ARTIFACT_PATH:[[:space:]]+/config/guard-artifact\.bin' "compose strict: GUARD_ARTIFACT_PATH must point to /config/guard-artifact.bin"
 assert_contains "${compose_out}" 'GUARD_ARTIFACT_SHA256:[[:space:]]+[a-f0-9]{64}' "compose strict: GUARD_ARTIFACT_SHA256 must be set to a 64-char hex digest"
 assert_contains "${compose_out}" 'GUARD_ARTIFACT_PUBLIC_KEY:[[:space:]]+/config/attestation-ed25519\.pub' "compose strict: GUARD_ARTIFACT_PUBLIC_KEY must point to /config/attestation-ed25519.pub"
+assert_not_contains "${compose_out}" 'ALLOW_INSECURE_DEV_MODE:' "compose strict: ALLOW_INSECURE_DEV_MODE must not be inherited"
+assert_not_contains "${compose_out}" 'ALLOW_NON_LOOPBACK_DEV_BIND:' "compose strict: ALLOW_NON_LOOPBACK_DEV_BIND must not be inherited"
+assert_not_contains "${compose_out}" 'DEMO_RUGPULL_ADMIN_ENABLED:' "compose strict: DEMO_RUGPULL_ADMIN_ENABLED must not be inherited"
+assert_not_contains "${compose_out}" 'DEV_LISTEN_HOST:[[:space:]]*0\.0\.0\.0' "compose strict: DEV_LISTEN_HOST=0.0.0.0 must not be inherited"
+assert_not_contains "${compose_out}" 'GUARD_MODEL_ENDPOINT:[[:space:]]*http://mock-guard-model:8080/openai/v1' "compose strict: mock guard endpoint must not be inherited"
+assert_not_contains "${compose_out}" 'MODEL_PROVIDER_ENDPOINT_GROQ:[[:space:]]*http://mock-guard-model:8080/openai/v1/chat/completions' "compose strict: mock model provider endpoint must not be inherited"
 
 echo "[PASS] Strict runtime wiring validation passed"
