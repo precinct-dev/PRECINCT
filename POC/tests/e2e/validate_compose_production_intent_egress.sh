@@ -116,8 +116,8 @@ main() {
 
   export STRICT_UPSTREAM_URL="https://strict-upstream.example.com/mcp"
   export APPROVAL_SIGNING_KEY="compose-approval-signing-key-material-at-least-32"
-  export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool"
-  export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb"
+  export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/tools/sa/mcp-tool"
+  export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb"
 
   info "Rendering strict+production-intent compose config"
   docker compose --profile strict \

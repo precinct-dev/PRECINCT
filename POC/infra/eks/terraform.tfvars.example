@@ -2,7 +2,7 @@
 # Copy this file to terraform.tfvars and adjust values as needed:
 #   cp terraform.tfvars.example terraform.tfvars
 
-cluster_name    = "agentic-ref-arch-poc"
+cluster_name    = "precinct-poc"
 region          = "us-west-2"
 environment     = "poc"
 

@@ -36,7 +36,7 @@ data:
     # S3 destination for audit logs
     s3:
       # Bucket name -- override via Kustomize overlay or Helm values
-      bucket: "agentic-ref-arch-poc-audit-logs"
+      bucket: "precinct-poc-audit-logs"
       region: "us-west-2"
       # Prefix organizes logs by date for efficient querying
       # Gateway appends: <prefix>/YYYY/MM/DD/HH/<batch-id>.jsonl

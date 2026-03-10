@@ -3,9 +3,10 @@ package gateway
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
 )
 
 // Compile-time check: *Gateway implements PortGatewayServices.
@@ -128,7 +129,26 @@ func (g *Gateway) ScanContent(content string) middleware.ScanResult {
 	return g.dlpScanner.Scan(content)
 }
 
-// RegisterPort adds a PortAdapter to the gateway's dispatch chain.
+// RegisterPort adds a PortAdapter to the gateway's dispatch chain and injects
+// the adapter's route authorizations into the OPA engine's data store.
 func (g *Gateway) RegisterPort(adapter PortAdapter) {
 	g.portAdapters = append(g.portAdapters, adapter)
+
+	// Inject port route authorizations into the OPA engine so the core policy
+	// can grant destination_allowed for port-claimed routes.
+	if routes := adapter.RouteAuthorizations(); len(routes) > 0 {
+		opaRoutes := make([]middleware.PortRouteAuth, len(routes))
+		for i, r := range routes {
+			opaRoutes[i] = middleware.PortRouteAuth{
+				Path:       r.Path,
+				PathPrefix: r.PathPrefix,
+				Methods:    r.Methods,
+				AuthModel:  r.AuthModel,
+			}
+		}
+		if err := g.opa.RegisterPortRouteAuthorizations(opaRoutes); err != nil {
+			slog.Warn("failed to register port route authorizations",
+				"port", adapter.Name(), "error", err)
+		}
+	}
 }

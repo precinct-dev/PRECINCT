@@ -34,7 +34,7 @@ terraform {
 variable "cluster_name" {
   description = "EKS cluster name (must match RFA-9fv.2)"
   type        = string
-  default     = "agentic-ref-arch-poc"
+  default     = "precinct-poc"
 }
 
 variable "region" {
@@ -52,7 +52,7 @@ variable "environment" {
 variable "audit_bucket_name" {
   description = "S3 bucket name for audit logs"
   type        = string
-  default     = "agentic-ref-arch-poc-audit-logs"
+  default     = "precinct-poc-audit-logs"
 }
 
 variable "retention_days" {
@@ -89,7 +89,7 @@ resource "aws_s3_bucket" "audit_logs" {
   object_lock_enabled = true
 
   tags = {
-    Project     = "agentic-ref-arch"
+    Project     = "precinct"
     Environment = var.environment
     ManagedBy   = "opentofu"
     Story       = "RFA-9fv.7"
@@ -169,7 +169,7 @@ resource "aws_iam_role" "audit_s3_sink" {
   })
 
   tags = {
-    Project     = "agentic-ref-arch"
+    Project     = "precinct"
     Environment = var.environment
     ManagedBy   = "opentofu"
     Story       = "RFA-9fv.7"

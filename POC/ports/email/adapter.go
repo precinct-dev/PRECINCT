@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway"
 )
 
 const (
@@ -75,6 +75,16 @@ func (a *Adapter) handleList(w http.ResponseWriter, _ *http.Request) {
 
 func (a *Adapter) handleRead(w http.ResponseWriter, r *http.Request) {
 	a.handleReadImpl(w, r)
+}
+
+// RouteAuthorizations declares OPA route authorization rules for the Email port.
+func (a *Adapter) RouteAuthorizations() []gateway.PortRouteAuth {
+	return []gateway.PortRouteAuth{
+		{Path: pathSend, Methods: []string{"POST"}, AuthModel: "tool_plane"},
+		{Path: pathWebhooks, Methods: []string{"POST"}, AuthModel: "webhook_inbound"},
+		{Path: pathList, Methods: []string{"GET"}, AuthModel: "tool_plane"},
+		{Path: pathRead, Methods: []string{"GET"}, AuthModel: "tool_plane"},
+	}
 }
 
 // Compile-time check.

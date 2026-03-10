@@ -38,17 +38,17 @@ spec:
             - name: SPIFFE_ENDPOINT_SOCKET
               value: 'unix:///run/spire/sockets/agent.sock'
             - name: SPIKE_TRUST_ROOT
-              value: 'agentic-ref-arch.poc'
+              value: 'precinct.poc'
             - name: SPIKE_TRUST_ROOT_KEEPER
-              value: 'agentic-ref-arch.poc'
+              value: 'precinct.poc'
             - name: SPIKE_TRUST_ROOT_NEXUS
-              value: 'agentic-ref-arch.poc'
+              value: 'precinct.poc'
             - name: SPIKE_TRUST_ROOT_PILOT
-              value: 'agentic-ref-arch.poc'
+              value: 'precinct.poc'
             - name: SPIKE_TRUST_ROOT_BOOTSTRAP
-              value: 'agentic-ref-arch.poc'
+              value: 'precinct.poc'
             - name: SPIKE_TRUST_ROOT_LITE_WORKLOAD
-              value: 'agentic-ref-arch.poc'
+              value: 'precinct.poc'
             - name: SPIKE_SYSTEM_LOG_LEVEL
               value: 'INFO'
           livenessProbe:

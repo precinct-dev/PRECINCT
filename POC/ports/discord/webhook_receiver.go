@@ -12,8 +12,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
-	"github.com/RamXX/agentic_reference_architecture/POC/ports/discord/protocol"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/ports/discord/protocol"
 )
 
 // verifyDiscordSignature validates a Discord Ed25519 signature.

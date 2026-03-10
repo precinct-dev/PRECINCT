@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
-	"github.com/RamXX/agentic_reference_architecture/POC/ports/discord/protocol"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/ports/discord/protocol"
 )
 
 const (
@@ -233,6 +233,15 @@ func writeDiscordError(w http.ResponseWriter, status int, decisionID, traceID st
 			"trace_id":    traceID,
 		},
 	})
+}
+
+// RouteAuthorizations declares OPA route authorization rules for the Discord port.
+func (a *Adapter) RouteAuthorizations() []gateway.PortRouteAuth {
+	return []gateway.PortRouteAuth{
+		{Path: pathSend, Methods: []string{"POST"}, AuthModel: "tool_plane"},
+		{Path: pathWebhooks, Methods: []string{"POST"}, AuthModel: "webhook_inbound"},
+		{Path: pathCommands, Methods: []string{"POST"}, AuthModel: "webhook_inbound"},
+	}
 }
 
 // Compile-time check.

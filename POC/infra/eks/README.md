@@ -53,7 +53,7 @@ make plan
 make apply
 
 # 5. Configure kubectl
-aws eks update-kubeconfig --name agentic-ref-arch-poc --region us-west-2
+aws eks update-kubeconfig --name precinct-poc --region us-west-2
 
 # 6. Verify
 kubectl get nodes

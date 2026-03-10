@@ -23,6 +23,16 @@ import (
 
 // OPAEngineConfig holds runtime configuration injected into OPA data store.
 // These values are accessible in Rego policies via data.config.<key>.
+// PortRouteAuth mirrors gateway.PortRouteAuth for OPA data injection.
+// It is intentionally a separate type so the middleware package does not
+// import the gateway package (which would create a cycle).
+type PortRouteAuth struct {
+	Path       string   `json:"path"`
+	PathPrefix string   `json:"path_prefix,omitempty"`
+	Methods    []string `json:"methods"`
+	AuthModel  string   `json:"auth_model"`
+}
+
 type OPAEngineConfig struct {
 	// AllowedBasePath is the base directory for path-based access control.
 	// Injected as data.config.allowed_base_path in OPA policies.
@@ -32,6 +42,11 @@ type OPAEngineConfig struct {
 	// PolicyReloadPublicKeyPEM enables Ed25519 companion-signature verification
 	// for .rego/.yaml reloads when set. Empty keeps backward-compatible dev mode.
 	PolicyReloadPublicKeyPEM []byte
+	// PortRouteAuthorizations are route authorization rules contributed by
+	// registered port adapters. Injected as data.port_route_authorizations
+	// in the OPA data store. The core policy uses these to grant
+	// destination_allowed for port-claimed routes.
+	PortRouteAuthorizations []PortRouteAuth
 }
 
 // OPAEngine handles embedded OPA policy evaluation
@@ -306,6 +321,31 @@ func (e *OPAEngine) loadPolicies() error {
 		}
 	}
 
+	// Inject port route authorizations as data.port_route_authorizations.
+	// Port adapters declare their routes; the core policy uses this data
+	// to grant destination_allowed without hardcoding port-specific paths.
+	if len(e.runtimeCfg.PortRouteAuthorizations) > 0 {
+		// Convert to []interface{} for OPA data store compatibility.
+		routes := make([]interface{}, len(e.runtimeCfg.PortRouteAuthorizations))
+		for i, r := range e.runtimeCfg.PortRouteAuthorizations {
+			entry := map[string]interface{}{
+				"methods":    toInterfaceSlice(r.Methods),
+				"auth_model": r.AuthModel,
+			}
+			if r.Path != "" {
+				entry["path"] = r.Path
+			}
+			if r.PathPrefix != "" {
+				entry["path_prefix"] = r.PathPrefix
+			}
+			routes[i] = entry
+		}
+		routesPath := storage.MustParsePath("/port_route_authorizations")
+		if err := storage.WriteOne(ctx, dataStore, storage.AddOp, routesPath, routes); err != nil {
+			return fmt.Errorf("failed to write port route authorizations to OPA data store: %w", err)
+		}
+	}
+
 	// Add store to rego options
 	regoOpts = append(regoOpts, rego.Store(dataStore))
 
@@ -427,6 +467,14 @@ func (e *OPAEngine) loadPolicies() error {
 
 	slog.Info("OPA policies loaded successfully", "policy_dir", e.policyDir)
 	return nil
+}
+
+// RegisterPortRouteAuthorizations adds port route authorizations to the engine config
+// and reloads policies so they appear as data.port_route_authorizations in OPA.
+// Call this after all port adapters have been registered.
+func (e *OPAEngine) RegisterPortRouteAuthorizations(routes []PortRouteAuth) error {
+	e.runtimeCfg.PortRouteAuthorizations = append(e.runtimeCfg.PortRouteAuthorizations, routes...)
+	return e.loadPolicies()
 }
 
 // PolicyCount returns the number of compiled .rego policy files in the current engine state.
@@ -777,4 +825,13 @@ func (e *OPAEngine) Close() error {
 		return e.watcher.Close()
 	}
 	return nil
+}
+
+// toInterfaceSlice converts []string to []interface{} for OPA data store compatibility.
+func toInterfaceSlice(ss []string) []interface{} {
+	out := make([]interface{}, len(ss))
+	for i, s := range ss {
+		out[i] = s
+	}
+	return out
 }

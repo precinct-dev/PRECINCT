@@ -52,7 +52,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/agentic-ref-arch
+  IMAGE_PREFIX: ${{ github.repository_owner }}/precinct
   # Source image signer constraints: only allow images signed by this repository's
   # CI workflow on main or epic/* branches.
   SOURCE_CERT_IDENTITY_REGEX: ^https://github.com/${{ github.repository }}/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$

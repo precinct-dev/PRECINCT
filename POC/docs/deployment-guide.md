@@ -396,7 +396,7 @@ Without both of these, Docker selectors silently fail and only unix selectors (u
 
 **Symptom:** SPIKE Nexus fails to start with validation errors.
 
-**Fix:** `SPIKE_TRUST_ROOT_NEXUS` is required (not just `SPIKE_TRUST_ROOT`). Both must be set to the trust domain (`poc.local` for Docker Compose, `agentic-ref-arch.poc` for K8s).
+**Fix:** `SPIKE_TRUST_ROOT_NEXUS` is required (not just `SPIKE_TRUST_ROOT`). Both must be set to the trust domain (`poc.local` for Docker Compose, `precinct.poc` for K8s).
 
 ### SPIKE Nexus SPIFFE ID
 
@@ -560,9 +560,9 @@ Docker Compose strict hardening mode:
 ```bash
 export STRICT_UPSTREAM_URL="https://<strict-upstream>/mcp"
 export APPROVAL_SIGNING_KEY="<strong-signing-key-32+>"
-export ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/ops/sa/gateway-admin"
-export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool"
-export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/keydb"
+export ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/ops/sa/gateway-admin"
+export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/tools/sa/mcp-tool"
+export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb"
 docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.yml up -d
 ```
 

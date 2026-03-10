@@ -5,8 +5,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
-	"github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw/protocol"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway"
+	"github.com/precinct-dev/PRECINCT/POC/ports/openclaw/protocol"
 )
 
 const openClawWSPath = "/openclaw/ws"
@@ -65,6 +65,24 @@ func (a *Adapter) TryServeHTTP(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+// RouteAuthorizations declares the OPA route authorization rules for this port.
+// These are injected into the OPA data store so the core policy can grant
+// destination_allowed without hardcoding OpenClaw-specific paths.
+func (a *Adapter) RouteAuthorizations() []gateway.PortRouteAuth {
+	return []gateway.PortRouteAuth{
+		{
+			Path:      protocol.ResponsesPath, // /v1/responses
+			Methods:   []string{"POST"},
+			AuthModel: "model_plane",
+		},
+		{
+			PathPrefix: webhookBasePath + "/", // /openclaw/webhooks/
+			Methods:    []string{"POST"},
+			AuthModel:  "webhook_inbound",
+		},
 	}
 }
 

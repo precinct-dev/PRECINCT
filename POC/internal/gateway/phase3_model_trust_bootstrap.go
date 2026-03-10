@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
 )
 
 func verifyGuardArtifactIntegrity(cfg *Config, profileName string, auditor *middleware.Auditor) error {

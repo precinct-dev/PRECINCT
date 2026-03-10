@@ -39,7 +39,7 @@ To verify a signed image from this repository:
 cosign verify \
   --certificate-identity-regexp="https://github.com/OWNER/REPO/.*" \
   --certificate-oidc-issuer="https://token.actions.githubusercontent.com" \
-  ghcr.io/OWNER/agentic-ref-arch/mcp-security-gateway:dev
+  ghcr.io/OWNER/precinct/mcp-security-gateway:dev
 ```
 
 Replace `OWNER/REPO` with the actual GitHub repository path.
@@ -50,13 +50,13 @@ For local development, you can sign images using your own identity:
 
 ```bash
 # Sign (opens browser for OIDC authentication)
-cosign sign --yes ghcr.io/OWNER/agentic-ref-arch/mcp-security-gateway:dev
+cosign sign --yes ghcr.io/OWNER/precinct/mcp-security-gateway:dev
 
 # Verify
 cosign verify \
   --certificate-identity="your-email@example.com" \
   --certificate-oidc-issuer="https://accounts.google.com" \
-  ghcr.io/OWNER/agentic-ref-arch/mcp-security-gateway:dev
+  ghcr.io/OWNER/precinct/mcp-security-gateway:dev
 ```
 
 ## Promotion Verification

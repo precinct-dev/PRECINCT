@@ -2,63 +2,63 @@
   "schema_version": "compose_production_intent_supply_chain_policy.v1",
   "artifact_source": {
     "registry": "ghcr.io",
-    "repository": "ramxx/agentic-ref-arch",
+    "repository": "precinct-dev/precinct",
     "release_workflow_path": ".github/workflows/ci.yaml"
   },
   "required_services": {
     "mcp-security-gateway": {
       "image_env": "PROD_GATEWAY_IMAGE",
       "cosign": {
-        "certificate_identity_regex": "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
+        "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
         "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
       }
     },
     "spire-token-generator": {
       "image_env": "PROD_SPIRE_TOKEN_GENERATOR_IMAGE",
       "cosign": {
-        "certificate_identity_regex": "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
+        "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
         "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
       }
     },
     "spire-entry-registrar": {
       "image_env": "PROD_SPIRE_TOKEN_GENERATOR_IMAGE",
       "cosign": {
-        "certificate_identity_regex": "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
+        "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
         "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
       }
     },
     "spire-agent": {
       "image_env": "PROD_SPIRE_AGENT_IMAGE",
       "cosign": {
-        "certificate_identity_regex": "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
+        "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
         "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
       }
     },
     "spike-nexus": {
       "image_env": "PROD_SPIKE_NEXUS_IMAGE",
       "cosign": {
-        "certificate_identity_regex": "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
+        "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
         "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
       }
     },
     "spike-keeper-1": {
       "image_env": "PROD_SPIKE_KEEPER_IMAGE",
       "cosign": {
-        "certificate_identity_regex": "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
+        "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
         "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
       }
     },
     "mock-mcp-server": {
       "image_env": "PROD_MOCK_MCP_SERVER_IMAGE",
       "cosign": {
-        "certificate_identity_regex": "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
+        "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
         "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
       }
     },
     "mock-guard-model": {
       "image_env": "PROD_MOCK_GUARD_MODEL_IMAGE",
       "cosign": {
-        "certificate_identity_regex": "^https://github.com/RamXX/agentic_reference_architecture/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
+        "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
         "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
       }
     }

@@ -20,8 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/mcpclient"
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/mcpclient"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
 	"github.com/redis/go-redis/v9"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"go.opentelemetry.io/otel"

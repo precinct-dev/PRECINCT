@@ -35,13 +35,13 @@ Story: RFA-9fv.3
 
 | Workload | SPIFFE ID | Selectors |
 |----------|-----------|-----------|
-| SPIRE Agent (node) | `spiffe://agentic-ref-arch.poc/agent/k8s-psat` | `k8s_psat:cluster:agentic-ref-arch-poc` |
-| PRECINCT Gateway | `spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway` | `k8s:ns:gateway`, `k8s:sa:mcp-security-gateway` |
-| MCP Tool Servers | `spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool` | `k8s:ns:tools`, `k8s:sa:mcp-tool` |
-| SPIKE Nexus | `spiffe://agentic-ref-arch.poc/ns/spike-system/sa/spike-nexus` | `k8s:ns:spike-system`, `k8s:sa:spike-nexus` |
-| OpenSearch | `spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch` | `k8s:ns:observability`, `k8s:sa:opensearch` |
-| OpenSearch Dashboards | `spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-dashboards` | `k8s:ns:observability`, `k8s:sa:opensearch-dashboards` |
-| OpenSearch Audit Forwarder | `spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-audit-forwarder` | `k8s:ns:observability`, `k8s:sa:opensearch-audit-forwarder` |
+| SPIRE Agent (node) | `spiffe://precinct.poc/agent/k8s-psat` | `k8s_psat:cluster:precinct-poc` |
+| PRECINCT Gateway | `spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway` | `k8s:ns:gateway`, `k8s:sa:mcp-security-gateway` |
+| MCP Tool Servers | `spiffe://precinct.poc/ns/tools/sa/mcp-tool` | `k8s:ns:tools`, `k8s:sa:mcp-tool` |
+| SPIKE Nexus | `spiffe://precinct.poc/ns/spike-system/sa/spike-nexus` | `k8s:ns:spike-system`, `k8s:sa:spike-nexus` |
+| OpenSearch | `spiffe://precinct.poc/ns/observability/sa/opensearch` | `k8s:ns:observability`, `k8s:sa:opensearch` |
+| OpenSearch Dashboards | `spiffe://precinct.poc/ns/observability/sa/opensearch-dashboards` | `k8s:ns:observability`, `k8s:sa:opensearch-dashboards` |
+| OpenSearch Audit Forwarder | `spiffe://precinct.poc/ns/observability/sa/opensearch-audit-forwarder` | `k8s:ns:observability`, `k8s:sa:opensearch-audit-forwarder` |
 
 ## Deployment
 
@@ -115,7 +115,7 @@ make undeploy
 |---------------|-----|
 | `join_token` NodeAttestor | `k8s_psat` NodeAttestor |
 | `docker` WorkloadAttestor | `k8s` WorkloadAttestor |
-| `poc.local` trust domain | `agentic-ref-arch.poc` trust domain |
+| `poc.local` trust domain | `precinct.poc` trust domain |
 | Volume-shared sockets | hostPath-shared sockets |
 | `insecure_bootstrap = true` | Trust bundle via ConfigMap |
 

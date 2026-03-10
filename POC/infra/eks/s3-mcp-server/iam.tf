@@ -42,7 +42,7 @@ terraform {
 variable "cluster_name" {
   description = "Name of the EKS cluster"
   type        = string
-  default     = "agentic-ref-arch-poc"
+  default     = "precinct-poc"
 }
 
 variable "region" {
@@ -124,7 +124,7 @@ resource "aws_iam_role" "s3_mcp_tool" {
   })
 
   tags = {
-    Project     = "agentic-ref-arch"
+    Project     = "precinct"
     Environment = var.environment
     ManagedBy   = "opentofu"
     Story       = "RFA-9fv.5"

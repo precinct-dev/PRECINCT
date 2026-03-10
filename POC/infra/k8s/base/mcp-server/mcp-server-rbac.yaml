@@ -6,7 +6,7 @@
 # Used for SPIFFE identity via the SPIRE Agent k8s workload attestor
 # (matches namespace "tools" + service account "mcp-tool" to issue the SVID).
 #
-# SPIFFE ID: spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool
+# SPIFFE ID: spiffe://precinct.poc/ns/tools/sa/mcp-tool
 #
 # All tool servers in this namespace share the same ServiceAccount and SPIFFE
 # ID. For production, consider per-tool ServiceAccounts for finer-grained

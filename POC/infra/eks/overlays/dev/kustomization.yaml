@@ -24,7 +24,7 @@ resources:
 
 images:
   - name: mcp-security-gateway
-    newName: ghcr.io/OWNER/agentic-ref-arch/mcp-security-gateway
+    newName: ghcr.io/OWNER/precinct/mcp-security-gateway
     newTag: dev  # mcp-security-gateway
   - name: python  # placeholder MCP server image
     newName: python

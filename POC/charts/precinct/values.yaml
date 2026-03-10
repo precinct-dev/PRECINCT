@@ -13,10 +13,10 @@ global:
   environment: local
 
   # SPIFFE trust domain for all workload identities
-  trustDomain: agentic-ref-arch.poc
+  trustDomain: precinct.poc
 
   # Container registry prefix (empty = use image names as-is)
-  # Example: ghcr.io/ramxx/agentic-ref-arch
+  # Example: ghcr.io/precinct-dev/precinct
   imageRegistry: ""
 
 # -- Gateway (mcp-security-gateway) configuration

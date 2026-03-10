@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway"
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
-	"github.com/RamXX/agentic_reference_architecture/POC/ports/openclaw"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/ports/openclaw"
 )
 
 // mockWebhookGatewayServices implements gateway.PortGatewayServices for webhook unit tests.

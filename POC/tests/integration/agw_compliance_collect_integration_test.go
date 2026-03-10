@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/agw/compliance"
+	"github.com/precinct-dev/PRECINCT/POC/internal/agw/compliance"
 )
 
 func TestAgwComplianceCollect_SOC2EvidencePackage(t *testing.T) {

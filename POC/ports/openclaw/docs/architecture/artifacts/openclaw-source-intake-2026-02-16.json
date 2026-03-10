@@ -5,7 +5,7 @@
   "upstream_branch": "main",
   "upstream_commit": "5d40d47501c19465761f503ebb12667b83eea84f",
   "upstream_commit_time_utc": "2026-02-16T18:09:49Z",
-  "wrapper_root": "/Users/ramirosalas/workspace/agentic_reference_architecture/POC",
+  "wrapper_root": "/Users/ramirosalas/workspace/PRECINCT/POC",
   "control_surfaces": [
     {
       "id": "http.responses",

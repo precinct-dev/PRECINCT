@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/testutil"
+	"github.com/precinct-dev/PRECINCT/POC/internal/testutil"
 )
 
 func mustWriteTestFile(t *testing.T, path, content string) {

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/gateway/middleware"
+	"github.com/precinct-dev/PRECINCT/POC/internal/gateway/middleware"
 )
 
 func postOpenAICompat(t *testing.T, handler http.Handler, headers map[string]string, payload map[string]any) *httptest.ResponseRecorder {

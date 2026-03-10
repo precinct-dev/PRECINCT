@@ -4,7 +4,7 @@
 
 # Container image config
 REGISTRY ?= ghcr.io
-IMAGE_PREFIX ?= $(REGISTRY)/$(shell git config --get remote.origin.url 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|' | tr '[:upper:]' '[:lower:]')/agentic-ref-arch
+IMAGE_PREFIX ?= $(REGISTRY)/$(shell git config --get remote.origin.url 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|' | tr '[:upper:]' '[:lower:]')/precinct
 GATEWAY_IMAGE ?= $(IMAGE_PREFIX)/mcp-security-gateway
 S3_MCP_IMAGE ?= $(IMAGE_PREFIX)/s3-mcp-server
 IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
@@ -943,57 +943,57 @@ k8s-register-spire:
 	echo "  Registering gateway workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway \
+		-spiffeID spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway \
 		-selector k8s:ns:gateway -selector k8s:sa:mcp-security-gateway \
 		-dns mcp-security-gateway \
 		-dns mcp-security-gateway.gateway.svc.cluster.local 2>/dev/null || true; \
 	echo "  Registering mcp-tool workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool \
+		-spiffeID spiffe://precinct.poc/ns/tools/sa/mcp-tool \
 		-selector k8s:ns:tools -selector k8s:sa:mcp-tool 2>/dev/null || true; \
 	echo "  Registering spike-nexus workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://agentic-ref-arch.poc/spike/nexus \
+		-spiffeID spiffe://precinct.poc/spike/nexus \
 		-selector k8s:ns:spike-system -selector k8s:sa:spike-nexus \
 		-dns spike-nexus \
 		-dns spike-nexus.spike-system.svc.cluster.local 2>/dev/null || true; \
 	echo "  Registering spike-keeper workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://agentic-ref-arch.poc/spike/keeper/1 \
+		-spiffeID spiffe://precinct.poc/spike/keeper/1 \
 		-selector k8s:ns:spike-system -selector k8s:sa:spike-keeper \
 		-dns spike-keeper-1 \
 		-dns spike-keeper-1.spike-system.svc.cluster.local 2>/dev/null || true; \
 	echo "  Registering spike-bootstrap workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://agentic-ref-arch.poc/spike/bootstrap \
+		-spiffeID spiffe://precinct.poc/spike/bootstrap \
 		-selector k8s:ns:spike-system -selector k8s:sa:spike-bootstrap 2>/dev/null || true; \
 	echo "  Registering spike-seeder workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://agentic-ref-arch.poc/spike/pilot/role/superuser/seeder \
+		-spiffeID spiffe://precinct.poc/spike/pilot/role/superuser/seeder \
 		-selector k8s:ns:spike-system -selector k8s:sa:spike-seeder 2>/dev/null || true; \
 	echo "  Registering opensearch workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch \
+		-spiffeID spiffe://precinct.poc/ns/observability/sa/opensearch \
 		-selector k8s:ns:observability -selector k8s:sa:opensearch \
 		-dns opensearch \
 		-dns opensearch.observability.svc.cluster.local 2>/dev/null || true; \
 	echo "  Registering opensearch-dashboards workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-dashboards \
+		-spiffeID spiffe://precinct.poc/ns/observability/sa/opensearch-dashboards \
 		-selector k8s:ns:observability -selector k8s:sa:opensearch-dashboards \
 		-dns opensearch-dashboards \
 		-dns opensearch-dashboards.observability.svc.cluster.local 2>/dev/null || true; \
 	echo "  Registering opensearch-audit-forwarder workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-audit-forwarder \
+		-spiffeID spiffe://precinct.poc/ns/observability/sa/opensearch-audit-forwarder \
 		-selector k8s:ns:observability -selector k8s:sa:opensearch-audit-forwarder 2>/dev/null || true; \
 	echo "  Current entries:"; \
 	$(SPIRE_EXEC) entry show -socketPath $(SPIRE_SOCK)

@@ -167,6 +167,27 @@ destination_allowed("messaging_status", params) if {
 }
 
 destination_allowed(tool, params) if {
+    # Port-declared route authorization: port adapters register their routes
+    # via data.port_route_authorizations (injected at runtime by the gateway).
+    # This keeps the core policy generic -- no port-specific paths here.
+    # All other OPA checks (SPIFFE grants, session risk, principal level) still apply.
+    some route in data.port_route_authorizations
+    port_route_matches(route)
+}
+
+# A port route matches when the request path and method align with the declaration.
+port_route_matches(route) if {
+    route.path == input.path
+    input.method in route.methods
+}
+
+port_route_matches(route) if {
+    not route.path
+    startswith(input.path, route.path_prefix)
+    input.method in route.methods
+}
+
+destination_allowed(tool, params) if {
     # Other tools - default deny external egress unless explicitly allowed
     not tool in ["tavily_search", "read", "grep", "bash", "messaging_send", "messaging_status"]
     # Would check against tool registry allowed_destinations

@@ -8,13 +8,13 @@
 
 global:
   environment: dev
-  trustDomain: agentic-ref-arch.poc
-  imageRegistry: ghcr.io/OWNER/agentic-ref-arch
+  trustDomain: precinct.poc
+  imageRegistry: ghcr.io/OWNER/precinct
 
 gateway:
   replicas: 1
   image:
-    repository: ghcr.io/OWNER/agentic-ref-arch/mcp-security-gateway
+    repository: ghcr.io/OWNER/precinct/mcp-security-gateway
     tag: dev
   resources:
     requests:

@@ -96,12 +96,12 @@ For multi-agent deployments, extend this scheme to distinguish orchestrators fro
 
 ```
 # Orchestrator agent
-spiffe://agentic-ref-arch.poc/ns/agents/sa/orchestrator-planner
+spiffe://precinct.poc/ns/agents/sa/orchestrator-planner
 
 # Worker agents (one per specialization)
-spiffe://agentic-ref-arch.poc/ns/agents/sa/worker-code-review
-spiffe://agentic-ref-arch.poc/ns/agents/sa/worker-data-analysis
-spiffe://agentic-ref-arch.poc/ns/agents/sa/worker-email-sender
+spiffe://precinct.poc/ns/agents/sa/worker-code-review
+spiffe://precinct.poc/ns/agents/sa/worker-data-analysis
+spiffe://precinct.poc/ns/agents/sa/worker-email-sender
 ```
 
 Each worker runs as a separate Kubernetes pod with its own service account. SPIRE issues
@@ -241,7 +241,7 @@ When the Proxy pattern is unavoidable, the orchestrator should declare the origi
 worker's identity using an advisory header:
 
 ```
-X-On-Behalf-Of: spiffe://agentic-ref-arch.poc/ns/agents/sa/worker-code-review
+X-On-Behalf-Of: spiffe://precinct.poc/ns/agents/sa/worker-code-review
 ```
 
 **This header is NOT authenticated**. The gateway does not validate it against SPIRE. It
@@ -253,8 +253,8 @@ The audit event would record:
 
 ```json
 {
-  "spiffe_id": "spiffe://agentic-ref-arch.poc/ns/agents/sa/orchestrator-planner",
-  "on_behalf_of": "spiffe://agentic-ref-arch.poc/ns/agents/sa/worker-code-review",
+  "spiffe_id": "spiffe://precinct.poc/ns/agents/sa/orchestrator-planner",
+  "on_behalf_of": "spiffe://precinct.poc/ns/agents/sa/worker-code-review",
   "action": "mcp_request",
   "tool": "code_review_tool",
   "trace_id": "abc123..."

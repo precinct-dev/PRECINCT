@@ -45,11 +45,11 @@ data:
     echo "=== Generating join token for SPIRE Agent ==="
     TOKEN=$(/opt/spire/bin/spire-server token generate \
       -socketPath "$SOCK" \
-      -spiffeID spiffe://agentic-ref-arch.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/agent/local \
       -ttl 86400 | grep -oP 'Token: \K.*' || \
       /opt/spire/bin/spire-server token generate \
       -socketPath "$SOCK" \
-      -spiffeID spiffe://agentic-ref-arch.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/agent/local \
       -ttl 86400 | awk '{print $NF}')
     echo "Join token generated."
 
@@ -60,8 +60,8 @@ data:
     echo "  Workload: mcp-security-gateway..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
-      -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway \
       -selector k8s:ns:gateway \
       -selector k8s:sa:mcp-security-gateway \
       -dns mcp-security-gateway \
@@ -72,8 +72,8 @@ data:
     echo "  Workload: mcp-tool (tools namespace)..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
-      -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/ns/tools/sa/mcp-tool \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/ns/tools/sa/mcp-tool \
       -selector k8s:ns:tools \
       -selector k8s:sa:mcp-tool \
     || echo "  (entry may already exist, continuing)"
@@ -82,8 +82,8 @@ data:
     echo "  Workload: spike-nexus..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
-      -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/spike/nexus \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/spike/nexus \
       -selector k8s:ns:spike-system \
       -selector k8s:sa:spike-nexus \
       -dns spike-nexus \
@@ -94,8 +94,8 @@ data:
     echo "  Workload: spike-keeper..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
-      -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/spike/keeper/1 \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/spike/keeper/1 \
       -selector k8s:ns:spike-system \
       -selector k8s:sa:spike-keeper \
       -dns spike-keeper-1 \
@@ -106,8 +106,8 @@ data:
     echo "  Workload: spike-bootstrap..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
-      -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/spike/bootstrap \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/spike/bootstrap \
       -selector k8s:ns:spike-system \
       -selector k8s:sa:spike-bootstrap \
     || echo "  (entry may already exist, continuing)"
@@ -116,8 +116,8 @@ data:
     echo "  Workload: spike-seeder..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
-      -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/spike/pilot/role/superuser/seeder \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/spike/pilot/role/superuser/seeder \
       -selector k8s:ns:spike-system \
       -selector k8s:sa:spike-seeder \
     || echo "  (entry may already exist, continuing)"
@@ -126,8 +126,8 @@ data:
     echo "  Workload: opensearch..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
-      -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/ns/observability/sa/opensearch \
       -selector k8s:ns:observability \
       -selector k8s:sa:opensearch \
       -dns opensearch \
@@ -138,8 +138,8 @@ data:
     echo "  Workload: opensearch-dashboards..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
-      -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-dashboards \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/ns/observability/sa/opensearch-dashboards \
       -selector k8s:ns:observability \
       -selector k8s:sa:opensearch-dashboards \
       -dns opensearch-dashboards \
@@ -150,8 +150,8 @@ data:
     echo "  Workload: opensearch-audit-forwarder..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
-      -parentID spiffe://agentic-ref-arch.poc/agent/local \
-      -spiffeID spiffe://agentic-ref-arch.poc/ns/observability/sa/opensearch-audit-forwarder \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/ns/observability/sa/opensearch-audit-forwarder \
       -selector k8s:ns:observability \
       -selector k8s:sa:opensearch-audit-forwarder \
     || echo "  (entry may already exist, continuing)"

@@ -74,7 +74,7 @@ spec:
               TOKEN_OUTPUT=$(kubectl -n spire-system exec spire-server-0 -- \
                 /opt/spire/bin/spire-server token generate \
                 -socketPath /tmp/spire-server/private/api.sock \
-                -spiffeID spiffe://agentic-ref-arch.poc/agent/local \
+                -spiffeID spiffe://precinct.poc/agent/local \
                 -ttl 86400 2>&1)
               echo "Token output: ${TOKEN_OUTPUT}"
 

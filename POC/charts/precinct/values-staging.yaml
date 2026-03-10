@@ -8,13 +8,13 @@
 
 global:
   environment: staging
-  trustDomain: agentic-ref-arch.poc
-  imageRegistry: ghcr.io/ramxx/agentic-ref-arch
+  trustDomain: precinct.poc
+  imageRegistry: ghcr.io/precinct-dev/precinct
 
 gateway:
   replicas: 2
   image:
-    repository: ghcr.io/ramxx/agentic-ref-arch/mcp-security-gateway
+    repository: ghcr.io/precinct-dev/precinct/mcp-security-gateway
     tag: staging
   resources:
     requests:

@@ -15,7 +15,7 @@
 #   - UPSTREAM_URL points to mcp-server service in the tools namespace
 #   - Resource limits appropriate for POC workloads
 #
-# SPIFFE ID: spiffe://agentic-ref-arch.poc/ns/gateway/sa/mcp-security-gateway
+# SPIFFE ID: spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway
 # ------------------------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment

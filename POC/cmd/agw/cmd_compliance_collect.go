@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/agw/compliance"
+	"github.com/precinct-dev/PRECINCT/POC/internal/agw/compliance"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

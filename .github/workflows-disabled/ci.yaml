@@ -22,7 +22,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_PREFIX: ${{ github.repository_owner }}/agentic-ref-arch
+  IMAGE_PREFIX: ${{ github.repository_owner }}/precinct
   GO_VERSION: "1.24"
 
 permissions:

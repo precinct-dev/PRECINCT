@@ -5,7 +5,7 @@ import (
 	"os"
 	"sort"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/internal/manifestpolicy"
+	"github.com/precinct-dev/PRECINCT/POC/internal/manifestpolicy"
 )
 
 func main() {

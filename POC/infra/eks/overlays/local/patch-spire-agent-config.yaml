@@ -19,7 +19,7 @@ data:
         server_address = "spire-server-api"
         server_port = "8081"
         socket_path = "/run/spire/sockets/agent.sock"
-        trust_domain = "agentic-ref-arch.poc"
+        trust_domain = "precinct.poc"
 
         # Secure bootstrap: trust the server-published bundle (populated by
         # spire-server's k8sbundle notifier into ConfigMap/spire-bundle).

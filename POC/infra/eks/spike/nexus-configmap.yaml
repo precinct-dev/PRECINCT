@@ -32,11 +32,11 @@ data:
   SPIKE_NEXUS_SHAMIR_SHARES: "3"
   SPIKE_SYSTEM_LOG_LEVEL: "INFO"
   # Trust roots for all SPIKE components (must match SPIRE trust domain)
-  SPIKE_TRUST_ROOT: "agentic-ref-arch.poc"
-  SPIKE_TRUST_ROOT_NEXUS: "agentic-ref-arch.poc"
-  SPIKE_TRUST_ROOT_PILOT: "agentic-ref-arch.poc"
-  SPIKE_TRUST_ROOT_BOOTSTRAP: "agentic-ref-arch.poc"
-  SPIKE_TRUST_ROOT_KEEPER: "agentic-ref-arch.poc"
-  SPIKE_TRUST_ROOT_LITE_WORKLOAD: "agentic-ref-arch.poc"
+  SPIKE_TRUST_ROOT: "precinct.poc"
+  SPIKE_TRUST_ROOT_NEXUS: "precinct.poc"
+  SPIKE_TRUST_ROOT_PILOT: "precinct.poc"
+  SPIKE_TRUST_ROOT_BOOTSTRAP: "precinct.poc"
+  SPIKE_TRUST_ROOT_KEEPER: "precinct.poc"
+  SPIKE_TRUST_ROOT_LITE_WORKLOAD: "precinct.poc"
   # SPIRE Workload API socket path (must match the volume mount)
   SPIFFE_ENDPOINT_SOCKET: "unix:///run/spire/sockets/agent.sock"

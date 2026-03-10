@@ -6,7 +6,7 @@
 #   - k8s_psat NodeAttestor (replaces join_token for EKS)
 #   - k8s WorkloadAttestor (replaces docker attestor)
 #   - Workload API socket at /run/spire/sockets/agent.sock
-#   - Trust domain: agentic-ref-arch.poc
+#   - Trust domain: precinct.poc
 # ------------------------------------------------------------------------------
 apiVersion: v1
 kind: ConfigMap
@@ -24,7 +24,7 @@ data:
         server_address = "spire-server-api"
         server_port = "8081"
         socket_path = "/run/spire/sockets/agent.sock"
-        trust_domain = "agentic-ref-arch.poc"
+        trust_domain = "precinct.poc"
 
         # Use trust bundle from ConfigMap managed by k8sbundle notifier
         trust_bundle_path = "/run/spire/bundle/bundle.crt"
@@ -35,7 +35,7 @@ data:
         # Matches the k8s_psat configuration on the server side.
         NodeAttestor "k8s_psat" {
             plugin_data {
-                cluster = "agentic-ref-arch-poc"
+                cluster = "precinct-poc"
             }
         }
 

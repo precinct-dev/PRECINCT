@@ -3,7 +3,7 @@ package integration
 import (
 	"testing"
 
-	"github.com/RamXX/agentic_reference_architecture/POC/tests/conformance/harness"
+	"github.com/precinct-dev/PRECINCT/POC/tests/conformance/harness"
 )
 
 func TestConformanceHarness_FixtureCoverageAndOutcomes(t *testing.T) {

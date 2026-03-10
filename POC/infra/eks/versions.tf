@@ -25,7 +25,7 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Project     = "agentic-ref-arch"
+      Project     = "precinct"
       Environment = var.environment
       ManagedBy   = "opentofu"
     }
