@@ -559,6 +559,14 @@ export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://agentic-ref-arch.poc/ns/data/sa/
 docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.yml up -d
 ```
 
+The strict override replaces the gateway's inherited dev/demo runtime state from
+`docker-compose.yml`. A rendered strict config should expose only `9443:9443`
+for `mcp-security-gateway` and should not include
+`ALLOW_INSECURE_DEV_MODE`, `ALLOW_NON_LOOPBACK_DEV_BIND`,
+`DEMO_RUGPULL_ADMIN_ENABLED`, `DEV_LISTEN_HOST=0.0.0.0`,
+`GUARD_MODEL_ENDPOINT=http://mock-guard-model:8080/openai/v1`, or
+`MODEL_PROVIDER_ENDPOINT_GROQ=http://mock-guard-model:8080/openai/v1/chat/completions`.
+
 Strict compose mode expects these files in `./config`:
 
 - `attestation-ed25519.pub`
