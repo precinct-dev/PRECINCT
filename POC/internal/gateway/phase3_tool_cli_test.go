@@ -75,6 +75,49 @@ func TestCLIProtocolDisallowedCommand(t *testing.T) {
 	}
 }
 
+func TestCLIProtocolDeniedNestedShellInterpreterCommand(t *testing.T) {
+	engine := &toolPlanePolicyEngine{
+		rules: map[string]toolCapabilityRule{
+			"tool.cli.interpreter": {
+				CapabilityID:    "tool.cli.interpreter",
+				Protocol:        "cli",
+				Adapters:        map[string]struct{}{"cli": {}},
+				AllowTools:      map[string]struct{}{"bash": {}},
+				AllowedCommands: map[string]struct{}{"bash": {}, "sh": {}, "ls": {}},
+				MaxArgs:         6,
+				DeniedArgTokens: []string{";", "&&", "||", "|", "$(", "`", ">", "<"},
+				Actions: []toolActionRule{
+					{
+						Action:       "tool.execute",
+						Resources:    map[string]struct{}{"tool/exec": {}},
+						AllowedTools: map[string]struct{}{"bash": {}},
+					},
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		name    string
+		command string
+		args    []string
+	}{
+		{name: "bash -c", command: "bash", args: []string{"-c", "touch /tmp/pwned"}},
+		{name: "sh -c", command: "sh", args: []string{"-c", "touch /tmp/pwned"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := cliToolPlaneRequest("tool.cli.interpreter", "bash", tt.command, tt.args)
+			res := engine.evaluate(req)
+			if res.Reason != ReasonToolCLICommandDenied || res.HTTPStatus != http.StatusForbidden {
+				t.Fatalf("expected TOOL_CLI_COMMAND_DENIED/403 for %s, got reason=%s status=%d metadata=%v",
+					tt.name, res.Reason, res.HTTPStatus, res.Metadata)
+			}
+		})
+	}
+}
+
 func TestCLIProtocolArgsExceedMaxArgs(t *testing.T) {
 	engine := &toolPlanePolicyEngine{
 		rules: map[string]toolCapabilityRule{
@@ -331,6 +374,25 @@ func TestHasDeniedCLIArgTokenDetectsInjection(t *testing.T) {
 	}
 }
 
+func TestIsDeniedCLIInterpreterCommand(t *testing.T) {
+	tests := []struct {
+		command string
+		want    bool
+	}{
+		{command: "bash", want: true},
+		{command: "sh", want: true},
+		{command: "zsh", want: true},
+		{command: "ls", want: false},
+		{command: "grep", want: false},
+	}
+
+	for _, tt := range tests {
+		if got := isDeniedCLIInterpreterCommand(tt.command); got != tt.want {
+			t.Fatalf("isDeniedCLIInterpreterCommand(%q) = %v, want %v", tt.command, got, tt.want)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Unit tests: parseStringSlice helper
 // ---------------------------------------------------------------------------
@@ -562,6 +624,43 @@ func TestCLIIntegrationDeniedArgTokenHTTP(t *testing.T) {
 	}
 	if got, _ := body["reason_code"].(string); got != string(ReasonToolCLIArgsDenied) {
 		t.Fatalf("expected reason_code=%s, got %v", ReasonToolCLIArgsDenied, body["reason_code"])
+	}
+}
+
+func TestCLIIntegrationDeniedNestedShellInterpreterHTTP(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
+
+	gw.toolPolicy = &toolPlanePolicyEngine{
+		rules: map[string]toolCapabilityRule{
+			"tool.cli.integration": {
+				CapabilityID:    "tool.cli.integration",
+				Protocol:        "cli",
+				Adapters:        map[string]struct{}{"cli": {}},
+				AllowTools:      map[string]struct{}{"bash": {}},
+				AllowedCommands: map[string]struct{}{"bash": {}, "sh": {}, "ls": {}},
+				MaxArgs:         10,
+				DeniedArgTokens: []string{";", "&&", "||", "|", "$(", "`", ">", "<"},
+				Actions: []toolActionRule{
+					{
+						Action:       "tool.execute",
+						Resources:    map[string]struct{}{"tool/exec": {}},
+						AllowedTools: map[string]struct{}{"bash": {}},
+					},
+				},
+			},
+		},
+	}
+
+	h := gw.Handler()
+	payload := cliHTTPPayload("tool.cli.integration", "bash", "bash", []any{"-c", "touch /tmp/pwned"})
+
+	code, body := postGatewayJSON(t, h, http.MethodPost, "/v1/tool/execute", payload)
+	if code != http.StatusForbidden {
+		t.Fatalf("expected 403 for nested shell interpreter command, got %d body=%v", code, body)
+	}
+	if got, _ := body["reason_code"].(string); got != string(ReasonToolCLICommandDenied) {
+		t.Fatalf("expected reason_code=%s, got %v", ReasonToolCLICommandDenied, body["reason_code"])
 	}
 }
 

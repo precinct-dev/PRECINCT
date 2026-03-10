@@ -730,6 +730,11 @@ computed over its description and input schema, used for poisoning detection.
 | `s3_list_objects` | List objects in an S3 bucket | low | No | `tools.s3.list` |
 | `s3_get_object` | Read an object from an S3 bucket | low | No | `tools.s3.read` |
 
+For the CLI-mediated `bash` tool, the gateway permits only an allowlisted payload
+command set and rejects nested shell interpreter invocations such as `bash -c`
+and `sh -c`, even when a custom CLI capability would otherwise allow those
+command names.
+
 **Hash verification:** On each request, the gateway recomputes the tool's hash and
 compares it against the registered value. A mismatch triggers `registry_hash_mismatch`
 (403), indicating potential tool definition tampering.
