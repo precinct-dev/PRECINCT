@@ -3,7 +3,7 @@
   "pack_id": "openclaw",
   "pack_version": "2026-02-21",
   "upstream": {
-    "repo": "/Users/ramirosalas/workspace/openclaw",
+    "repo": "<upstream-openclaw-clone>",
     "branch": "main",
     "commit": "302fa03f4164094d6938ea3243889963230576d4"
   },
