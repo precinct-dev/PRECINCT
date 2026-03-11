@@ -129,7 +129,6 @@ All documentation lives in [`docs/`](docs/). The [documentation index](docs/READ
 |----------|-------------|
 | [Securing Agentic AI](docs/securing-agentic-ai-reference-architecture.md) | Narrative overview -- the problem, the approach, and why existing frameworks fall short |
 | [Reference Architecture](docs/architecture/reference-architecture.md) | The full v2.5 specification: identity, authorization, secrets, gateway, observability |
-| [Agentic System Study](docs/architecture/agentic-system-study.md) | Comparative analysis of existing AI agent platforms and why a new design was needed |
 | [Multi-Agent Orchestration Patterns](docs/patterns/multi-agent-orchestration.md) | Security patterns for orchestrator-to-worker delegation through the gateway |
 
 ### "I want to deploy and run it"
