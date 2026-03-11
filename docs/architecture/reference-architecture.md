@@ -54,7 +54,7 @@ Phase 3 extends this architecture into a full multi-plane control system:
 
 5. **MCP-UI Extension Governance**: Treats `ui://` resources as executable payloads with opt-in capability gating, content scanning, CSP/permissions mediation, and app-driven tool call controls--preventing active content delivery from bypassing existing gateway protections.
 
-6. **Communication Channel Mediation**: Port adapters for Discord and Email extend the 13-layer middleware chain to autonomous agent messaging, blocking unmediated communication at the SPIFFE layer.
+6. **Communication Channel Mediation**: Port adapters for Discord, Email, and OpenClaw extend the 13-layer middleware chain to autonomous agent messaging, blocking unmediated communication at the SPIFFE layer.
 
 7. **Escalation Detection and Irreversibility Gating**: Cumulative destructiveness tracking prevents gradual escalation attacks where individual actions pass thresholds but the pattern is dangerous.
 
@@ -465,7 +465,7 @@ func (g *Gateway) createServer() *http.Server {
 
 ### 5.1 SPIKE Overview
 
-SPIKE (Secure Production Identity for Key Encryption) is a lightweight secrets store that uses SPIFFE as its identity control plane. Unlike traditional secrets managers that require separate authentication mechanisms, SPIKE leverages SPIFFE identities natively—if a workload has a valid SVID, it can authenticate to SPIKE.
+SPIKE is a lightweight secrets store that uses SPIFFE as its identity control plane. Unlike traditional secrets managers that require separate authentication mechanisms, SPIKE leverages SPIFFE identities natively—if a workload has a valid SVID, it can authenticate to SPIKE.
 
 This tight integration is particularly valuable for ephemeral agents: there's no separate credential bootstrap, no API keys to manage, and no secrets-to-access-secrets problem.
 
@@ -868,13 +868,13 @@ Note: MCP `tools/call` remains the canonical tool invocation interface. Phase 3 
 │  ┌─────────────────────────────────────────────────────────────────────────────────┐   │
 │  │                         DEEP PATH (async, 200-550ms)                            │   │
 │  │                                                                                 │   │
-│  │   ┌────────────────────┐        ┌────────────────────┐                          │   │
-│  │   │  Prompt Guard 2    │        │  Llama Guard 4     │                          │   │
-│  │   │  86M (local/Groq)  │        │  12B (Groq)        │                          │   │
-│  │   │  • Injection       │        │  • Content         │                          │   │
-│  │   │  • Jailbreak       │        │    classification  │                          │   │
-│  │   └─────────┬──────────┘        └─────────┬──────────┘                          │   │
-│  │             └──────────────┬──────────────┘                                     │   │
+│  │   ┌──────────────────────────────────────────────┐                              │   │
+│  │   │  Prompt Guard 2 86M (Groq API)              │                              │   │
+│  │   │  • Injection detection                      │                              │   │
+│  │   │  • Jailbreak detection                      │                              │   │
+│  │   │  • 512-token chunked analysis               │                              │   │
+│  │   └───────────────────────┬──────────────────────┘                              │   │
+│  │                           │                                                     │   │
 │  │                            ▼                                                    │   │
 │  │                  ┌──────────────────┐                                           │   │
 │  │                  │  Alert / Block   │                                           │   │
@@ -1120,71 +1120,29 @@ Required RuleOps audit events:
 
 ### 7.6 Tiered LLM Scanning
 
-**Fast path** handles 100% of requests with low latency. **Deep path** handles flagged/sampled requests asynchronously:
+**Fast path** handles 100% of requests with low latency. **Deep path** handles requests flagged by DLP as `potential_injection` via a synchronous Groq API call before the response is sent:
 
 ```go
+// DeepScanner handles deep scanning using Groq Prompt Guard 2.
+// When DLP flags a request as potential_injection, the deep scanner calls the
+// Groq API synchronously to classify the payload and block confirmed injections.
 type DeepScanner struct {
-    promptGuard *PromptGuardClient  // Local ONNX or Groq
-    llamaGuard  *LlamaGuardClient   // Groq
-    resultChan  chan DeepScanResult
-}
-
-// Async dispatch - doesn't block the fast path
-func (d *DeepScanner) DispatchAsync(ctx context.Context, req *ScanRequest) {
-    go func() {
-        result := d.scan(ctx, req)
-        d.resultChan <- result
-    }()
-}
-
-func (d *DeepScanner) scan(ctx context.Context, req *ScanRequest) DeepScanResult {
-    result := DeepScanResult{RequestID: req.ID, Timestamp: time.Now()}
-
-    // Prompt Guard 2 86M - injection detection (~10-20ms local, ~50-150ms Groq)
-    pgResult, _ := d.promptGuard.Classify(ctx, req.Content)
-    result.InjectionScore = pgResult.InjectionProbability
-    result.JailbreakScore = pgResult.JailbreakProbability
-
-    // Llama Guard 4 12B - only if Prompt Guard flags something
-    if result.InjectionScore > 0.3 || result.JailbreakScore > 0.3 {
-        lgResult, _ := d.llamaGuard.Classify(ctx, req.Content)
-        result.ContentCategories = lgResult.ViolatedCategories
-    }
-
-    return result
+    groqAPIKey         string
+    groqBaseURL        string
+    modelName          string
+    timeout            time.Duration
+    fallbackMode       DeepScanFallbackMode
+    resultChan         chan DeepScanResult
+    httpClient         *http.Client
+    auditor            *Auditor
+    injectionThreshold float64
+    jailbreakThreshold float64
 }
 ```
 
-**Local Prompt Guard Option** (eliminates Groq dependency):
+The default model is `meta-llama/llama-prompt-guard-2-86m`, served via the Groq chat completions API. For payloads exceeding the 512-token context window, the scanner splits content into overlapping chunks (64-token overlap, up to 3 concurrent API calls) and aggregates results by taking the highest score across all chunks.
 
-```go
-import ort "github.com/yalue/onnxruntime_go"
-
-type LocalPromptGuard struct {
-    session   *ort.Session
-    tokenizer *tokenizer.Tokenizer
-}
-
-func (p *LocalPromptGuard) Classify(ctx context.Context, text string) (*PromptGuardResult, error) {
-    encoding := p.tokenizer.Encode(text)
-
-    outputs, err := p.session.Run([]ort.Value{
-        ort.NewTensor(encoding.IDs),
-        ort.NewTensor(encoding.AttentionMask),
-    })
-    if err != nil {
-        return nil, err
-    }
-
-    logits := outputs[0].Data().([]float32)
-    probs := softmax(logits)
-
-    return &PromptGuardResult{
-        InjectionProbability: probs[1],
-        JailbreakProbability: probs[2],
-    }, nil
-}
-```
+> Note: Local ONNX inference is a planned future option. The current implementation uses the Groq API exclusively.
 
 ### 7.7 Step-Up Gating for High-Risk Actions (Synchronous)
 
@@ -1205,46 +1163,14 @@ Async “deep scan” is valuable for detection and telemetry, but it cannot rel
 4. Human approval (only for the most dangerous actions)
 5. Optional: gateway-minted capability tokens for one-time execution
 
-Example middleware:
+The actual implementation is `middleware.StepUpGating`, a standard `http.Handler` constructor (not using the alice library). It accepts the next handler, a `GroqGuardClient` for the Groq Prompt Guard 2 86M model, a `DestinationAllowlist`, a `RiskConfig` with per-dimension thresholds, a `ToolRegistry`, and an `Auditor`. The function computes a four-dimensional risk score (Impact, Reversibility, Exposure, Novelty, each 0-3, total 0-12) for each tool call and applies the appropriate gate:
 
-```go
-func (g *Gateway) stepUpGatingMiddleware() alice.Constructor {
-    return func(next http.Handler) http.Handler {
-        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-            ctx := r.Context()
-            req := ctx.Value(mcpRequestKey{}).(*MCPRequest)
-            tool := ctx.Value(registeredToolKey{}).(*RegisteredTool)
+- **fast_path** (score 0-3): no friction, request proceeds immediately.
+- **step_up** (score 4-6): destination allowlist check, then a synchronous `guardClient.ClassifyContent` call to `meta-llama/llama-prompt-guard-2-86m` via Groq. Injection/jailbreak probabilities above the configured threshold (default 0.30) block the request with HTTP 403.
+- **approval** (score 7-9): requires a bounded `X-Step-Up-Token` capability token validated by `ApprovalCapabilityVerifier`. Absent or invalid tokens return HTTP 403.
+- **deny** (score 10-12): blocked unconditionally with HTTP 403.
 
-            if tool.RiskLevel == "high" || tool.RiskLevel == "critical" || req.ExternalDestination {
-                // Deterministic guardrails first
-                if !g.destinationsAllowed(req) {
-                    http.Error(w, "destination not allowed", http.StatusForbidden)
-                    return
-                }
-
-                // Synchronous injection/jailbreak gate (fail closed for high risk)
-                pg, err := g.promptGuard.Classify(ctx, req.CapturedBody)
-                if err != nil {
-                    http.Error(w, "guard model unavailable", http.StatusServiceUnavailable)
-                    return
-                }
-                if pg.InjectionProbability > 0.30 || pg.JailbreakProbability > 0.30 {
-                    http.Error(w, "potential prompt injection detected", http.StatusForbidden)
-                    return
-                }
-
-                // Optional: require approval/capability for critical mutations
-                if tool.RiskLevel == "critical" && !g.hasApprovalOrCapability(ctx, req) {
-                    http.Error(w, "human approval required", http.StatusForbidden)
-                    return
-                }
-            }
-
-            next.ServeHTTP(w, r)
-        })
-    }
-}
-```
+MCP protocol methods (`tools/list`, `resources/read`, `ping`, `initialize`, notifications) bypass risk scoring entirely. The guard model client calls Groq's `/chat/completions` endpoint directly; there is no local ONNX inference path in the current implementation.
 
 ### 7.8 Response Firewall and Transformation
 
@@ -1922,7 +1848,7 @@ Decision outputs:
 
 ### 7.13 Communication Channel Mediation
 
-PRECINCT extends its enforcement boundary to autonomous agent communication channels via port adapters. Two adapters address threats documented in 'Agents of Chaos' (Shapira et al., 2026, arXiv:2602.20021v1):
+PRECINCT extends its enforcement boundary to autonomous agent communication channels via port adapters. Three adapters address threats documented in 'Agents of Chaos' (Shapira et al., 2026, arXiv:2602.20021v1):
 
 **Discord Adapter** (`POC/ports/discord/`) mediates:
 - Outbound message sends: DLP scanning of content, OPA policy on recipient channels, SPIKE token for bot credentials
@@ -1933,6 +1859,11 @@ PRECINCT extends its enforcement boundary to autonomous agent communication chan
 - Outbound sends: DLP scanning of subject+body, mass-email step-up (>10 recipients), SPIKE token for SMTP credentials, recipient domain OPA enforcement
 - Inbound reads: automatic content classification (sensitive/standard) for exfiltration detection
 - List operations: session context tracking with standard classification
+
+**OpenClaw Adapter** (`POC/ports/openclaw/`) mediates WebSocket (`/openclaw/ws`) and HTTP traffic for the OpenClaw messaging platform:
+- Outbound messaging egress: DLP scanning, OPA policy enforcement, SPIKE token substitution for platform credentials
+- Inbound webhooks: connector validation, payload content-addressing, audit logging
+- WebSocket sessions: session context tracking for real-time communication channels
 
 The adapter pattern means all 13 middleware layers apply to messaging operations. Agents communicating directly without the gateway (Case Studies #4 and #11) are blocked at the SPIFFE authentication layer -- they cannot present a valid workload identity for unmediated communication.
 
@@ -2118,7 +2049,6 @@ flowchart TB
 | DLP Engine | Built-in scanner by default; provider adapters optional | ~0.5-2ms for built-in scanner |
 | DLP RuleOps Control Plane | Signed ruleset lifecycle + staged rollout + rollback | Security-critical control-plane workflow |
 | Prompt Guard 2 | Local ONNX or Groq | ~10-20ms local, ~50-150ms Groq |
-| Llama Guard 4 | Groq only | ~150-400ms |
 | Model Egress Plane | Provider catalog + trust/residency/budget policy | Mandatory mediation in production profiles |
 | Ingress Admission Plane | Connector envelope validation + replay/schema/source controls | Connector conformance required for production |
 | Context Admission Plane | Prompt safety + provenance + minimization gates | Enforces `no-scan-no-send` and related invariants |
@@ -2176,57 +2106,54 @@ flowchart TB
 |-----------|---------|-----------|
 | HTTP Server | `net/http` | Native, performant |
 | SPIFFE | `go-spiffe/v2` | Official SDK |
-| OPA | `github.com/open-policy-agent/opa/rego` | Embedded evaluation |
+| OPA | `github.com/open-policy-agent/opa/v1/rego` | Embedded evaluation |
 | DLP | Built-in scanner (`internal/gateway/middleware/dlp.go`) + optional adapters | Provider-agnostic DLP integration |
-| Prompt Guard | `github.com/yalue/onnxruntime_go` | Local inference |
-| Middleware | `github.com/justinas/alice` | Composable chain |
+| Prompt Guard | Groq API (meta-llama/llama-prompt-guard-2-86m) | Remote guard model via HTTP |
+| Middleware | `net/http` | Standard handler wrapping |
 
 ### 9.2 Complete Middleware Chain
 
 ```go
-func (g *Gateway) buildMiddlewareChain() http.Handler {
-    chain := alice.New(
-        // 1. Request size limit
-        g.sizeLimitMiddleware(g.config.MaxRequestSize),
-
-        // 2. Body capture for scanning
-        g.bodyCaptureMiddleware(),
-
-        // 3. SPIFFE authentication
-        g.spiffeAuthMiddleware(),
-
-        // 4. Audit logging (with integrity chain)
-        g.auditMiddleware(),
-
-        // 5. Tool registry verification (poisoning defense)
-        g.toolRegistryMiddleware(),
-
-        // 6. OPA policy evaluation (embedded)
-        g.opaPolicyMiddleware(),
-
-        // 7. DLP scan (built-in scanner by default, pluggable providers)
-        g.dlpScanMiddleware(),
-
-        // 8. Session context update
-        g.sessionContextMiddleware(),
-
-        // 9. Step-up gating (sync, high-risk tools only)
-        g.stepUpGatingMiddleware(),
-
-        // 10. Deep scan dispatch (async, conditional)
-        g.deepScanDispatchMiddleware(),
-
-        // 11. Rate limiting (post-auth)
-        g.rateLimitMiddleware(),
-
-        // 12. Circuit breaker
-        g.circuitBreakerMiddleware(),
-
-        // 13. Token substitution (MUST be last before proxy)
-        g.tokenSubstitutionMiddleware(),
+// Handler returns the HTTP handler with middleware chain.
+// The chain is built using standard net/http handler wrapping: each middleware.X(handler, ...)
+// call wraps the current handler. Wrappers are applied innermost-first (reverse order),
+// so lower-numbered steps execute first on the inbound request path.
+func (g *Gateway) Handler() http.Handler {
+    // 15. Proxy + response firewall (innermost -- evaluated last on request, first on response)
+    proxyWithResponseFirewall := middleware.ResponseFirewall(
+        g.proxyHandler(),
+        g.registry,
+        g.handleStore,
+        g.config.HandleTTL,
     )
 
-    return chain.Then(g.proxyHandler())
+    handler := http.Handler(proxyWithResponseFirewall)
+
+    handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor, middleware.NewToolRegistryScopeResolver(g.registry)) // 13 - LAST before proxy
+    handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                         // 12
+    handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                                 // 11
+    handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig)                                                    // 10
+    // [extension slot: post_analysis -- after DeepScan, before RateLimit]
+    handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor, g.approvalCapabilities) // 9
+    handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                                           // 8
+    // [extension slot: post_inspection -- after DLP, before Session]
+    handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy()) // 7
+    handler = middleware.OPAPolicy(handler, g.opa)                           // 6
+    // [extension slot: post_authz -- after OPA, before DLP]
+    handler = middleware.ToolRegistryVerify(handler, g.registry, g.observedToolHashes, toolHashRefresher, ...) // 5
+    handler = middleware.AuditLog(handler, g.auditor)                                               // 4
+    handler = middleware.PrincipalHeaders(handler, g.config.SPIFFETrustDomain, g.config.SPIFFEMode) // 3b
+    handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                   // 3
+    handler = middleware.BodyCapture(handler)                                                       // 2
+    handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes)                    // 1
+    handler = middleware.RequestMetrics(handler)                                                    // 0 - outermost
+    handler = middleware.RuntimeProfile(handler, g.config.SPIFFEMode, g.config.EnforcementProfile)
+
+    mux := http.NewServeMux()
+    mux.Handle("/health", http.HandlerFunc(g.healthHandler))
+    mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
+    mux.Handle("/", handler)
+    return mux
 }
 ```
 
@@ -2960,7 +2887,7 @@ This architecture is built on a simple premise: **autonomy is desirable, but ris
    - Treat inputs, tools, agents, and external context as hostile until validated.  
 4. **Failure modes must be explicit**  
    - If the system cannot safely decide, it must degrade in a predictable way (block, step‑up, or ask for approval).
-5. **Neuro‑symbolic by design**  
+5. **Hybrid policy enforcement**
    - Use symbolic policies for safety boundaries, but allow adaptive, purpose‑built safety agents to refine decisions within those boundaries.
 
 **Risk‑adaptive gating (core mechanic)**
@@ -3323,11 +3250,13 @@ Protocols like UCP introduce high-stakes actions (payments, checkout, customer d
 
 **RLM Governance Engine: IMPLEMENTED** -- `rlmGovernanceEngine` in `POC/internal/gateway/phase3_rlm.go`
 
+RLM (Recursive Language Model) refers to a pattern where models generate code that recursively invokes sub-LLMs, enabling long-context analysis and multi-step reasoning inside a sandboxed REPL.
+
 The RLM governance engine provides per-lineage state tracking with cumulative resource accounting. Implemented controls:
 - Depth limits: maximum nesting depth for recursive agent calls (default: 6)
 - Subcall budgets: maximum number of subcalls per lineage (default: 64)
 - Budget units: maximum cost units per lineage with per-call cost accounting (default: 128)
-- UASGS bypass prevention: subcalls without `uasgs_mediated=true` are denied with `RLM_BYPASS_DENIED` (HTTP 403)
+- UASGS (Unattended Agent Self-Governance System) bypass prevention: subcalls without `uasgs_mediated=true` are denied with `RLM_BYPASS_DENIED` (HTTP 403)
 
 Decision outputs: `RLM_ALLOW`, `RLM_SCHEMA_INVALID`, `RLM_BYPASS_DENIED`, `RLM_HALT_MAX_DEPTH` (429), `RLM_HALT_MAX_SUBCALLS` (429), `RLM_HALT_MAX_SUBCALL_BUDGET` (429). RLM governance is evaluated for every model plane request when `execution_mode=rlm`; denial short-circuits the request.
 
@@ -4024,7 +3953,7 @@ To keep this architecture solid for teams using different stacks, use this imple
 **Idea**: Pair the task agent (goal‑seeking, creative) with a **safety agent** that evaluates candidate actions against temporal constraints, risk budgets, and policy boundaries before execution.
 
 **Key properties**
-- **Pluggable safety reasoning**: Use an on‑graph temporal symbolic reasoner (e.g., PyReason‑style) as one option, not a requirement.
+- **Pluggable safety reasoning**: Use an on‑graph temporal symbolic reasoner (e.g., a graph-based temporal reasoner) as one option, not a requirement.
 - **Separation of concerns**: The task agent proposes; the safety agent scores and gates.
 - **Bounded autonomy**: Low‑risk actions pass quickly; high‑risk actions require step‑up or approval.
 - **Auditability**: Each gating decision includes the safety‑agent rationale and risk budget impact.
@@ -4056,7 +3985,7 @@ This is **not required for v1**, but may become compelling if constrained decodi
 - Requires maintaining a precise action grammar and type system.
 - Must never replace runtime enforcement—only reduce the probability of invalid actions.
 
-### 12.1 Production Closure Addendum (v2.4)
+### 12.1 Production Closure Addendum
 
 This reference architecture is extended by:
 
