@@ -4060,8 +4060,7 @@ This is **not required for v1**, but may become compelling if constrained decodi
 
 This reference architecture is extended by:
 
-- `precinct-production-readiness-gaps.md`
-- `precinct-production-closure-architecture.md`
+- [Production Closure Architecture](production-closure.md)
 
 Normative intent of this addendum:
 
@@ -4093,7 +4092,7 @@ The following Phase 3 control planes are implemented with reason-code-complete e
 | Go SDK | `sdk/go/mcpgateway/spike_token.go` | SPIKE token builder with scope qualifier |
 | Python SDK | `sdk/python/mcp_gateway_sdk/runtime.py` | SPIKE token builder, DSPy gateway LM configuration |
 
-Remaining gaps are operational (sustained verification, connector certification, 24x7 support model, SOC 2 Type 2 evidence cadence) rather than architectural. See `precinct-production-readiness-gaps.md` for the current gap register.
+Remaining gaps are operational (sustained verification, connector certification, 24x7 support model, SOC 2 Type 2 evidence cadence) rather than architectural.
 
 Use the addendum artifacts as the source for backlog decomposition and delivery sequencing.
 
