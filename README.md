@@ -176,7 +176,6 @@ All documentation lives in [`docs/`](docs/). The [documentation index](docs/READ
 | Document | Description |
 |----------|-------------|
 | [Executive Narrative](docs/executive-narrative.md) | CIO/CISO/CTO-level brief on security posture and trade-offs |
-| [Production Readiness Gaps](docs/operations/production-readiness-gaps.md) | What's proven vs what needs further work for production |
 | [Current State and Roadmap](docs/current-state-and-roadmap.md) | What is implemented, what is planned |
 
 ## Repository Structure

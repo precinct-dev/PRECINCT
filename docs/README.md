@@ -83,7 +83,6 @@ If you are new to PRECINCT, begin with these documents in order:
 
 | Document | Description |
 |----------|-------------|
-| [Production Readiness Gap Analysis](operations/production-readiness-gaps.md) | Material gaps between the v2.3 specification and the POC implementation, with severity ratings |
 | [Performance Benchmarks](operations/performance.md) | Latency cost of the 13-middleware security chain with benchmark instructions |
 | [Session Data Management](operations/session-management.md) | Operational guide for KeyDB session data, retention policy, and GDPR/CCPA right-to-deletion procedures |
 | [SLO/SLI Ownership Matrix](operations/slo-sli-ownership.md) | SLO targets and SLI ownership for gateway availability, policy enforcement, and identity path |
