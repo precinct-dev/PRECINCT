@@ -6,7 +6,7 @@
 
 This is a **reference implementation of a PRECINCT Gateway** that implements a 13-layer
 middleware chain for securing AI agent tool calls. It validates the
-[PRECINCT v2.2](../precinct-reference-architecture.md),
+[PRECINCT v2.5](../docs/architecture/reference-architecture.md),
 a 200+ page document defining security patterns for production agentic AI systems.
 
 The gateway interposes between AI agents and MCP tool servers, enforcing
@@ -151,7 +151,6 @@ tests/integration/        Go integration tests
 tests/benchmark/          Load testing scripts
 demo/                     Demo harness (Go + Python test clients, mock MCP server)
 scripts/                  Setup and operational scripts
-.learnings/               Retrospective insights from development
 ```
 
 
@@ -232,7 +231,6 @@ scripts/                  Setup and operational scripts
 | [docs/deployment-guide.md](docs/deployment-guide.md) | Deployment guide (Docker Compose, K8s, Phoenix) |
 | [docs/configuration-reference.md](docs/configuration-reference.md) | All environment variables and configuration files |
 | [docs/agentic-security-architecture.skill.md](docs/agentic-security-architecture.skill.md) | AI coding assistant skill file |
-| [docs/process/acceptance-criteria-baselines.md](docs/process/acceptance-criteria-baselines.md) | Story-writing method for ACs when baseline test failures exist |
 | [sdk/go/README.md](sdk/go/README.md) | Go SDK documentation and usage |
 | [sdk/python/README.md](sdk/python/README.md) | Python SDK documentation and usage |
 
@@ -240,7 +238,7 @@ scripts/                  Setup and operational scripts
 ## Status
 
 This is a **reference implementation** validating
-[PRECINCT v2.2](../precinct-reference-architecture.md).
+[PRECINCT v2.5](../docs/architecture/reference-architecture.md).
 It demonstrates that a 13-layer security middleware chain can be implemented,
 deployed, and tested end-to-end with real infrastructure (SPIRE, SPIKE, KeyDB,
 OPA, Phoenix, optional OpenSearch) in both Docker Compose and Kubernetes environments.
