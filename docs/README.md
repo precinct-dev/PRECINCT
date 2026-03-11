@@ -36,7 +36,6 @@ If you are new to PRECINCT, begin with these documents in order:
 |----------|-------------|
 | [Reference Architecture](architecture/reference-architecture.md) | Full architecture specification (v2.5): identity, authorization, secrets, gateway, observability, and threat coverage |
 | [Production Closure Architecture](architecture/production-closure.md) | Concrete architecture extensions to close production-readiness gaps from the v2.3 baseline |
-| [Agentic System Study](architecture/agentic-system-study.md) | Comparative study of existing agentic AI platforms and the rationale for a new Go-native design |
 | [Deployment Patterns](architecture/deployment-patterns.md) | Classification of all security controls by deployment mode: Universal, K8s-Native, or K8s-Equivalent |
 | [Cloud Adaptation Playbooks](architecture/cloud-adaptation-playbooks.md) | Step-by-step playbooks for reproducing validated controls on AWS (EKS/Fargate), GCP (GKE), and Azure (AKS) |
 | [Non-K8s Adaptation Guide](architecture/non-k8s-cloud-adaptation-guide.md) | How to adapt the architecture to non-Kubernetes runtimes while preserving core security invariants |
