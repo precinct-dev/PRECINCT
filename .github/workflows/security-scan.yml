@@ -120,7 +120,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile.gateway
+          file: deploy/compose/Dockerfile.gateway
           push: false
           load: true
           tags: mcp-security-gateway:scan
