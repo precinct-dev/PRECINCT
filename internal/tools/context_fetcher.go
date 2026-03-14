@@ -290,8 +290,15 @@ func (cf *ContextFetcher) storeContent(contentID string, chunks []string) error 
 	return os.WriteFile(metadataFile, metadataBytes, 0644)
 }
 
-// GetContent retrieves stored content by content_ref
+// GetContent retrieves stored content by content_ref.
+// The contentID is validated to prevent path traversal attacks.
 func (cf *ContextFetcher) GetContent(contentID string) (string, error) {
+	// Defense-in-depth: reject contentIDs containing path separators or
+	// parent-directory references to prevent path traversal, even though
+	// contentIDs are internally generated UUIDs.
+	if strings.Contains(contentID, "/") || strings.Contains(contentID, "\\") || strings.Contains(contentID, "..") || contentID == "" {
+		return "", fmt.Errorf("invalid content ID: %s", contentID)
+	}
 	contentDir := filepath.Join(cf.storageDir, contentID)
 
 	// Read metadata to get chunk count

@@ -9,5 +9,7 @@ COPY demo/go/ ./
 RUN go mod tidy && go build -o /demo .
 
 FROM alpine:3.21
+RUN adduser -D -u 10001 app
+USER app
 COPY --from=build /demo /demo
 ENTRYPOINT ["/demo"]
