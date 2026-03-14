@@ -1033,7 +1033,7 @@ pre[data-lang] .code-copy-btn {
 
 .hero-image-frame {
   margin: 0 auto var(--space-10);
-  max-width: 62rem;
+  max-width: 31rem;
   padding: var(--space-4);
   background:
     linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(34, 211, 238, 0.1)),
