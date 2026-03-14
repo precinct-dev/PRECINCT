@@ -220,7 +220,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/precinct-dev/PRECINCT/POC/sdk/go/mcpgateway"
+	"github.com/precinct-dev/precinct/sdk/go/mcpgateway"
 )
 
 func main() {

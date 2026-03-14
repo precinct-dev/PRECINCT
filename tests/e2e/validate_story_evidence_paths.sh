@@ -58,14 +58,14 @@ mapfile -t candidates < <(
     if printf '%s' "${lower}" | rg -q 'missing|absent|not present'; then
       continue
     fi
-    printf '%s\n' "${line}" | rg -o '(POC/)?(AGENTS\.md|README\.md|Makefile|(?:docs|tests|scripts|internal|infra|sdk|ports|config)/[A-Za-z0-9._/-]*\.[A-Za-z0-9]+)' || true
+    printf '%s\n' "${line}" | rg -o '(AGENTS\.md|README\.md|Makefile|(?:docs|tests|scripts|internal|infra|sdk|ports|config|deploy)/[A-Za-z0-9._/-]*\.[A-Za-z0-9]+)' || true
   done < <(printf '%s\n' "${authoritative_notes}") | sort -u
 )
-[[ "${#candidates[@]}" -gt 0 ]] || fail "no POC evidence paths found in notes for ${STORY_ID}"
+[[ "${#candidates[@]}" -gt 0 ]] || fail "no evidence paths found in notes for ${STORY_ID}"
 
 missing=0
 for rel in "${candidates[@]}"; do
-  clean_rel="${rel#POC/}"
+  clean_rel="${rel}"
   abs="${POC_DIR}/${clean_rel}"
   if [[ -e "${abs}" ]]; then
     echo "[PASS] ${clean_rel}"

@@ -7,7 +7,7 @@
 # To start Docker MCP Gateway:
 #   docker mcp gateway run --port 8081 --transport streaming
 #
-# For details, see: POC/docs/docker-mcp-integration.md
+# For details, see: docs/docker-mcp-integration.md
 
 services:
   # SPIRE Server - Identity control plane for workload attestation

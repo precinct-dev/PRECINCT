@@ -19,8 +19,8 @@
 # cryptographic signatures. They are complementary, not competing.
 #
 # Usage:
-#   kustomize build POC/infra/eks/admission/
-#   kubectl apply -k POC/infra/eks/admission/
+#   kustomize build deploy/terraform/admission/
+#   kubectl apply -k deploy/terraform/admission/
 #
 # Deployment order matters:
 #   1. gatekeeper-system.yaml       (namespace + config)
