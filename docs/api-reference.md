@@ -16,6 +16,7 @@ to the upstream MCP server.
    - [POST / -- Main JSON-RPC Endpoint](#post----main-json-rpc-endpoint)
    - [POST /data/dereference -- Response Firewall Handle Dereference](#post-datadereference----response-firewall-handle-dereference)
    - [GET /health -- Health Check](#get-health----health-check)
+   - [POST /openai/v1/chat/completions -- Mediated Model Egress](#post-openaiv1chatcompletions----mediated-model-egress)
    - [Port Adapter Endpoints](#port-adapter-endpoints)
 2. [Required Headers](#required-headers)
    - [Response Headers](#response-headers)
@@ -185,6 +186,49 @@ Host: localhost:9090
 
 ---
 
+### POST /openai/v1/chat/completions -- Mediated Model Egress
+
+OpenAI-compatible entrypoint for model egress through PRECINCT policy enforcement.
+This route is gateway-mediated only: provider selection, destination controls,
+reason-coded denials, and optional synthetic safe fallbacks are all decided by the
+gateway before any upstream model call is made.
+
+Mission-bound mediation is available on this route for narrow-purpose agents. It
+lets builders declare the agent mission and out-of-scope behavior without relying
+on prompts alone.
+
+**Optional mission-bound headers:**
+
+| Header | Description |
+|--------|-------------|
+| `X-Agent-Purpose` | Declared mission label for the agent, used for audit/projection |
+| `X-Mission-Boundary-Mode` | Enables mission-bound enforcement for the request |
+| `X-Mission-Allowed-Intents` | Comma-separated allowlist of in-scope intents |
+| `X-Mission-Allowed-Topics` | Comma-separated allowlist of in-scope topics |
+| `X-Mission-Blocked-Topics` | Comma-separated deny-first topics |
+| `X-Mission-Out-Of-Scope-Action` | `deny`, `rewrite`, or `handoff` |
+| `X-Mission-Out-Of-Scope-Message` | Safe fallback assistant text when rewrite/handoff is used |
+
+**Behavior notes:**
+
+- If mission-bound metadata is absent, existing model-egress behavior is preserved.
+- If the request is out of scope and `X-Mission-Out-Of-Scope-Action=deny`, the
+  gateway returns a normal denial.
+- If the request is out of scope and the action is `rewrite` or `handoff`, the
+  gateway returns a synthetic assistant response and does not call the upstream
+  provider.
+
+**Representative model-plane reason codes:**
+
+| Reason code | Meaning |
+|-------------|---------|
+| `MODEL_ALLOW` | Model request admitted and mediated normally |
+| `MODEL_MISSION_SCOPE_DENIED` | Mission-bound policy rejected an out-of-scope request |
+| `MODEL_MISSION_SCOPE_SAFE_FALLBACK_APPLIED` | Gateway returned a synthetic safe fallback instead of calling the provider |
+| `PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED` | Prompt-safety policy rejected the request before provider egress |
+
+---
+
 ### DLP RuleOps Admin Endpoints
 
 The DLP RuleOps lifecycle is exposed via admin endpoints:
@@ -344,6 +388,13 @@ before upstream proxy forwarding:
 | `Content-Type` | Yes | `POST /`, `POST /data/dereference` | Must be `application/json` | `application/json` |
 | `X-SPIFFE-ID` | Yes | `POST /`, `POST /data/dereference` | SPIFFE identity of the calling agent | `spiffe://poc.local/agents/example/dev` |
 | `X-Session-ID` | Yes | `POST /` | Session UUID for cross-request tracking and exfiltration detection | `550e8400-e29b-41d4-a716-446655440000` |
+| `X-Agent-Purpose` | No | `POST /openai/v1/chat/completions` | Declared mission label for mission-bound model mediation | `restaurant_order_support` |
+| `X-Mission-Boundary-Mode` | No | `POST /openai/v1/chat/completions` | Enables per-request mission-bound enforcement | `enforce` |
+| `X-Mission-Allowed-Intents` | No | `POST /openai/v1/chat/completions` | Comma-separated in-scope intent list | `place_order,order_status` |
+| `X-Mission-Allowed-Topics` | No | `POST /openai/v1/chat/completions` | Comma-separated in-scope topic list | `menu,burritos,bowls` |
+| `X-Mission-Blocked-Topics` | No | `POST /openai/v1/chat/completions` | Comma-separated deny-first topic list | `coding,python,linked lists` |
+| `X-Mission-Out-Of-Scope-Action` | No | `POST /openai/v1/chat/completions` | Out-of-scope behavior | `rewrite` |
+| `X-Mission-Out-Of-Scope-Message` | No | `POST /openai/v1/chat/completions` | Safe fallback assistant message | `I can help with orders and menu questions only.` |
 
 **Notes:**
 - In `SPIFFE_MODE=dev` (default), `X-SPIFFE-ID` is accepted as a plain header.

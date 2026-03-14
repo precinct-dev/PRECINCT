@@ -130,6 +130,16 @@
             Open Source Enterprise Agentic Runtime
           </div>
 
+          <figure class="hero-image-frame">
+            <img
+              src="images/precinct-hero.webp"
+              alt="PRECINCT runtime overview"
+              class="hero-image"
+              width="600"
+              height="600"
+            >
+          </figure>
+
           <h1 class="hero-headline">
             Don't reinvent the infrastructure.<br>
             <span class="text-gradient">Secure your agents where they already run.</span>
@@ -156,6 +166,20 @@
             enterprise trust. PRECINCT assembles what already has it. Your stack stays.
             Your processes stay. Your auditors already understand the components.
           </p>
+
+          <div class="hero-feature-callout">
+            <div class="hero-feature-eyebrow">Featured capability</div>
+            <h2 class="hero-feature-title">Mission-bound model mediation</h2>
+            <p class="hero-feature-text">
+              Keep narrow-purpose agents on mission even when the prompt is harmless but off-topic.
+              PRECINCT can deny or safely rewrite requests like "help me reverse a linked list" for
+              a restaurant support agent before any upstream model egress happens.
+            </p>
+            <p class="hero-feature-proof">
+              Proven in the standard demo flow: <code>make demo-compose</code> now includes an
+              off-mission containment scenario in both the Go and Python demos.
+            </p>
+          </div>
 
           <div class="hero-ctas">
             <a href="pages/getting-started.html" class="btn btn-primary btn-lg">Get Started</a>
@@ -202,6 +226,22 @@
     <section class="section section-problem" id="problem">
       <div class="container">
         <div class="reveal">
+          <div class="card feature-spotlight-card">
+            <div class="feature-spotlight-label">Now shipping</div>
+            <h2 class="feature-spotlight-title">Scope control for narrow-purpose agents</h2>
+            <p>
+              Prompt-injection defense is not enough when the user is simply asking the wrong thing.
+              Mission-bound mediation gives builders a first-class way to declare allowed intents,
+              allowed topics, blocked topics, and out-of-scope behavior, with the gateway remaining
+              the enforcement authority.
+            </p>
+            <ul class="feature-spotlight-list">
+              <li>Gateway-enforced `deny` and synthetic safe `rewrite` / `handoff` outcomes</li>
+              <li>Additive Go and Python SDK support plus pack metadata for builders</li>
+              <li>Live demo coverage for a restaurant support bot rejecting coding-help prompts</li>
+            </ul>
+          </div>
+
           <h2 class="section-title">The Authorization Crisis in Agentic AI</h2>
           <div class="callout-box callout-box-dramatic">
             <p class="callout-stat">50 : 1</p>

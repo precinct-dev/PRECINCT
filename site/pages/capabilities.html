@@ -120,6 +120,7 @@
               <div class="sidebar-nav-title">On This Page</div>
               <ul>
                 <li><a href="#snapshot">Capability Snapshot</a></li>
+                <li><a href="#mission-bound">Mission-Bound Mediation</a></li>
                 <li><a href="#new-capabilities">Extended Capabilities</a></li>
                 <li><a href="#multi-agent-governance">Multi-Agent Governance</a></li>
                 <li><a href="#plane-api">Control Plane API</a></li>
@@ -158,6 +159,7 @@
               <div class="sidebar-nav-title">On This Page</div>
               <ul>
                 <li><a href="#snapshot">Capability Snapshot</a></li>
+                <li><a href="#mission-bound">Mission-Bound Mediation</a></li>
                 <li><a href="#new-capabilities">Extended Capabilities</a></li>
                 <li><a href="#multi-agent-governance">Multi-Agent Governance</a></li>
                 <li><a href="#plane-api">Control Plane API</a></li>
@@ -205,6 +207,33 @@
                 <p>Reference port adapter with HTTP + WebSocket + webhook paths enforced through gateway policy.</p>
                 <span class="badge badge-default">App Integration</span>
               </div>
+            </div>
+          </section>
+
+          <section id="mission-bound">
+            <h2>Mission-Bound Model Mediation</h2>
+            <p>
+              PRECINCT can keep a narrow-purpose agent inside its declared business scope even when the
+              prompt is benign. This closes a common failure mode that prompt-injection detection alone
+              does not solve: the agent is not under attack, it is simply being pulled off mission.
+            </p>
+            <div class="card feature-spotlight-card">
+              <div class="feature-spotlight-label">Featured security control</div>
+              <h3 class="mt-0">Out-of-scope prompts are contained before provider egress</h3>
+              <p>
+                Builders can declare an agent purpose, allowed intents, allowed topics, blocked topics,
+                and out-of-scope behavior. The gateway then decides whether to allow, deny, or return
+                a synthetic safe response without calling the upstream model.
+              </p>
+              <ul class="feature-spotlight-list">
+                <li>Example: restaurant support agent safely redirects a Python linked-list request</li>
+                <li>Works through the standard OpenAI-compatible route and SDK helpers</li>
+                <li>Demonstrated in the normal `make demo-compose` flow, not as a special one-off script</li>
+              </ul>
+              <p class="text-sm">
+                The builder-facing contract is documented in the repository docs and reflected in the
+                public SDK and adapter guidance.
+              </p>
             </div>
           </section>
 
