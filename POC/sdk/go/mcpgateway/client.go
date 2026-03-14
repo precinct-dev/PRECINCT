@@ -82,16 +82,23 @@ type GatewayClient struct {
 // ModelChatRequest captures gateway-model-plane call options for OpenAI-compatible
 // chat completions routing through PRECINCT Gateway model egress.
 type ModelChatRequest struct {
-	Model         string
-	Messages      []map[string]any
-	Provider      string
-	APIKeyRef     string
-	APIKeyHeader  string
-	Endpoint      string
-	Residency     string
-	BudgetProfile string
-	ExtraHeaders  map[string]string
-	ExtraPayload  map[string]any
+	Model               string
+	Messages            []map[string]any
+	Provider            string
+	APIKeyRef           string
+	APIKeyHeader        string
+	Endpoint            string
+	Residency           string
+	BudgetProfile       string
+	AgentPurpose        string
+	MissionBoundaryMode string
+	AllowedIntents      []string
+	AllowedTopics       []string
+	BlockedTopics       []string
+	OutOfScopeAction    string
+	OutOfScopeMessage   string
+	ExtraHeaders        map[string]string
+	ExtraPayload        map[string]any
 }
 
 // NewClient creates a GatewayClient for the given gateway URL and SPIFFE identity.
@@ -179,6 +186,27 @@ func (c *GatewayClient) CallModelChat(ctx context.Context, req ModelChatRequest)
 	httpReq.Header.Set("X-Model-Provider", provider)
 	httpReq.Header.Set("X-Residency-Intent", residency)
 	httpReq.Header.Set("X-Budget-Profile", budgetProfile)
+	if v := strings.TrimSpace(req.AgentPurpose); v != "" {
+		httpReq.Header.Set("X-Agent-Purpose", v)
+	}
+	if v := strings.TrimSpace(req.MissionBoundaryMode); v != "" {
+		httpReq.Header.Set("X-Mission-Boundary-Mode", v)
+	}
+	if len(req.AllowedIntents) > 0 {
+		httpReq.Header.Set("X-Mission-Allowed-Intents", strings.Join(req.AllowedIntents, ","))
+	}
+	if len(req.AllowedTopics) > 0 {
+		httpReq.Header.Set("X-Mission-Allowed-Topics", strings.Join(req.AllowedTopics, ","))
+	}
+	if len(req.BlockedTopics) > 0 {
+		httpReq.Header.Set("X-Mission-Blocked-Topics", strings.Join(req.BlockedTopics, ","))
+	}
+	if v := strings.TrimSpace(req.OutOfScopeAction); v != "" {
+		httpReq.Header.Set("X-Mission-Out-Of-Scope-Action", v)
+	}
+	if v := strings.TrimSpace(req.OutOfScopeMessage); v != "" {
+		httpReq.Header.Set("X-Mission-Out-Of-Scope-Message", v)
+	}
 
 	apiKeyHeader := strings.TrimSpace(req.APIKeyHeader)
 	if apiKeyHeader == "" {

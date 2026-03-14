@@ -59,6 +59,32 @@
     },
     "gateway_guardrails": {
       "prompt_injection_protection": "dlp_flag_plus_guard_model",
+      "mission_boundary": {
+        "agent_purpose": "device_operations_support",
+        "default_mode": "enforce",
+        "allowed_intents": [
+          "connectivity_help",
+          "device_health",
+          "device_ping",
+          "device_list",
+          "operator_guidance"
+        ],
+        "allowed_topics": [
+          "device",
+          "node",
+          "health",
+          "ping",
+          "operator",
+          "connect"
+        ],
+        "blocked_topics": [
+          "python",
+          "linked list",
+          "recipe",
+          "food order"
+        ],
+        "out_of_scope_action": "rewrite"
+      },
       "enforced_controls": [
         "spiffe_auth",
         "opa_policy",

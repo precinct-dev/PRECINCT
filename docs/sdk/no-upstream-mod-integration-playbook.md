@@ -71,9 +71,31 @@ Use this for new applications built directly for this architecture:
 - The core remains app-agnostic while app-specific adaptation lives in pack/SDK layers.
 - Target apps can be onboarded with no upstream source modifications when they stay behind gateway mediation.
 - Prompt injection and tool hijack risk is substantially reduced relative to direct app operation, because all model/tool/control surfaces are policy-mediated and audited.
+- Narrow-purpose agents can be kept on-mission through gateway-enforced mission-bound model mediation, rather than relying on prompts alone.
 
 ## Residual Risks and Limits
 
 - This architecture reduces risk; it does not eliminate all attack paths.
 - Weak or stale pack metadata can degrade expected protection outcomes.
 - Promotion claims are only as strong as current evidence freshness for both Compose and Kubernetes.
+
+## Mission-Bound Integration Pattern
+
+For narrow-purpose agents, add a mission-bound contract in the pack and pass the
+same fields through the SDK model-chat helper:
+
+- `agent_purpose`
+- `mission_boundary_mode`
+- `allowed_intents`
+- `allowed_topics`
+- `blocked_topics`
+- `out_of_scope_action`
+- `out_of_scope_message`
+
+Design guidance:
+
+- Keep the gateway generic. Do not hardcode app domains in core middleware.
+- Treat SDK policy projection as advisory only.
+- Make the gateway the final authority for allow, deny, or synthetic fallback.
+- Add at least one demo or conformance case that proves off-mission prompts are
+  contained without calling the upstream provider.

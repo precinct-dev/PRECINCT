@@ -83,12 +83,24 @@ func TestCallModelChat_HeadersAndEndpoint(t *testing.T) {
 	var gotPath string
 	var gotAuth string
 	var gotProvider string
+	var gotPurpose string
+	var gotMissionMode string
+	var gotAllowedIntents string
+	var gotAllowedTopics string
+	var gotBlockedTopics string
+	var gotOutOfScopeAction string
 	var gotPayload map[string]any
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotAuth = r.Header.Get("Authorization")
 		gotProvider = r.Header.Get("X-Model-Provider")
+		gotPurpose = r.Header.Get("X-Agent-Purpose")
+		gotMissionMode = r.Header.Get("X-Mission-Boundary-Mode")
+		gotAllowedIntents = r.Header.Get("X-Mission-Allowed-Intents")
+		gotAllowedTopics = r.Header.Get("X-Mission-Allowed-Topics")
+		gotBlockedTopics = r.Header.Get("X-Mission-Blocked-Topics")
+		gotOutOfScopeAction = r.Header.Get("X-Mission-Out-Of-Scope-Action")
 		if err := json.NewDecoder(r.Body).Decode(&gotPayload); err != nil {
 			t.Fatalf("decode request: %v", err)
 		}
@@ -99,11 +111,17 @@ func TestCallModelChat_HeadersAndEndpoint(t *testing.T) {
 
 	c := NewClient(srv.URL, "spiffe://test/agent", WithSessionID("sess-model"), WithHTTPClient(srv.Client()))
 	resp, err := c.CallModelChat(context.Background(), ModelChatRequest{
-		Model:        "llama-3.3-70b-versatile",
-		Messages:     []map[string]any{{"role": "user", "content": "hello"}},
-		Provider:     "groq",
-		APIKeyRef:    "Bearer $SPIKE{ref:deadbeef,exp:3600}",
-		ExtraPayload: map[string]any{"temperature": 0.1},
+		Model:               "llama-3.3-70b-versatile",
+		Messages:            []map[string]any{{"role": "user", "content": "hello"}},
+		Provider:            "groq",
+		APIKeyRef:           "Bearer $SPIKE{ref:deadbeef,exp:3600}",
+		AgentPurpose:        "restaurant_order_support",
+		MissionBoundaryMode: "enforce",
+		AllowedIntents:      []string{"place_order", "order_status"},
+		AllowedTopics:       []string{"order", "menu"},
+		BlockedTopics:       []string{"python", "linked list"},
+		OutOfScopeAction:    "rewrite",
+		ExtraPayload:        map[string]any{"temperature": 0.1},
 	})
 	if err != nil {
 		t.Fatalf("CallModelChat failed: %v", err)
@@ -119,6 +137,24 @@ func TestCallModelChat_HeadersAndEndpoint(t *testing.T) {
 	}
 	if gotAuth != "Bearer $SPIKE{ref:deadbeef,exp:3600}" {
 		t.Fatalf("authorization header mismatch: %q", gotAuth)
+	}
+	if gotPurpose != "restaurant_order_support" {
+		t.Fatalf("agent purpose header=%q want=restaurant_order_support", gotPurpose)
+	}
+	if gotMissionMode != "enforce" {
+		t.Fatalf("mission mode header=%q want=enforce", gotMissionMode)
+	}
+	if gotAllowedIntents != "place_order,order_status" {
+		t.Fatalf("allowed intents header=%q", gotAllowedIntents)
+	}
+	if gotAllowedTopics != "order,menu" {
+		t.Fatalf("allowed topics header=%q", gotAllowedTopics)
+	}
+	if gotBlockedTopics != "python,linked list" {
+		t.Fatalf("blocked topics header=%q", gotBlockedTopics)
+	}
+	if gotOutOfScopeAction != "rewrite" {
+		t.Fatalf("out-of-scope action header=%q want=rewrite", gotOutOfScopeAction)
 	}
 	if gotPayload["model"] != "llama-3.3-70b-versatile" {
 		t.Fatalf("payload model mismatch: %#v", gotPayload["model"])

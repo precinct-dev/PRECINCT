@@ -310,6 +310,13 @@ class GatewayClient:
         endpoint: str = "/openai/v1/chat/completions",
         residency_intent: str = "us",
         budget_profile: str = "standard",
+        agent_purpose: Optional[str] = None,
+        mission_boundary_mode: Optional[str] = None,
+        allowed_intents: Optional[list[str]] = None,
+        allowed_topics: Optional[list[str]] = None,
+        blocked_topics: Optional[list[str]] = None,
+        out_of_scope_action: Optional[str] = None,
+        out_of_scope_message: Optional[str] = None,
         extra_headers: Optional[dict[str, str]] = None,
         **extra_payload: Any,
     ) -> Any:
@@ -347,6 +354,20 @@ class GatewayClient:
         }
         if api_key_ref:
             headers[api_key_header] = api_key_ref
+        if agent_purpose:
+            headers["X-Agent-Purpose"] = agent_purpose
+        if mission_boundary_mode:
+            headers["X-Mission-Boundary-Mode"] = mission_boundary_mode
+        if allowed_intents:
+            headers["X-Mission-Allowed-Intents"] = ",".join(allowed_intents)
+        if allowed_topics:
+            headers["X-Mission-Allowed-Topics"] = ",".join(allowed_topics)
+        if blocked_topics:
+            headers["X-Mission-Blocked-Topics"] = ",".join(blocked_topics)
+        if out_of_scope_action:
+            headers["X-Mission-Out-Of-Scope-Action"] = out_of_scope_action
+        if out_of_scope_message:
+            headers["X-Mission-Out-Of-Scope-Message"] = out_of_scope_message
         if extra_headers:
             headers.update(extra_headers)
 

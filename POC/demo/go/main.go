@@ -240,6 +240,13 @@ func main() {
 			fn:     testGatewayBypassPrevention,
 		},
 		{
+			name:   "Mission-bound model mediation (off-mission prompt contained)",
+			what:   "Gateway keeps a narrow-purpose support agent inside its declared scope and returns a safe fallback instead of answering an unrelated coding request",
+			send:   "call_model_chat(...) with restaurant-ordering mission policy + prompt asking for linked-list Python help + intentionally invalid provider endpoint",
+			expect: "200 synthetic fallback proving gateway rewrote the request before upstream model egress",
+			fn:     testMissionBoundModelScope,
+		},
+		{
 			name:   "Rate limit burst (429 on rapid calls)",
 			what:   "Per-SPIFFE-ID rate limiter enforces request quotas at step 11",
 			send:   "Rapid burst of GET /__demo__/ratelimit with same SPIFFE ID (demo-only fast path)",
@@ -1316,6 +1323,54 @@ func isLikelyGatewayModelRouteTimeout(err error) bool {
 		strings.Contains(msg, "timed out") ||
 		strings.Contains(msg, "deadline exceeded") ||
 		strings.Contains(msg, "context canceled")
+}
+
+func testMissionBoundModelScope() bool {
+	ctx := context.Background()
+	client := mcpgateway.NewClient(*gatewayURL, dspySPIFFE, mcpgateway.WithSessionID(demoSessionID("mission-bound")))
+
+	resp, err := client.CallModelChat(ctx, mcpgateway.ModelChatRequest{
+		Model:               "llama-3.3-70b-versatile",
+		Provider:            "groq",
+		Messages:            []map[string]any{{"role": "user", "content": "I want to order a bowl but first help me reverse a linked list in python."}},
+		AgentPurpose:        "restaurant_order_support",
+		MissionBoundaryMode: "enforce",
+		AllowedIntents:      []string{"place_order", "order_status", "menu_help"},
+		AllowedTopics:       []string{"order", "menu", "bowl", "burrito"},
+		BlockedTopics:       []string{"python", "linked list"},
+		OutOfScopeAction:    "rewrite",
+		OutOfScopeMessage:   "I can help with orders and menu questions only.",
+		ExtraHeaders: map[string]string{
+			"X-Provider-Endpoint-Groq": "https://evil.example.com/v1/chat/completions",
+		},
+	})
+	if err != nil {
+		var ge *mcpgateway.GatewayError
+		if errors.As(err, &ge) {
+			printGatewayError(ge)
+		} else {
+			fmt.Printf("  Error: %v\n", err)
+		}
+		return printProof(false, fmt.Sprintf("expected synthetic mission-bound success, got error: %v", err))
+	}
+
+	choices, ok := resp["choices"].([]any)
+	if !ok || len(choices) == 0 {
+		return printProof(false, fmt.Sprintf("synthetic response missing choices: %#v", resp))
+	}
+	firstChoice, ok := choices[0].(map[string]any)
+	if !ok {
+		return printProof(false, fmt.Sprintf("synthetic choice shape unexpected: %T", choices[0]))
+	}
+	message, ok := firstChoice["message"].(map[string]any)
+	if !ok {
+		return printProof(false, fmt.Sprintf("synthetic message shape unexpected: %T", firstChoice["message"]))
+	}
+	content := strings.TrimSpace(fmt.Sprintf("%v", message["content"]))
+	if content != "I can help with orders and menu questions only." {
+		return printProof(false, fmt.Sprintf("unexpected synthetic mission-bound content: %q", content))
+	}
+	return printProof(true, "gateway returned a synthetic out-of-scope response before provider egress")
 }
 
 // 22. Rate limit burst: Rapidly call until we get 429.

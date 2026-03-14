@@ -82,6 +82,28 @@ func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request)
 	projectionFormat := ""
 
 	if decision != DecisionAllow {
+		if synthetic := strings.TrimSpace(getStringAttr(metadata, "synthetic_assistant_response", "")); synthetic != "" {
+			metadata["policy_intent_projection_enabled"] = projectionEnabled
+			metadata["policy_intent_projection_applied"] = false
+			metadata["policy_intent_projection_format"] = ""
+			metadata["synthetic_response_applied"] = true
+			metadata["provider_used"] = "precinct_synthetic"
+			resp := PlaneDecisionV2{
+				Decision:   DecisionAllow,
+				ReasonCode: reason,
+				Envelope:   planeReq.Envelope,
+				TraceID:    traceID,
+				DecisionID: decisionID,
+				Metadata: mergeMetadata(metadata, map[string]any{
+					"policy_decision":    decision,
+					"policy_http_status": status,
+					"upstream_called":    false,
+				}),
+			}
+			g.logPlaneDecision(r, resp, http.StatusOK)
+			writeSyntheticModelResponse(w, planeReq, decisionID, traceID, reason, synthetic, projectionEnabled)
+			return true
+		}
 		metadata["policy_intent_projection_enabled"] = projectionEnabled
 		metadata["policy_intent_projection_applied"] = false
 		metadata["policy_intent_projection_format"] = ""
@@ -254,6 +276,27 @@ func (g *Gateway) buildModelPlaneRequestFromOpenAI(r *http.Request, payload map[
 	}
 	if hasPII := parseHeaderBool(r.Header.Get("X-Prompt-Has-PII"), false); hasPII {
 		attrs["prompt_has_pii"] = true
+	}
+	if purpose := strings.TrimSpace(r.Header.Get("X-Agent-Purpose")); purpose != "" {
+		attrs["agent_purpose"] = purpose
+	}
+	if mode := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Mission-Boundary-Mode"))); mode != "" {
+		attrs["mission_boundary_mode"] = mode
+	}
+	if values := parseHeaderCSV(r.Header.Get("X-Mission-Allowed-Intents")); len(values) > 0 {
+		attrs["allowed_intents"] = values
+	}
+	if values := parseHeaderCSV(r.Header.Get("X-Mission-Allowed-Topics")); len(values) > 0 {
+		attrs["allowed_topics"] = values
+	}
+	if values := parseHeaderCSV(r.Header.Get("X-Mission-Blocked-Topics")); len(values) > 0 {
+		attrs["blocked_topics"] = values
+	}
+	if action := strings.ToLower(strings.TrimSpace(r.Header.Get("X-Mission-Out-Of-Scope-Action"))); action != "" {
+		attrs["out_of_scope_action"] = action
+	}
+	if msg := strings.TrimSpace(r.Header.Get("X-Mission-Out-Of-Scope-Message")); msg != "" {
+		attrs["out_of_scope_message"] = msg
 	}
 
 	return PlaneRequestV2{
@@ -658,11 +701,47 @@ func buildModelPolicyIntentProjection(attrs map[string]any, envelope RunEnvelope
 		escalation = "step_up_approval_present_keep_actions_within_approved_scope"
 	}
 
+	missionPurpose := sanitizeProjectionToken(getStringAttr(attrs, "agent_purpose", ""))
+	missionMode := sanitizeProjectionToken(getStringAttr(attrs, "mission_boundary_mode", ""))
+	missionAction := sanitizeProjectionToken(getStringAttr(attrs, "out_of_scope_action", ""))
+	allowedIntents := getStringListAttr(attrs, "allowed_intents")
+
 	var prohibitedItems strings.Builder
 	for _, item := range prohibited {
 		prohibitedItems.WriteString("<item>")
 		prohibitedItems.WriteString(xmlEscape(item))
 		prohibitedItems.WriteString("</item>")
+	}
+
+	var missionSection strings.Builder
+	if missionPurpose != "" || missionMode != "" || len(allowedIntents) > 0 || missionAction != "" {
+		missionSection.WriteString("<mission")
+		if missionPurpose != "" {
+			missionSection.WriteString(" purpose=\"")
+			missionSection.WriteString(xmlEscape(missionPurpose))
+			missionSection.WriteString("\"")
+		}
+		if missionMode != "" {
+			missionSection.WriteString(" mode=\"")
+			missionSection.WriteString(xmlEscape(missionMode))
+			missionSection.WriteString("\"")
+		}
+		if missionAction != "" {
+			missionSection.WriteString(" out_of_scope=\"")
+			missionSection.WriteString(xmlEscape(missionAction))
+			missionSection.WriteString("\"")
+		}
+		missionSection.WriteString(">")
+		if len(allowedIntents) > 0 {
+			missionSection.WriteString("<allowed_intents>")
+			for _, item := range allowedIntents {
+				missionSection.WriteString("<item>")
+				missionSection.WriteString(xmlEscape(sanitizeProjectionToken(item)))
+				missionSection.WriteString("</item>")
+			}
+			missionSection.WriteString("</allowed_intents>")
+		}
+		missionSection.WriteString("</mission>")
 	}
 
 	return "<policy_intent version=\"1\"><actor>" + xmlEscape(actor) + "</actor>" +
@@ -674,6 +753,7 @@ func buildModelPolicyIntentProjection(attrs map[string]any, envelope RunEnvelope
 		"\" mediation=\"" + xmlEscape(mediation) + "\"/>" +
 		"<allowed><item>mediated_model_call</item></allowed>" +
 		"<prohibited>" + prohibitedItems.String() + "</prohibited>" +
+		missionSection.String() +
 		"<escalation>" + xmlEscape(escalation) + "</escalation>" +
 		"<authority>advisory_only_runtime_policy_enforcement_remains_authoritative</authority>" +
 		"</policy_intent>"
@@ -788,6 +868,26 @@ func parseHeaderInt(raw string, fallback int) int {
 	return v
 }
 
+func parseHeaderCSV(raw string) []string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 func parseHeaderBool(raw string, fallback bool) bool {
 	raw = strings.TrimSpace(strings.ToLower(raw))
 	if raw == "" {
@@ -862,6 +962,44 @@ func defaultString(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func writeSyntheticModelResponse(w http.ResponseWriter, planeReq PlaneRequestV2, decisionID, traceID string, reason ReasonCode, synthetic string, projectionEnabled bool) {
+	modelName := getStringAttr(planeReq.Policy.Attributes, "model", "precinct/synthetic")
+	payload := map[string]any{
+		"id":      "chatcmpl-precinct-synthetic",
+		"object":  "chat.completion",
+		"created": time.Now().Unix(),
+		"model":   modelName,
+		"choices": []map[string]any{
+			{
+				"index": 0,
+				"message": map[string]any{
+					"role":    "assistant",
+					"content": synthetic,
+				},
+				"finish_reason": "stop",
+			},
+		},
+		"usage": map[string]any{
+			"prompt_tokens":     0,
+			"completion_tokens": 0,
+			"total_tokens":      0,
+		},
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Precinct-Decision-ID", decisionID)
+	w.Header().Set("X-Precinct-Trace-ID", traceID)
+	w.Header().Set("X-Precinct-Reason-Code", string(reason))
+	w.Header().Set("X-Precinct-Provider-Used", "precinct_synthetic")
+	if projectionEnabled {
+		w.Header().Set("X-Precinct-Policy-Intent-Projection", "enabled_not_applied")
+	} else {
+		w.Header().Set("X-Precinct-Policy-Intent-Projection", "disabled")
+	}
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 func isLocalHost(host string) bool {

@@ -527,6 +527,43 @@ def test_gateway_bypass_prevention(url: str) -> bool:
         client.close()
 
 
+def test_mission_bound_model_scope(url: str) -> bool:
+    """Gateway should return a safe synthetic fallback for off-mission prompts."""
+    client = new_client(url)
+    try:
+        result = client.call_model_chat(
+            model="llama-3.3-70b-versatile",
+            messages=[{
+                "role": "user",
+                "content": "I want to order a bowl but first help me reverse a linked list in python.",
+            }],
+            provider="groq",
+            agent_purpose="restaurant_order_support",
+            mission_boundary_mode="enforce",
+            allowed_intents=["place_order", "order_status", "menu_help"],
+            allowed_topics=["order", "menu", "bowl", "burrito"],
+            blocked_topics=["python", "linked list"],
+            out_of_scope_action="rewrite",
+            out_of_scope_message="I can help with orders and menu questions only.",
+            extra_headers={
+                "X-Provider-Endpoint-Groq": "https://evil.example.com/v1/chat/completions",
+            },
+        )
+        choices = result.get("choices", [])
+        if not choices:
+            return print_proof(False, f"synthetic response missing choices: {result}")
+        message = choices[0].get("message", {}) if isinstance(choices[0], dict) else {}
+        content = str(message.get("content", "")).strip()
+        if content != "I can help with orders and menu questions only.":
+            return print_proof(False, f"unexpected synthetic mission-bound content: {content!r}")
+        return print_proof(True, "gateway returned a synthetic out-of-scope response before provider egress")
+    except Exception as e:
+        print(f"  Error: {e}")
+        return print_proof(False, f"expected synthetic mission-bound success, got {type(e).__name__}")
+    finally:
+        client.close()
+
+
 def is_likely_gateway_model_route_timeout(err: Exception) -> bool:
     if isinstance(err, httpx.TimeoutException):
         return True
@@ -1260,6 +1297,13 @@ def main() -> None:
             send="download_remote_skill(url=...) via SDK + direct HTTPS to model provider from demo container + call_model_chat via gateway route",
             expect="Remote skill download denied by gateway, direct model egress blocked in compose mode, and model calls only succeed/deny through gateway controls",
             fn=test_gateway_bypass_prevention,
+        ),
+        TestCase(
+            name="Mission-bound model mediation (off-mission prompt contained)",
+            what="Gateway keeps a narrow-purpose support agent inside its declared scope and returns a safe fallback instead of answering an unrelated coding request",
+            send="call_model_chat(...) with restaurant-ordering mission policy + prompt asking for linked-list Python help + intentionally invalid provider endpoint",
+            expect="200 synthetic fallback proving gateway rewrote the request before upstream model egress",
+            fn=test_mission_bound_model_scope,
         ),
         TestCase(
             name="Rate limit burst (429 on rapid calls)",

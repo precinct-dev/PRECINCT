@@ -174,6 +174,38 @@ fmt.Println(resp["id"])
 This returns a plain `error` for client-side contract violations such as absolute endpoints, and a
 `*GatewayError` when the gateway itself denies the request.
 
+### Mission-Bound Model Requests
+
+For narrow-purpose agents, `ModelChatRequest` can declare mission-bound policy
+inputs that the gateway enforces at runtime:
+
+```go
+resp, err := client.CallModelChat(context.Background(), mcpgateway.ModelChatRequest{
+    Model:                "llama-3.3-70b-versatile",
+    Messages:             []map[string]any{{"role": "user", "content": "How do I reverse a linked list in Python?"}},
+    Provider:             "groq",
+    APIKeyRef:            "Bearer $SPIKE{ref:deadbeef,exp:3600}",
+    AgentPurpose:         "restaurant_order_support",
+    MissionBoundaryMode:  "enforce",
+    AllowedIntents:       []string{"place_order", "order_status", "cancel_order", "menu_question"},
+    AllowedTopics:        []string{"menu", "burritos", "bowls", "hours", "refunds"},
+    BlockedTopics:        []string{"coding", "python", "linked lists"},
+    OutOfScopeAction:     "rewrite",
+    OutOfScopeMessage:    "I can help with orders and menu questions only.",
+})
+if err != nil {
+    log.Fatal(err)
+}
+fmt.Println(resp["choices"])
+```
+
+Behavior notes:
+
+- If mission-bound fields are omitted, existing model-chat behavior is unchanged.
+- `rewrite` and `handoff` return a safe synthetic assistant response from the
+  gateway without calling the upstream provider.
+- `deny` returns a normal gateway denial with a model-plane reason code.
+
 ## Configuration Options
 
 All options are passed to `NewClient` as functional options.

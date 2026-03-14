@@ -175,6 +175,24 @@
       "replacement_code": null
     },
     {
+      "code": "MODEL_MISSION_SCOPE_DENIED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model mission scope denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_MISSION_SCOPE_SAFE_FALLBACK_APPLIED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model mission scope safe fallback applied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
       "code": "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED",
       "plane": "model",
       "decision": "deny",
