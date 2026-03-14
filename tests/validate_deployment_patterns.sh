@@ -4,7 +4,7 @@
 # Validates docs/architecture/deployment-patterns.md against the actual codebase.
 # Checks:
 #   1. All 13 middleware names match the middleware chain in gateway.go
-#   2. K8s-native controls have corresponding manifests in infra/eks/
+#   2. K8s-native controls have corresponding manifests in deploy/terraform/
 #   3. Document mentions all control areas from the control taxonomy
 #
 # Usage: bash tests/validate_deployment_patterns.sh
@@ -93,32 +93,32 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Check 2: K8s-native controls have corresponding manifests in infra/eks/
+# Check 2: K8s-native controls have corresponding manifests in deploy/terraform/
 # ---------------------------------------------------------------------------
 printf "\n=== Check 2: K8s manifest cross-references ===\n"
 
 # NetworkPolicies
-if [ -f "$PROJECT_ROOT/infra/eks/policies/default-deny.yaml" ]; then
+if [ -f "$PROJECT_ROOT/deploy/terraform/policies/default-deny.yaml" ]; then
     pass "NetworkPolicy manifest exists: policies/default-deny.yaml"
 else
     fail "NetworkPolicy manifest missing: policies/default-deny.yaml"
 fi
 
-if [ -f "$PROJECT_ROOT/infra/eks/policies/gateway-allow.yaml" ]; then
+if [ -f "$PROJECT_ROOT/deploy/terraform/policies/gateway-allow.yaml" ]; then
     pass "NetworkPolicy manifest exists: policies/gateway-allow.yaml"
 else
     fail "NetworkPolicy manifest missing: policies/gateway-allow.yaml"
 fi
 
-if [ -f "$PROJECT_ROOT/infra/eks/policies/mcp-server-allow.yaml" ]; then
+if [ -f "$PROJECT_ROOT/deploy/terraform/policies/mcp-server-allow.yaml" ]; then
     pass "NetworkPolicy manifest exists: policies/mcp-server-allow.yaml"
 else
     fail "NetworkPolicy manifest missing: policies/mcp-server-allow.yaml"
 fi
 
 # PodSecurityAdmission (namespace labels)
-if [ -f "$PROJECT_ROOT/infra/eks/gateway/gateway-namespace.yaml" ]; then
-    if grep -q "pod-security.kubernetes.io/enforce" "$PROJECT_ROOT/infra/eks/gateway/gateway-namespace.yaml"; then
+if [ -f "$PROJECT_ROOT/deploy/terraform/gateway/gateway-namespace.yaml" ]; then
+    if grep -q "pod-security.kubernetes.io/enforce" "$PROJECT_ROOT/deploy/terraform/gateway/gateway-namespace.yaml"; then
         pass "PodSecurityAdmission labels found in gateway-namespace.yaml"
     else
         fail "PodSecurityAdmission labels NOT found in gateway-namespace.yaml"
@@ -128,27 +128,27 @@ else
 fi
 
 # Cosign admission (policy-controller)
-if [ -f "$PROJECT_ROOT/infra/eks/admission/policy-controller/cluster-image-policy.yaml" ]; then
+if [ -f "$PROJECT_ROOT/deploy/terraform/admission/policy-controller/cluster-image-policy.yaml" ]; then
     pass "Cosign admission manifest exists: admission/policy-controller/cluster-image-policy.yaml"
 else
     fail "Cosign admission manifest missing: admission/policy-controller/cluster-image-policy.yaml"
 fi
 
-if [ -f "$PROJECT_ROOT/infra/eks/admission/policy-controller/webhook.yaml" ]; then
+if [ -f "$PROJECT_ROOT/deploy/terraform/admission/policy-controller/webhook.yaml" ]; then
     pass "Cosign webhook manifest exists: admission/policy-controller/webhook.yaml"
 else
     fail "Cosign webhook manifest missing: admission/policy-controller/webhook.yaml"
 fi
 
 # OPA Gatekeeper admission
-if [ -f "$PROJECT_ROOT/infra/eks/admission/gatekeeper-system.yaml" ]; then
+if [ -f "$PROJECT_ROOT/deploy/terraform/admission/gatekeeper-system.yaml" ]; then
     pass "Gatekeeper system manifest exists: admission/gatekeeper-system.yaml"
 else
     fail "Gatekeeper system manifest missing: admission/gatekeeper-system.yaml"
 fi
 
-if [ -d "$PROJECT_ROOT/infra/eks/admission/constraint-templates" ]; then
-    CT_COUNT=$(ls "$PROJECT_ROOT/infra/eks/admission/constraint-templates/"*.yaml 2>/dev/null | wc -l | tr -d ' ')
+if [ -d "$PROJECT_ROOT/deploy/terraform/admission/constraint-templates" ]; then
+    CT_COUNT=$(ls "$PROJECT_ROOT/deploy/terraform/admission/constraint-templates/"*.yaml 2>/dev/null | wc -l | tr -d ' ')
     if [ "$CT_COUNT" -gt 0 ]; then
         pass "Gatekeeper ConstraintTemplates found: $CT_COUNT templates"
     else
@@ -158,8 +158,8 @@ else
     fail "Gatekeeper constraint-templates directory missing"
 fi
 
-if [ -d "$PROJECT_ROOT/infra/eks/admission/constraints" ]; then
-    C_COUNT=$(ls "$PROJECT_ROOT/infra/eks/admission/constraints/"*.yaml 2>/dev/null | wc -l | tr -d ' ')
+if [ -d "$PROJECT_ROOT/deploy/terraform/admission/constraints" ]; then
+    C_COUNT=$(ls "$PROJECT_ROOT/deploy/terraform/admission/constraints/"*.yaml 2>/dev/null | wc -l | tr -d ' ')
     if [ "$C_COUNT" -gt 0 ]; then
         pass "Gatekeeper Constraints found: $C_COUNT constraints"
     else
@@ -170,8 +170,8 @@ else
 fi
 
 # SPIRE agent configs (k8s_psat for EKS, join_token for local)
-if [ -f "$PROJECT_ROOT/infra/eks/spire/agent-configmap.yaml" ]; then
-    if grep -q "k8s_psat" "$PROJECT_ROOT/infra/eks/spire/agent-configmap.yaml"; then
+if [ -f "$PROJECT_ROOT/deploy/terraform/spire/agent-configmap.yaml" ]; then
+    if grep -q "k8s_psat" "$PROJECT_ROOT/deploy/terraform/spire/agent-configmap.yaml"; then
         pass "SPIRE agent config uses k8s_psat for EKS"
     else
         fail "SPIRE agent config does NOT use k8s_psat for EKS"
@@ -180,8 +180,8 @@ else
     fail "SPIRE agent ConfigMap missing: spire/agent-configmap.yaml"
 fi
 
-if [ -f "$PROJECT_ROOT/infra/eks/overlays/local/patch-spire-agent-config.yaml" ]; then
-    if grep -q "join_token" "$PROJECT_ROOT/infra/eks/overlays/local/patch-spire-agent-config.yaml"; then
+if [ -f "$PROJECT_ROOT/deploy/terraform/overlays/local/patch-spire-agent-config.yaml" ]; then
+    if grep -q "join_token" "$PROJECT_ROOT/deploy/terraform/overlays/local/patch-spire-agent-config.yaml"; then
         pass "Local overlay SPIRE agent uses join_token"
     else
         fail "Local overlay SPIRE agent does NOT use join_token"
