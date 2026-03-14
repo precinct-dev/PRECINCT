@@ -24,7 +24,7 @@ func TestKustomizeBuildIncludesImmutableAuditSinkConfig(t *testing.T) {
 	}
 
 	root := pocRootForManifestTests(t)
-	cmd := exec.Command("kustomize", "build", filepath.Join(root, "infra/eks/observability"))
+	cmd := exec.Command("kustomize", "build", filepath.Join(root, "deploy/terraform/observability"))
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("kustomize build failed: %v\nOutput:\n%s", err, string(out))
