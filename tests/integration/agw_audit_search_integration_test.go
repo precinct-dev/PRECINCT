@@ -26,7 +26,7 @@ func TestAgwAuditSearchIntegration_JSON(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 
 	// Default source is docker compose logs (AC7).
-	cmd := exec.Command("go", "run", "./cmd/agw", "audit", "search", "--spiffe-id", spiffeID, "--last", "1h", "--format", "json")
+	cmd := exec.Command("go", "run", "./cli/agw", "audit", "search", "--spiffe-id", spiffeID, "--last", "1h", "--format", "json")
 	cmd.Dir = pocDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -61,7 +61,7 @@ func TestAgwAuditSearchIntegration_JSON(t *testing.T) {
 	}
 
 	// AC1: decision-id filter should return that specific entry.
-	cmdByDecision := exec.Command("go", "run", "./cmd/agw", "audit", "search", "--decision-id", decisionID, "--format", "json")
+	cmdByDecision := exec.Command("go", "run", "./cli/agw", "audit", "search", "--decision-id", decisionID, "--format", "json")
 	cmdByDecision.Dir = pocDir()
 	stdout.Reset()
 	stderr.Reset()
@@ -87,7 +87,7 @@ func TestAgwAuditSearchIntegration_JSON(t *testing.T) {
 	}
 
 	// AC3: denied filter should include denied/error entries in the time window.
-	cmdDenied := exec.Command("go", "run", "./cmd/agw", "audit", "search", "--denied", "--last", "1h", "--format", "json")
+	cmdDenied := exec.Command("go", "run", "./cli/agw", "audit", "search", "--denied", "--last", "1h", "--format", "json")
 	cmdDenied.Dir = pocDir()
 	stdout.Reset()
 	stderr.Reset()

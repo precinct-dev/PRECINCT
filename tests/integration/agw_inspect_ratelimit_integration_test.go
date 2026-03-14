@@ -47,7 +47,7 @@ func TestAgwInspectRateLimitIntegration_JSON(t *testing.T) {
 	}
 
 	// Inspect rate limit for the specific SPIFFE ID.
-	cmd := exec.Command("go", "run", "./cmd/agw", "inspect", "rate-limit", spiffeID, "--format", "json")
+	cmd := exec.Command("go", "run", "./cli/agw", "inspect", "rate-limit", spiffeID, "--format", "json")
 	cmd.Dir = pocDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -87,7 +87,7 @@ func TestAgwInspectRateLimitIntegration_JSON(t *testing.T) {
 	}
 
 	// Inspect all active rate limits (should include the same identity).
-	cmdAll := exec.Command("go", "run", "./cmd/agw", "inspect", "rate-limit", "--format", "json")
+	cmdAll := exec.Command("go", "run", "./cli/agw", "inspect", "rate-limit", "--format", "json")
 	cmdAll.Dir = pocDir()
 	stdout.Reset()
 	stderr.Reset()

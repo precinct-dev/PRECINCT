@@ -44,7 +44,7 @@ func TestAgwRepaveStatusIntegration_JSON(t *testing.T) {
 		t.Fatalf("write state file: %v", err)
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/agw", "repave", "status", "--state-file", statePath, "--format", "json")
+	cmd := exec.Command("go", "run", "./cli/agw", "repave", "status", "--state-file", statePath, "--format", "json")
 	cmd.Dir = pocDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

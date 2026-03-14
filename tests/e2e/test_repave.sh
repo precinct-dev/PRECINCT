@@ -16,7 +16,7 @@ TMP_DIR="$(mktemp -d)"
 KEYDB_PROXY_CONTAINER=""
 KEYDB_PROXY_PORT=""
 
-AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/agw}"
+AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/precinct}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
 KEYDB_URL="${KEYDB_URL:-redis://127.0.0.1:6379}"
 SPIFFE_ID="${SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/dspy-researcher/dev}"
@@ -238,10 +238,10 @@ main() {
   require_cmd rg
 
   if [ ! -x "$AGW_BIN" ]; then
-    log_fail "agw binary check" "missing executable at $AGW_BIN"
+    log_fail "precinct binary check" "missing executable at $AGW_BIN"
     exit 1
   fi
-  log_pass "agw binary present"
+  log_pass "precinct binary present"
 
   log_header "1) Start Full Stack"
   run_cmd "make_up" make up
@@ -328,10 +328,10 @@ main() {
   log_header "4) Repave Status (KeyDB)"
   run_cmd "agw_repave_status_keydb" "$AGW_BIN" repave status --format json
   if ! jq -e '.containers[] | select(.name=="keydb") | (.last_repave != "NEVER" and (.health=="healthy" or .health=="running"))' "$TMP_DIR/agw_repave_status_keydb.out" >/dev/null; then
-    log_fail "agw repave status keydb" "expected keydb last_repave and healthy status"
+    log_fail "precinct repave status keydb" "expected keydb last_repave and healthy status"
     exit 1
   fi
-  log_pass "agw repave status reports keydb repave"
+  log_pass "precinct repave status reports keydb repave"
 
   log_header "5) Full Stack Repave"
   run_cmd "repave_all" make repave
@@ -352,7 +352,7 @@ main() {
   log_header "6) Repave Status (All Containers)"
   run_cmd "agw_repave_status_all" "$AGW_BIN" repave status --format json
   if ! jq -e '.containers | length >= 9' "$TMP_DIR/agw_repave_status_all.out" >/dev/null; then
-    log_fail "agw repave status all" "expected at least 9 containers in status output"
+    log_fail "precinct repave status all" "expected at least 9 containers in status output"
     exit 1
   fi
   local expected
@@ -360,11 +360,11 @@ main() {
   local svc
   for svc in $expected; do
     if ! jq -e --arg s "$svc" '.containers[] | select(.name==$s) | (.last_repave != "NEVER")' "$TMP_DIR/agw_repave_status_all.out" >/dev/null; then
-      log_fail "agw status container ${svc}" "missing repave timestamp for ${svc}"
+      log_fail "precinct status container ${svc}" "missing repave timestamp for ${svc}"
       exit 1
     fi
   done
-  log_pass "agw repave status shows timestamps for all expected containers"
+  log_pass "precinct repave status shows timestamps for all expected containers"
 
   log_header "7) Report + Data Preservation Checks"
   local report_file

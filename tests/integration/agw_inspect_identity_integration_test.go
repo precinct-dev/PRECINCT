@@ -12,7 +12,7 @@ import (
 
 func TestAgwInspectIdentityIntegration_JSON(t *testing.T) {
 	cmd := exec.Command(
-		"go", "run", "./cmd/agw", "inspect", "identity",
+		"go", "run", "./cli/agw", "inspect", "identity",
 		"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 		"--format", "json",
 	)
