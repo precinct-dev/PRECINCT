@@ -24,14 +24,74 @@ Thumbs.db
 *.pid
 
 # Runtime operations artifacts
-POC/docs/operations/artifacts/
-POC/docs/upgrades/
-POC/config/upgrade-snapshots/
-POC/make-*.log
-POC/tests/e2e/*.log
+docs/operations/artifacts/
+docs/upgrades/
+config/upgrade-snapshots/
+make-*.log
+tests/e2e/*.log
 
 # Local binaries/build outputs
-POC/bin/
-POC/build/
-POC/openclaw-ws-smoke
-POC/spike-cli
+bin/
+build/
+openclaw-ws-smoke
+spike-cli
+
+# SPIRE data
+data/
+
+# Compiled Go binaries (platform-specific, never commit)
+/agw
+/gateway
+/service
+/gdpr-delete
+/tool_register
+/s3-mcp-server
+/spike-cli
+/openclaw-ws-smoke
+/mtls-healthcheck
+/tcp-healthcheck
+/spike-seeder
+/messaging-sim
+/ws-e2e-client
+demo/go/demo
+demo/mock-mcp-server/mock-mcp-server
+*.exe
+*.out
+*.test
+
+# Build artifacts (entire directory is ephemeral)
+coverage.out
+
+# Generated reports
+reports/
+
+# Attestation signing key (NEVER commit private keys)
+config/attestation-ed25519.key
+
+# Upgrade workflow artifacts (runtime only, never commit)
+config/versions.yaml.snapshot.*
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+uv.lock
+
+# Repave workflow state (runtime artifact)
+.repave-state.json
+
+# OpenTofu / Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# E2E test artifacts (runtime only)
+tests/e2e/artifacts/
+
+# Relocated use-case-specific files (local reference only)
+use_case_specific/
