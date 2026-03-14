@@ -133,7 +133,7 @@ CMD ["agent.main"]
 # Build Instructions
 # ============================================================================
 # Build the image:
-#   docker build -f docker/Dockerfile.python-agent -t python-agent:latest .
+#   docker build -f deploy/compose/Dockerfile.python-agent -t python-agent:latest .
 #
 # Run the image:
 #   docker run -p 8000:8000 python-agent:latest
