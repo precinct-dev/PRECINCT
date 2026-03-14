@@ -909,7 +909,7 @@ precinct audit explain --request-id req-c8d4e512
 precinct audit verify --from "2025-11-15T00:00:00Z" --to "2025-11-15T23:59:59Z"</code></pre>
 
             <h3>CLI compliance evidence commands (OpenSearch-backed, secure path)</h3>
-            <pre><code class="language-bash">export AGW_OPENSEARCH_PASSWORD='&lt;secret&gt;'
+            <pre><code class="language-bash">export PRECINCT_OPENSEARCH_PASSWORD='&lt;secret&gt;'
 
 # Collect SOC2 evidence from indexed audit records over HTTPS + mTLS
 precinct compliance collect \

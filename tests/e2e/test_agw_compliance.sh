@@ -16,7 +16,7 @@ TMP_DIR="$(mktemp -d)"
 KEYDB_PROXY_CONTAINER=""
 KEYDB_PROXY_PORT=""
 
-AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/precinct}"
+PRECINCT_BIN="${PRECINCT_BIN:-${ROOT_DIR}/build/bin/precinct}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
 KEYDB_URL="${KEYDB_URL:-redis://127.0.0.1:6379}"
 SPIFFE_ID="${SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/dspy-researcher/dev}"
@@ -218,8 +218,8 @@ main() {
   require_cmd redis-cli
   require_cmd find
 
-  if [ ! -x "$AGW_BIN" ]; then
-    log_fail "precinct binary check" "missing executable at $AGW_BIN (run: make compliance-demo)"
+  if [ ! -x "$PRECINCT_BIN" ]; then
+    log_fail "precinct binary check" "missing executable at $PRECINCT_BIN (run: make compliance-demo)"
     exit 1
   fi
   log_pass "precinct binary present"
@@ -238,10 +238,10 @@ main() {
   log_pass "keydb reachable"
 
   log_header "1) Generate Audit Activity via E2E Demo"
-  run_cmd "seed_audit_data" env AGW_BIN="$AGW_BIN" bash tests/e2e/test_agw_cli.sh
+  run_cmd "seed_audit_data" env PRECINCT_BIN="$PRECINCT_BIN" bash tests/e2e/test_agw_cli.sh
 
   log_header "2) Collect SOC2 Evidence Package"
-  run_cmd "compliance_collect" "$AGW_BIN" compliance collect --framework soc2 --output-dir "$TMP_DIR/reports" --gateway-url "$GATEWAY_URL"
+  run_cmd "compliance_collect" "$PRECINCT_BIN" compliance collect --framework soc2 --output-dir "$TMP_DIR/reports" --gateway-url "$GATEWAY_URL"
   EVIDENCE_DIR="$(json_last_line_value "$TMP_DIR/compliance_collect.out")"
   if [ -z "$EVIDENCE_DIR" ] || [ ! -d "$EVIDENCE_DIR" ]; then
     log_fail "compliance collect output dir" "expected evidence directory path in output, got: $EVIDENCE_DIR"
@@ -268,7 +268,7 @@ main() {
   log_pass "all SOC2 controls have evidence directories (${ACTUAL_CONTROL_DIRS})"
 
   log_header "3) Generate Compliance PDF Report"
-  run_cmd "compliance_report_pdf" "$AGW_BIN" compliance report --framework soc2 --output pdf --output-dir "$TMP_DIR/reports"
+  run_cmd "compliance_report_pdf" "$PRECINCT_BIN" compliance report --framework soc2 --output pdf --output-dir "$TMP_DIR/reports"
   REPORT_PDF="$(json_last_line_value "$TMP_DIR/compliance_report_pdf.out")"
   if [ -z "$REPORT_PDF" ] || [ ! -f "$REPORT_PDF" ]; then
     log_fail "report pdf path" "expected generated pdf path, got: $REPORT_PDF"
@@ -281,7 +281,7 @@ main() {
   log_pass "pdf report generated: $REPORT_PDF"
 
   log_header "4) Export GDPR DSAR Package"
-  run_cmd "gdpr_audit" "$AGW_BIN" gdpr audit "$SPIFFE_ID" --source docker --project-root "." --output-dir "$TMP_DIR/reports" --keydb-url "$KEYDB_URL" --format json
+  run_cmd "gdpr_audit" "$PRECINCT_BIN" gdpr audit "$SPIFFE_ID" --source docker --project-root "." --output-dir "$TMP_DIR/reports" --keydb-url "$KEYDB_URL" --format json
   assert_json_expr "$TMP_DIR/gdpr_audit.out" "all(data.get(k) for k in ['summary_path','audit_entries_path','session_data_path','rate_limit_data_path','identity_details_path','policy_grants_path'])" "gdpr audit output contains all package files"
 
   DSAR_DIR="$(python3 - "$TMP_DIR/gdpr_audit.out" <<'PY'
@@ -308,7 +308,7 @@ PY
   redis_exec SET "$last_fill_key" "$(date +%s%N)" EX 240 >/dev/null
   log_pass "seeded deterministic subject data before gdpr delete"
 
-  run_cmd "gdpr_delete" "$AGW_BIN" gdpr delete "$SPIFFE_ID" --confirm --source docker --project-root "." --output-dir "$TMP_DIR/reports" --keydb-url "$KEYDB_URL" --format json
+  run_cmd "gdpr_delete" "$PRECINCT_BIN" gdpr delete "$SPIFFE_ID" --confirm --source docker --project-root "." --output-dir "$TMP_DIR/reports" --keydb-url "$KEYDB_URL" --format json
   assert_json_expr "$TMP_DIR/gdpr_delete.out" "len(str(data.get('deletion_certificate', ''))) == 64 and data.get('total_items_processed', 0) >= 3" "gdpr delete produced deletion certificate and processed records"
 
   subject_session_count="$(redis_exec --scan --pattern "session:${SPIFFE_ID}:*" | wc -l | tr -d ' ')"

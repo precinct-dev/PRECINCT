@@ -26,7 +26,7 @@ func newPolicyReloadCmd() *cobra.Command {
 
 			gatewayURL := strings.TrimSpace(viper.GetString(cfgGatewayURL))
 			if gatewayURL == "" {
-				return errors.New("gateway URL is empty (set --gateway-url or AGW_GATEWAY_URL)")
+				return errors.New("gateway URL is empty (set --gateway-url or PRECINCT_GATEWAY_URL)")
 			}
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)

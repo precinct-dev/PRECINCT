@@ -196,7 +196,7 @@ func GenerateGrantsEntry(name, description string) string {
 	var sb strings.Builder
 
 	fmt.Fprintf(&sb, "  # Grant template for %s - registered %s\n", name, time.Now().Format("2006-01-02"))
-	sb.WriteString("  # TODO: Replace placeholder SPIFFE pattern with actual agent identity\n")
+	sb.WriteString("  # ACTION REQUIRED: Replace placeholder SPIFFE pattern with actual agent identity\n")
 	sb.WriteString("  - spiffe_pattern: \"spiffe://poc.local/agents/mcp-client/*/dev\"\n")
 	fmt.Fprintf(&sb, "    description: \"Grant for %s - %s\"\n", name, description)
 	sb.WriteString("    allowed_tools:\n")

@@ -222,8 +222,8 @@ test-integration: ## Run tagged integration tests against an ensured local stack
 	@echo ""
 	@echo "Running tagged integration tests..."
 	@keydb_url="$$(bash scripts/resolve-keydb-url.sh)"; \
-	echo "Using AGW_KEYDB_URL=$$keydb_url"; \
-	AGW_KEYDB_URL="$$keydb_url" go test -tags=integration ./tests/integration/... -v -timeout 30m
+	echo "Using PRECINCT_KEYDB_URL=$$keydb_url"; \
+	PRECINCT_KEYDB_URL="$$keydb_url" go test -tags=integration ./tests/integration/... -v -timeout 30m
 
 test-opa: ## Run OPA policy tests
 	@echo "Running OPA policy tests..."

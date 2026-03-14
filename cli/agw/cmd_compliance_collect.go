@@ -119,7 +119,7 @@ func newComplianceCollectCmd() *cobra.Command {
 	cmd.Flags().StringVar(&opensearchURL, "opensearch-url", "https://opensearch.observability.svc.cluster.local:9200", "OpenSearch base URL (used by --audit-source opensearch)")
 	cmd.Flags().StringVar(&opensearchIndex, "opensearch-index", "precinct-audit-*", "OpenSearch index or index pattern (used by --audit-source opensearch)")
 	cmd.Flags().StringVar(&opensearchUsername, "opensearch-username", "admin", "OpenSearch username (used by --audit-source opensearch)")
-	cmd.Flags().StringVar(&opensearchPasswordEnv, "opensearch-password-env", "AGW_OPENSEARCH_PASSWORD", "Environment variable containing OpenSearch password")
+	cmd.Flags().StringVar(&opensearchPasswordEnv, "opensearch-password-env", "PRECINCT_OPENSEARCH_PASSWORD", "Environment variable containing OpenSearch password")
 	cmd.Flags().StringVar(&opensearchCACert, "opensearch-ca-cert", "", "Path to OpenSearch CA certificate (required for --audit-source opensearch)")
 	cmd.Flags().StringVar(&opensearchClientCert, "opensearch-client-cert", "", "Path to OpenSearch client certificate (required for --audit-source opensearch)")
 	cmd.Flags().StringVar(&opensearchClientKey, "opensearch-client-key", "", "Path to OpenSearch client private key (required for --audit-source opensearch)")
