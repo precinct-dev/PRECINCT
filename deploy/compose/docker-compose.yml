@@ -16,7 +16,7 @@ services:
     container_name: spire-server
     hostname: spire-server
     volumes:
-      - ./config/spire/server.conf:/opt/spire/conf/server/server.conf:ro
+      - ../../config/spire/server.conf:/opt/spire/conf/server/server.conf:ro
       - ./data/spire-server:/opt/spire/data
       - spire-server-socket:/tmp/spire-server
     ports:
@@ -63,7 +63,7 @@ services:
       spire-token-generator:
         condition: service_completed_successfully
     volumes:
-      - ./config/spire/agent.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ../../config/spire/agent.conf:/opt/spire/conf/agent/agent.conf:ro
       - ./data/spire-agent:/opt/spire/data/agent
       - spire-agent-socket:/tmp/spire-agent/public
       - spire-join-token:/token:ro
@@ -93,7 +93,7 @@ services:
         condition: service_healthy
     volumes:
       - spire-server-socket:/tmp/spire-server:ro
-      - ./scripts/register-spire-entries.sh:/register.sh:ro
+      - ../../scripts/register-spire-entries.sh:/register.sh:ro
     entrypoint: ["/bin/sh", "/register.sh"]
     networks:
       - control-plane
@@ -264,7 +264,7 @@ services:
         condition: service_completed_successfully  # RFA-oyg: root key must be delivered before seeding secrets
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
-      - ./.env:/run/secrets/env:ro  # RFA-cjc: Mount .env as secret file (not env_file) so docker compose config cannot reveal key values
+      - ../../.env:/run/secrets/env:ro  # RFA-cjc: Mount .env as secret file (not env_file) so docker compose config cannot reveal key values
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - SPIKE_NEXUS_API_URL=https://spike-nexus:8443
@@ -424,7 +424,7 @@ services:
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
       - keydb-certs:/certs
-      - ./scripts/keydb-svid-refresh.sh:/tmp/keydb-svid-refresh.sh:ro
+      - ../../scripts/keydb-svid-refresh.sh:/tmp/keydb-svid-refresh.sh:ro
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - CERT_DIR=/certs
@@ -445,7 +445,7 @@ services:
   # without external dependencies (Docker MCP Gateway, Tavily API keys).
   mock-mcp-server:
     build:
-      context: ./demo/mock-mcp-server
+      context: ../../examples/mock-mcp-server
       dockerfile: Dockerfile
     container_name: mock-mcp-server
     hostname: mock-mcp-server
@@ -469,7 +469,7 @@ services:
   # without external API keys or network calls.
   mock-guard-model:
     build:
-      context: ./demo/mock-guard-model
+      context: ../../examples/mock-guard-model
       dockerfile: Dockerfile
     container_name: mock-guard-model
     hostname: mock-guard-model
@@ -493,7 +493,7 @@ services:
   # and credential leakage. Reference implementation of the extension protocol.
   content-scanner:
     build:
-      context: ./demo/content-scanner
+      context: ../../examples/content-scanner
       dockerfile: Dockerfile
     container_name: content-scanner
     hostname: content-scanner
@@ -562,7 +562,7 @@ services:
         condition: service_healthy  # Extension slot: content scanner sidecar for post_inspection
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
-      - ./config:/config:ro  # Mount config directory for OPA policies and tool registry
+      - ../../config:/config:ro  # Mount config directory for OPA policies and tool registry
     ports:
       - "9090:9090"   # MCP JSON-RPC API (HTTP, dev mode)
     environment:
