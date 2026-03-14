@@ -54,7 +54,7 @@ Default-deny is applied to both namespaces. Explicit allow rules permit:
 5. Gateway container image built and available:
    ```bash
    # Build locally
-   docker build -t mcp-security-gateway:latest -f docker/Dockerfile.gateway .
+   docker build -t mcp-security-gateway:latest -f deploy/compose/Dockerfile.gateway .
 
    # Push to ECR (production)
    aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com

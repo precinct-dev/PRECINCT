@@ -8,7 +8,7 @@
 #
 # Preconditions:
 #   - Docker Compose stack is running (make up)
-#   - POC/.env contains GROQ_API_KEY
+#   - .env contains GROQ_API_KEY
 #
 # Usage:
 #   bash tests/e2e/test_guard_model_e2e.sh
@@ -39,7 +39,7 @@ log_subheader "Pre-flight checks"
 
 ENV_FILE="${POC_DIR}/.env"
 if [ ! -f "$ENV_FILE" ]; then
-    echo "SKIP: ${ENV_FILE} not found. This test requires POC/.env with GROQ_API_KEY."
+    echo "SKIP: ${ENV_FILE} not found. This test requires .env with GROQ_API_KEY."
     exit 0
 fi
 

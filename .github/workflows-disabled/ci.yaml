@@ -37,9 +37,6 @@ jobs:
   lint:
     name: Lint
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: POC
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,7 +45,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: POC/go.sum
+          cache-dependency-path: go.sum
 
       - name: Run go vet
         run: go vet ./...
@@ -65,9 +62,6 @@ jobs:
   test:
     name: Go Tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: POC
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,7 +70,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: POC/go.sum
+          cache-dependency-path: go.sum
 
       - name: Run unit tests with coverage
         run: |
@@ -100,7 +94,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: POC/coverage.out
+          path: coverage.out
           if-no-files-found: warn
 
   # --------------------------------------------------------------------------
@@ -109,9 +103,6 @@ jobs:
   opa-test:
     name: OPA Policy Tests
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: POC
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -137,9 +128,6 @@ jobs:
   readiness-gates:
     name: Readiness Gates
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: POC
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -166,9 +154,9 @@ jobs:
         with:
           name: readiness-gates
           path: |
-            POC/build/ci/strict-runtime-validate.log
-            POC/build/ci/production-readiness-validate.log
-            POC/build/security-scan/latest/**
+            build/ci/strict-runtime-validate.log
+            build/ci/production-readiness-validate.log
+            build/security-scan/latest/**
           if-no-files-found: warn
 
   # --------------------------------------------------------------------------
@@ -177,9 +165,6 @@ jobs:
   demo-compose-gate:
     name: Demo Compose Gate
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: POC
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -202,11 +187,11 @@ jobs:
         with:
           name: demo-compose-gate
           path: |
-            POC/build/ci/phoenix-up.log
-            POC/build/ci/demo-compose.log
-            POC/build/ci/docker-compose-ps.log
-            POC/build/ci/docker-compose-logs.log
-            POC/tests/e2e/artifacts/**
+            build/ci/phoenix-up.log
+            build/ci/demo-compose.log
+            build/ci/docker-compose-ps.log
+            build/ci/docker-compose-logs.log
+            tests/e2e/artifacts/**
           if-no-files-found: warn
 
       - name: Teardown compose/phoenix stacks
@@ -221,9 +206,6 @@ jobs:
   k8s-validation-policy-gate:
     name: K8s Validation Policy Gate
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: POC
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -244,7 +226,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: k8s-validation-policy-gate
-          path: POC/build/ci/k8s-validate.log
+          path: build/ci/k8s-validate.log
           if-no-files-found: warn
 
   # --------------------------------------------------------------------------
@@ -258,11 +240,11 @@ jobs:
       matrix:
         include:
           - image: mcp-security-gateway
-            dockerfile: POC/docker/Dockerfile.gateway
-            context: POC
+            dockerfile: deploy/compose/Dockerfile.gateway
+            context: .
           - image: s3-mcp-server
-            dockerfile: POC/docker/Dockerfile.s3-mcp-server
-            context: POC
+            dockerfile: deploy/compose/Dockerfile.s3-mcp-server
+            context: .
     steps:
       - name: Checkout
         uses: actions/checkout@v4

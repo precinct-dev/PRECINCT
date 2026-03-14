@@ -42,7 +42,7 @@ data:
     # This ConfigMap is populated at deploy time by the Makefile.
     # Run: make -C infra/eks/gateway deploy
   # Extension registry for content-scanner sidecar (K8s variant).
-  # Source: POC/config/extensions-demo-k8s.yaml
+  # Source: config/extensions-demo-k8s.yaml
   extensions-demo-k8s.yaml: |
     # PRECINCT Extension Registry -- Content Scanner Demo (Kubernetes)
     # Configures the content-scanner sidecar in the post_inspection slot.

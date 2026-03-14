@@ -10,7 +10,7 @@
 #   - kubectl configured with cluster access
 #   - NetworkPolicy-capable CNI (Calico, Cilium) installed
 #   - Gateway, tools, and observability namespaces deployed
-#   - NetworkPolicies applied (POC/infra/eks/policies/)
+#   - NetworkPolicies applied (deploy/k8s/base/policies/)
 #
 # Usage:
 #   ./verify-network-policies.sh              # Run all tests
@@ -242,7 +242,7 @@ check_prerequisites() {
     policies_found=$(kubectl get networkpolicies -A --no-headers 2>/dev/null | wc -l)
     if [ "${policies_found}" -lt 3 ]; then
         log_warn "Found only ${policies_found} NetworkPolicies cluster-wide (expected >= 3)"
-        log_warn "Ensure policies from POC/infra/eks/policies/ are applied"
+        log_warn "Ensure policies from deploy/k8s/base/policies/ are applied"
     fi
 
     # Verify CNI supports NetworkPolicies (heuristic: check for calico or cilium pods)

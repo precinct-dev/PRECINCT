@@ -1,5 +1,5 @@
 # Multi-Stage Dockerfile for PRECINCT Gateway
-# Reference: POC/docs/supply-chain-images.md
+# Reference: docs/supply-chain-images.md
 
 # ============================================================================
 # Stage 1: Builder

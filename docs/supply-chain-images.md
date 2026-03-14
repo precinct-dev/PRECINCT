@@ -140,8 +140,8 @@ All Dockerfiles MUST use multi-stage builds to:
 4. Enable layer caching for faster builds
 
 See template Dockerfiles:
-- `docker/Dockerfile.go-service` - Go services template
-- `docker/Dockerfile.python-agent` - Python agents template
+- `deploy/compose/Dockerfile.go-service` - Go services template
+- `deploy/compose/Dockerfile.python-agent` - Python agents template
 
 ## Docker Ignore
 

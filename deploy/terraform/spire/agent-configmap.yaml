@@ -2,7 +2,7 @@
 # SPIRE Agent Configuration (ConfigMap)
 # Story: RFA-9fv.3
 #
-# Adapted from POC/config/spire/agent.conf for Kubernetes:
+# Adapted from config/spire/agent.conf for Kubernetes:
 #   - k8s_psat NodeAttestor (replaces join_token for EKS)
 #   - k8s WorkloadAttestor (replaces docker attestor)
 #   - Workload API socket at /run/spire/sockets/agent.sock

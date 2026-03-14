@@ -1,6 +1,6 @@
 # Multi-Stage Dockerfile for S3 MCP Tool Server
 # Story: RFA-9fv.5
-# Reference: POC/docs/supply-chain-images.md
+# Reference: docs/supply-chain-images.md
 
 # ============================================================================
 # Stage 1: Builder

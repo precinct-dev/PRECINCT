@@ -46,7 +46,7 @@ Story: RFA-9fv.3
 ## Deployment
 
 ```bash
-cd POC/infra/eks/spire
+cd deploy/terraform/spire
 
 # Deploy all SPIRE components
 make deploy

@@ -149,7 +149,7 @@ if command -v trivy >/dev/null 2>&1 && command -v docker >/dev/null 2>&1; then
   scan_trivy_image_runner="binary"
   if ! docker image inspect "${GATEWAY_SCAN_IMAGE}" >/dev/null 2>&1; then
     echo "[INFO] building ${GATEWAY_SCAN_IMAGE} for image scan"
-    docker build -f docker/Dockerfile.gateway -t "${GATEWAY_SCAN_IMAGE}" .
+    docker build -f deploy/compose/Dockerfile.gateway -t "${GATEWAY_SCAN_IMAGE}" .
   fi
   scan_trivy_image_command="trivy image --severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format sarif --output '${scan_trivy_image_sarif}' '${GATEWAY_SCAN_IMAGE}' && trivy image --severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format json --output '${scan_trivy_image_json}' '${GATEWAY_SCAN_IMAGE}'"
   if run_scan_command "${scan_trivy_image_command}"; then

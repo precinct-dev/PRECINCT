@@ -2,7 +2,7 @@
 # SPIRE Server Configuration (ConfigMap)
 # Story: RFA-9fv.3
 #
-# Adapted from POC/config/spire/server.conf for Kubernetes:
+# Adapted from config/spire/server.conf for Kubernetes:
 #   - Trust domain: precinct.poc
 #   - k8s_psat NodeAttestor (replaces join_token for EKS)
 #   - SQLite3 data store (sufficient for POC)
