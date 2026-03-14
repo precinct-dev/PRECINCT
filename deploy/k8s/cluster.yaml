@@ -2,7 +2,7 @@
 # Creates a single control-plane node with NodePort access on 30090.
 #
 # Usage:
-#   kind create cluster --config infra/kind/cluster.yaml
+#   kind create cluster --config deploy/k8s/cluster.yaml
 #   make k8s-up
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
