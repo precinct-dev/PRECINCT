@@ -42,7 +42,7 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
         - name: mcp-security-gateway
-          # Built from POC/docker/Dockerfile.gateway
+          # Built from deploy/compose/Dockerfile.gateway
           # In EKS, push to ECR and reference the registry path:
           #   <account-id>.dkr.ecr.<region>.amazonaws.com/mcp-security-gateway:<tag>
           # For local development/testing, use the local image name.

@@ -26,7 +26,7 @@ if ! command -v jq >/dev/null 2>&1; then
   fail "jq not found"
 fi
 
-# Container names are pinned via `container_name:` in POC/docker-compose.yml.
+# Container names are pinned via `container_name:` in deploy/compose/docker-compose.yml.
 hardened=(
   "mcp-security-gateway"
   "mock-mcp-server"

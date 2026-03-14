@@ -3,7 +3,7 @@
 #
 # Single-replica deployments, ClusterIP exposure, debug logging,
 # dev image tags, lower resource limits.
-# Matches POC/infra/eks/overlays/dev/ kustomize overlay.
+# Matches deploy/k8s/overlays/dev/ kustomize overlay.
 # ------------------------------------------------------------------------------
 
 global:

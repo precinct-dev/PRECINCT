@@ -2,7 +2,7 @@
 # OpenTelemetry Collector ConfigMap
 # Story: RFA-9fv.7
 #
-# Collector configuration adapted from POC/config/otel-collector.yaml for EKS.
+# Collector configuration adapted from config/otel-collector.yaml for EKS.
 # Key differences from Docker Compose:
 #   - Phoenix endpoint uses Kubernetes service DNS name
 #   - Resource attributes include k8s namespace and cluster info

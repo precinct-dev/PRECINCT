@@ -1,6 +1,6 @@
 # Multi-Stage Dockerfile for Go Services
 # Template for: PRECINCT Gateway, precinct CLI, Context Fetcher
-# Reference: POC/docs/supply-chain-images.md
+# Reference: docs/supply-chain-images.md
 
 # ============================================================================
 # Stage 1: Builder

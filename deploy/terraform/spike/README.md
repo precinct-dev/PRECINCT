@@ -42,7 +42,7 @@ SPIKE Nexus obtains its SPIFFE SVID from the SPIRE Agent Workload API and uses i
 ## Deployment
 
 ```bash
-cd POC/infra/eks/spike
+cd deploy/terraform/spike
 
 # Deploy keeper+nexus runtime surfaces
 make deploy

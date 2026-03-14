@@ -1,6 +1,6 @@
 # Multi-Stage Dockerfile for Python AI Agents
 # Template for: DSPy agents, PydanticAI agents
-# Reference: POC/docs/supply-chain-images.md
+# Reference: docs/supply-chain-images.md
 
 # ============================================================================
 # Stage 1: Builder

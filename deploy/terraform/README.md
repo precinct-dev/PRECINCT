@@ -7,7 +7,7 @@ IRSA, VPC CNI, S3 audit sink) layer on top of the generic k8s base.
 
 IaC scripts for provisioning an EKS cluster in AWS us-west-2 using OpenTofu and the `terraform-aws-modules/eks` community module.
 
-Story: RFA-9fv.2 | Spike: RFA-9fv.1 (see `POC/docs/eks-iac.md`)
+Story: RFA-9fv.2 | Spike: RFA-9fv.1 (see `docs/eks-iac.md`)
 
 ## Prerequisites
 
@@ -23,7 +23,7 @@ Story: RFA-9fv.2 | Spike: RFA-9fv.1 (see `POC/docs/eks-iac.md`)
    tofu --version
    ```
 
-2. **AWS CLI** configured with credentials that have the permissions listed in `POC/docs/eks-iac.md` (Required AWS Permissions section).
+2. **AWS CLI** configured with credentials that have the permissions listed in `docs/eks-iac.md` (Required AWS Permissions section).
    ```bash
    aws configure
    aws sts get-caller-identity  # Verify access
@@ -37,7 +37,7 @@ Story: RFA-9fv.2 | Spike: RFA-9fv.1 (see `POC/docs/eks-iac.md`)
 ## Quick Start
 
 ```bash
-cd POC/infra/eks
+cd deploy/terraform
 
 # 1. Initialize providers and modules
 make init
@@ -90,7 +90,7 @@ By default, state is stored locally. For team use, enable remote state in S3:
 
 ## Estimated Monthly Cost
 
-Based on the spike analysis (POC/docs/eks-iac.md):
+Based on the spike analysis (docs/eks-iac.md):
 
 | Component | Cost/Month |
 |-----------|-----------|
