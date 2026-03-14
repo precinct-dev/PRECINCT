@@ -3,7 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POC_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
-TARGET_DIR="${POC_ROOT}/infra/eks/observability"
+TARGET_DIR="${POC_ROOT}/deploy/terraform/observability"
 DEFAULT_OUTPUT="${POC_ROOT}/tests/e2e/artifacts/immutable-audit-sink-proof.json"
 
 OUTPUT_PATH="${DEFAULT_OUTPUT}"
