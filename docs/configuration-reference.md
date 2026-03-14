@@ -129,6 +129,29 @@ Policy-intent projection schema (compact XML v1):
 </policy_intent>
 ```
 
+Mission-bound model mediation inputs:
+
+- The OpenAI-compatible mediated route also accepts optional mission-bound request
+  metadata so narrow-purpose agents can be kept inside a declared business/task
+  scope.
+- These controls are request-scoped and additive. If omitted, prior model-egress
+  behavior remains unchanged.
+- Supported request headers:
+  - `X-Agent-Purpose`
+  - `X-Mission-Boundary-Mode`
+  - `X-Mission-Allowed-Intents`
+  - `X-Mission-Allowed-Topics`
+  - `X-Mission-Blocked-Topics`
+  - `X-Mission-Out-Of-Scope-Action`
+  - `X-Mission-Out-Of-Scope-Message`
+- Supported runtime outcomes:
+  - `deny`: fail closed with an explicit model-plane reason code.
+  - `rewrite` / `handoff`: return a synthetic safe assistant response without
+    calling the upstream provider.
+- `MODEL_POLICY_INTENT_PREPEND_ENABLED` may project sanitized mission guidance
+  into the prompt, but that projection is advisory only. Gateway runtime policy
+  remains authoritative.
+
 Backward-compatibility behavior:
 
 - In `dev`, empty peer-identity allowlists preserve permissive trust-domain behavior for local workflows.
