@@ -32,11 +32,13 @@ endef
 # Default
 # ===========================================================================
 
+.DEFAULT_GOAL := help
+
 .PHONY: help
 help: ## Show available targets
 	@echo "Usage: make <target>"
 	@echo ""
-	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-35s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-35s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 
 # ===========================================================================
@@ -96,6 +98,7 @@ clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
 	@echo "Clearing SPIRE data directories (stale SVIDs prevent clean restart)..."
 	rm -rf data/spire-server/ data/spire-agent/
 	@if [ -d build/logs ]; then rm -rf build/logs/*; fi
+	$(MAKE) -C cli clean
 
 repave: ## Repave containers (COMPONENT=<name> for single, default: all)
 	@if [ -n "$(COMPONENT)" ]; then \
@@ -191,7 +194,7 @@ observability-reset: ## Destroy all observability backend data (Phoenix + OpenSe
 # 5. CI / Quality (ci, lint, test, production-readiness-validate)
 # ===========================================================================
 
-.PHONY: ci lint test test-unit test-integration test-opa test-e2e production-readiness-validate story-evidence-validate tracker-surface-validate
+.PHONY: ci lint test test-unit test-integration test-opa test-cli test-e2e production-readiness-validate story-evidence-validate tracker-surface-validate
 
 ci: lint test conformance build-images ## Full CI pipeline (lint + test + conformance + build)
 	@echo "CI pipeline complete"
@@ -204,7 +207,7 @@ lint: ## Run linters
 		go vet ./...; \
 	fi
 
-test: test-unit test-integration test-opa ## Run all tests (unit + tagged integration + OPA)
+test: test-unit test-integration test-opa test-cli ## Run all tests (unit + tagged integration + OPA + CLI)
 	@echo "Test suite complete"
 
 test-unit: ## Run unit tests (Go packages and non-tagged suites)
@@ -229,6 +232,9 @@ test-opa: ## Run OPA policy tests
 	else \
 		echo "WARNING: opa not installed, skipping OPA tests"; \
 	fi
+
+test-cli: ## Run CLI tests (delegates to cli/Makefile)
+	$(MAKE) -C cli test
 
 test-e2e: demo ## Run the full E2E demo suite (Compose + K8s)
 
@@ -660,7 +666,7 @@ demo-extensions:
 # 10. CI components (conformance, benchmark, build-images, build-tools)
 # ---------------------------------------------------------------------------
 
-.PHONY: conformance benchmark build-tools build-images build
+.PHONY: conformance benchmark build-tools build-images build build-cli install
 
 conformance:
 	go run ./tests/conformance/cmd/harness --output $(CONFORMANCE_REPORT)
@@ -731,9 +737,15 @@ build-images:
 	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
 	@echo "Built: $(GATEWAY_IMAGE):$(IMAGE_TAG), $(S3_MCP_IMAGE):$(IMAGE_TAG)"
 
-build:
+build: build-cli ## Build service binaries and CLI
 	@echo "Building PRECINCT Gateway..."
 	docker compose build mcp-security-gateway
+
+build-cli: ## Build CLI binary (delegates to cli/Makefile)
+	$(MAKE) -C cli build
+
+install: ## Install CLI binary (delegates to cli/Makefile)
+	$(MAKE) -C cli install
 
 # ---------------------------------------------------------------------------
 # 11. Security scans
