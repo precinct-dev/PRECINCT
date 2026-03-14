@@ -32,7 +32,7 @@ func newGDPRAuditCmd() *cobra.Command {
 
 			keydbURL := strings.TrimSpace(viper.GetString(cfgKeyDBURL))
 			if keydbURL == "" {
-				return errors.New("keydb URL is empty (set --keydb-url or AGW_KEYDB_URL)")
+				return errors.New("keydb URL is empty (set --keydb-url or PRECINCT_KEYDB_URL)")
 			}
 
 			if strings.TrimSpace(source) == "" {
@@ -84,8 +84,8 @@ func newGDPRAuditCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&source, "source", "", "Audit source: docker|file (default: AGW_AUDIT_SOURCE or docker)")
-	cmd.Flags().StringVar(&auditLogPath, "audit-log-path", "", "Audit JSONL path for --source file (default: AGW_AUDIT_LOG_PATH or /tmp/audit.jsonl)")
+	cmd.Flags().StringVar(&source, "source", "", "Audit source: docker|file (default: PRECINCT_AUDIT_SOURCE or docker)")
+	cmd.Flags().StringVar(&auditLogPath, "audit-log-path", "", "Audit JSONL path for --source file (default: PRECINCT_AUDIT_LOG_PATH or /tmp/audit.jsonl)")
 	cmd.Flags().StringVar(&projectRoot, "project-root", ".", "Project root for docker compose audit log reads")
 	cmd.Flags().StringVar(&reportsDir, "output-dir", "reports", "Directory for DSAR package output")
 	return cmd

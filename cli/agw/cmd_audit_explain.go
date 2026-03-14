@@ -90,7 +90,7 @@ func newAuditExplainCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringVar(&source, "source", "", "Audit source: docker|file (default: AGW_AUDIT_SOURCE or docker)")
-	cmd.Flags().StringVar(&auditLogPath, "audit-log-path", "", "Audit JSONL path for --source file (default: AGW_AUDIT_LOG_PATH or /tmp/audit.jsonl)")
+	cmd.Flags().StringVar(&source, "source", "", "Audit source: docker|file (default: PRECINCT_AUDIT_SOURCE or docker)")
+	cmd.Flags().StringVar(&auditLogPath, "audit-log-path", "", "Audit JSONL path for --source file (default: PRECINCT_AUDIT_LOG_PATH or /tmp/audit.jsonl)")
 	return cmd
 }

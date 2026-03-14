@@ -136,7 +136,7 @@ func postGatewayRPCMethod(t *testing.T, spiffeID, method string, params map[stri
 }
 
 func integrationKeyDBURL() string {
-	if v := strings.TrimSpace(os.Getenv("AGW_KEYDB_URL")); v != "" {
+	if v := strings.TrimSpace(os.Getenv("PRECINCT_KEYDB_URL")); v != "" {
 		return v
 	}
 	conn, err := net.DialTimeout("tcp", "127.0.0.1:6379", 500*time.Millisecond)

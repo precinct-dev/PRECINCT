@@ -27,7 +27,7 @@ type Health struct {
 }
 
 func NewClient(baseURL string) *Client {
-	adminSPIFFEID := strings.TrimSpace(os.Getenv("AGW_GATEWAY_SPIFFE_ID"))
+	adminSPIFFEID := strings.TrimSpace(os.Getenv("PRECINCT_GATEWAY_SPIFFE_ID"))
 	if adminSPIFFEID == "" {
 		adminSPIFFEID = "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 	}
