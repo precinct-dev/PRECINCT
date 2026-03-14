@@ -29,7 +29,7 @@ type composeService struct {
 
 func loadCompose(t *testing.T) composeFile {
 	t.Helper()
-	composePath := filepath.Join(pocRoot(t), "docker-compose.yml")
+	composePath := filepath.Join(pocRoot(t), "deploy", "compose", "docker-compose.yml")
 	data, err := os.ReadFile(composePath)
 	if err != nil {
 		t.Fatalf("failed to read docker-compose.yml: %v", err)
@@ -331,7 +331,7 @@ func TestSeeder_ComposeConfig_NoKeyLeakage(t *testing.T) {
 	// Structural verification: the compose file must not contain GROQ_API_KEY
 	// in any environment section of the seeder (which would be visible in
 	// docker compose config output).
-	composePath := filepath.Join(pocRoot(t), "docker-compose.yml")
+	composePath := filepath.Join(pocRoot(t), "deploy", "compose", "docker-compose.yml")
 	data, err := os.ReadFile(composePath)
 	if err != nil {
 		t.Fatalf("failed to read docker-compose.yml: %v", err)
