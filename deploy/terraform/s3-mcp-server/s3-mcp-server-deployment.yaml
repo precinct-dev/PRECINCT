@@ -46,7 +46,7 @@ spec:
           #   image: <account-id>.dkr.ecr.<region>.amazonaws.com/s3-mcp-server:<tag>
           #
           # Build with:
-          #   docker build -f docker/Dockerfile.s3-mcp-server -t s3-mcp-server .
+          #   docker build -f deploy/compose/Dockerfile.s3-mcp-server -t s3-mcp-server .
           image: s3-mcp-server:latest
           imagePullPolicy: IfNotPresent
           ports:

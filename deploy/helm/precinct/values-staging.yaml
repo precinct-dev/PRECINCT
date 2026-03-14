@@ -3,7 +3,7 @@
 #
 # Two gateway replicas for HA testing, prod_standard enforcement,
 # mTLS SPIFFE mode, info logging, cert-manager TLS for admission.
-# Matches POC/infra/eks/overlays/staging/ kustomize overlay.
+# Matches deploy/k8s/overlays/staging/ kustomize overlay.
 # ------------------------------------------------------------------------------
 
 global:

@@ -6,7 +6,7 @@
 #
 # Preconditions:
 #   - Docker Compose stack is running (make up) with the updated docker-compose.yml
-#   - POC/.env contains GROQ_API_KEY (seeded into SPIKE by spike-secret-seeder)
+#   - .env contains GROQ_API_KEY (seeded into SPIKE by spike-secret-seeder)
 #
 # Usage:
 #   bash tests/integration/test_gateway_spike_key.sh
@@ -32,7 +32,7 @@ log_subheader "Pre-flight checks"
 
 ENV_FILE="${POC_DIR}/.env"
 if [ ! -f "$ENV_FILE" ]; then
-    echo "SKIP: ${ENV_FILE} not found. This test requires POC/.env with GROQ_API_KEY."
+    echo "SKIP: ${ENV_FILE} not found. This test requires .env with GROQ_API_KEY."
     exit 0
 fi
 

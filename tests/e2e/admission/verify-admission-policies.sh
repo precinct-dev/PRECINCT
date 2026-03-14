@@ -13,7 +13,7 @@
 #   - kubectl configured with cluster access
 #   - OPA Gatekeeper installed (gatekeeper-system namespace exists)
 #   - ConstraintTemplates and Constraints applied
-#     (kubectl apply -k POC/infra/eks/admission/)
+#     (kubectl apply -k deploy/terraform/admission/)
 #   - At least one enforcement namespace exists (gateway)
 #
 # Usage:

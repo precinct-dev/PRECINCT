@@ -18,8 +18,8 @@ enforced by the CNI.
 - EKS cluster with a NetworkPolicy-capable CNI (Calico or Cilium)
 - kubectl configured with cluster access
 - Namespaces deployed: `gateway`, `tools`, `observability`
-- NetworkPolicies applied from `POC/infra/eks/policies/`
-- Observability policies applied from `POC/infra/eks/observability/`
+- NetworkPolicies applied from `deploy/k8s/base/policies/`
+- Observability policies applied from `deploy/k8s/base/observability/`
 
 ## Test Cases
 

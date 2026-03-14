@@ -4,7 +4,7 @@
 # Three gateway replicas for HA, two MCP server replicas,
 # prod_standard enforcement, mTLS SPIFFE, structured JSON logging,
 # strict PSS, PodDisruptionBudgets, image signature enforcement.
-# Matches POC/infra/eks/overlays/prod/ kustomize overlay.
+# Matches deploy/k8s/overlays/prod/ kustomize overlay.
 # ------------------------------------------------------------------------------
 
 global:

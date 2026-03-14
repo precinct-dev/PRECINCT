@@ -178,7 +178,7 @@ jobs:
           IMAGE_NAME: ${{ inputs.image }}
           FULL_IMAGE: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ inputs.image }}
         run: |
-          OVERLAY_DIR="POC/infra/eks/overlays/${TARGET_ENV}"
+          OVERLAY_DIR="deploy/k8s/overlays/${TARGET_ENV}"
           if [ ! -d "${OVERLAY_DIR}" ]; then
             echo "WARNING: Overlay directory ${OVERLAY_DIR} does not exist. Skipping overlay update."
             exit 0
@@ -210,7 +210,7 @@ jobs:
         env:
           TARGET_ENV: ${{ inputs.target_env }}
         run: |
-          make -C POC k8s-overlay-digest-validate OVERLAYS="${TARGET_ENV}"
+          make k8s-overlay-digest-validate OVERLAYS="${TARGET_ENV}"
 
       - name: Commit overlay update
         if: inputs.commit_overlay
@@ -221,7 +221,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          OVERLAY_DIR="POC/infra/eks/overlays/${TARGET_ENV}"
+          OVERLAY_DIR="deploy/k8s/overlays/${TARGET_ENV}"
           if git diff --quiet "${OVERLAY_DIR}"; then
             echo "No changes to commit"
             exit 0

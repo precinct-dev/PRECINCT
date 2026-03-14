@@ -7,7 +7,7 @@
 # To start Docker MCP Gateway:
 #   docker mcp gateway run --port 8081 --transport streaming
 #
-# For details, see: POC/docs/docker-mcp-integration.md
+# For details, see: docs/docker-mcp-integration.md
 
 services:
   # SPIRE Server - Identity control plane for workload attestation
@@ -35,8 +35,8 @@ services:
   # SPIRE Token Generator - One-shot init service to generate fresh join tokens
   spire-token-generator:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.token-generator
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.token-generator
     image: spire-token-generator:latest
     container_name: spire-token-generator
     depends_on:
@@ -52,8 +52,8 @@ services:
   # SPIRE Agent - Workload attestation agent with Docker attestor
   spire-agent:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.spire-agent
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.spire-agent
     image: spire-agent-wrapper:latest
     container_name: spire-agent
     hostname: spire-agent
@@ -105,8 +105,8 @@ services:
   # Root key delivered via spike-bootstrap -> Keeper Shamir shard recovery on startup.
   spike-nexus:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.spike-nexus
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.spike-nexus
     image: spike-nexus:latest
     container_name: spike-nexus
     hostname: spike-nexus
@@ -164,8 +164,8 @@ services:
   # to reconstruct the AES-256-GCM root key for SQLite backend encryption.
   spike-keeper-1:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.spike-keeper
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.spike-keeper
     image: spike-keeper:latest
     container_name: spike-keeper-1
     hostname: spike-keeper-1
@@ -211,8 +211,8 @@ services:
   # Nexus runs in parallel, retrying until Keepers have shards.
   spike-bootstrap:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.spike-bootstrap
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.spike-bootstrap
     image: poc-spike-bootstrap:latest
     container_name: spike-bootstrap
     depends_on:
@@ -515,8 +515,8 @@ services:
   # Messaging Simulator - WhatsApp Cloud API stub for E2E demos (RFA-1fui)
   messaging-sim:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.messaging-sim
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.messaging-sim
     container_name: messaging-sim
     hostname: messaging-sim
     networks:
@@ -537,8 +537,8 @@ services:
   # PRECINCT Gateway - Security enforcement point for all MCP requests
   mcp-security-gateway:
     build:
-      context: .
-      dockerfile: docker/Dockerfile.gateway
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.gateway
     image: mcp-security-gateway:latest
     container_name: mcp-security-gateway
     hostname: mcp-security-gateway

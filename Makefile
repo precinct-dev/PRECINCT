@@ -330,16 +330,16 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@bash scripts/k8s-sync-gateway-config.sh --sync
 	$(MAKE) k8s-registry
 	@echo "Building and pushing local images..."
-	docker build -f docker/Dockerfile.gateway -t mcp-security-gateway:latest .
+	docker build -f deploy/compose/Dockerfile.gateway -t mcp-security-gateway:latest .
 	docker build -f demo/mock-mcp-server/Dockerfile -t poc-mock-mcp-server:latest demo/mock-mcp-server/
-	docker build -f docker/Dockerfile.spire-agent -t spire-agent-wrapper:latest .
+	docker build -f deploy/compose/Dockerfile.spire-agent -t spire-agent-wrapper:latest .
 	docker tag mcp-security-gateway:latest $(LOCAL_REGISTRY)/mcp-security-gateway:latest
 	docker push $(LOCAL_REGISTRY)/mcp-security-gateway:latest
 	docker tag poc-mock-mcp-server:latest $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
 	docker push $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
 	docker tag spire-agent-wrapper:latest $(LOCAL_REGISTRY)/spire-agent-wrapper:latest
 	docker push $(LOCAL_REGISTRY)/spire-agent-wrapper:latest
-	docker build -f docker/Dockerfile.spike-keeper -t spike-keeper:latest .
+	docker build -f deploy/compose/Dockerfile.spike-keeper -t spike-keeper:latest .
 	docker tag spike-keeper:latest $(LOCAL_REGISTRY)/spike-keeper:latest
 	docker push $(LOCAL_REGISTRY)/spike-keeper:latest
 	docker build -f demo/content-scanner/Dockerfile -t poc-content-scanner:latest demo/content-scanner/
@@ -725,9 +725,9 @@ test-openclaw:
 
 build-images:
 	@echo "Building container images..."
-	docker build -f docker/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
+	docker build -f deploy/compose/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
 	docker tag $(GATEWAY_IMAGE):$(IMAGE_TAG) $(GATEWAY_IMAGE):dev
-	docker build -f docker/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
+	docker build -f deploy/compose/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
 	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
 	@echo "Built: $(GATEWAY_IMAGE):$(IMAGE_TAG), $(S3_MCP_IMAGE):$(IMAGE_TAG)"
 

@@ -2,7 +2,7 @@
 # PRECINCT Helm Chart - Default Values (local environment)
 #
 # This file provides sensible defaults matching the local kustomize overlay
-# (POC/infra/eks/overlays/local/). Override per-environment values using
+# (deploy/k8s/overlays/local/). Override per-environment values using
 # values-dev.yaml, values-staging.yaml, or values-prod.yaml.
 # ------------------------------------------------------------------------------
 
