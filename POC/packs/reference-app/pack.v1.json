@@ -44,6 +44,36 @@
     },
     "gateway_guardrails": {
       "prompt_injection_protection": "dlp_flag_plus_guard_model",
+      "mission_boundary": {
+        "agent_purpose": "restaurant_order_support",
+        "default_mode": "enforce",
+        "allowed_intents": [
+          "place_order",
+          "order_status",
+          "cancel_order",
+          "refund_request",
+          "menu_help",
+          "store_hours"
+        ],
+        "allowed_topics": [
+          "order",
+          "pickup",
+          "delivery",
+          "menu",
+          "burrito",
+          "bowl",
+          "refund",
+          "store hours"
+        ],
+        "blocked_topics": [
+          "python",
+          "linked list",
+          "javascript",
+          "algorithm",
+          "software engineering"
+        ],
+        "out_of_scope_action": "rewrite"
+      },
       "enforced_controls": [
         "spiffe_auth",
         "opa_policy",

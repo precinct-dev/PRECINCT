@@ -181,6 +181,28 @@ It captures recurring stakeholder questions and answer patterns grounded in the 
 - Current kill switch is explicit for UI capability path.
 - Gap: no single global “deny all high-risk actions” switch across tool/model planes.
 
+### 14) Can the gateway keep a narrow-purpose agent on mission, even when the user asks for something harmless but off-topic?
+
+**Short answer:** Yes. The model plane now supports mission-bound mediation so
+builders can declare a narrow-purpose agent mission and have the gateway deny or
+safely rewrite out-of-scope prompts before any upstream model call is made.
+
+**Status:** Implemented
+
+**What to emphasize**
+
+- This addresses a different failure mode than classic prompt injection.
+- Prompt-injection controls look for hostile instructions; mission-bound
+  mediation enforces business/task scope even for harmless prompts.
+- The contract is generic: agent purpose, allowed intents/topics, blocked
+  topics, enforcement mode, and out-of-scope action.
+- The gateway remains authoritative; SDKs and packs only supply declarative
+  inputs.
+- Safe fallback mode can return a synthetic assistant response so customer
+  support agents redirect politely instead of answering off-mission questions.
+- Demo coverage exists for the concrete case of a restaurant support agent being
+  asked for Python linked-list help.
+
 ## Operational Notes For Reviewers
 
 - Always state environment when answering: `dev/compose` versus `prod/k8s`.
@@ -203,4 +225,3 @@ Use this block for each new stakeholder question:
 - <control, evidence, and limits>
 - <residual risk and mitigation path>
 ```
-

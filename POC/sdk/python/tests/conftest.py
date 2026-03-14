@@ -55,6 +55,12 @@ class MockGatewayHandler(BaseHTTPRequestHandler):
             "session_id": session_id,
             "authorization": self.headers.get("Authorization", ""),
             "model_provider": self.headers.get("X-Model-Provider", ""),
+            "agent_purpose": self.headers.get("X-Agent-Purpose", ""),
+            "mission_boundary_mode": self.headers.get("X-Mission-Boundary-Mode", ""),
+            "allowed_intents": self.headers.get("X-Mission-Allowed-Intents", ""),
+            "allowed_topics": self.headers.get("X-Mission-Allowed-Topics", ""),
+            "blocked_topics": self.headers.get("X-Mission-Blocked-Topics", ""),
+            "out_of_scope_action": self.headers.get("X-Mission-Out-Of-Scope-Action", ""),
             "id": request_data.get("id"),
             "jsonrpc": request_data.get("jsonrpc"),
         })

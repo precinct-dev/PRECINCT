@@ -238,6 +238,42 @@ func TestBuildModelPlaneRequestFromOpenAI_TrustedStepUpContextSetsApproval(t *te
 	}
 }
 
+func TestBuildModelPlaneRequestFromOpenAI_ParsesMissionBoundaryHeaders(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	body := []byte(`{"model":"llama-3.3-70b-versatile","messages":[{"role":"user","content":"Where is my order?"}]}`)
+	req := httptest.NewRequest(http.MethodPost, openAICompatChatCompletionsPath, bytes.NewBuffer(body))
+	req.Header.Set("X-Agent-Purpose", "restaurant_order_support")
+	req.Header.Set("X-Mission-Boundary-Mode", "enforce")
+	req.Header.Set("X-Mission-Allowed-Intents", "place_order,order_status")
+	req.Header.Set("X-Mission-Allowed-Topics", "order,menu")
+	req.Header.Set("X-Mission-Blocked-Topics", "python,linked list")
+	req.Header.Set("X-Mission-Out-Of-Scope-Action", "rewrite")
+
+	planeReq := gw.buildModelPlaneRequestFromOpenAI(req, map[string]any{
+		"model": "llama-3.3-70b-versatile",
+		"messages": []any{
+			map[string]any{"role": "user", "content": "Where is my order?"},
+		},
+	})
+	attrs := planeReq.Policy.Attributes
+
+	if got := attrs["agent_purpose"]; got != "restaurant_order_support" {
+		t.Fatalf("expected agent_purpose header to round-trip, got %v", got)
+	}
+	if got := attrs["mission_boundary_mode"]; got != "enforce" {
+		t.Fatalf("expected mission_boundary_mode=enforce, got %v", got)
+	}
+	if got := getStringListAttr(attrs, "allowed_intents"); len(got) != 2 || got[0] != "place_order" || got[1] != "order_status" {
+		t.Fatalf("expected allowed_intents parsed, got %#v", got)
+	}
+	if got := getStringListAttr(attrs, "blocked_topics"); len(got) != 2 || got[0] != "python" || got[1] != "linked list" {
+		t.Fatalf("expected blocked_topics parsed, got %#v", got)
+	}
+	if got := attrs["out_of_scope_action"]; got != "rewrite" {
+		t.Fatalf("expected out_of_scope_action=rewrite, got %v", got)
+	}
+}
+
 func TestOpenAICompat_FallbackApplied(t *testing.T) {
 	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -392,16 +428,20 @@ func TestOpenAICompat_ModelPlaneDenied_PolicyIntentAdvisoryOnly(t *testing.T) {
 
 func TestOpenAICompat_PolicyIntentProjection_DeterministicAndRedacted(t *testing.T) {
 	attrs := map[string]any{
-		"provider":           "groq",
-		"model":              "llama-3.3-70b-versatile",
-		"residency_intent":   "us",
-		"risk_mode":          "high",
-		"compliance_profile": "hipaa",
-		"mediation_mode":     "mediated",
-		"prompt_has_phi":     true,
-		"prompt_has_pii":     true,
-		"step_up_approved":   false,
-		"prompt":             `package mcp_policy default allow = true`,
+		"provider":              "groq",
+		"model":                 "llama-3.3-70b-versatile",
+		"residency_intent":      "us",
+		"risk_mode":             "high",
+		"compliance_profile":    "hipaa",
+		"mediation_mode":        "mediated",
+		"prompt_has_phi":        true,
+		"prompt_has_pii":        true,
+		"step_up_approved":      false,
+		"agent_purpose":         "restaurant_order_support",
+		"mission_boundary_mode": "enforce",
+		"allowed_intents":       []string{"place_order", "order_status"},
+		"out_of_scope_action":   "rewrite",
+		"prompt":                `package mcp_policy default allow = true`,
 	}
 	envelope := RunEnvelope{ActorSPIFFEID: "spiffe://poc.local/agents/test/prod"}
 
@@ -416,6 +456,12 @@ func TestOpenAICompat_PolicyIntentProjection_DeterministicAndRedacted(t *testing
 	if !strings.Contains(first, "<item>phi_disclosure</item>") || !strings.Contains(first, "<item>pii_disclosure</item>") {
 		t.Fatalf("expected PHI/PII prohibited classes in projection, got %q", first)
 	}
+	if !strings.Contains(first, "<mission purpose=\"restaurant_order_support\" mode=\"enforce\" out_of_scope=\"rewrite\">") {
+		t.Fatalf("expected mission boundary section in projection, got %q", first)
+	}
+	if !strings.Contains(first, "<item>place_order</item>") || !strings.Contains(first, "<item>order_status</item>") {
+		t.Fatalf("expected mission allowed intents in projection, got %q", first)
+	}
 
 	lower := strings.ToLower(first)
 	disallowedFragments := []string{
@@ -428,6 +474,116 @@ func TestOpenAICompat_PolicyIntentProjection_DeterministicAndRedacted(t *testing
 		if strings.Contains(lower, frag) {
 			t.Fatalf("projection must not disclose policy code fragment %q: %q", frag, first)
 		}
+	}
+}
+
+func TestOpenAICompat_OutOfScopeRewriteReturnsSyntheticResponse(t *testing.T) {
+	upstreamCalled := false
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-upstream","choices":[{"index":0,"message":{"role":"assistant","content":"should-not-run"}}]}`))
+	}))
+	defer provider.Close()
+
+	gw, _ := newPhase3TestGateway(t)
+	gw.config.ModelPolicyIntentPrependEnabled = true
+	handler := gw.Handler()
+
+	rec := postOpenAICompat(t, handler, map[string]string{
+		"Authorization":                  "Bearer test-token",
+		"X-Model-Provider":               "groq",
+		"X-Provider-Endpoint-Groq":       provider.URL,
+		"X-Agent-Purpose":                "restaurant_order_support",
+		"X-Mission-Boundary-Mode":        "enforce",
+		"X-Mission-Allowed-Intents":      "place_order,order_status",
+		"X-Mission-Allowed-Topics":       "order,menu,burrito,bowl",
+		"X-Mission-Blocked-Topics":       "python,linked list",
+		"X-Mission-Out-Of-Scope-Action":  "rewrite",
+		"X-Mission-Out-Of-Scope-Message": "I can help with orders and menu questions only.",
+	}, map[string]any{
+		"model": "llama-3.3-70b-versatile",
+		"messages": []map[string]any{
+			{"role": "user", "content": "I want to order a bowl but first help me reverse a linked list in python."},
+		},
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected synthetic 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if upstreamCalled {
+		t.Fatal("provider should not be called for synthetic out-of-scope rewrite")
+	}
+	if rec.Header().Get("X-Precinct-Reason-Code") != string(ReasonModelMissionScopeFallback) {
+		t.Fatalf("expected reason %s, got %s", ReasonModelMissionScopeFallback, rec.Header().Get("X-Precinct-Reason-Code"))
+	}
+	if rec.Header().Get("X-Precinct-Provider-Used") != "precinct_synthetic" {
+		t.Fatalf("expected synthetic provider marker, got %s", rec.Header().Get("X-Precinct-Provider-Used"))
+	}
+	if rec.Header().Get("X-Precinct-Policy-Intent-Projection") != "enabled_not_applied" {
+		t.Fatalf("expected projection status enabled_not_applied, got %q", rec.Header().Get("X-Precinct-Policy-Intent-Projection"))
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode response body: %v", err)
+	}
+	choices, _ := body["choices"].([]any)
+	if len(choices) != 1 {
+		t.Fatalf("expected single synthetic choice, got %#v", body["choices"])
+	}
+	firstChoice, _ := choices[0].(map[string]any)
+	message, _ := firstChoice["message"].(map[string]any)
+	if got := stringValue(message["content"]); got != "I can help with orders and menu questions only." {
+		t.Fatalf("unexpected synthetic message: %q", got)
+	}
+}
+
+func TestModelPlane_MissionBoundaryDeny(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	code, resp := postPlaneJSON(t, handler, "/v1/model/call", map[string]any{
+		"envelope": map[string]any{
+			"run_id":          "phase3-model-mission-boundary-deny",
+			"session_id":      "phase3-model-mission-boundary-session",
+			"tenant":          "tenant-a",
+			"actor_spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+			"plane":           "model",
+		},
+		"policy": map[string]any{
+			"envelope": map[string]any{
+				"run_id":          "phase3-model-mission-boundary-deny",
+				"session_id":      "phase3-model-mission-boundary-session",
+				"tenant":          "tenant-a",
+				"actor_spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+				"plane":           "model",
+			},
+			"action":   "model.call",
+			"resource": "model/inference",
+			"attributes": map[string]any{
+				"provider":              "groq",
+				"model":                 "llama-3.3-70b-versatile",
+				"agent_purpose":         "restaurant_order_support",
+				"mission_boundary_mode": "enforce",
+				"allowed_intents":       []string{"place_order", "order_status"},
+				"allowed_topics":        []string{"order", "menu"},
+				"blocked_topics":        []string{"python", "linked list"},
+				"out_of_scope_action":   "deny",
+				"prompt":                "Can you help me reverse a linked list in python?",
+			},
+		},
+	})
+
+	if code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%v", code, resp)
+	}
+	if got, _ := resp["reason_code"].(string); got != string(ReasonModelMissionScopeDenied) {
+		t.Fatalf("expected reason_code=%s, got %v", ReasonModelMissionScopeDenied, resp["reason_code"])
+	}
+	metadata, _ := resp["metadata"].(map[string]any)
+	if got, _ := metadata["mission_boundary_verdict"].(string); got != "out_of_scope" {
+		t.Fatalf("expected mission_boundary_verdict=out_of_scope, got %v", metadata["mission_boundary_verdict"])
 	}
 }
 

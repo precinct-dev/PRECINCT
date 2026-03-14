@@ -72,6 +72,76 @@ Reference mapping for case-study defaults:
 - Maintain generic control planes and core invariants.
 - Maintain pack schema/validator and conformance gates.
 
+## Mission-Bound Model Mediation
+
+Use mission-bound mediation when an agent is intentionally narrow-purpose and
+should not answer benign but off-domain requests such as coding help, legal
+advice, or general chat.
+
+- This is different from prompt-injection blocking.
+- Prompt-injection controls look for hostile instruction patterns.
+- Mission-bound controls enforce "stay on mission" even when the prompt is
+  harmless.
+- Gateway enforcement is authoritative.
+- SDK headers and pack metadata are convenience inputs, not trusted bypasses.
+
+Declare the policy in `adapter_contract.gateway_guardrails.mission_boundary`:
+
+```json
+{
+  "adapter_contract": {
+    "gateway_guardrails": {
+      "mission_boundary": {
+        "agent_purpose": "restaurant_order_support",
+        "default_mode": "enforce",
+        "allowed_intents": [
+          "place_order",
+          "order_status",
+          "cancel_order",
+          "menu_question"
+        ],
+        "allowed_topics": [
+          "burritos",
+          "bowls",
+          "menu",
+          "hours",
+          "refunds",
+          "delivery"
+        ],
+        "blocked_topics": [
+          "coding",
+          "python",
+          "linked lists"
+        ],
+        "out_of_scope_action": "rewrite"
+      }
+    }
+  }
+}
+```
+
+Current contract notes:
+
+- `agent_purpose` identifies the declared mission for audit/projection.
+- `default_mode` enables runtime enforcement when the integration uses this pack.
+- `allowed_intents` and `allowed_topics` define the in-domain space.
+- `blocked_topics` wins over allow lists when both match.
+- `out_of_scope_action` currently supports deterministic `deny` and synthetic
+  safe `rewrite`/`handoff`.
+
+Recommended validation flow:
+
+1. Validate pack shape with `bash tests/e2e/validate_app_integration_pack_model.sh`.
+2. Exercise the real scenario with `make demo-compose`.
+3. Re-run with `make demo-k8s` when the app pack is promotion-bound.
+
+Recommended behavior:
+
+- Prefer `rewrite` for customer-facing support/chat agents so the user receives
+  a safe redirect instead of a raw denial.
+- Prefer `deny` for operator or internal agents where explicit rejection is
+  easier to reason about.
+
 ## Anti-Patterns
 
 - Adding app-specific hardcoded route logic directly into core middleware.

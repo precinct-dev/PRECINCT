@@ -244,6 +244,12 @@ class TestModelChatHelper:
             messages=[{"role": "user", "content": "hello"}],
             provider="groq",
             api_key_ref="Bearer $SPIKE{ref:deadbeef,exp:3600}",
+            agent_purpose="restaurant_order_support",
+            mission_boundary_mode="enforce",
+            allowed_intents=["place_order", "order_status"],
+            allowed_topics=["order", "menu"],
+            blocked_topics=["python", "linked list"],
+            out_of_scope_action="rewrite",
         )
 
         assert result is not None
@@ -254,6 +260,12 @@ class TestModelChatHelper:
         assert call["authorization"] == "Bearer $SPIKE{ref:deadbeef,exp:3600}"
         assert call["spiffe_id"] == SPIFFE_ID
         assert call["session_id"] == "sess-model-1"
+        assert call["agent_purpose"] == "restaurant_order_support"
+        assert call["mission_boundary_mode"] == "enforce"
+        assert call["allowed_intents"] == "place_order,order_status"
+        assert call["allowed_topics"] == "order,menu"
+        assert call["blocked_topics"] == "python,linked list"
+        assert call["out_of_scope_action"] == "rewrite"
         client.close()
 
     def test_model_chat_gateway_denial_raises_gateway_error(self, mock_gateway):

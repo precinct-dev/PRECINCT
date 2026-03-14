@@ -9,11 +9,13 @@ import (
 	"encoding/hex"
 	"encoding/pem"
 	"fmt"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/redis/go-redis/v9"
 	"gopkg.in/yaml.v3"
@@ -167,6 +169,14 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 		return promptDecision, promptReason, promptStatus, promptMetadata
 	}
 
+	missionDecision, missionReason, missionStatus, missionMetadata, missionHandled := evaluateMissionBoundary(attrs)
+	if missionHandled && missionDecision != DecisionAllow {
+		if enforcementProfile != "" && missionMetadata != nil {
+			missionMetadata["enforcement_profile"] = enforcementProfile
+		}
+		return missionDecision, missionReason, missionStatus, missionMetadata
+	}
+
 	nearLimit, exhausted := m.reserveBudget(req.Envelope.Tenant, budgetProfile, budgetUnits)
 	if exhausted {
 		metadata := map[string]any{
@@ -180,6 +190,12 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 		if promptHandled {
 			metadata["prompt_safety_reason"] = promptReason
 			for k, v := range promptMetadata {
+				metadata[k] = v
+			}
+		}
+		if missionHandled {
+			metadata["mission_boundary_reason"] = missionReason
+			for k, v := range missionMetadata {
 				metadata[k] = v
 			}
 		}
@@ -205,6 +221,12 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 					metadata[k] = v
 				}
 			}
+			if missionHandled {
+				metadata["mission_boundary_reason"] = missionReason
+				for k, v := range missionMetadata {
+					metadata[k] = v
+				}
+			}
 			return DecisionDeny, ReasonModelNoFallback, 502, metadata
 		}
 		metadata := map[string]any{
@@ -223,12 +245,20 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 				metadata[k] = v
 			}
 		}
+		if missionHandled {
+			metadata["mission_boundary_reason"] = missionReason
+			for k, v := range missionMetadata {
+				metadata[k] = v
+			}
+		}
 		return DecisionAllow, ReasonModelFallbackApplied, 200, metadata
 	}
 
 	reason := ReasonModelAllow
 	if promptHandled && promptReason != "" {
 		reason = promptReason
+	} else if missionHandled && missionReason != "" {
+		reason = missionReason
 	} else if nearLimit {
 		reason = ReasonModelBudgetNearLimit
 	}
@@ -252,7 +282,169 @@ func (m *modelPlanePolicyEngine) evaluate(req PlaneRequestV2) (Decision, ReasonC
 			metadata[k] = v
 		}
 	}
+	if missionHandled {
+		metadata["mission_boundary_reason"] = missionReason
+		for k, v := range missionMetadata {
+			metadata[k] = v
+		}
+	}
 	return DecisionAllow, reason, 200, metadata
+}
+
+func evaluateMissionBoundary(attrs map[string]any) (Decision, ReasonCode, int, map[string]any, bool) {
+	if attrs == nil {
+		attrs = map[string]any{}
+	}
+
+	mode := strings.ToLower(getStringAttr(attrs, "mission_boundary_mode", ""))
+	purpose := getStringAttr(attrs, "agent_purpose", "")
+	allowedIntents := getStringListAttr(attrs, "allowed_intents")
+	allowedTopics := getStringListAttr(attrs, "allowed_topics")
+	blockedTopics := getStringListAttr(attrs, "blocked_topics")
+	if mode == "" && purpose == "" && len(allowedIntents) == 0 && len(allowedTopics) == 0 && len(blockedTopics) == 0 {
+		return DecisionAllow, "", 0, nil, false
+	}
+	if mode == "" {
+		mode = "enforce"
+	}
+
+	allowedTerms := append([]string{}, allowedIntents...)
+	allowedTerms = append(allowedTerms, allowedTopics...)
+	prompt := getStringAttr(attrs, "prompt", "")
+	matchedAllowed := missionBoundaryMatches(prompt, allowedTerms)
+	matchedBlocked := missionBoundaryMatches(prompt, blockedTopics)
+	inScope := strings.TrimSpace(prompt) == "" || len(matchedBlocked) == 0
+	if inScope && strings.TrimSpace(prompt) != "" && len(allowedTerms) > 0 {
+		inScope = len(matchedAllowed) > 0
+	}
+
+	meta := map[string]any{
+		"mission_boundary_enforced": true,
+		"mission_boundary_mode":     mode,
+		"agent_purpose":             purpose,
+		"allowed_intents":           allowedIntents,
+		"allowed_topics":            allowedTopics,
+		"blocked_topics":            blockedTopics,
+		"matched_allowed_terms":     matchedAllowed,
+		"matched_blocked_terms":     matchedBlocked,
+	}
+	if inScope {
+		meta["mission_boundary_verdict"] = "in_scope"
+		return DecisionAllow, ReasonModelAllow, http.StatusOK, meta, true
+	}
+
+	action := normalizeMissionOutOfScopeAction(getStringAttr(attrs, "out_of_scope_action", "deny"))
+	meta["mission_boundary_verdict"] = "out_of_scope"
+	meta["out_of_scope_action"] = action
+	if mode == "advisory" || mode == "monitor" {
+		meta["mission_boundary_enforced"] = false
+		return DecisionAllow, ReasonModelAllow, http.StatusOK, meta, true
+	}
+
+	if action == "rewrite" || action == "handoff" {
+		meta["synthetic_assistant_response"] = buildMissionBoundaryFallbackResponse(
+			purpose,
+			allowedIntents,
+			action,
+			getStringAttr(attrs, "out_of_scope_message", ""),
+		)
+		return DecisionDeny, ReasonModelMissionScopeFallback, http.StatusForbidden, meta, true
+	}
+
+	return DecisionDeny, ReasonModelMissionScopeDenied, http.StatusForbidden, meta, true
+}
+
+func missionBoundaryMatches(prompt string, terms []string) []string {
+	normalizedPrompt := normalizeMissionBoundaryText(prompt)
+	if normalizedPrompt == "" || len(terms) == 0 {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	matches := make([]string, 0, len(terms))
+	for _, term := range terms {
+		normalizedTerm := normalizeMissionBoundaryText(term)
+		if normalizedTerm == "" {
+			continue
+		}
+		if _, ok := seen[normalizedTerm]; ok {
+			continue
+		}
+		if strings.Contains(normalizedPrompt, normalizedTerm) {
+			seen[normalizedTerm] = struct{}{}
+			matches = append(matches, normalizedTerm)
+		}
+	}
+	return matches
+}
+
+func normalizeMissionBoundaryText(raw string) string {
+	raw = strings.TrimSpace(strings.ToLower(raw))
+	if raw == "" {
+		return ""
+	}
+	var b strings.Builder
+	lastSpace := true
+	for _, ch := range raw {
+		switch {
+		case unicode.IsLetter(ch) || unicode.IsDigit(ch):
+			b.WriteRune(ch)
+			lastSpace = false
+		case !lastSpace:
+			b.WriteByte(' ')
+			lastSpace = true
+		}
+	}
+	return strings.TrimSpace(b.String())
+}
+
+func normalizeMissionOutOfScopeAction(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "rewrite", "handoff":
+		return strings.ToLower(strings.TrimSpace(raw))
+	default:
+		return "deny"
+	}
+}
+
+func buildMissionBoundaryFallbackResponse(purpose string, allowedIntents []string, action string, override string) string {
+	override = strings.TrimSpace(override)
+	if override != "" {
+		if len(override) > 280 {
+			override = override[:280]
+		}
+		return override
+	}
+
+	purpose = strings.TrimSpace(purpose)
+	if purpose == "" {
+		purpose = "this assistant's assigned task"
+	}
+	if len(allowedIntents) > 0 {
+		joined := strings.Join(limitMissionIntentList(humanizeMissionIntents(allowedIntents), 4), ", ")
+		if action == "handoff" {
+			return fmt.Sprintf("I can only help with %s. Please ask about %s, or contact a human agent for anything outside that scope.", purpose, joined)
+		}
+		return fmt.Sprintf("I can only help with %s. Please ask about %s.", purpose, joined)
+	}
+	if action == "handoff" {
+		return fmt.Sprintf("I can only help with %s. Please contact a human agent for anything outside that scope.", purpose)
+	}
+	return fmt.Sprintf("I can only help with %s. Please ask a request within that scope.", purpose)
+}
+
+func limitMissionIntentList(intents []string, max int) []string {
+	if len(intents) <= max {
+		return intents
+	}
+	return intents[:max]
+}
+
+func humanizeMissionIntents(intents []string) []string {
+	out := make([]string, 0, len(intents))
+	for _, intent := range intents {
+		out = append(out, strings.ReplaceAll(intent, "_", " "))
+	}
+	return out
 }
 
 type modelProviderCatalogV2 struct {
@@ -582,4 +774,37 @@ func getIntAttr(attrs map[string]any, key string, fallback int) int {
 	default:
 		return fallback
 	}
+}
+
+func getStringListAttr(attrs map[string]any, key string) []string {
+	raw, ok := attrs[key]
+	if !ok {
+		return nil
+	}
+	values := make([]string, 0)
+	appendValue := func(v string) {
+		v = strings.TrimSpace(v)
+		if v == "" {
+			return
+		}
+		values = append(values, v)
+	}
+	switch v := raw.(type) {
+	case string:
+		for _, part := range strings.Split(v, ",") {
+			appendValue(part)
+		}
+	case []string:
+		for _, part := range v {
+			appendValue(part)
+		}
+	case []any:
+		for _, item := range v {
+			appendValue(stringValue(item))
+		}
+	}
+	if len(values) == 0 {
+		return nil
+	}
+	return values
 }

@@ -1012,9 +1012,15 @@ run_demo_cycle() {
             # Compose determinism: stale SPIKE Nexus state can cause bootstrap
             # verification loops and token redemption failures. Reset Nexus data
             # before cycle 1 so demo-compose starts from a known good state.
+            #
+            # Also clear SPIRE state. The compose demo bind-mounts SPIRE data
+            # from ./data/, so stale server/agent state can carry expired SVIDs
+            # across sessions and cause spire-server to crash on startup.
             log "Resetting SPIKE Nexus state for deterministic compose demo (local-only)"
             docker compose -f "$POC_DIR/docker-compose.yml" down >/dev/null 2>&1 || true
             docker volume rm spike-nexus-data >/dev/null 2>&1 || true
+            log "Clearing SPIRE data directories for deterministic compose demo (local-only)"
+            rm -rf "$POC_DIR/data/spire-server/" "$POC_DIR/data/spire-agent/"
             start_compose
         fi
         # Clear rate-limit keys and restart gateway to reset circuit breaker
