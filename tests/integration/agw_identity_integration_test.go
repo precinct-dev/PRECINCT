@@ -19,7 +19,7 @@ func TestAgwIdentityIntegration_ListAndRegister(t *testing.T) {
 	}
 
 	// List existing identities first.
-	listCmd := exec.Command("go", "run", "./cmd/agw", "identity", "list", "--format", "json")
+	listCmd := exec.Command("go", "run", "./cli/agw", "identity", "list", "--format", "json")
 	listCmd.Dir = pocDir()
 	var listOut, listErr bytes.Buffer
 	listCmd.Stdout = &listOut
@@ -44,7 +44,7 @@ func TestAgwIdentityIntegration_ListAndRegister(t *testing.T) {
 	selector := fmt.Sprintf("docker:label:spiffe-id:%s", name)
 
 	registerCmd := exec.Command(
-		"go", "run", "./cmd/agw", "identity", "register", name,
+		"go", "run", "./cli/agw", "identity", "register", name,
 		"--confirm",
 		"--selector", selector,
 		"--format", "json",
@@ -83,7 +83,7 @@ func TestAgwIdentityIntegration_ListAndRegister(t *testing.T) {
 		_, _ = del.CombinedOutput()
 	})
 
-	verifyList := exec.Command("go", "run", "./cmd/agw", "identity", "list", "--format", "json")
+	verifyList := exec.Command("go", "run", "./cli/agw", "identity", "list", "--format", "json")
 	verifyList.Dir = pocDir()
 	var verifyOut, verifyErr bytes.Buffer
 	verifyList.Stdout = &verifyOut

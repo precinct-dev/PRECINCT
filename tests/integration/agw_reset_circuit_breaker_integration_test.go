@@ -61,7 +61,7 @@ func TestAgwResetCircuitBreakerIntegration_OpenThenResetClosed(t *testing.T) {
 		t.Fatalf("gateway not healthy after mock-mcp-server recovery: %v", err)
 	}
 
-	resetCmd := exec.Command("go", "run", "./cmd/agw", "reset", "circuit-breaker", tool, "--confirm", "--format", "json")
+	resetCmd := exec.Command("go", "run", "./cli/agw", "reset", "circuit-breaker", tool, "--confirm", "--format", "json")
 	resetCmd.Dir = pocDir()
 	var resetOut, resetErr bytes.Buffer
 	resetCmd.Stdout = &resetOut
@@ -90,7 +90,7 @@ func TestAgwResetCircuitBreakerIntegration_OpenThenResetClosed(t *testing.T) {
 		t.Fatalf("expected open->closed transition, got %+v", resetParsed.Reset[0])
 	}
 
-	inspectClosed := exec.Command("go", "run", "./cmd/agw", "inspect", "circuit-breaker", tool, "--format", "json")
+	inspectClosed := exec.Command("go", "run", "./cli/agw", "inspect", "circuit-breaker", tool, "--format", "json")
 	inspectClosed.Dir = pocDir()
 	var inspectClosedOut, inspectClosedErr bytes.Buffer
 	inspectClosed.Stdout = &inspectClosedOut

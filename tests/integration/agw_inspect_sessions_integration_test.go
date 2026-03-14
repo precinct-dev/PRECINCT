@@ -39,7 +39,7 @@ func TestAgwInspectSessionsIntegration_JSON(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/agw", "inspect", "sessions", spiffeID, "--format", "json")
+	cmd := exec.Command("go", "run", "./cli/agw", "inspect", "sessions", spiffeID, "--format", "json")
 	cmd.Dir = pocDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

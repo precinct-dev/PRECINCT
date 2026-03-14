@@ -29,7 +29,7 @@ func TestAgwResetSessionIntegration_ClearSPIFFEIdentitySessions(t *testing.T) {
 		t.Fatalf("expected seeded session keys before reset")
 	}
 
-	resetCmd := exec.Command("go", "run", "./cmd/agw", "reset", "session", spiffeID, "--confirm", "--format", "json")
+	resetCmd := exec.Command("go", "run", "./cli/agw", "reset", "session", spiffeID, "--confirm", "--format", "json")
 	resetCmd.Dir = pocDir()
 	var resetOut, resetErr bytes.Buffer
 	resetCmd.Stdout = &resetOut

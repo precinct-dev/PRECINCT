@@ -34,19 +34,18 @@ tests/e2e/*.log
 bin/
 build/
 openclaw-ws-smoke
-spike-cli
+precinct
 
 # SPIRE data
 data/
 
 # Compiled Go binaries (platform-specific, never commit)
-/agw
 /gateway
 /service
 /gdpr-delete
 /tool_register
 /s3-mcp-server
-/spike-cli
+/precinct
 /openclaw-ws-smoke
 /mtls-healthcheck
 /tcp-healthcheck

@@ -3,13 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>agw CLI | Operations &amp; Compliance | PRECINCT</title>
-  <meta name="description" content="The agw CLI is PRECINCT's command-line tool for operations, compliance, auditing, identity management, and policy inspection. Covers audit, compliance, GDPR, identity, policy, repave, secret, and status commands.">
-  <meta name="keywords" content="agw CLI, PRECINCT CLI, operations, compliance, audit, GDPR, identity, policy, repave, secret management, agentic AI">
+  <title>precinct CLI | Operations &amp; Compliance | PRECINCT</title>
+  <meta name="description" content="The precinct CLI is PRECINCT's command-line tool for operations, compliance, auditing, identity management, and policy inspection. Covers audit, compliance, GDPR, identity, policy, repave, secret, and status commands.">
+  <meta name="keywords" content="precinct CLI, PRECINCT CLI, operations, compliance, audit, GDPR, identity, policy, repave, secret management, agentic AI">
   <meta name="author" content="PRECINCT Contributors">
   <meta name="robots" content="index, follow">
 
-  <meta property="og:title" content="agw CLI | PRECINCT Operations Tool">
+  <meta property="og:title" content="precinct CLI | PRECINCT Operations Tool">
   <meta property="og:description" content="Command-line tool for PRECINCT operations: audit trails, compliance reports, identity management, policy inspection, and infrastructure lifecycle.">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://precinct.dev/pages/cli.html">
@@ -185,9 +185,9 @@
         <!-- ============================================================ -->
         <article class="layout-main content">
 
-          <h1>agw CLI Reference</h1>
+          <h1>precinct CLI Reference</h1>
           <p class="lead">
-            <code>agw</code> is the PRECINCT command-line tool for operations, compliance,
+            <code>precinct</code> is the PRECINCT command-line tool for operations, compliance,
             auditing, identity management, and infrastructure lifecycle. It provides a
             single interface for everything an operator needs to manage a running PRECINCT
             deployment.
@@ -196,10 +196,10 @@
           <div class="callout callout-info">
             <div class="callout-title">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-              agw vs spike
+              precinct vs spike
             </div>
             <p>
-              <code>agw</code> is the PRECINCT project's CLI for operating the gateway and its
+              <code>precinct</code> is the PRECINCT project's CLI for operating the gateway and its
               surrounding infrastructure. The <code>spike</code> CLI is a separate tool that
               belongs to the <a href="spike.html">SPIKE project</a> and is used for interacting
               with the SPIKE secrets store directly. Both CLIs serve different purposes and are
@@ -211,16 +211,16 @@
           <section id="overview">
             <h2>Overview</h2>
             <p>
-              The <code>agw</code> CLI is organized into command groups, each covering a
+              The <code>precinct</code> CLI is organized into command groups, each covering a
               specific operational domain. It is built in Go and ships as a single binary
               alongside the gateway.
             </p>
 
-            <pre data-lang="bash"><code>agw &lt;command&gt; &lt;subcommand&gt; [flags]</code></pre>
+            <pre data-lang="bash"><code>precinct &lt;command&gt; &lt;subcommand&gt; [flags]</code></pre>
 
             <div class="table-wrapper">
               <table>
-                <caption class="sr-only">agw CLI command groups</caption>
+                <caption class="sr-only">precinct CLI command groups</caption>
                 <thead>
                   <tr>
                     <th scope="col">Command</th>
@@ -284,13 +284,13 @@
             </div>
 
             <p>
-              Source code: <a href="https://github.com/precinct-dev/PRECINCT/tree/main/POC/cmd/agw" target="_blank" rel="noopener noreferrer"><code>POC/cmd/agw/</code></a>
+              Source code: <a href="https://github.com/precinct-dev/PRECINCT/tree/main/POC/cli/agw" target="_blank" rel="noopener noreferrer"><code>POC/cli/agw/</code></a>
             </p>
           </section>
 
           <!-- ========== audit ========== -->
           <section id="audit">
-            <h2>agw audit</h2>
+            <h2>precinct audit</h2>
             <p>
               Search, filter, and verify the hash-chained audit trail. Every gateway decision
               is recorded as a JSONL record with a cryptographic hash linking it to the previous
@@ -299,47 +299,47 @@
 
             <h3>Search audit records</h3>
             <pre data-lang="bash"><code># Search by SPIFFE ID
-agw audit search --identity "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+precinct audit search --identity "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 
 # Search by time range
-agw audit search --since "2026-02-20T00:00:00Z" --until "2026-02-21T00:00:00Z"
+precinct audit search --since "2026-02-20T00:00:00Z" --until "2026-02-21T00:00:00Z"
 
 # Search by tool name
-agw audit search --tool "tavily_search"
+precinct audit search --tool "tavily_search"
 
 # Search by decision (allow/deny)
-agw audit search --decision deny --limit 50</code></pre>
+precinct audit search --decision deny --limit 50</code></pre>
 
             <h3>Explain a specific decision</h3>
             <pre data-lang="bash"><code># Get a human-readable explanation of why a request was allowed or denied
-agw audit explain --decision-id "d-29fa3b7c-8e91-4d12-a6c5-1f2e3d4a5b6c"</code></pre>
+precinct audit explain --decision-id "d-29fa3b7c-8e91-4d12-a6c5-1f2e3d4a5b6c"</code></pre>
 
             <h3>Verify hash chain integrity</h3>
             <pre data-lang="bash"><code># Verify the entire audit trail has not been tampered with
-agw audit verify --file /var/log/precinct/audit.jsonl</code></pre>
+precinct audit verify --file /var/log/precinct/audit.jsonl</code></pre>
           </section>
 
           <!-- ========== compliance ========== -->
           <section id="compliance">
-            <h2>agw compliance</h2>
+            <h2>precinct compliance</h2>
             <p>
               Collect evidence, generate reports, and extract control-specific proof artifacts
               from local audit files, Docker logs, or OpenSearch.
             </p>
 
             <pre data-lang="bash"><code># Collect framework evidence package (writes timestamped directory)
-agw compliance collect --framework soc2
+precinct compliance collect --framework soc2
 
 # Generate formatted compliance report artifacts
-agw compliance report --framework soc2 --output pdf
+precinct compliance report --framework soc2 --output pdf
 
 # Extract evidence for a single control
-agw compliance evidence --control GW-AUTH-001 --format json</code></pre>
+precinct compliance evidence --control GW-AUTH-001 --format json</code></pre>
 
             <h3>OpenSearch-backed evidence collection (HTTPS + mTLS)</h3>
             <pre data-lang="bash"><code>export AGW_OPENSEARCH_PASSWORD='&lt;secret&gt;'
 
-agw compliance collect \
+precinct compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \
@@ -373,59 +373,59 @@ agw gdpr consent list --subject "user@example.com"</code></pre>
 
           <!-- ========== identity ========== -->
           <section id="identity">
-            <h2>agw identity</h2>
+            <h2>precinct identity</h2>
             <p>
               List and inspect SPIFFE workload identities known to the gateway.
             </p>
 
             <pre data-lang="bash"><code># List all registered identities
-agw identity list
+precinct identity list
 
 # Show details for a specific identity
-agw identity show "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+precinct identity show "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 
 # Check identity health (SVID expiration, rotation status)
-agw identity health</code></pre>
+precinct identity health</code></pre>
           </section>
 
           <!-- ========== inspect ========== -->
           <section id="inspect">
-            <h2>agw inspect</h2>
+            <h2>precinct inspect</h2>
             <p>
               Inspect the internal state of the gateway for diagnostics and troubleshooting.
             </p>
 
             <pre data-lang="bash"><code># Show middleware chain status
-agw inspect middleware
+precinct inspect middleware
 
 # Show tool registry contents
-agw inspect tools
+precinct inspect tools
 
 # Show active sessions and their risk scores
-agw inspect sessions
+precinct inspect sessions
 
 # Show circuit breaker state for all upstreams
-agw inspect circuits</code></pre>
+precinct inspect circuits</code></pre>
           </section>
 
           <!-- ========== policy ========== -->
           <section id="policy">
-            <h2>agw policy</h2>
+            <h2>precinct policy</h2>
             <p>
               Test, validate, and manage OPA policy bundles used by the gateway.
             </p>
 
             <pre data-lang="bash"><code># Run policy tests
-agw policy test --bundle config/opa/
+precinct policy test --bundle config/opa/
 
 # Validate policy syntax
-agw policy validate --bundle config/opa/
+precinct policy validate --bundle config/opa/
 
 # Hot-reload policies on a running gateway
-agw policy reload --gateway http://localhost:9090
+precinct policy reload --gateway http://localhost:9090
 
 # Simulate a policy decision without executing
-agw policy eval --identity "spiffe://poc.local/agents/test" --tool "tavily_search"</code></pre>
+precinct policy eval --identity "spiffe://poc.local/agents/test" --tool "tavily_search"</code></pre>
           </section>
 
           <!-- ========== repave ========== -->

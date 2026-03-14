@@ -46,7 +46,7 @@ func TestAgwResetRateLimitIntegration(t *testing.T) {
 	}
 
 	// 3) Reset via CLI (must delete the keys)
-	cmd := exec.Command("go", "run", "./cmd/agw", "reset", "rate-limit", spiffeID, "--confirm", "--keydb-url", keydbURL)
+	cmd := exec.Command("go", "run", "./cli/agw", "reset", "rate-limit", spiffeID, "--confirm", "--keydb-url", keydbURL)
 	cmd.Dir = pocDir()
 	out, err := cmd.CombinedOutput()
 	if err != nil {

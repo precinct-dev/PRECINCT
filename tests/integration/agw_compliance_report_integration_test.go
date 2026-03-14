@@ -16,7 +16,7 @@ func TestAgwComplianceReportIntegration_SOC2PDF(t *testing.T) {
 	outBase := t.TempDir()
 
 	cmd := exec.Command(
-		"go", "run", "./cmd/agw",
+		"go", "run", "./cli/agw",
 		"compliance", "report",
 		"--framework", "soc2",
 		"--output", "pdf",

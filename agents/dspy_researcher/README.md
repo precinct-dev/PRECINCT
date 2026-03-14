@@ -58,7 +58,7 @@ Agent -> Gateway (9090) -> [13-step middleware chain] -> Docker MCP Server (8081
 4. Seed provider secret in SPIKE (reference-based, no raw key in `.env`):
    ```bash
    cd POC
-   ./build/bin/agw secret put groq-lm-key "<your-groq-key>" --confirm
+   ./build/bin/precinct secret put groq-lm-key "<your-groq-key>" --confirm
    export GROQ_LM_SPIKE_REF=groq-lm-key
    ```
 
