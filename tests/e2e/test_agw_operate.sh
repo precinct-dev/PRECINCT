@@ -16,7 +16,7 @@ TMP_DIR="$(mktemp -d)"
 KEYDB_PROXY_CONTAINER=""
 KEYDB_PROXY_PORT=""
 
-AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/precinct}"
+PRECINCT_BIN="${PRECINCT_BIN:-${ROOT_DIR}/build/bin/precinct}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
 KEYDB_URL="${KEYDB_URL:-redis://127.0.0.1:6379}"
 SPIFFE_ID="${SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/dspy-researcher/dev}"
@@ -242,8 +242,8 @@ main() {
   require_cmd python3
   require_cmd redis-cli
 
-  if [ ! -x "$AGW_BIN" ]; then
-    log_fail "precinct binary check" "missing executable at $AGW_BIN (run: make precinct-operate-demo)"
+  if [ ! -x "$PRECINCT_BIN" ]; then
+    log_fail "precinct binary check" "missing executable at $PRECINCT_BIN (run: make precinct-operate-demo)"
     exit 1
   fi
   log_pass "precinct binary present"
@@ -322,7 +322,7 @@ PY
   fi
   log_pass "confirmed rate-limit blocking before reset"
 
-  run_cmd "reset_rate_limit" "$AGW_BIN" reset rate-limit "$SPIFFE_ID" --confirm --keydb-url "$KEYDB_URL"
+  run_cmd "reset_rate_limit" "$PRECINCT_BIN" reset rate-limit "$SPIFFE_ID" --confirm --keydb-url "$KEYDB_URL"
   assert_contains_fixed "$TMP_DIR/reset_rate_limit.out" "Deleted" "rate-limit reset output includes deleted key count"
 
   gateway_call "rate_limit_after_reset" "$TOOL_NAME" '{"query":"agw rate limit after reset"}' "$SESSION_ID"
@@ -338,27 +338,27 @@ PY
   redis_exec RPUSH "${seeded_session_key}:actions" '{"Tool":"seed"}' >/dev/null
   log_pass "seeded deterministic session for reset verification"
 
-  run_cmd "inspect_sessions_before" "$AGW_BIN" inspect sessions "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format json
+  run_cmd "inspect_sessions_before" "$PRECINCT_BIN" inspect sessions "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format json
   assert_json_expr "$TMP_DIR/inspect_sessions_before.out" "any(s.get('session_id') == '${SESSION_ID}' for s in data.get('sessions', []))" "session exists before reset"
 
-  run_cmd "reset_session" "$AGW_BIN" reset session "$SPIFFE_ID" --confirm --keydb-url "$KEYDB_URL" --format json
+  run_cmd "reset_session" "$PRECINCT_BIN" reset session "$SPIFFE_ID" --confirm --keydb-url "$KEYDB_URL" --format json
   assert_json_expr "$TMP_DIR/reset_session.out" "data.get('deleted', 0) >= 1" "session reset deleted at least one key"
 
-  run_cmd "inspect_sessions_after" "$AGW_BIN" inspect sessions "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format json
+  run_cmd "inspect_sessions_after" "$PRECINCT_BIN" inspect sessions "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format json
   assert_json_expr "$TMP_DIR/inspect_sessions_after.out" "all(s.get('session_id') != '${SESSION_ID}' for s in data.get('sessions', []))" "session removed after reset"
 
   log_header "4) Reset Circuit Breaker and Verify Closed"
-  run_cmd "reset_circuit_breaker" "$AGW_BIN" reset circuit-breaker "$TOOL_NAME" --confirm --gateway-url "$GATEWAY_URL" --format json
+  run_cmd "reset_circuit_breaker" "$PRECINCT_BIN" reset circuit-breaker "$TOOL_NAME" --confirm --gateway-url "$GATEWAY_URL" --format json
   assert_json_expr "$TMP_DIR/reset_circuit_breaker.out" "len(data.get('reset', [])) >= 1 and data['reset'][0].get('tool') == '${TOOL_NAME}' and data['reset'][0].get('new_state') == 'closed'" "circuit-breaker reset reports closed state"
 
-  run_cmd "inspect_circuit_breaker" "$AGW_BIN" inspect circuit-breaker "$TOOL_NAME" --gateway-url "$GATEWAY_URL" --format json
+  run_cmd "inspect_circuit_breaker" "$PRECINCT_BIN" inspect circuit-breaker "$TOOL_NAME" --gateway-url "$GATEWAY_URL" --format json
   assert_json_expr "$TMP_DIR/inspect_circuit_breaker.out" "len(data.get('circuit_breakers', [])) == 1 and data['circuit_breakers'][0].get('state') == 'closed'" "circuit-breaker state is closed after reset"
 
   log_header "5) Offline Policy Dry-Run (Allowed + Denied)"
-  run_cmd "policy_test_offline_allowed" "$AGW_BIN" policy test "$SPIFFE_ID" "$TOOL_NAME" --params '{"query":"offline-allowed"}' --format json
+  run_cmd "policy_test_offline_allowed" "$PRECINCT_BIN" policy test "$SPIFFE_ID" "$TOOL_NAME" --params '{"query":"offline-allowed"}' --format json
   assert_json_expr "$TMP_DIR/policy_test_offline_allowed.out" "data.get('verdict') == 'ALLOWED' and len(data.get('layers', [])) == 6" "offline allowed dry-run returns 6 layers and ALLOWED"
 
-  run_cmd "policy_test_offline_denied" "$AGW_BIN" policy test "$SPIFFE_ID" "tool_does_not_exist_for_policy_demo" --format json
+  run_cmd "policy_test_offline_denied" "$PRECINCT_BIN" policy test "$SPIFFE_ID" "tool_does_not_exist_for_policy_demo" --format json
   assert_json_expr "$TMP_DIR/policy_test_offline_denied.out" "data.get('verdict') == 'DENIED' and data.get('blocking_layer') == 4" "offline denied dry-run blocks at layer 4"
 
   log_header "6) Runtime Policy Dry-Run (13 Layers)"
@@ -368,23 +368,23 @@ PY
   redis_exec SET "$last_fill_key" "$now_nanos" EX 180 >/dev/null
   log_pass "seeded runtime session and ratelimit state"
 
-  run_cmd "policy_test_runtime" "$AGW_BIN" policy test "$SPIFFE_ID" "$TOOL_NAME" --runtime --session-id "$RUNTIME_SESSION_ID" --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --params '{"query":"runtime-full"}' --format json
+  run_cmd "policy_test_runtime" "$PRECINCT_BIN" policy test "$SPIFFE_ID" "$TOOL_NAME" --runtime --session-id "$RUNTIME_SESSION_ID" --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --params '{"query":"runtime-full"}' --format json
   assert_json_expr "$TMP_DIR/policy_test_runtime.out" "data.get('mode') == 'full' and data.get('verdict') == 'ALLOWED' and len(data.get('layers', [])) == 13" "runtime dry-run returns full 13-layer ALLOWED result"
 
   log_header "7) Policy List"
-  run_cmd "policy_list" "$AGW_BIN" policy list --format json
+  run_cmd "policy_list" "$PRECINCT_BIN" policy list --format json
   assert_json_expr "$TMP_DIR/policy_list.out" "len(data.get('grants', [])) >= 1" "policy list returned grants"
 
   log_header "8) Policy Reload"
-  run_cmd "policy_reload" "$AGW_BIN" policy reload --confirm --gateway-url "$GATEWAY_URL" --format json
+  run_cmd "policy_reload" "$PRECINCT_BIN" policy reload --confirm --gateway-url "$GATEWAY_URL" --format json
   assert_json_expr "$TMP_DIR/policy_reload.out" "data.get('status') == 'reloaded'" "policy reload succeeded"
 
   log_header "9) Identity List"
-  run_cmd "identity_list" "$AGW_BIN" identity list --format json
+  run_cmd "identity_list" "$PRECINCT_BIN" identity list --format json
   assert_json_expr "$TMP_DIR/identity_list.out" "len(data.get('entries', [])) >= 1" "identity list returned SPIRE entries"
 
   log_header "10) Secret List"
-  run_cmd "secret_list" "$AGW_BIN" secret list --format json
+  run_cmd "secret_list" "$PRECINCT_BIN" secret list --format json
   assert_json_expr "$TMP_DIR/secret_list.out" "len(data.get('secrets', [])) >= 1" "secret list returned SPIKE references"
 
   log_header "11) Stakeholder Summary"

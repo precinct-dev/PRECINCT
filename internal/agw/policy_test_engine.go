@@ -243,7 +243,7 @@ func RunPolicyTestRuntime(
 
 	keydbURL = strings.TrimSpace(keydbURL)
 	if keydbURL == "" {
-		return out, fmt.Errorf("keydb URL is empty (set --keydb-url or AGW_KEYDB_URL)")
+		return out, fmt.Errorf("keydb URL is empty (set --keydb-url or PRECINCT_KEYDB_URL)")
 	}
 	kdb, err := NewKeyDB(keydbURL)
 	if err != nil {
@@ -253,7 +253,7 @@ func RunPolicyTestRuntime(
 
 	gatewayURL = strings.TrimSpace(gatewayURL)
 	if gatewayURL == "" {
-		return out, fmt.Errorf("gateway URL is empty (set --gateway-url or AGW_GATEWAY_URL)")
+		return out, fmt.Errorf("gateway URL is empty (set --gateway-url or PRECINCT_GATEWAY_URL)")
 	}
 	client := NewClient(gatewayURL)
 

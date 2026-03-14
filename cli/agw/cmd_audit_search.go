@@ -91,7 +91,7 @@ func newAuditSearchCmd() *cobra.Command {
 	cmd.Flags().StringVar(&toolName, "tool", "", "Filter by tool name")
 	cmd.Flags().StringVar(&lastWindow, "last", "", "Time window (e.g. 5m, 1h, 24h, 7d)")
 	cmd.Flags().BoolVar(&deniedOnly, "denied", false, "Show only denied/failed requests")
-	cmd.Flags().StringVar(&source, "source", "", "Audit source: docker|file (default: AGW_AUDIT_SOURCE or docker)")
-	cmd.Flags().StringVar(&auditLogPath, "audit-log-path", "", "Audit JSONL path for --source file (default: AGW_AUDIT_LOG_PATH or /tmp/audit.jsonl)")
+	cmd.Flags().StringVar(&source, "source", "", "Audit source: docker|file (default: PRECINCT_AUDIT_SOURCE or docker)")
+	cmd.Flags().StringVar(&auditLogPath, "audit-log-path", "", "Audit JSONL path for --source file (default: PRECINCT_AUDIT_LOG_PATH or /tmp/audit.jsonl)")
 	return cmd
 }

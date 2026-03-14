@@ -2,8 +2,8 @@
 
 set -euo pipefail
 
-if [[ -n "${AGW_KEYDB_URL:-}" ]]; then
-  printf '%s\n' "$AGW_KEYDB_URL"
+if [[ -n "${PRECINCT_KEYDB_URL:-}" ]]; then
+  printf '%s\n' "$PRECINCT_KEYDB_URL"
   exit 0
 fi
 

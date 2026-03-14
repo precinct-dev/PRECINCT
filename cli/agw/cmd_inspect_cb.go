@@ -19,7 +19,7 @@ func newInspectCircuitBreakerCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gatewayURL := strings.TrimSpace(viper.GetString(cfgGatewayURL))
 			if gatewayURL == "" {
-				return fmt.Errorf("gateway URL is empty (set --gateway-url or AGW_GATEWAY_URL)")
+				return fmt.Errorf("gateway URL is empty (set --gateway-url or PRECINCT_GATEWAY_URL)")
 			}
 
 			ctx, cancel := context.WithTimeout(cmd.Context(), 10*time.Second)
