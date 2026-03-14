@@ -23,7 +23,7 @@ func TestAgwComplianceCollect_SOC2EvidencePackage(t *testing.T) {
 	outBase := t.TempDir()
 
 	cmd := exec.Command(
-		"go", "run", "./cmd/agw",
+		"go", "run", "./cli/agw",
 		"compliance", "collect",
 		"--framework", "soc2",
 		"--gateway-url", gatewayURL,

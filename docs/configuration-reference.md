@@ -406,13 +406,13 @@ Profile-specific audit sink override:
 |----------|---------------|-------------|
 | `AUDIT_LOG_PATH` | `/var/log/gateway/audit.jsonl` | Set by `docker-compose.opensearch-bridge.yml` so Fluent Bit can ingest gateway audit JSONL |
 
-### `agw` Compliance Export from OpenSearch
+### `precinct` Compliance Export from OpenSearch
 
-`agw` supports OpenSearch-backed evidence collection for compliance workflows:
+`precinct` supports OpenSearch-backed evidence collection for compliance workflows:
 
 ```bash
 export AGW_OPENSEARCH_PASSWORD='<secret>'
-go run ./cmd/agw compliance collect \
+go run ./cli/agw compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \

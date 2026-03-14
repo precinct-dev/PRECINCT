@@ -53,7 +53,7 @@ func TestAgwAuditExplainIntegration_DeniedRequest(t *testing.T) {
 	// Wait briefly for async audit write flush in the running gateway.
 	time.Sleep(500 * time.Millisecond)
 
-	cmd := exec.Command("go", "run", "./cmd/agw", "audit", "explain", denied.DecisionID, "--format", "json")
+	cmd := exec.Command("go", "run", "./cli/agw", "audit", "explain", denied.DecisionID, "--format", "json")
 	cmd.Dir = pocDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

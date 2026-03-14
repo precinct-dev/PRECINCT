@@ -16,7 +16,7 @@ TMP_DIR="$(mktemp -d)"
 KEYDB_PROXY_CONTAINER=""
 KEYDB_PROXY_PORT=""
 
-AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/agw}"
+AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/precinct}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
 KEYDB_URL="${KEYDB_URL:-redis://127.0.0.1:6379}"
 SPIFFE_ID="${SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/dspy-researcher/dev}"
@@ -234,7 +234,7 @@ print_final_summary() {
 }
 
 main() {
-  log_header "E2E agw Operate Validation"
+  log_header "E2E precinct Operate Validation"
   require_cmd docker
   require_cmd go
   require_cmd make
@@ -243,10 +243,10 @@ main() {
   require_cmd redis-cli
 
   if [ ! -x "$AGW_BIN" ]; then
-    log_fail "agw binary check" "missing executable at $AGW_BIN (run: make agw-operate-demo)"
+    log_fail "precinct binary check" "missing executable at $AGW_BIN (run: make precinct-operate-demo)"
     exit 1
   fi
-  log_pass "agw binary present"
+  log_pass "precinct binary present"
 
   if ! curl -fsS "$GATEWAY_URL/health" >/dev/null 2>&1; then
     log_fail "gateway health" "gateway not reachable at ${GATEWAY_URL}/health"
@@ -269,7 +269,7 @@ main() {
   fi
   log_pass "tools/list bootstrap request sent"
 
-  gateway_call "allow_tavily" "$TOOL_NAME" '{"query":"agw operate demo seed"}' "$SESSION_ID"
+  gateway_call "allow_tavily" "$TOOL_NAME" '{"query":"precinct operate demo seed"}' "$SESSION_ID"
   if [ "$GATEWAY_CODE" = "429" ]; then
     log_fail "allowed request seed" "unexpected 429 while seeding data"
     exit 1

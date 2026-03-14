@@ -51,7 +51,7 @@ services:
     ports:
       - "4317:4317"  # OTLP gRPC receiver (exposed to host + shared network)
       - "4318:4318"  # OTLP HTTP receiver
-      - "13133:13133"  # Health check extension (RFA-a8k2: agw status probes / on host)
+      - "13133:13133"  # Health check extension (RFA-a8k2: precinct status probes / on host)
     depends_on:
       phoenix:
         condition: service_healthy

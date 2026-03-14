@@ -16,7 +16,7 @@ func TestAgwInspectCircuitBreakerIntegration_JSON(t *testing.T) {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
 
-	cmd := exec.Command("go", "run", "./cmd/agw", "inspect", "circuit-breaker", "--format", "json")
+	cmd := exec.Command("go", "run", "./cli/agw", "inspect", "circuit-breaker", "--format", "json")
 	cmd.Dir = pocDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

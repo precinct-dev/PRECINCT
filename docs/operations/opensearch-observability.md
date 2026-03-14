@@ -99,11 +99,11 @@ no inline credentials are stored in manifests.
   - pivot from `decision_id` in evidence reports to indexed record, then to
     `trace_id` in Phoenix.
 
-`agw` can export compliance evidence from OpenSearch:
+`precinct` can export compliance evidence from OpenSearch:
 
 ```bash
 export AGW_OPENSEARCH_PASSWORD='<secret>'
-go run ./cmd/agw compliance collect \
+go run ./cli/agw compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \

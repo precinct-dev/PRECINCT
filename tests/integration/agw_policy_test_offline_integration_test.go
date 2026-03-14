@@ -12,7 +12,7 @@ import (
 
 func TestAgwPolicyTestOfflineIntegration_AllowedAndDeniedPairs(t *testing.T) {
 	allowed := exec.Command(
-		"go", "run", "./cmd/agw", "policy", "test",
+		"go", "run", "./cli/agw", "policy", "test",
 		"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 		"tavily_search",
 		"--params", `{"query":"offline-policy-allowed"}`,
@@ -40,7 +40,7 @@ func TestAgwPolicyTestOfflineIntegration_AllowedAndDeniedPairs(t *testing.T) {
 	}
 
 	denied := exec.Command(
-		"go", "run", "./cmd/agw", "policy", "test",
+		"go", "run", "./cli/agw", "policy", "test",
 		"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 		"tool_does_not_exist",
 		"--format", "json",

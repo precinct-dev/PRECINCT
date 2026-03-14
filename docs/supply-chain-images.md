@@ -39,7 +39,7 @@ Based on current industry standards and security research:
 
 ## Approved Base Images
 
-### Go Services (PRECINCT Gateway, spike-cli, Context Fetcher)
+### Go Services (PRECINCT Gateway, precinct CLI, Context Fetcher)
 
 **Builder Stage:**
 ```dockerfile
