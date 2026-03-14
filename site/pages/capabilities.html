@@ -687,7 +687,7 @@ make opensearch-validate
 make k8s-opensearch-up
 
 # Compliance evidence from OpenSearch (HTTPS + mTLS)
-export AGW_OPENSEARCH_PASSWORD='<secret>'
+export PRECINCT_OPENSEARCH_PASSWORD='<secret>'
 go run ./cli/agw compliance collect \
   --framework soc2 \
   --audit-source opensearch \

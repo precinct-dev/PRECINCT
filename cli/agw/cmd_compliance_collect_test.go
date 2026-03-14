@@ -116,7 +116,7 @@ func TestAgwComplianceCollect_OpenSearchRequiresSecretMaterial(t *testing.T) {
 	if code != 1 {
 		t.Fatalf("expected exit 1, got %d (stdout=%q stderr=%q)", code, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "AGW_OPENSEARCH_PASSWORD") {
+	if !strings.Contains(stderr.String(), "PRECINCT_OPENSEARCH_PASSWORD") {
 		t.Fatalf("expected opensearch password env error, got %q", stderr.String())
 	}
 }

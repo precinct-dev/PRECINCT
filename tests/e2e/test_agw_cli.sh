@@ -16,7 +16,7 @@ TMP_DIR="$(mktemp -d)"
 KEYDB_PROXY_CONTAINER=""
 KEYDB_PROXY_PORT=""
 
-AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/precinct}"
+PRECINCT_BIN="${PRECINCT_BIN:-${ROOT_DIR}/build/bin/precinct}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
 KEYDB_URL="${KEYDB_URL:-redis://127.0.0.1:6379}"
 SPIFFE_ID="${SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/dspy-researcher/dev}"
@@ -203,7 +203,7 @@ ensure_compose_stack() {
 
 build_agw_binary() {
   mkdir -p "$ROOT_DIR/build/bin"
-  run_cmd "go_build_precinct" go build -o "$AGW_BIN" ./cli/agw/
+  run_cmd "go_build_precinct" go build -o "$PRECINCT_BIN" ./cli/agw/
 }
 
 generate_sdk_traffic() {
@@ -314,12 +314,12 @@ EOF
 run_cli_validation() {
   log_header "precinct CLI E2E Validation"
 
-  run_cmd "status_table" "$AGW_BIN" status --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --format table
+  run_cmd "status_table" "$PRECINCT_BIN" status --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --format table
   assert_contains_regex "$TMP_DIR/status_table.out" "COMPONENT[[:space:]]+STATUS[[:space:]]+DETAILS" "status table headers present"
   assert_contains_fixed "$TMP_DIR/status_table.out" "gateway" "status table lists gateway"
   assert_contains_fixed "$TMP_DIR/status_table.out" "keydb" "status table lists keydb"
 
-  run_cmd "status_json" "$AGW_BIN" status --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --format json
+  run_cmd "status_json" "$PRECINCT_BIN" status --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --format json
   assert_contains_fixed "$TMP_DIR/status_json.out" "\"name\":\"gateway\",\"status\":\"ok\"" "status json: gateway OK"
   assert_contains_fixed "$TMP_DIR/status_json.out" "\"name\":\"keydb\",\"status\":\"ok\"" "status json: keydb OK"
   assert_contains_fixed "$TMP_DIR/status_json.out" "\"name\":\"spire-server\",\"status\":\"ok\"" "status json: spire-server OK"
@@ -327,58 +327,58 @@ run_cli_validation() {
   assert_contains_fixed "$TMP_DIR/status_json.out" "\"name\":\"phoenix\",\"status\":\"ok\"" "status json: phoenix OK"
   assert_contains_fixed "$TMP_DIR/status_json.out" "\"name\":\"otel-collector\",\"status\":\"ok\"" "status json: otel-collector OK"
 
-  run_cmd "status_keydb_table" "$AGW_BIN" status --component keydb --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --format table
+  run_cmd "status_keydb_table" "$PRECINCT_BIN" status --component keydb --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --format table
   assert_contains_fixed "$TMP_DIR/status_keydb_table.out" "keydb" "status --component keydb returns keydb row"
 
-  run_cmd "status_keydb_json" "$AGW_BIN" status --component keydb --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --format json
+  run_cmd "status_keydb_json" "$PRECINCT_BIN" status --component keydb --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --format json
   assert_contains_fixed "$TMP_DIR/status_keydb_json.out" "\"name\":\"keydb\",\"status\":\"ok\"" "status --component keydb json OK"
 
-  run_cmd "inspect_rate_limit_table" "$AGW_BIN" inspect rate-limit "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format table
+  run_cmd "inspect_rate_limit_table" "$PRECINCT_BIN" inspect rate-limit "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format table
   assert_contains_regex "$TMP_DIR/inspect_rate_limit_table.out" "SPIFFE_ID[[:space:]]+REMAINING[[:space:]]+LIMIT" "rate-limit table headers present"
   assert_contains_fixed "$TMP_DIR/inspect_rate_limit_table.out" "$SPIFFE_ID" "rate-limit table contains target SPIFFE ID"
 
-  run_cmd "inspect_rate_limit_json" "$AGW_BIN" inspect rate-limit "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format json
+  run_cmd "inspect_rate_limit_json" "$PRECINCT_BIN" inspect rate-limit "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format json
   assert_contains_fixed "$TMP_DIR/inspect_rate_limit_json.out" "\"spiffe_id\":\"$SPIFFE_ID\"" "rate-limit json contains target SPIFFE ID"
 
-  run_cmd "inspect_cb_table" "$AGW_BIN" inspect circuit-breaker --gateway-url "$GATEWAY_URL" --format table
+  run_cmd "inspect_cb_table" "$PRECINCT_BIN" inspect circuit-breaker --gateway-url "$GATEWAY_URL" --format table
   assert_contains_regex "$TMP_DIR/inspect_cb_table.out" "TOOL[[:space:]]+STATE[[:space:]]+FAILURES" "circuit-breaker table headers present"
 
-  run_cmd "inspect_cb_json" "$AGW_BIN" inspect circuit-breaker --gateway-url "$GATEWAY_URL" --format json
+  run_cmd "inspect_cb_json" "$PRECINCT_BIN" inspect circuit-breaker --gateway-url "$GATEWAY_URL" --format json
   assert_contains_fixed "$TMP_DIR/inspect_cb_json.out" "\"circuit_breakers\":[" "circuit-breaker json has list"
   assert_contains_fixed "$TMP_DIR/inspect_cb_json.out" "\"state\":\"" "circuit-breaker json has state fields"
 
-  run_cmd "inspect_sessions_table" "$AGW_BIN" inspect sessions "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format table
+  run_cmd "inspect_sessions_table" "$PRECINCT_BIN" inspect sessions "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format table
   assert_contains_regex "$TMP_DIR/inspect_sessions_table.out" "SESSION_ID[[:space:]]+SPIFFE_ID[[:space:]]+RISK_SCORE" "sessions table headers present"
   assert_contains_fixed "$TMP_DIR/inspect_sessions_table.out" "$SPIFFE_ID" "sessions table includes test SPIFFE ID"
 
-  run_cmd "inspect_sessions_json" "$AGW_BIN" inspect sessions "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format json
+  run_cmd "inspect_sessions_json" "$PRECINCT_BIN" inspect sessions "$SPIFFE_ID" --keydb-url "$KEYDB_URL" --format json
   assert_contains_fixed "$TMP_DIR/inspect_sessions_json.out" "\"spiffe_id\":\"$SPIFFE_ID\"" "sessions json includes test SPIFFE ID"
   assert_contains_fixed "$TMP_DIR/inspect_sessions_json.out" "\"session_id\":\"" "sessions json contains session_id"
 
-  run_cmd "inspect_identity_table" "$AGW_BIN" inspect identity "$IDENTITY_SPIFFE_ID" --format table
+  run_cmd "inspect_identity_table" "$PRECINCT_BIN" inspect identity "$IDENTITY_SPIFFE_ID" --format table
   assert_contains_fixed "$TMP_DIR/inspect_identity_table.out" "SPIFFE ID: $IDENTITY_SPIFFE_ID" "identity table includes target SPIFFE ID"
   assert_contains_fixed "$TMP_DIR/inspect_identity_table.out" "MATCHED GRANTS:" "identity table includes matched grants section"
 
-  run_cmd "inspect_identity_json" "$AGW_BIN" inspect identity "$IDENTITY_SPIFFE_ID" --format json
+  run_cmd "inspect_identity_json" "$PRECINCT_BIN" inspect identity "$IDENTITY_SPIFFE_ID" --format json
   assert_contains_fixed "$TMP_DIR/inspect_identity_json.out" "\"spiffe_id\":\"$IDENTITY_SPIFFE_ID\"" "identity json includes target SPIFFE ID"
   assert_contains_fixed "$TMP_DIR/inspect_identity_json.out" "\"matched_grants\":[" "identity json includes grants"
   assert_contains_fixed "$TMP_DIR/inspect_identity_json.out" "\"tool\":\"read\",\"authorized\":true" "identity json confirms read authorization"
 
   sleep 1
 
-  run_cmd "audit_search_table" "$AGW_BIN" audit search --spiffe-id "$SPIFFE_ID" --last 5m --format table
+  run_cmd "audit_search_table" "$PRECINCT_BIN" audit search --spiffe-id "$SPIFFE_ID" --last 5m --format table
   assert_contains_regex "$TMP_DIR/audit_search_table.out" "TIMESTAMP[[:space:]]+DECISION_ID[[:space:]]+SPIFFE_ID" "audit search table headers present"
   assert_contains_fixed "$TMP_DIR/audit_search_table.out" "$SPIFFE_ID" "audit search table includes test SPIFFE ID"
 
-  run_cmd "audit_search_json" "$AGW_BIN" audit search --spiffe-id "$SPIFFE_ID" --last 5m --format json
+  run_cmd "audit_search_json" "$PRECINCT_BIN" audit search --spiffe-id "$SPIFFE_ID" --last 5m --format json
   assert_contains_fixed "$TMP_DIR/audit_search_json.out" "\"decision_id\":\"" "audit search json includes decision IDs"
   assert_contains_fixed "$TMP_DIR/audit_search_json.out" "\"spiffe_id\":\"$SPIFFE_ID\"" "audit search json includes test SPIFFE ID"
 
-  run_cmd "audit_explain_table" "$AGW_BIN" audit explain "$DENIED_DECISION_ID" --format table
+  run_cmd "audit_explain_table" "$PRECINCT_BIN" audit explain "$DENIED_DECISION_ID" --format table
   assert_contains_fixed "$TMP_DIR/audit_explain_table.out" "DECISION: $DENIED_DECISION_ID" "audit explain table references denied decision ID"
   assert_contains_regex "$TMP_DIR/audit_explain_table.out" "STEP[[:space:]]+LAYER[[:space:]]+STATUS" "audit explain table headers present"
 
-  run_cmd "audit_explain_json" "$AGW_BIN" audit explain "$DENIED_DECISION_ID" --format json
+  run_cmd "audit_explain_json" "$PRECINCT_BIN" audit explain "$DENIED_DECISION_ID" --format json
   assert_contains_fixed "$TMP_DIR/audit_explain_json.out" "\"decision_id\":\"$DENIED_DECISION_ID\"" "audit explain json references denied decision ID"
   assert_contains_fixed "$TMP_DIR/audit_explain_json.out" "\"layers\":[" "audit explain json includes layer trace"
   assert_contains_fixed "$TMP_DIR/audit_explain_json.out" "\"status\":\"FAIL\"" "audit explain json includes a FAIL step"

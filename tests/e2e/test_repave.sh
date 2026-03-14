@@ -16,7 +16,7 @@ TMP_DIR="$(mktemp -d)"
 KEYDB_PROXY_CONTAINER=""
 KEYDB_PROXY_PORT=""
 
-AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/precinct}"
+PRECINCT_BIN="${PRECINCT_BIN:-${ROOT_DIR}/build/bin/precinct}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
 KEYDB_URL="${KEYDB_URL:-redis://127.0.0.1:6379}"
 SPIFFE_ID="${SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/dspy-researcher/dev}"
@@ -237,8 +237,8 @@ main() {
   require_cmd redis-cli
   require_cmd rg
 
-  if [ ! -x "$AGW_BIN" ]; then
-    log_fail "precinct binary check" "missing executable at $AGW_BIN"
+  if [ ! -x "$PRECINCT_BIN" ]; then
+    log_fail "precinct binary check" "missing executable at $PRECINCT_BIN"
     exit 1
   fi
   log_pass "precinct binary present"
@@ -326,7 +326,7 @@ main() {
   log_pass "single KeyDB repave preserved data and updated state"
 
   log_header "4) Repave Status (KeyDB)"
-  run_cmd "agw_repave_status_keydb" "$AGW_BIN" repave status --format json
+  run_cmd "agw_repave_status_keydb" "$PRECINCT_BIN" repave status --format json
   if ! jq -e '.containers[] | select(.name=="keydb") | (.last_repave != "NEVER" and (.health=="healthy" or .health=="running"))' "$TMP_DIR/agw_repave_status_keydb.out" >/dev/null; then
     log_fail "precinct repave status keydb" "expected keydb last_repave and healthy status"
     exit 1
@@ -350,7 +350,7 @@ main() {
   log_pass "SPIRE identity re-issued across SPIRE repave (${spire_serial_before} -> ${spire_serial_after})"
 
   log_header "6) Repave Status (All Containers)"
-  run_cmd "agw_repave_status_all" "$AGW_BIN" repave status --format json
+  run_cmd "agw_repave_status_all" "$PRECINCT_BIN" repave status --format json
   if ! jq -e '.containers | length >= 9' "$TMP_DIR/agw_repave_status_all.out" >/dev/null; then
     log_fail "precinct repave status all" "expected at least 9 containers in status output"
     exit 1

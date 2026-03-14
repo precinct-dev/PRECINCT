@@ -411,7 +411,7 @@ Profile-specific audit sink override:
 `precinct` supports OpenSearch-backed evidence collection for compliance workflows:
 
 ```bash
-export AGW_OPENSEARCH_PASSWORD='<secret>'
+export PRECINCT_OPENSEARCH_PASSWORD='<secret>'
 go run ./cli/agw compliance collect \
   --framework soc2 \
   --audit-source opensearch \
@@ -424,7 +424,7 @@ go run ./cli/agw compliance collect \
 
 Security requirements enforced by CLI when `--audit-source opensearch`:
 
-- Password must come from env var (`--opensearch-password-env`, default `AGW_OPENSEARCH_PASSWORD`)
+- Password must come from env var (`--opensearch-password-env`, default `PRECINCT_OPENSEARCH_PASSWORD`)
 - `--opensearch-ca-cert` is required
 - `--opensearch-client-cert` and `--opensearch-client-key` are required
 - OpenSearch URL must be `https://`

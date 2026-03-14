@@ -102,7 +102,7 @@ no inline credentials are stored in manifests.
 `precinct` can export compliance evidence from OpenSearch:
 
 ```bash
-export AGW_OPENSEARCH_PASSWORD='<secret>'
+export PRECINCT_OPENSEARCH_PASSWORD='<secret>'
 go run ./cli/agw compliance collect \
   --framework soc2 \
   --audit-source opensearch \

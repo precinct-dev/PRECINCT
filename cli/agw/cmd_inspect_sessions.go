@@ -20,7 +20,7 @@ func newInspectSessionsCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			keydbURL := strings.TrimSpace(viper.GetString(cfgKeyDBURL))
 			if keydbURL == "" {
-				return errors.New("KeyDB URL is empty (set --keydb-url or AGW_KEYDB_URL)")
+				return errors.New("KeyDB URL is empty (set --keydb-url or PRECINCT_KEYDB_URL)")
 			}
 
 			var spiffeFilter string

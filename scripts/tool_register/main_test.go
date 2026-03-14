@@ -284,7 +284,7 @@ func TestGenerateGrantsEntryContainsRequiredFields(t *testing.T) {
 		"my_tool",
 		"allowed_tools:",
 		"max_data_classification: internal",
-		"TODO: Replace placeholder",
+		"ACTION REQUIRED: Replace placeholder",
 	}
 
 	for _, s := range requiredStrings {
