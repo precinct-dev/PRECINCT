@@ -10,8 +10,8 @@
 #   4. The final manifests are written to stdout for kubectl apply
 #
 # Usage:
-#   helm install precinct charts/precinct/ \
-#     --post-renderer charts/precinct/post-renderer/kustomize-render.sh
+#   helm install precinct deploy/helm/precinct/ \
+#     --post-renderer deploy/helm/precinct/post-renderer/kustomize-render.sh
 # ------------------------------------------------------------------------------
 set -euo pipefail
 
