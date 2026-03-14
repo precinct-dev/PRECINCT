@@ -284,21 +284,21 @@
             </p>
 
             <h3>Install</h3>
-            <pre data-lang="bash"><code>cd POC
+            <pre data-lang="bash"><code>
 
 # Install with the local preset (default)
-helm install precinct charts/precinct/ \
-  --post-renderer charts/precinct/post-renderer/kustomize-render.sh
+helm install precinct deploy/helm/precinct/ \
+  --post-renderer deploy/helm/precinct/post-renderer/kustomize-render.sh
 
 # Or install with a specific environment
-helm install precinct charts/precinct/ \
-  -f charts/precinct/values-dev.yaml \
-  --post-renderer charts/precinct/post-renderer/kustomize-render.sh</code></pre>
+helm install precinct deploy/helm/precinct/ \
+  -f deploy/helm/precinct/values-dev.yaml \
+  --post-renderer deploy/helm/precinct/post-renderer/kustomize-render.sh</code></pre>
 
             <h3>Upgrade</h3>
-            <pre data-lang="bash"><code>helm upgrade precinct charts/precinct/ \
-  -f charts/precinct/values-prod.yaml \
-  --post-renderer charts/precinct/post-renderer/kustomize-render.sh</code></pre>
+            <pre data-lang="bash"><code>helm upgrade precinct deploy/helm/precinct/ \
+  -f deploy/helm/precinct/values-prod.yaml \
+  --post-renderer deploy/helm/precinct/post-renderer/kustomize-render.sh</code></pre>
 
             <h3>Status</h3>
             <pre data-lang="bash"><code>helm status precinct
@@ -312,11 +312,11 @@ helm get values precinct</code></pre>
           <section id="chart-structure">
             <h2>Chart Structure</h2>
             <p>
-              The Helm chart lives in <code>POC/charts/precinct/</code> and has
+              The Helm chart lives in <code>deploy/helm/precinct/</code> and has
               the following structure:
             </p>
 
-            <pre data-lang="text"><code>POC/charts/precinct/
+            <pre data-lang="text"><code>deploy/helm/precinct/
 |-- Chart.yaml                  # Chart metadata (name, version, description)
 |-- values.yaml                 # Default values (local environment)
 |-- values-local.yaml           # Local environment overrides
@@ -332,7 +332,7 @@ helm get values precinct</code></pre>
             <p>
               Note the absence of traditional Helm templates for Deployments,
               Services, and ConfigMaps. Those live in the kustomize base and
-              overlays under <code>POC/infra/eks/</code>. The chart's only
+              overlays under <code>deploy/terraform/</code>. The chart's only
               template is a <code>kustomization.yaml</code> that points to the
               correct overlay based on <code>.Values.global.environment</code>.
             </p>
@@ -711,12 +711,12 @@ helm get values precinct</code></pre>
             <h2>Kustomize-Native Path</h2>
             <p>
               Teams that do not need Helm's lifecycle management can use kustomize
-              directly. The overlays in <code>POC/infra/eks/overlays/</code> are
+              directly. The overlays in <code>deploy/terraform/overlays/</code> are
               self-contained and do not depend on Helm.
             </p>
 
             <pre data-lang="bash"><code># Build and apply a specific overlay
-kustomize build infra/eks/overlays/local/ | kubectl apply -f -
+kustomize build deploy/terraform/overlays/local/ | kubectl apply -f -
 
 # Or use Make targets
 make k8s-up        # Local overlay (Docker Desktop)
@@ -769,7 +769,7 @@ spec:
   source:
     repoURL: https://github.com/precinct-dev/PRECINCT.git
     targetRevision: main
-    path: POC/charts/precinct
+    path: deploy/helm/precinct
     helm:
       valueFiles:
         - values-prod.yaml
@@ -791,7 +791,7 @@ spec:
   interval: 10m
   chart:
     spec:
-      chart: POC/charts/precinct
+      chart: deploy/helm/precinct
       sourceRef:
         kind: GitRepository
         name: precinct
@@ -807,7 +807,7 @@ name: Deploy PRECINCT
 on:
   push:
     branches: [main]
-    paths: ['POC/charts/**', 'POC/infra/**']
+    paths: ['deploy/helm/**', 'deploy/terraform/**']
 
 jobs:
   deploy:
@@ -823,10 +823,10 @@ jobs:
 
       - name: Deploy
         run: |
-          cd POC
-          helm upgrade --install precinct charts/precinct/ \
-            -f charts/precinct/values-${{ env.ENVIRONMENT }}.yaml \
-            --post-renderer charts/precinct/post-renderer/kustomize-render.sh \
+          
+          helm upgrade --install precinct deploy/helm/precinct/ \
+            -f deploy/helm/precinct/values-${{ env.ENVIRONMENT }}.yaml \
+            --post-renderer deploy/helm/precinct/post-renderer/kustomize-render.sh \
             --wait --timeout 10m</code></pre>
           </section>
 
@@ -840,9 +840,9 @@ jobs:
 
             <h3>Upgrade with new values</h3>
             <pre data-lang="bash"><code># Upgrade to a new environment preset or values
-helm upgrade precinct charts/precinct/ \
-  -f charts/precinct/values-staging.yaml \
-  --post-renderer charts/precinct/post-renderer/kustomize-render.sh
+helm upgrade precinct deploy/helm/precinct/ \
+  -f deploy/helm/precinct/values-staging.yaml \
+  --post-renderer deploy/helm/precinct/post-renderer/kustomize-render.sh
 
 # View release history
 helm history precinct</code></pre>
@@ -917,7 +917,7 @@ helm rollback precinct 3</code></pre>
             <ol>
               <li>
                 <strong>Export current state:</strong> Run
-                <code>kustomize build infra/eks/overlays/&lt;env&gt;/ &gt; current-manifests.yaml</code>
+                <code>kustomize build deploy/terraform/overlays/&lt;env&gt;/ &gt; current-manifests.yaml</code>
                 to capture your current deployed manifests.
               </li>
               <li>
@@ -933,7 +933,7 @@ helm rollback precinct 3</code></pre>
               </li>
               <li>
                 <strong>Dry-run install:</strong> Run
-                <code>helm install precinct charts/precinct/ -f values-&lt;env&gt;.yaml --post-renderer charts/precinct/post-renderer/kustomize-render.sh --dry-run</code>
+                <code>helm install precinct deploy/helm/precinct/ -f values-&lt;env&gt;.yaml --post-renderer deploy/helm/precinct/post-renderer/kustomize-render.sh --dry-run</code>
                 and diff the output against <code>current-manifests.yaml</code>.
               </li>
               <li>

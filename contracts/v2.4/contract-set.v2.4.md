@@ -6,15 +6,15 @@ and backward-compatibility mappings.
 
 ## Normative Artifacts
 
-- Manifest: `POC/contracts/v2.4/manifest.v2.4.json`
-- Request schema: `POC/contracts/v2.4/schemas/plane_request_v2.schema.json`
-- Response schema: `POC/contracts/v2.4/schemas/plane_decision_v2.schema.json`
-- Connector manifest schema: `POC/contracts/v2.4/schemas/connector_manifest_v1.schema.json`
-- Connector authority lifecycle doc: `POC/contracts/v2.4/connector-conformance-authority.v2.4.md`
-- RuleOps lifecycle doc: `POC/contracts/v2.4/ruleops-lifecycle.v2.4.md`
-- Reason-code catalog: `POC/contracts/v2.4/reason-code-catalog.v2.4.json`
-- Reason-code policy: `POC/contracts/v2.4/reason-code-catalog.v2.4.md`
-- Changelog: `POC/contracts/v2.4/CHANGELOG.md`
+- Manifest: `contracts/v2.4/manifest.v2.4.json`
+- Request schema: `contracts/v2.4/schemas/plane_request_v2.schema.json`
+- Response schema: `contracts/v2.4/schemas/plane_decision_v2.schema.json`
+- Connector manifest schema: `contracts/v2.4/schemas/connector_manifest_v1.schema.json`
+- Connector authority lifecycle doc: `contracts/v2.4/connector-conformance-authority.v2.4.md`
+- RuleOps lifecycle doc: `contracts/v2.4/ruleops-lifecycle.v2.4.md`
+- Reason-code catalog: `contracts/v2.4/reason-code-catalog.v2.4.json`
+- Reason-code policy: `contracts/v2.4/reason-code-catalog.v2.4.md`
+- Changelog: `contracts/v2.4/CHANGELOG.md`
 
 ## Versioning Policy
 
@@ -98,10 +98,10 @@ canonical `plane_decision_v2` reason-code response.
 
 ## Example Artifacts
 
-- `POC/contracts/v2.4/examples/ingress_admit_request.example.json`
-- `POC/contracts/v2.4/examples/ingress_allow_response.example.json`
-- `POC/contracts/v2.4/examples/model_deny_response.example.json`
+- `contracts/v2.4/examples/ingress_admit_request.example.json`
+- `contracts/v2.4/examples/ingress_allow_response.example.json`
+- `contracts/v2.4/examples/model_deny_response.example.json`
 
 ## Changelog Entry
 
-Contract changelog entries are maintained in `POC/contracts/v2.4/CHANGELOG.md`.
+Contract changelog entries are maintained in `contracts/v2.4/CHANGELOG.md`.

@@ -267,7 +267,7 @@
 
             <h3>Step 1: Clone the repository</h3>
             <pre data-lang="bash"><code>git clone https://github.com/precinct-dev/PRECINCT.git
-cd PRECINCT/POC</code></pre>
+cd PRECINCT</code></pre>
 
             <h3>Step 2: Start the observability stack</h3>
             <pre data-lang="bash"><code>make phoenix-up
@@ -316,7 +316,7 @@ cd PRECINCT/POC</code></pre>
             </p>
 
             <h3>Step 2: Deploy</h3>
-            <pre data-lang="bash"><code>cd POC
+            <pre data-lang="bash"><code>
 make k8s-up
 # Gateway available at http://localhost:30090</code></pre>
             <p>
@@ -480,8 +480,7 @@ make k8s-up
           <section id="explore-codebase">
             <h2>Explore the Codebase</h2>
             <p>
-              The PRECINCT proof-of-concept lives in the <code>POC/</code> directory. Here is a
-              guide to the key paths.
+              Here is a guide to the key paths in the PRECINCT repository.
             </p>
 
             <div class="table-wrapper">
@@ -523,7 +522,7 @@ make k8s-up
                     <td>Tool and model registration</td>
                   </tr>
                   <tr>
-                    <td><code>infra/eks/</code></td>
+                    <td><code>deploy/terraform/</code></td>
                     <td>Kubernetes manifests and Kustomize overlays</td>
                   </tr>
                   <tr>

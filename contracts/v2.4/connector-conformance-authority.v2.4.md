@@ -12,7 +12,7 @@ admission behavior for ingress-facing connectors.
 
 ## Manifest Contract
 
-- Schema: `POC/contracts/v2.4/schemas/connector_manifest_v1.schema.json`
+- Schema: `contracts/v2.4/schemas/connector_manifest_v1.schema.json`
 - Signature algorithm in the reference implementation: `sha256-manifest-v1`.
 
 ## Lifecycle Endpoints

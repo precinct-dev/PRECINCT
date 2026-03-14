@@ -55,28 +55,28 @@ Primary references:
 
 - `precinct-reference-architecture.md`
 - `agentic-ai-security-phase3-proposal.md`
-- `POC/docs/ARCHITECTURE.md`
+- `docs/ARCHITECTURE.md`
 
 Representative implementation evidence:
 
-- Tool registry verification and poisoning checks: `POC/internal/gateway/middleware/tool_registry.go`
-- Step-up gating and risk scoring: `POC/internal/gateway/middleware/step_up_gating.go`
-- Response firewall and handle-ization: `POC/internal/gateway/middleware/response_firewall.go`
-- DLP scanner: `POC/internal/gateway/middleware/dlp.go`
-- OPA authorization policies: `POC/config/opa/mcp_policy.rego`
-- Exfiltration rules: `POC/config/opa/exfiltration.rego`
-- Audit hash chain and verification: `POC/internal/gateway/middleware/audit.go`, `POC/internal/gateway/middleware/audit_verify.go`
-- K8s admission for signed/digest-pinned images: `POC/infra/eks/admission/constraints/enforce-image-signature.yaml`, `POC/infra/eks/admission/constraints/enforce-image-digest.yaml`
-- Compliance taxonomy and generator: `POC/tools/compliance/control_taxonomy.yaml`, `POC/tools/compliance/generate.py`
-- GDPR ROPA and deletion workflow: `POC/docs/compliance/gdpr-article-30-ropa.md`, `POC/internal/gateway/middleware/gdpr_delete.go`
-- Channel mediation (Ed25519 webhook verification): `POC/internal/gateway/middleware/dlp.go`, `POC/internal/gateway/middleware/deep_scan.go`
-- Data source integrity (hash verification): `POC/internal/gateway/middleware/tool_registry.go`, DataSourceDefinition struct
-- Escalation detection and scoring: `POC/internal/gateway/middleware/session_context.go`, EscalationScore formula
-- Principal hierarchy (SPIFFE-to-role): `POC/internal/gateway/middleware/spiffe_auth.go`, X-Precinct-Principal-Level header
-- Irreversibility gating: `POC/internal/gateway/middleware/step_up_gating.go`, ClassifyActionDestructiveness taxonomy
+- Tool registry verification and poisoning checks: `internal/gateway/middleware/tool_registry.go`
+- Step-up gating and risk scoring: `internal/gateway/middleware/step_up_gating.go`
+- Response firewall and handle-ization: `internal/gateway/middleware/response_firewall.go`
+- DLP scanner: `internal/gateway/middleware/dlp.go`
+- OPA authorization policies: `config/opa/mcp_policy.rego`
+- Exfiltration rules: `config/opa/exfiltration.rego`
+- Audit hash chain and verification: `internal/gateway/middleware/audit.go`, `internal/gateway/middleware/audit_verify.go`
+- K8s admission for signed/digest-pinned images: `deploy/terraform/admission/constraints/enforce-image-signature.yaml`, `deploy/terraform/admission/constraints/enforce-image-digest.yaml`
+- Compliance taxonomy and generator: `tools/compliance/control_taxonomy.yaml`, `tools/compliance/generate.py`
+- GDPR ROPA and deletion workflow: `docs/compliance/gdpr-article-30-ropa.md`, `internal/gateway/middleware/gdpr_delete.go`
+- Channel mediation (Ed25519 webhook verification): `internal/gateway/middleware/dlp.go`, `internal/gateway/middleware/deep_scan.go`
+- Data source integrity (hash verification): `internal/gateway/middleware/tool_registry.go`, DataSourceDefinition struct
+- Escalation detection and scoring: `internal/gateway/middleware/session_context.go`, EscalationScore formula
+- Principal hierarchy (SPIFFE-to-role): `internal/gateway/middleware/spiffe_auth.go`, X-Precinct-Principal-Level header
+- Irreversibility gating: `internal/gateway/middleware/step_up_gating.go`, ClassifyActionDestructiveness taxonomy
 - External threat validation: Shapira et al. (2026), *Agents of Chaos*, arXiv:2602.20021v1
 
-Phase 3 implemented controls (all in `POC/internal/gateway/`):
+Phase 3 implemented controls (all in `internal/gateway/`):
 
 - **RLM Governance Engine**: `phase3_rlm.go` -- per-lineage state tracking, subcall budget enforcement, depth limits, UASGS bypass prevention
 - **Loop Governor State Machine**: `phase3_loop_plane.go` -- 8-state governance machine, all 8 immutable limits, operator halt, approval flow
@@ -85,8 +85,8 @@ Phase 3 implemented controls (all in `POC/internal/gateway/`):
 - **CLI Tool Adapter**: `phase3_plane_stubs.go` (`toolPlanePolicyEngine`) -- shell injection prevention via command allowlists, max-args, denied-arg-token detection
 - **Ingress Connector Envelope**: `phase3_ingress_plane.go` -- canonical parsing, SPIFFE source principal authentication, SHA256 content-addressing, replay detection with 30min nonce TTL
 - **Phase 3 Contracts**: `phase3_contracts.go` -- `PlaneRequestV2`, `PlaneDecisionV2`, `RunEnvelope`, `AuditEventV2` with full reason code taxonomy
-- **Go SDK SPIKE Token Builder**: `POC/sdk/go/mcpgateway/spike_token.go` -- `BuildSPIKETokenRef`, `BuildSPIKETokenRefWithScope`
-- **Python SDK Runtime**: `POC/sdk/python/mcp_gateway_sdk/runtime.py` -- `build_spike_token_ref`, `resolve_model_api_key_ref`, DSPy gateway LM configuration
+- **Go SDK SPIKE Token Builder**: `sdk/go/mcpgateway/spike_token.go` -- `BuildSPIKETokenRef`, `BuildSPIKETokenRefWithScope`
+- **Python SDK Runtime**: `sdk/python/mcp_gateway_sdk/runtime.py` -- `build_spike_token_ref`, `resolve_model_api_key_ref`, DSPy gateway LM configuration
 
 ---
 

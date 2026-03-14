@@ -9,7 +9,7 @@ Story: oc-ko5 (GAP-7)
 ## Directory Structure
 
 ```
-infra/k8s/
+deploy/k8s/
   base/                          # Cloud-agnostic base manifests
     gateway/                     # PRECINCT Gateway
       gateway-namespace.yaml
@@ -47,26 +47,26 @@ infra/k8s/
 
 ```bash
 # Kustomize build (dry-run)
-kustomize build infra/k8s/base
+kustomize build deploy/k8s/base
 
 # kubeconform validation
-kustomize build infra/k8s/base | kubeconform -summary -strict
+kustomize build deploy/k8s/base | kubeconform -summary -strict
 
 # kubectl dry-run
-kustomize build infra/k8s/base | kubectl apply --dry-run=client -f -
+kustomize build deploy/k8s/base | kubectl apply --dry-run=client -f -
 ```
 
 ### 2. Deploy to any cluster
 
 ```bash
 # Apply base manifests
-kubectl apply -k infra/k8s/base
+kubectl apply -k deploy/k8s/base
 
 # Or with dev overlay
-kubectl apply -k infra/k8s/overlays/dev
+kubectl apply -k deploy/k8s/overlays/dev
 
 # Or with local overlay (kind, Docker Desktop)
-kubectl apply -k infra/k8s/overlays/local
+kubectl apply -k deploy/k8s/overlays/local
 ```
 
 ### 3. Verify deployment
@@ -92,11 +92,11 @@ should be added via Kustomize overlays:
 | Audit sink | S3 | GCS | Blob Storage | file/stdout |
 
 For AWS/EKS-specific resources (Terraform, IRSA, VPC, S3 audit), see
-`infra/eks/` which is preserved as an optional EKS overlay.
+`deploy/terraform/` which is preserved as an optional EKS overlay.
 
-## Relationship to infra/eks/
+## Relationship to deploy/terraform/
 
-The `infra/eks/` directory is preserved intact as an **optional EKS-specific
+The `deploy/terraform/` directory is preserved intact as an **optional EKS-specific
 overlay**. It contains:
 
 - EKS cluster Terraform (`main.tf`, `variables.tf`, etc.)
@@ -105,20 +105,20 @@ overlay**. It contains:
 - S3 audit sink configuration
 - EKS-specific admission control setup
 
-The core Kubernetes YAML in `infra/eks/` (gateway, mcp-server, policies,
+The core Kubernetes YAML in `deploy/terraform/` (gateway, mcp-server, policies,
 observability, spire) is functionally equivalent to the manifests here in
-`infra/k8s/base/`. The `infra/k8s/` tree is the canonical cloud-agnostic
-source; `infra/eks/` adds AWS-specific layering on top.
+`deploy/k8s/base/`. The `deploy/k8s/` tree is the canonical cloud-agnostic
+source; `deploy/terraform/` adds AWS-specific layering on top.
 
 ## Supported Cluster Types
 
 | Cluster Type | Status | Notes |
 |-------------|--------|-------|
-| kind | Validated | Use `infra/kind/cluster.yaml` for cluster config |
+| kind | Validated | Use `deploy/k8s/cluster.yaml` for cluster config |
 | Docker Desktop K8s | Validated | Enable in Docker Desktop settings |
 | k3s | Ready | Standard k8s API; should work out of the box |
 | minikube | Ready | Standard k8s API; should work out of the box |
-| AWS EKS | Ready | Add IRSA/VPC via `infra/eks/` overlay |
+| AWS EKS | Ready | Add IRSA/VPC via `deploy/terraform/` overlay |
 | Google GKE | Ready | Add Workload Identity via GKE overlay |
 | Azure AKS | Ready | Add Pod Identity via AKS overlay |
 

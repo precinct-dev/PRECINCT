@@ -301,12 +301,12 @@
             <h3>Step 1: Add your agent service to docker-compose.override.yml</h3>
             <p>
               Create a <code>docker-compose.override.yml</code> in the
-              <code>POC/</code> directory. Docker Compose automatically merges this
+              <code>deploy/compose/</code> directory. Docker Compose automatically merges this
               file with the base <code>docker-compose.yml</code>. Your agent
               container must share the <code>agentic-net</code> network to reach the
               gateway and the SPIRE agent socket volume to obtain its SVID.
             </p>
-            <pre data-lang="yaml"><code># POC/docker-compose.override.yml
+            <pre data-lang="yaml"><code># deploy/compose/docker-compose.override.yml
 services:
   my-agent:
     build:
@@ -407,7 +407,6 @@ result = await client.call_tool("tavily_search", {"query": "AI safety"})</code><
               processed through PRECINCT's security layers.
             </p>
             <pre data-lang="bash"><code># Start the full stack (includes your override)
-cd POC
 make up
 
 # Verify your agent can call tools through the gateway
@@ -453,7 +452,7 @@ docker exec mcp-security-gateway cat /tmp/audit.jsonl | jq 'select(.caller_id | 
               Create a Deployment in the <code>tools</code> namespace. Mount the
               SPIRE agent socket via hostPath so your agent can obtain its SVID.
             </p>
-            <pre data-lang="yaml"><code># infra/eks/my-agent/deployment.yaml
+            <pre data-lang="yaml"><code># deploy/terraform/my-agent/deployment.yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -559,7 +558,7 @@ allow if {
 kubectl edit configmap gateway-config -n gateway
 
 # Or update the kustomization overlay file and re-apply
-kustomize build infra/eks/overlays/local/ | kubectl apply -f -</code></pre>
+kustomize build deploy/terraform/overlays/local/ | kubectl apply -f -</code></pre>
 
             <h3>Step 5: Apply a NetworkPolicy</h3>
             <p>
@@ -567,7 +566,7 @@ kustomize build infra/eks/overlays/local/ | kubectl apply -f -</code></pre>
               gateway. This prevents agents from bypassing PRECINCT by calling
               tool servers directly.
             </p>
-            <pre data-lang="yaml"><code># infra/eks/my-agent/networkpolicy.yaml
+            <pre data-lang="yaml"><code># deploy/terraform/my-agent/networkpolicy.yaml
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -611,7 +610,7 @@ spec:
               agent can reach the gateway and that policies are enforced.
             </p>
             <pre data-lang="bash"><code># Apply your manifests
-kubectl apply -f infra/eks/my-agent/
+kubectl apply -f deploy/terraform/my-agent/
 
 # Port-forward the gateway
 kubectl port-forward -n gateway svc/mcp-security-gateway 9090:9090 &

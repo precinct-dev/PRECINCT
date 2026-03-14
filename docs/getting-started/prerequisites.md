@@ -155,7 +155,6 @@ After installing the required tools:
 ```bash
 # Clone the repository
 git clone <repo-url>
-cd POC
 
 # Run the setup wizard (press Enter at each prompt for secure defaults)
 make setup

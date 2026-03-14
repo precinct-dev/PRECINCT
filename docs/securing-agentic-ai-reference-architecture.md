@@ -160,7 +160,6 @@ The architecture runs in two modes: Docker Compose for local development and Kub
 Start the full stack:
 
 ```bash
-cd POC
 make up
 ```
 

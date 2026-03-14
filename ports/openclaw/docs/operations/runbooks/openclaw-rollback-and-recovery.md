@@ -28,8 +28,8 @@ docker compose --profile strict \
 
 ```bash
 make k8s-validate
-kustomize build infra/eks/overlays/staging | kubectl apply -f -
-kustomize build infra/eks/overlays/prod | kubectl apply -f -
+kustomize build deploy/terraform/overlays/staging | kubectl apply -f -
+kustomize build deploy/terraform/overlays/prod | kubectl apply -f -
 ```
 
 ## 4. OpenClaw Recovery Smoke Checks

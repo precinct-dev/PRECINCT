@@ -48,5 +48,5 @@ Prompt-safety operational alignment for v2.4:
 
 ## Source Of Truth
 
-- Code constants: `POC/internal/gateway/phase3_contracts.go`
-- Frozen catalog: `POC/contracts/v2.4/reason-code-catalog.v2.4.json`
+- Code constants: `internal/gateway/phase3_contracts.go`
+- Frozen catalog: `contracts/v2.4/reason-code-catalog.v2.4.json`

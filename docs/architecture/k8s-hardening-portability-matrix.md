@@ -79,13 +79,13 @@ Use this checklist before approving an adaptation:
 Run from repository root:
 
 ```bash
-make -C POC -n k8s-up
-make -C POC -n up
-make -C POC k8s-validate
-make -C POC k8s-runtime-campaign
-bash POC/tests/validate_deployment_patterns.sh
-bash POC/tests/e2e/validate_setup_time.sh k8s --dry-run
-bash POC/tests/e2e/validate_setup_time.sh compose --dry-run
+-n k8s-up
+-n up
+k8s-validate
+k8s-runtime-campaign
+bash tests/validate_deployment_patterns.sh
+bash tests/e2e/validate_setup_time.sh k8s --dry-run
+bash tests/e2e/validate_setup_time.sh compose --dry-run
 ```
 
 If the local runtime cannot launch Docker or Kubernetes, keep using dry-run validation.
