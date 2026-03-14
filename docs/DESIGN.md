@@ -131,7 +131,7 @@ Design for the reality that requirements will change. Phase 3 will likely add st
 ```
 +------------------+     +----------------+     +------------------+     +-----------------+
 | 1. git clone     | --> | 2. make setup  | --> | 3. CLI guided    | --> | 4. make up      |
-|    + cd POC      |     |    (prereq     |     |    config        |     |    (services     |
+|    + |     |    (prereq     |     |    config        |     |    (services     |
 |                  |     |     check)     |     |                  |     |     start)       |
 +------------------+     +----------------+     +------------------+     +-----------------+
                                                        |                        |
@@ -741,7 +741,7 @@ curl -s -X POST http://localhost:9090 \
 For Go-based agents or tools:
 
 ```go
-import "github.com/precinct-dev/PRECINCT/POC/sdk/gateway"
+import "github.com/precinct-dev/PRECINCT/sdk/gateway"
 
 client := gateway.NewClient(
     gateway.WithURL("http://localhost:9090"),

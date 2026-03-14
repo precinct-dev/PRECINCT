@@ -357,7 +357,6 @@ CI workflows are currently disabled (moved to `.github/workflows-disabled/`). Re
 
 ```bash
 # Docker Compose stack
-cd POC
 make setup                           # Interactive setup wizard
 make up                              # Start all services
 make demo-compose                    # Run full E2E demo (Go 21 + Python 22 tests)
@@ -397,6 +396,6 @@ make gdpr-delete SPIFFE_ID=spiffe://poc.local/agent/example
 
 # EKS manifest validation (offline)
 cd infra/eks && tofu validate
-kubeconform --strict infra/eks/**/*.yaml
-kustomize build infra/eks/overlays/dev
+kubeconform --strict deploy/terraform/**/*.yaml
+kustomize build deploy/terraform/overlays/dev
 ```

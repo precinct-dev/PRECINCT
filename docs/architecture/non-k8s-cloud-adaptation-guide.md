@@ -64,11 +64,11 @@ Use this checklist to sign off a non-K8s adaptation:
 ### Sample Validation Commands Against This Reference Implementation
 
 ```bash
-make -C POC -n up
-make -C POC k8s-validate
-bash POC/tests/e2e/validate_k8s_hardening_guide.sh
-bash POC/tests/e2e/validate_setup_time.sh compose --dry-run
-bash POC/tests/validate_deployment_patterns.sh
+-n up
+k8s-validate
+bash tests/e2e/validate_k8s_hardening_guide.sh
+bash tests/e2e/validate_setup_time.sh compose --dry-run
+bash tests/validate_deployment_patterns.sh
 ```
 
 ## Anti-Patterns (Do Not Do This)

@@ -106,11 +106,11 @@ All services should show status `healthy`. The demo suite exercises all 13 middl
 
 Latest external-app latest-source validation evidence (2026-02-16 UTC):
 
-- `bash tests/e2e/run_all.sh` -> `105 pass / 0 fail / 3 skip` (`POC/tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log`)
-- Targeted case-study campaign rerun -> `4 pass / 0 fail` (latest campaign artifact in `POC/tests/e2e/artifacts/`)
-- `make readiness-state-validate` -> PASS (`POC/tests/e2e/artifacts/rfa-t1hb-readiness-state-20260216T185105Z.log`)
+- `bash tests/e2e/run_all.sh` -> `105 pass / 0 fail / 3 skip` (`tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log`)
+- Targeted case-study campaign rerun -> `4 pass / 0 fail` (latest campaign artifact in `tests/e2e/artifacts/`)
+- `make readiness-state-validate` -> PASS (`tests/e2e/artifacts/rfa-t1hb-readiness-state-20260216T185105Z.log`)
 - Final decision package: latest external-app final decision artifact (**GO**, follow-up bug `RFA-655e` accepted/closed)
-- Separation model: upstream case-study source remains isolated from this repository; security mediation remains in `POC` wrapper/control-plane components.
+- Separation model: upstream case-study source remains isolated from this repository; security mediation remains in the gateway and control-plane components.
 
 ### Step 4: View Traces
 
@@ -150,7 +150,7 @@ The Docker Compose stack runs 11 services plus 3 one-shot init containers. Servi
 |---------|------|-------|
 | `spike-nexus` | Secret store | Late-binding token redemption via SPIFFE mTLS. AES-256-GCM encrypted SQLite backend. Port 8443 |
 | `spike-keeper-1` | Key shard holder | Holds the demo/local shard and participates in the release `2-of-3` keeper set |
-| `spike-keeper-2` + `spike-keeper-3` | Additional release keepers | Enabled by `docker-compose.prod-intent.yml` and `infra/eks/spike/` for multi-share keeper recovery |
+| `spike-keeper-2` + `spike-keeper-3` | Additional release keepers | Enabled by `docker-compose.prod-intent.yml` and `deploy/terraform/spike/` for multi-share keeper recovery |
 | `spike-bootstrap` | One-shot init | Generates root key, splits via Shamir, sends shards to Keeper(s) |
 | `spike-secret-seeder` | One-shot init | Seeds demo secrets (`ref=deadbeef`) and creates gateway-read ACL policy via SPIKE Pilot CLI |
 
@@ -225,12 +225,12 @@ make k8s-down
 
 ### What `make k8s-up` Does
 
-1. **Syncs K8s gateway config** from the canonical `config/` source to `infra/eks/overlays/local/gateway-config/` (prevents drift between Compose and K8s)
+1. **Syncs K8s gateway config** from the canonical `config/` source to `deploy/terraform/overlays/local/gateway-config/` (prevents drift between Compose and K8s)
 2. Starts a local registry (`registry:2` on port 5050) and connects it to the `kind` network
 3. Builds gateway, mock-mcp-server, spire-agent-wrapper, spike-keeper, and content-scanner images
 4. Tags and pushes all images to `localhost:5050`
 5. Installs OPA Gatekeeper and sigstore policy-controller CRDs
-6. Applies the Kustomize local overlay (`infra/eks/overlays/local/`) in two passes:
+6. Applies the Kustomize local overlay (`deploy/terraform/overlays/local/`) in two passes:
    - Pass 1: Namespaces, CRDs, services (ConstraintTemplates only)
    - Pass 2: Constraints, policies (after Gatekeeper processes ConstraintTemplates)
 7. Generates TLS certs for the policy-controller webhook
@@ -252,12 +252,12 @@ The only K8s-specific file is `extensions-demo-k8s.yaml` (uses cluster DNS inste
 
 To include OpenSearch in local K8s, apply the extension overlay:
 
-- `infra/eks/overlays/local-opensearch/` (inherits `overlays/local` and adds `observability/opensearch`)
+- `deploy/terraform/overlays/local-opensearch/` (inherits `overlays/local` and adds `observability/opensearch`)
 - `make k8s-opensearch-up` applies this overlay and waits for OpenSearch rollouts
 
 ### Local Overlay Adaptations
 
-The local Kustomize overlay (`infra/eks/overlays/local/kustomization.yaml`) applies these changes to the EKS base manifests:
+The local Kustomize overlay (`deploy/terraform/overlays/local/kustomization.yaml`) applies these changes to the EKS base manifests:
 
 | EKS Feature | Local Adaptation |
 |-------------|-----------------|
@@ -635,7 +635,7 @@ Migration notes:
 K8s dev/local mode:
 
 ```bash
-kustomize build infra/eks/overlays/local | kubectl apply -f -
+kustomize build deploy/terraform/overlays/local | kubectl apply -f -
 ```
 
 Validate the SPIKE recovery posture before release sign-off:
@@ -648,9 +648,9 @@ K8s strict production-intent mode:
 
 ```bash
 make k8s-overlay-digest-validate OVERLAYS="staging prod"
-kustomize build infra/eks/overlays/staging | kubectl apply -f -
+kustomize build deploy/terraform/overlays/staging | kubectl apply -f -
 # or
-kustomize build infra/eks/overlays/prod | kubectl apply -f -
+kustomize build deploy/terraform/overlays/prod | kubectl apply -f -
 ```
 
 The strict overlays now consume workflow-managed `digest:` pins in each
@@ -676,7 +676,7 @@ Enforced references:
 - Framework-gap closure epic: `RFA-l6h6.6.17` (accepted/closed)
 - Post-gap reassessment: `RFA-l6h6.6.17.1` (accepted/closed)
 - Latest-source closure chain: `RFA-pnxr`, `RFA-ysa5`, `RFA-oo21`, `RFA-t1hb`, `RFA-6mp8`, `RFA-655e` (accepted/closed)
-- Latest-source final decision artifact: latest external-app final decision artifact in `POC/docs/security/`
+- Latest-source final decision artifact: latest external-app final decision artifact in `docs/security/`
 
 Required operator checks before any external-app promotion/reassessment:
 
