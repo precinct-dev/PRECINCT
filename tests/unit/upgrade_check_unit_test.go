@@ -11,7 +11,7 @@ func pocRoot(t *testing.T) string {
 	t.Helper()
 	abs, err := filepath.Abs("../..")
 	if err != nil {
-		t.Fatalf("failed to resolve POC root: %v", err)
+		t.Fatalf("failed to resolve repo root: %v", err)
 	}
 	return abs
 }
@@ -45,7 +45,7 @@ func TestUpgradeCheck_Compare(t *testing.T) {
 
 func TestUpgradeCheck_ExtractImages(t *testing.T) {
 	poc := pocRoot(t)
-	compose := filepath.Join(poc, "docker-compose.yml")
+	compose := filepath.Join(poc, "deploy", "compose", "docker-compose.yml")
 	out := runScript(t, "--_test_extract_images", compose)
 	if !strings.Contains(out, "ghcr.io/spiffe/spire-server:1.10.0") {
 		t.Fatalf("expected spire-server image in compose extraction; got:\n%s", out)
@@ -54,7 +54,7 @@ func TestUpgradeCheck_ExtractImages(t *testing.T) {
 		t.Fatalf("expected keydb image in compose extraction; got:\n%s", out)
 	}
 
-	phoenixCompose := filepath.Join(poc, "docker-compose.phoenix.yml")
+	phoenixCompose := filepath.Join(poc, "deploy", "compose", "docker-compose.phoenix.yml")
 	out2 := runScript(t, "--_test_extract_images", phoenixCompose)
 	if !strings.Contains(out2, "arizephoenix/phoenix:latest") {
 		t.Fatalf("expected phoenix image in phoenix compose extraction; got:\n%s", out2)
