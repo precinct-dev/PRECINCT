@@ -13,8 +13,8 @@ import (
 
 func TestSPIKECLI_FullFlow(t *testing.T) {
 	// This test verifies the complete flow:
-	// 1. spike-cli put: Seed a secret
-	// 2. spike-cli issue: Issue a token
+	// 1. precinct secret put: Seed a secret
+	// 2. precinct secret issue: Issue a token
 	// 3. Gateway: Parse and validate token format
 
 	tmpDir := t.TempDir()
@@ -24,7 +24,7 @@ func TestSPIKECLI_FullFlow(t *testing.T) {
 
 	client := spike.NewClient(config)
 
-	// Step 1: Initialize (equivalent to spike-cli init)
+	// Step 1: Initialize (equivalent to precinct secret init)
 	t.Run("init", func(t *testing.T) {
 		if err := client.Init(); err != nil {
 			t.Fatalf("Init() failed: %v", err)
@@ -36,7 +36,7 @@ func TestSPIKECLI_FullFlow(t *testing.T) {
 		}
 	})
 
-	// Step 2: Seed a secret (equivalent to spike-cli put)
+	// Step 2: Seed a secret (equivalent to precinct secret put)
 	t.Run("put", func(t *testing.T) {
 		secret := &spike.Secret{
 			Ref:      "7f3a9b2c",
@@ -60,7 +60,7 @@ func TestSPIKECLI_FullFlow(t *testing.T) {
 		}
 	})
 
-	// Step 3: Issue a token (equivalent to spike-cli issue)
+	// Step 3: Issue a token (equivalent to precinct secret issue)
 	var token string
 	t.Run("issue", func(t *testing.T) {
 		var err error

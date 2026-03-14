@@ -28,7 +28,7 @@ func TestAgwPolicyReloadIntegration_ModifyGrantsAndVerifyEffect(t *testing.T) {
 
 	t.Cleanup(func() {
 		_ = os.WriteFile(grantPath, original, 0644)
-		restore := exec.Command("go", "run", "./cmd/agw", "policy", "reload", "--confirm", "--format", "json")
+		restore := exec.Command("go", "run", "./cli/agw", "policy", "reload", "--confirm", "--format", "json")
 		restore.Dir = pocDir()
 		_, _ = restore.CombinedOutput()
 	})
@@ -60,7 +60,7 @@ func TestAgwPolicyReloadIntegration_ModifyGrantsAndVerifyEffect(t *testing.T) {
 	}
 
 	// Reload through the CLI command under test.
-	cmd := exec.Command("go", "run", "./cmd/agw", "policy", "reload", "--confirm", "--format", "json")
+	cmd := exec.Command("go", "run", "./cli/agw", "policy", "reload", "--confirm", "--format", "json")
 	cmd.Dir = pocDir()
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

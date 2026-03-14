@@ -51,7 +51,7 @@ func TestAgwPolicyTestRuntimeIntegration_Full13LayersAllowed(t *testing.T) {
 	keydbSetValue(t, lastFillKey, strconv.FormatInt(time.Now().UnixNano(), 10), 2*time.Minute)
 
 	cmd := exec.Command(
-		"go", "run", "./cmd/agw", "policy", "test",
+		"go", "run", "./cli/agw", "policy", "test",
 		spiffeID,
 		"tavily_search",
 		"--runtime",

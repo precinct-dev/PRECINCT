@@ -18,7 +18,7 @@ func TestAgwSecretIntegration_ListAndPut(t *testing.T) {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
 
-	listBefore := exec.Command("go", "run", "./cmd/agw", "secret", "list", "--format", "json")
+	listBefore := exec.Command("go", "run", "./cli/agw", "secret", "list", "--format", "json")
 	listBefore.Dir = pocDir()
 	var listBeforeOut, listBeforeErr bytes.Buffer
 	listBefore.Stdout = &listBeforeOut
@@ -42,7 +42,7 @@ func TestAgwSecretIntegration_ListAndPut(t *testing.T) {
 	ref := fmt.Sprintf("agw%08x", time.Now().UnixNano()&0xffffffff)
 	value := "integration-secret-value"
 
-	putCmd := exec.Command("go", "run", "./cmd/agw", "secret", "put", ref, value, "--confirm", "--format", "json")
+	putCmd := exec.Command("go", "run", "./cli/agw", "secret", "put", ref, value, "--confirm", "--format", "json")
 	putCmd.Dir = pocDir()
 	var putOut, putErr bytes.Buffer
 	putCmd.Stdout = &putOut

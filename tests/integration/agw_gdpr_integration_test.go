@@ -42,7 +42,7 @@ func TestAgwGDPRDeleteIntegration_CreateDeleteVerifyLifecycle(t *testing.T) {
 
 	outputDir := filepath.Join(t.TempDir(), "reports")
 	cmd := exec.Command(
-		"go", "run", "./cmd/agw", "gdpr", "delete", spiffeID,
+		"go", "run", "./cli/agw", "gdpr", "delete", spiffeID,
 		"--confirm",
 		"--source", "docker",
 		"--project-root", ".",
@@ -130,7 +130,7 @@ func TestAgwGDPRAuditIntegration_ExportsCompleteDSARPackage(t *testing.T) {
 
 	outputDir := filepath.Join(t.TempDir(), "reports")
 	cmd := exec.Command(
-		"go", "run", "./cmd/agw", "gdpr", "audit", spiffeID,
+		"go", "run", "./cli/agw", "gdpr", "audit", spiffeID,
 		"--source", "docker",
 		"--project-root", ".",
 		"--output-dir", outputDir,

@@ -21,8 +21,8 @@ const (
 
 func newRootCmd() *cobra.Command {
 	rootCmd := &cobra.Command{
-		Use:           "agw",
-		Short:         "Agentic Gateway operator CLI",
+		Use:           "precinct",
+		Short:         "PRECINCT platform operator CLI",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}

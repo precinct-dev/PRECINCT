@@ -12,7 +12,7 @@ import (
 )
 
 func TestAgwPolicyListIntegration_JSONAndFilteredTable(t *testing.T) {
-	cmdJSON := exec.Command("go", "run", "./cmd/agw", "policy", "list", "--format", "json")
+	cmdJSON := exec.Command("go", "run", "./cli/agw", "policy", "list", "--format", "json")
 	cmdJSON.Dir = pocDir()
 	var stdout, stderr bytes.Buffer
 	cmdJSON.Stdout = &stdout
@@ -37,7 +37,7 @@ func TestAgwPolicyListIntegration_JSONAndFilteredTable(t *testing.T) {
 	}
 
 	cmdFiltered := exec.Command(
-		"go", "run", "./cmd/agw", "policy", "list",
+		"go", "run", "./cli/agw", "policy", "list",
 		"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 		"--format", "table",
 	)

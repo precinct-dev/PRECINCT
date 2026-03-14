@@ -21,7 +21,7 @@ func TestAgwStatusIntegration_JSONAndTable(t *testing.T) {
 
 	// JSON format
 	{
-		cmd := exec.Command("go", "run", "./cmd/agw", "status", "--gateway-url", gatewayURL, "--format", "json")
+		cmd := exec.Command("go", "run", "./cli/agw", "status", "--gateway-url", gatewayURL, "--format", "json")
 		cmd.Dir = pocDir()
 		var stdout, stderr bytes.Buffer
 		cmd.Stdout = &stdout
@@ -72,7 +72,7 @@ func TestAgwStatusIntegration_JSONAndTable(t *testing.T) {
 
 	// Table format
 	{
-		cmd := exec.Command("go", "run", "./cmd/agw", "status", "--gateway-url", gatewayURL, "--format", "table")
+		cmd := exec.Command("go", "run", "./cli/agw", "status", "--gateway-url", gatewayURL, "--format", "table")
 		cmd.Dir = pocDir()
 		out, err := cmd.CombinedOutput()
 		s := string(out)
@@ -85,7 +85,7 @@ func TestAgwStatusIntegration_JSONAndTable(t *testing.T) {
 
 	// --component gateway: detailed gateway view should include circuit breaker state.
 	{
-		cmd := exec.Command("go", "run", "./cmd/agw", "status", "--component", "gateway", "--gateway-url", gatewayURL, "--format", "json")
+		cmd := exec.Command("go", "run", "./cli/agw", "status", "--component", "gateway", "--gateway-url", gatewayURL, "--format", "json")
 		cmd.Dir = pocDir()
 		out, err := cmd.CombinedOutput()
 		if err != nil {

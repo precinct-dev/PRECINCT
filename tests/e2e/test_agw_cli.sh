@@ -16,7 +16,7 @@ TMP_DIR="$(mktemp -d)"
 KEYDB_PROXY_CONTAINER=""
 KEYDB_PROXY_PORT=""
 
-AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/agw}"
+AGW_BIN="${AGW_BIN:-${ROOT_DIR}/build/bin/precinct}"
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
 KEYDB_URL="${KEYDB_URL:-redis://127.0.0.1:6379}"
 SPIFFE_ID="${SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/dspy-researcher/dev}"
@@ -203,7 +203,7 @@ ensure_compose_stack() {
 
 build_agw_binary() {
   mkdir -p "$ROOT_DIR/build/bin"
-  run_cmd "go_build_agw" go build -o "$AGW_BIN" ./cmd/agw/
+  run_cmd "go_build_precinct" go build -o "$AGW_BIN" ./cli/agw/
 }
 
 generate_sdk_traffic() {
@@ -312,7 +312,7 @@ EOF
 }
 
 run_cli_validation() {
-  log_header "agw CLI E2E Validation"
+  log_header "precinct CLI E2E Validation"
 
   run_cmd "status_table" "$AGW_BIN" status --gateway-url "$GATEWAY_URL" --keydb-url "$KEYDB_URL" --format table
   assert_contains_regex "$TMP_DIR/status_table.out" "COMPONENT[[:space:]]+STATUS[[:space:]]+DETAILS" "status table headers present"
@@ -386,12 +386,12 @@ run_cli_validation() {
 
 print_claims_summary() {
   log_header "Stakeholder Summary (Architecture Claim -> Evidence)"
-  log_info "Architecture Claim: agw status reflects live platform health."
+  log_info "Architecture Claim: precinct status reflects live platform health."
   log_info "Evidence: status JSON reported gateway/keydb/spire-server/spike-nexus/phoenix/otel-collector all with status=ok."
-  log_info "Architecture Claim: agw inspect commands expose live enforcement state."
+  log_info "Architecture Claim: precinct inspect commands expose live enforcement state."
   log_info "Evidence: rate-limit, circuit-breaker, sessions, and identity commands succeeded in both table and json formats."
   log_info "Architecture Claim: audit search and explain are decision-linked and operational."
-  log_info "Evidence: Go SDK denied request produced decision_id=$DENIED_DECISION_ID (code=$SDK_DENIED_CODE), and agw audit explain reconstructed a FAIL layer trace."
+  log_info "Evidence: Go SDK denied request produced decision_id=$DENIED_DECISION_ID (code=$SDK_DENIED_CODE), and precinct audit explain reconstructed a FAIL layer trace."
   if [ -n "$SDK_SESSION_ID" ]; then
     log_info "Architecture Claim: session context persists across requests."
     log_info "Evidence: SDK session_id=$SDK_SESSION_ID appeared in sessions inspection output for $SPIFFE_ID."
@@ -416,14 +416,14 @@ print_final_summary() {
 }
 
 main() {
-  log_header "E2E agw CLI Validation"
+  log_header "E2E precinct CLI Validation"
   require_cmd docker
   require_cmd go
   require_cmd make
   require_cmd rg
   require_cmd redis-cli
 
-  log_info "Step 1/2: Ensure stack and build agw binary"
+  log_info "Step 1/2: Ensure stack and build precinct binary"
   ensure_compose_stack
   ensure_keydb_access
   build_agw_binary
@@ -431,7 +431,7 @@ main() {
   log_info "Step 3/4: Generate live request data through Go SDK"
   generate_sdk_traffic
 
-  log_info "Step 5: Validate agw commands in table and json output modes"
+  log_info "Step 5: Validate precinct commands in table and json output modes"
   run_cli_validation
 
   print_claims_summary
