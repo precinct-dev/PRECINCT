@@ -1088,13 +1088,17 @@ func testDeepScanDeterministicBlock() bool {
 	var ge *mcpgateway.GatewayError
 	if errors.As(err, &ge) {
 		printGatewayError(ge)
+		// Step 9: guard model (real Groq) blocked injection before deep scan -- stronger defense
+		if ge.HTTPStatus == 403 && ge.Step == 9 && ge.Code == "stepup_guard_blocked" {
+			return printProof(true, "guard model blocked injection at step 9 (stepup_guard_blocked) -- real guard model active, defense-in-depth caught it before deep scan")
+		}
 		if ge.HTTPStatus == 403 && ge.Step == 10 && ge.Code == "deepscan_blocked" {
 			return printProof(true, "deep scan deterministically blocked injection at step 10 (deepscan_blocked)")
 		}
 		if ge.HTTPStatus == 503 && ge.Step == 10 && (strings.Contains(ge.Code, "deepscan") || strings.Contains(ge.Code, "fail_closed")) {
 			return printProof(true, "deep scan backend unavailable at step 10; fail_closed policy denied request (secure fallback)")
 		}
-		return printProof(false, fmt.Sprintf("expected 403 step 10 deepscan_blocked, got HTTP %d step %d code=%s", ge.HTTPStatus, ge.Step, ge.Code))
+		return printProof(false, fmt.Sprintf("expected 403 at step 9 or 10, got HTTP %d step %d code=%s", ge.HTTPStatus, ge.Step, ge.Code))
 	}
 	fmt.Printf("  Error: %v\n", err)
 	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))

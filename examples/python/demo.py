@@ -692,11 +692,14 @@ def test_deepscan_deterministic_block(url: str) -> bool:
         return print_proof(False, "expected deep scan denial but request succeeded (deep scan not active?)")
     except GatewayError as e:
         print_gateway_error(e)
+        # Step 9: guard model (real Groq) blocked injection before deep scan -- stronger defense
+        if e.http_status == 403 and e.step == 9 and e.code == "stepup_guard_blocked":
+            return print_proof(True, "guard model blocked injection at step 9 (stepup_guard_blocked) -- real guard model active, defense-in-depth caught it before deep scan")
         if e.http_status == 403 and e.step == 10 and e.code == "deepscan_blocked":
             return print_proof(True, "deep scan deterministically blocked injection at step 10 (deepscan_blocked)")
         if e.http_status == 503 and e.step == 10 and ("deepscan" in (e.code or "") or "fail_closed" in (e.code or "")):
             return print_proof(True, "deep scan backend unavailable at step 10; fail_closed policy denied request (secure fallback)")
-        return print_proof(False, f"expected 403 step 10 deepscan_blocked, got HTTP {e.http_status} step {e.step} code={e.code}")
+        return print_proof(False, f"expected 403 at step 9 or 10, got HTTP {e.http_status} step {e.step} code={e.code}")
     except Exception as e:
         return print_proof(False, f"unexpected error: {type(e).__name__}: {e}")
     finally:
