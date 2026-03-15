@@ -335,10 +335,10 @@ environment variables. Source: `docker-compose.yml` service definitions.
 | `SPIKE_NEXUS_SHAMIR_SHARES` | `1` (local demo) / `3` (production-intent compose, EKS release bundle) | Bootstrap must match the active Nexus recovery profile |
 
 Release-facing compose (`docker-compose.prod-intent.yml`) and the standalone
-SPIKE EKS bundle (`infra/eks/spike/`) now require multi-share keeper recovery
+SPIKE EKS bundle (`deploy/terraform/spike/`) now require multi-share keeper recovery
 (`2-of-3` in repo defaults). Keep the `1-of-1` values only for isolated local
 demo/bootstrap flows from `docker-compose.yml` and
-`infra/eks/overlays/local/spike-bootstrap-job.yaml`.
+`deploy/terraform/overlays/local/spike-bootstrap-job.yaml`.
 
 ### SPIKE Secret Seeder
 
@@ -406,13 +406,13 @@ Profile-specific audit sink override:
 |----------|---------------|-------------|
 | `AUDIT_LOG_PATH` | `/var/log/gateway/audit.jsonl` | Set by `docker-compose.opensearch-bridge.yml` so Fluent Bit can ingest gateway audit JSONL |
 
-### `agw` Compliance Export from OpenSearch
+### `precinct` Compliance Export from OpenSearch
 
-`agw` supports OpenSearch-backed evidence collection for compliance workflows:
+`precinct` supports OpenSearch-backed evidence collection for compliance workflows:
 
 ```bash
-export AGW_OPENSEARCH_PASSWORD='<secret>'
-go run ./cmd/agw compliance collect \
+export PRECINCT_OPENSEARCH_PASSWORD='<secret>'
+go run ./cli/agw compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \
@@ -424,7 +424,7 @@ go run ./cmd/agw compliance collect \
 
 Security requirements enforced by CLI when `--audit-source opensearch`:
 
-- Password must come from env var (`--opensearch-password-env`, default `AGW_OPENSEARCH_PASSWORD`)
+- Password must come from env var (`--opensearch-password-env`, default `PRECINCT_OPENSEARCH_PASSWORD`)
 - `--opensearch-ca-cert` is required
 - `--opensearch-client-cert` and `--opensearch-client-key` are required
 - OpenSearch URL must be `https://`
@@ -966,6 +966,6 @@ reg "spiffe://poc.local/gateways/mcp-security-gateway/dev" \
 
 ### K8s Attestation (Local Overlay)
 
-In the Kubernetes local overlay (`infra/eks/overlays/local/`), the trust domain
+In the Kubernetes local overlay (`deploy/terraform/overlays/local/`), the trust domain
 changes to `precinct.poc` and SPIRE uses `join_token` attestation
 instead of Docker labels.

@@ -19,36 +19,44 @@ This classification is referenced by the compliance report for controls marked
 
 ## 1. Universal Controls (Docker Compose AND Kubernetes)
 
-These controls are enforced by the PRECINCT Gateway's 13-middleware chain.
+These controls are enforced by the PRECINCT Gateway's middleware chain.
 They execute identically in both deployment modes because the gateway binary is the
 same -- only the orchestration layer differs.
 
 | Step | Middleware | Taxonomy Area | Function | Control IDs |
 |------|-----------|---------------|----------|-------------|
+| 0 | `RuntimeProfile` | (infrastructure) | Injects SPIFFE mode and enforcement profile into request context | -- |
+| 0b | `RequestMetrics` | (observability) | Records Prometheus request_total counter with method, path, and status code | -- |
 | 1 | `RequestSizeLimit` | size_limit | Limits inbound request body size to prevent resource exhaustion | GW-AVAIL-003 |
 | 2 | `BodyCapture` | (infrastructure) | Captures request body into context for downstream middleware inspection | -- |
 | 3 | `SPIFFEAuth` | spiffe_auth | Validates SPIFFE SVIDs presented over mTLS; extracts agent identity | GW-AUTH-001, GW-AUTH-002, GW-AUTH-003, GW-TRANS-001, GW-TRANS-002 |
+| 3b | `PrincipalHeaders` | (infrastructure) | Propagates SPIFFE principal identity into request headers for downstream consumption | -- |
 | 4 | `AuditLog` | audit | Writes structured JSON audit entries with tamper-evident SHA-256 hash chain | GW-AUDIT-001, GW-AUDIT-002, GW-AUDIT-003, GW-AUDIT-004 |
 | 5 | `ToolRegistryVerify` | tool_registry | Verifies tool name exists in registry and checks SHA-256 description hash | GW-SC-003 |
 | 6 | `OPAPolicy` | opa | Evaluates OPA Rego policies for authorization (SPIFFE grants, path-based ACL, destinations) | GW-AUTHZ-001, GW-AUTHZ-002, GW-AUTHZ-003, GW-AUTHZ-004 |
+| 6b | `ExtensionSlot` (`SlotPostAuthz`) | (extensibility) | Extension hook after OPA authorization, before DLP inspection | -- |
 | 7 | `DLPMiddleware` | dlp | Scans request bodies for PII patterns (SSN, credit card, email) | GW-DLP-001, GW-DLP-003, GW-DLP-004, GW-DLP-005 |
+| 7b | `ExtensionSlot` (`SlotPostInspection`) | (extensibility) | Extension hook after DLP inspection, before session tracking | -- |
 | 8 | `SessionContextMiddleware` | session_context | Tracks per-agent session state, computes risk scores for anomaly detection | GW-SESS-001, GW-SESS-002, GW-SESS-003 |
 | 9 | `StepUpGating` | step_up_gating | Risk scoring + destination allowlist check + guard model for high-risk tools | GW-SCAN-002 |
 | 10 | `DeepScanMiddleware` | deep_scan | Async deep content scanning for malicious payloads and tool poisoning | GW-SCAN-001, GW-SCAN-003 |
+| 10b | `ExtensionSlot` (`SlotPostAnalysis`) | (extensibility) | Extension hook after deep scan analysis, before rate limiting | -- |
 | 11 | `RateLimitMiddleware` | rate_limiter | Per-agent token bucket rate limiting (distributed via KeyDB when available) | GW-AVAIL-001 |
 | 12 | `CircuitBreakerMiddleware` | circuit_breaker | Protects upstream MCP servers from cascading failures | GW-AVAIL-002 |
 | 13 | `TokenSubstitution` | spike_token, spike_redeemer | Late-binding secret substitution via SPIKE Nexus; agents never see real secrets | GW-SEC-001, GW-SEC-002, GW-SEC-003 |
 | 14 | `ResponseFirewall` | response_firewall | Intercepts upstream responses; DLP on responses, data handle-ization | GW-DLP-002 |
 
-**Note on step numbering**: Steps 1-13 are the middleware chain applied to every request.
+**Note on step numbering**: Steps 0-13 are the middleware chain applied to every request.
 Step 14 (ResponseFirewall) wraps the reverse proxy and intercepts responses before they
 flow back through the chain. Token substitution (step 13) is intentionally the innermost
-middleware -- no other middleware sees real secrets.
+middleware -- no other middleware sees real secrets. Steps marked with "b" suffixes are
+interstitial middleware that augment the primary chain without changing the core step
+ordering.
 
 `NewToolRegistryScopeResolver` is also part of tool registry enforcement path and must be
 kept aligned with `ToolRegistryVerify` behavior when policy scopes evolve.
 
-All 13 middleware controls plus the response firewall are identical in Docker Compose
+All middleware controls plus the response firewall are identical in Docker Compose
 and Kubernetes deployments because they are compiled into the same Go binary
 (`mcp-security-gateway`).
 
@@ -66,8 +74,8 @@ should know, and the production recommendation.
 namespaces. Only explicitly allowed traffic (gateway-to-MCP-server, MCP-server-to-S3)
 can flow. All other network paths are blocked at the CNI level.
 
-**Manifests**: `infra/eks/policies/default-deny.yaml`, `infra/eks/policies/gateway-allow.yaml`,
-`infra/eks/policies/mcp-server-allow.yaml`
+**Manifests**: `deploy/terraform/policies/default-deny.yaml`, `deploy/terraform/policies/gateway-allow.yaml`,
+`deploy/terraform/policies/mcp-server-allow.yaml`
 
 **Why not in Docker Compose**: Docker bridge networking does not support NetworkPolicy
 enforcement. All containers on the same Docker network can reach each other. There is no
@@ -90,7 +98,7 @@ per-namespace allow rules for your topology.
 enforces read-only root filesystems, and drops all Linux capabilities. Applied via
 namespace labels (`pod-security.kubernetes.io/enforce: restricted`).
 
-**Manifests**: `infra/eks/gateway/gateway-namespace.yaml` (labels on namespace metadata)
+**Manifests**: `deploy/terraform/gateway/gateway-namespace.yaml` (labels on namespace metadata)
 
 **Why not in Docker Compose**: Docker Compose has no built-in admission controller that
 enforces Pod Security Standards. While individual `docker-compose.yml` directives
@@ -114,9 +122,9 @@ requests and verifies that container images have valid cosign signatures. Signat
 are verified against the Fulcio CA (keyless OIDC via GitHub Actions) and the Rekor
 transparency log. Unsigned or tampered images are rejected at admission time.
 
-**Manifests**: `infra/eks/admission/policy-controller/cluster-image-policy.yaml`,
-`infra/eks/admission/policy-controller/deployment.yaml`,
-`infra/eks/admission/policy-controller/webhook.yaml`
+**Manifests**: `deploy/terraform/admission/policy-controller/cluster-image-policy.yaml`,
+`deploy/terraform/admission/policy-controller/deployment.yaml`,
+`deploy/terraform/admission/policy-controller/webhook.yaml`
 
 **Why not in Docker Compose**: Docker Compose builds images from source (`docker compose
 build`). The supply chain is the source code itself, not a remote registry. There is
@@ -142,11 +150,11 @@ policies: image digest pinning (no `:latest` tags) and registry allowlisting (on
 approved registries). This is distinct from the gateway's OPA engine (step 6), which
 enforces tool-level authorization.
 
-**Manifests**: `infra/eks/admission/gatekeeper-system.yaml`,
-`infra/eks/admission/constraint-templates/require-image-digest.yaml`,
-`infra/eks/admission/constraint-templates/require-image-signature.yaml`,
-`infra/eks/admission/constraints/enforce-image-digest.yaml`,
-`infra/eks/admission/constraints/enforce-image-signature.yaml`
+**Manifests**: `deploy/terraform/admission/gatekeeper-system.yaml`,
+`deploy/terraform/admission/constraint-templates/require-image-digest.yaml`,
+`deploy/terraform/admission/constraint-templates/require-image-signature.yaml`,
+`deploy/terraform/admission/constraints/enforce-image-digest.yaml`,
+`deploy/terraform/admission/constraints/enforce-image-signature.yaml`
 
 **Why not in Docker Compose**: Same rationale as cosign admission -- Docker Compose has
 no admission webhook mechanism. Additionally, the Gatekeeper policies (digest pinning,
@@ -170,7 +178,7 @@ before switching to `deny`.
 and KeyDB for session persistence) are backed by encrypted EBS volumes. AWS KMS
 encryption at rest protects SPIRE registration entries, trust bundles, and session data.
 
-**Manifests**: Configured via the EKS Terraform module (`infra/eks/main.tf`) and
+**Manifests**: Configured via the EKS Terraform module (`deploy/terraform/main.tf`) and
 StorageClass annotations, not individual YAML manifests.
 
 **Why not in Docker Compose**: Docker Compose volumes are ephemeral by design in the development
@@ -196,7 +204,7 @@ these tokens against the cluster's OIDC provider, establishing cryptographic pro
 the agent is running in a specific Kubernetes cluster. This provides strong node identity
 tied to the Kubernetes control plane.
 
-**Manifests**: `infra/eks/spire/agent-configmap.yaml` (k8s_psat configuration)
+**Manifests**: `deploy/terraform/spire/agent-configmap.yaml` (k8s_psat configuration)
 
 **Why not in Docker Compose**: Docker Desktop's kubeadm-provisioned clusters lack an OIDC
 provider, so `k8s_psat` attestation does not work. The Docker Compose deployment uses
@@ -287,7 +295,7 @@ The Docker Compose deployment is a **development and evaluation environment**. I
 purpose is to:
 
 - Allow evaluators to run the full security control chain locally in under 30 minutes
-- Demonstrate that the 13-middleware chain works identically regardless of orchestration
+- Demonstrate that the middleware chain works identically regardless of orchestration
 - Provide a realistic development environment for iterating on controls
 
 The K8s-only controls are defense-in-depth measures that strengthen the security
@@ -298,7 +306,7 @@ layer controls, which are the primary security boundary.
 
 | Category | Docker Compose | Kubernetes | Delta |
 |----------|---------------|------------|-------|
-| Application-layer controls (13 middleware) | All 13 | All 13 | None |
+| Application-layer controls (middleware chain) | All | All | None |
 | Response firewall | Yes | Yes | None |
 | mTLS (SPIFFE) | Yes (join_token) | Yes (k8s_psat) | Attestation path only |
 | Session persistence | Yes (KeyDB) | Yes (KeyDB) | Storage encryption |
@@ -315,9 +323,9 @@ layer controls, which are the primary security boundary.
 
 - Gateway middleware chain: `internal/gateway/gateway.go` (Handler method)
 - Control taxonomy: `tools/compliance/control_taxonomy.yaml`
-- K8s NetworkPolicies: `infra/eks/policies/`
-- K8s admission control: `infra/eks/admission/`
+- K8s NetworkPolicies: `deploy/terraform/policies/`
+- K8s admission control: `deploy/terraform/admission/`
 - SPIRE configuration (Docker): `config/spire/agent.conf`
-- SPIRE configuration (K8s base): `infra/eks/spire/agent-configmap.yaml`
-- SPIRE configuration (K8s local): `infra/eks/overlays/local/patch-spire-agent-config.yaml`
+- SPIRE configuration (K8s base): `deploy/terraform/spire/agent-configmap.yaml`
+- SPIRE configuration (K8s local): `deploy/terraform/overlays/local/patch-spire-agent-config.yaml`
 - RFA-7bh retrospective: Docker Desktop uses join_token (not k8s_psat) -- intentional

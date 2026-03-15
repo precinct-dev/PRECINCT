@@ -224,7 +224,7 @@
               (used to auto-generate session IDs).
             </p>
             <ul>
-              <li><strong>Module path:</strong> <code>github.com/precinct-dev/PRECINCT/POC/sdk/go</code></li>
+              <li><strong>Module path:</strong> <code>github.com/precinct-dev/PRECINCT/sdk/go</code></li>
               <li><strong>Package:</strong> <code>mcpgateway</code></li>
               <li><strong>Go version:</strong> &ge;1.24.6</li>
               <li><strong>Dependencies:</strong> <code>github.com/google/uuid</code></li>
@@ -242,7 +242,7 @@
             <h2>Installation</h2>
 
             <h3>From the Repository</h3>
-            <pre data-lang="bash"><code>go get github.com/precinct-dev/PRECINCT/POC/sdk/go/mcpgateway</code></pre>
+            <pre data-lang="bash"><code>go get github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway</code></pre>
 
             <h3>Local Development (replace directive)</h3>
             <p>
@@ -254,9 +254,9 @@ module myagent
 
 go 1.24.6
 
-require github.com/precinct-dev/PRECINCT/POC/sdk/go v0.0.0
+require github.com/precinct-dev/PRECINCT/sdk/go v0.0.0
 
-replace github.com/precinct-dev/PRECINCT/POC/sdk/go => ../PRECINCT/POC/sdk/go</code></pre>
+replace github.com/precinct-dev/PRECINCT/sdk/go => ../PRECINCT/sdk/go</code></pre>
 
             <pre data-lang="bash"><code>go mod tidy</code></pre>
           </section>
@@ -272,7 +272,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/precinct-dev/PRECINCT/POC/sdk/go/mcpgateway"
+    "github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway"
 )
 
 func main() {
@@ -1065,7 +1065,7 @@ result, err := client.Call(ctx, "tavily_search", params)
     "net/http"
     "os"
 
-    "github.com/precinct-dev/PRECINCT/POC/sdk/go/mcpgateway"
+    "github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway"
 )
 
 // Load SVID certificate and key (provided by SPIRE agent)

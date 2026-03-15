@@ -347,12 +347,12 @@ Compatibility notes:
 
 The immutable audit sink path for Kubernetes deployments is defined in:
 
-- `../infra/eks/observability/audit/audit-s3-config.yaml`
+- `../deploy/terraform/observability/audit/audit-s3-config.yaml`
 - `../docs/compliance/immutable-audit-evidence-path.md`
 
 Validation + proof generation:
 
-- `kustomize build ../infra/eks/observability`
+- `kustomize build ../deploy/terraform/observability`
 - `bash ../tests/e2e/validate_immutable_audit_sink.sh`
 
 Machine-readable proof artifact:

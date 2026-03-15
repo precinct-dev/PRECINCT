@@ -260,7 +260,7 @@
                 (ungoverned) configuration.
               </li>
               <li>
-                <strong><code>agw</code> CLI is available</strong>, the
+                <strong><code>precinct</code> CLI is available</strong>, the
                 PRECINCT operations CLI. See the
                 <a href="cli.html">CLI Reference</a> for installation.
               </li>
@@ -317,7 +317,7 @@ kubectl exec -n spire spire-server-0 -- /opt/spire/bin/spire-server entry create
   -selector k8s:ns:default</code></pre>
 
             <h3>Verify registration</h3>
-            <pre data-lang="bash"><code>agw identity list
+            <pre data-lang="bash"><code>precinct identity list
 # Should show your new SPIFFE ID in the output</code></pre>
           </section>
 
@@ -360,7 +360,7 @@ echo -n '{"name":"my_tool","description":"Does something useful","inputSchema":{
           type: string</code></pre>
 
             <h3>Verify registration</h3>
-            <pre data-lang="bash"><code>agw inspect tools
+            <pre data-lang="bash"><code>precinct inspect tools
 # Should list your tool with its hash and risk level</code></pre>
 
             <div class="callout callout-warning">
@@ -410,14 +410,14 @@ allow if {
 
             <h3>Test before deploying</h3>
             <pre data-lang="bash"><code># Evaluate the policy against a sample input
-agw policy eval \
+precinct policy eval \
   --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev" \
   --tool "my_tool" \
   --method "tools/call"
 # Expected: ALLOW
 
 # Test a denial
-agw policy eval \
+precinct policy eval \
   --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev" \
   --tool "bash" \
   --method "tools/call"
@@ -428,7 +428,7 @@ agw policy eval \
               After writing or modifying a policy, reload it without restarting
               the gateway:
             </p>
-            <pre data-lang="bash"><code>agw policy reload
+            <pre data-lang="bash"><code>precinct policy reload
 # Policies are now active. No gateway restart required.</code></pre>
 
             <div class="callout callout-info">
@@ -543,7 +543,7 @@ result, err := client.CallTool(ctx, "my_tool", map[string]any{
               and check the audit trail:
             </p>
             <pre data-lang="bash"><code># Search the audit log for your agent's requests
-agw audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
+precinct audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
 # Should show the request with decision=ALLOW and all 13 layers logged</code></pre>
 
             <h3>2. Trigger a policy denial</h3>
@@ -563,7 +563,7 @@ agw audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
               Every request, whether allowed or denied, generates a
               structured audit event that traverses all 13 layers:
             </p>
-            <pre data-lang="bash"><code>agw audit search --last 1 | jq .
+            <pre data-lang="bash"><code>precinct audit search --last 1 | jq .
 # Shows: decision_id, trace_id, spiffe_id, tool, decision,
 #         layers_traversed, timestamps, risk_score, hash chain</code></pre>
 
@@ -603,7 +603,7 @@ agw audit search --caller "spiffe://poc.local/agents/mcp-client/my-agent/dev"
 
             <p>
               For regulated environments, you can collect compliance evidence directly from the
-              OpenSearch index using <code>agw compliance collect --audit-source opensearch</code>
+              OpenSearch index using <code>precinct compliance collect --audit-source opensearch</code>
               with HTTPS and mTLS certificate flags.
             </p>
 

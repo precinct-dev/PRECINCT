@@ -1,0 +1,48 @@
+# ------------------------------------------------------------------------------
+# Local Environment Values (Docker Desktop Kubernetes)
+#
+# Single-replica deployments, NodePort exposure, debug logging,
+# relaxed PSS, join_token SPIRE attestation.
+# Matches deploy/k8s/overlays/local/ kustomize overlay.
+# ------------------------------------------------------------------------------
+
+global:
+  environment: local
+  trustDomain: precinct.poc
+
+gateway:
+  replicas: 1
+  image:
+    repository: registry:5000/mcp-security-gateway
+    tag: latest
+    pullPolicy: Always
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+  env:
+    logLevel: debug
+    spiffeMode: dev
+    enforcementProfile: dev
+    rateLimitRPM: 600
+    rateLimitBurst: 100
+  service:
+    type: NodePort
+    port: 9090
+    nodePort: 30090
+
+spire:
+  agent:
+    nodeAttestor: join_token
+
+security:
+  podSecurityStandards: privileged
+
+admissionControl:
+  gatekeeper:
+    enforcementAction: dryrun
+  sigstore:
+    enabled: false

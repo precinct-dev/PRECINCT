@@ -1,0 +1,242 @@
+name: Security Scan
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+      - 'epic/**'
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: read
+
+jobs:
+  gosec:
+    name: Go Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run gosec
+        uses: securego/gosec@v2.21.4
+        with:
+          args: '-no-fail -fmt sarif -out gosec-results.sarif ./...'
+
+      - name: Upload gosec results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: gosec-results.sarif
+          category: gosec
+
+      - name: Build gosec summary artifact
+        if: always()
+        run: |
+          jq -n \
+            --arg scan "gosec" \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg artifact "gosec-results.sarif" \
+            --argjson result_count "$(jq '[.runs[]?.results[]?] | length' gosec-results.sarif)" \
+            '{scan:$scan, generated_at:$generated_at, artifact:$artifact, result_count:$result_count}' > gosec-summary.json
+
+      - name: Upload gosec results as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gosec-results
+          path: |
+            gosec-results.sarif
+            gosec-summary.json
+          retention-days: 30
+
+  trivy-fs:
+    name: Trivy Filesystem Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '0'
+          skip-dirs: '.beads'
+
+      - name: Upload Trivy fs results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-fs
+
+      - name: Build Trivy fs summary artifact
+        if: always()
+        run: |
+          jq -n \
+            --arg scan "trivy-fs" \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg artifact "trivy-fs-results.sarif" \
+            --argjson result_count "$(jq '[.runs[]?.results[]?] | length' trivy-fs-results.sarif)" \
+            '{scan:$scan, generated_at:$generated_at, artifact:$artifact, result_count:$result_count}' > trivy-fs-summary.json
+
+      - name: Upload Trivy fs results as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-fs-results
+          path: |
+            trivy-fs-results.sarif
+            trivy-fs-summary.json
+          retention-days: 30
+
+  trivy-image:
+    name: Trivy Container Image Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build container image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/compose/Dockerfile.gateway
+          push: false
+          load: true
+          tags: mcp-security-gateway:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Trivy image scan
+        uses: aquasecurity/trivy-action@0.29.0
+        with:
+          scan-type: 'image'
+          image-ref: 'mcp-security-gateway:scan'
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+          severity: 'CRITICAL,HIGH,MEDIUM'
+          exit-code: '0'
+
+      - name: Upload Trivy image results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-image-results.sarif
+          category: trivy-image
+
+      - name: Build Trivy image summary artifact
+        if: always()
+        run: |
+          jq -n \
+            --arg scan "trivy-image" \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg artifact "trivy-image-results.sarif" \
+            --argjson result_count "$(jq '[.runs[]?.results[]?] | length' trivy-image-results.sarif)" \
+            '{scan:$scan, generated_at:$generated_at, artifact:$artifact, result_count:$result_count}' > trivy-image-summary.json
+
+      - name: Upload Trivy image results as artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-image-results
+          path: |
+            trivy-image-results.sarif
+            trivy-image-summary.json
+          retention-days: 30
+
+  summary:
+    name: Security Scan Summary
+    runs-on: ubuntu-latest
+    needs: [gosec, trivy-fs, trivy-image]
+    if: always()
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Validate required scan artifacts exist
+        run: |
+          test -s gosec-results/gosec-results.sarif
+          test -s gosec-results/gosec-summary.json
+          test -s trivy-fs-results/trivy-fs-results.sarif
+          test -s trivy-fs-results/trivy-fs-summary.json
+          test -s trivy-image-results/trivy-image-results.sarif
+          test -s trivy-image-results/trivy-image-summary.json
+
+      - name: Build evidence manifest
+        run: |
+          mkdir -p security-scan-evidence
+          cp gosec-results/gosec-results.sarif security-scan-evidence/
+          cp gosec-results/gosec-summary.json security-scan-evidence/
+          cp trivy-fs-results/trivy-fs-results.sarif security-scan-evidence/
+          cp trivy-fs-results/trivy-fs-summary.json security-scan-evidence/
+          cp trivy-image-results/trivy-image-results.sarif security-scan-evidence/
+          cp trivy-image-results/trivy-image-summary.json security-scan-evidence/
+
+          for f in security-scan-evidence/*.sarif; do
+            jq -e '.runs' "$f" >/dev/null
+          done
+
+          jq -n \
+            --arg generated_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --slurpfile gosec security-scan-evidence/gosec-summary.json \
+            --slurpfile trivy_fs security-scan-evidence/trivy-fs-summary.json \
+            --slurpfile trivy_image security-scan-evidence/trivy-image-summary.json \
+            '{
+              schema_version: "security_scan_ci_evidence.v1",
+              generated_at: $generated_at,
+              scans: {
+                gosec: $gosec[0],
+                trivy_fs: $trivy_fs[0],
+                trivy_image: $trivy_image[0]
+              }
+            }' > security-scan-evidence/security-scan-manifest.json
+
+      - name: Upload consolidated security evidence bundle
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-scan-evidence-bundle
+          path: security-scan-evidence/
+          retention-days: 30
+
+      - name: Display summary
+        run: |
+          echo "# Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Scans Completed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- gosec (Go source code security)" >> $GITHUB_STEP_SUMMARY
+          echo "- trivy-fs (dependency vulnerabilities)" >> $GITHUB_STEP_SUMMARY
+          echo "- trivy-image (container image CVEs)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "All SARIF results have been uploaded to the GitHub Security tab." >> $GITHUB_STEP_SUMMARY
+          echo "View detailed findings: **Security** > **Code scanning**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Consolidated evidence bundle artifact: \`security-scan-evidence-bundle\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Baseline" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Accepted risks and baseline findings are documented in:" >> $GITHUB_STEP_SUMMARY
+          echo "- \`docs/security/baseline.md\`" >> $GITHUB_STEP_SUMMARY

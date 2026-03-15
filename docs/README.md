@@ -4,7 +4,7 @@
 
 PRECINCT is an open-source security reference architecture for agentic AI systems. It defines the controls, contracts, and enforcement patterns needed to deploy autonomous AI agents safely in production environments, built around five core pillars: SPIFFE/SPIRE (workload identity), SPIKE (secrets management), OPA (authorization), the PRECINCT Gateway (inline enforcement), and OpenTelemetry (observability).
 
-This directory is the documentation hub for the project. The reference implementation lives in [`POC/`](../POC/).
+This directory is the documentation hub for the project. The reference implementation lives at the repository root.
 
 ---
 
@@ -118,8 +118,8 @@ If you are new to PRECINCT, begin with these documents in order:
 
 | Document | Description |
 |----------|-------------|
-| [Go SDK](../POC/sdk/go/README.md) | Go client for making MCP JSON-RPC tool calls through the gateway, with retry logic and session management |
-| [Python SDK](../POC/sdk/python/README.md) | Python client library compatible with PydanticAI, DSPy, LangGraph, CrewAI, or raw HTTP |
+| [Go SDK](../sdk/go/README.md) | Go client for making MCP JSON-RPC tool calls through the gateway, with retry logic and session management |
+| [Python SDK](../sdk/python/README.md) | Python client library compatible with PydanticAI, DSPy, LangGraph, CrewAI, or raw HTTP |
 | [No-Upstream-Mod Integration Playbook](sdk/no-upstream-mod-integration-playbook.md) | Claim-ready guide for onboarding agent applications without modifying upstream source code |
 | [App Pack Authoring Guide](sdk/app-pack-authoring-guide.md) | How application teams author integration packs to onboard to the gateway |
 | [Gateway Bypass Conformance](sdk/gateway-bypass-case26-conformance.md) | Conformance spec verifying that agent traffic cannot bypass gateway controls for remote-skill and model paths |
@@ -139,7 +139,7 @@ If you are new to PRECINCT, begin with these documents in order:
 
 | Document | Description |
 |----------|-------------|
-| [OpenClaw Adaptation](../POC/ports/openclaw/docs/) | Documentation for the OpenClaw port, adapting the reference architecture to the OpenClaw messaging platform |
+| [OpenClaw Adaptation](../ports/openclaw/docs/) | Documentation for the OpenClaw port, adapting the reference architecture to the OpenClaw messaging platform |
 
 ---
 

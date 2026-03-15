@@ -1,0 +1,69 @@
+# ------------------------------------------------------------------------------
+# SPIRE Agent Configuration (ConfigMap)
+# Story: RFA-9fv.3
+#
+# Adapted from config/spire/agent.conf for Kubernetes:
+#   - k8s_psat NodeAttestor (replaces join_token for EKS)
+#   - k8s WorkloadAttestor (replaces docker attestor)
+#   - Workload API socket at /run/spire/sockets/agent.sock
+#   - Trust domain: precinct.poc
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-config
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/part-of: spire
+data:
+  agent.conf: |
+    agent {
+        data_dir = "/opt/spire/data/agent"
+        log_level = "INFO"
+        server_address = "spire-server-api"
+        server_port = "8081"
+        socket_path = "/run/spire/sockets/agent.sock"
+        trust_domain = "precinct.poc"
+
+        # Use trust bundle from ConfigMap managed by k8sbundle notifier
+        trust_bundle_path = "/run/spire/bundle/bundle.crt"
+    }
+
+    plugins {
+        # Kubernetes Projected Service Account Token attestor.
+        # Matches the k8s_psat configuration on the server side.
+        NodeAttestor "k8s_psat" {
+            plugin_data {
+                cluster = "precinct-poc"
+            }
+        }
+
+        KeyManager "disk" {
+            plugin_data {
+                directory = "/opt/spire/data/agent"
+            }
+        }
+
+        # Kubernetes workload attestor -- identifies workloads by
+        # their Kubernetes metadata (namespace, service account, pod labels).
+        WorkloadAttestor "k8s" {
+            plugin_data {
+                # Skip kubelet verification for POC simplicity
+                skip_kubelet_verification = true
+            }
+        }
+
+        # Unix workload attestor for process-level identity
+        WorkloadAttestor "unix" {
+            plugin_data {}
+        }
+    }
+
+    health_checks {
+        listener_enabled = true
+        bind_address = "0.0.0.0"
+        bind_port = "8080"
+        live_path = "/live"
+        ready_path = "/ready"
+    }

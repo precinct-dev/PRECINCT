@@ -52,8 +52,8 @@ OpenSearch API: `http://localhost:9200`
 
 Optional Kubernetes extension:
 
-- manifests: `infra/eks/observability/opensearch/`
-- local overlay: `infra/eks/overlays/local-opensearch/`
+- manifests: `deploy/terraform/observability/opensearch/`
+- local overlay: `deploy/terraform/overlays/local-opensearch/`
 
 Commands:
 
@@ -62,7 +62,7 @@ Commands:
 make k8s-opensearch-up
 
 # Validate manifests only
-make -C infra/eks/observability dry-run-opensearch
+make -C deploy/terraform/observability dry-run-opensearch
 ```
 
 Secrets required before deploy (namespace `observability`):
@@ -99,11 +99,11 @@ no inline credentials are stored in manifests.
   - pivot from `decision_id` in evidence reports to indexed record, then to
     `trace_id` in Phoenix.
 
-`agw` can export compliance evidence from OpenSearch:
+`precinct` can export compliance evidence from OpenSearch:
 
 ```bash
-export AGW_OPENSEARCH_PASSWORD='<secret>'
-go run ./cmd/agw compliance collect \
+export PRECINCT_OPENSEARCH_PASSWORD='<secret>'
+go run ./cli/agw compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \

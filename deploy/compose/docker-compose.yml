@@ -1,0 +1,694 @@
+# Docker MCP Server Integration:
+# The Docker MCP server is managed externally by Docker Desktop's MCP Toolkit.
+# It is NOT defined in this compose file. Configuration lives in ~/.docker/mcp/
+# and is accessed by the gateway via JSON-RPC at http://localhost:8081/mcp
+# when the Docker MCP Gateway is running in streaming mode.
+#
+# To start Docker MCP Gateway:
+#   docker mcp gateway run --port 8081 --transport streaming
+#
+# For details, see: docs/docker-mcp-integration.md
+
+services:
+  # SPIRE Server - Identity control plane for workload attestation
+  spire-server:
+    image: ghcr.io/spiffe/spire-server:1.10.0@sha256:26daa394b3bfbc9dcadc734e9b110ce7ac5f2e1fe16050eb4418772280748b5e
+    container_name: spire-server
+    hostname: spire-server
+    volumes:
+      - ../../config/spire/server.conf:/opt/spire/conf/server/server.conf:ro
+      - ./data/spire-server:/opt/spire/data
+      - spire-server-socket:/tmp/spire-server
+    ports:
+      - "18081:8081"  # gRPC API for agent registration (host 18081 -> container 8081)
+      - "18080:8080"  # Health check endpoint (host 18080 -> container 8080)
+    command: ["-config", "/opt/spire/conf/server/server.conf"]
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-server", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - control-plane
+
+  # SPIRE Token Generator - One-shot init service to generate fresh join tokens
+  spire-token-generator:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.token-generator
+    image: spire-token-generator:latest
+    container_name: spire-token-generator
+    depends_on:
+      spire-server:
+        condition: service_healthy
+    volumes:
+      - spire-server-socket:/tmp/spire-server:ro
+      - spire-join-token:/token
+    networks:
+      - control-plane
+    restart: "no"  # Run once and exit
+
+  # SPIRE Agent - Workload attestation agent with Docker attestor
+  spire-agent:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.spire-agent
+    image: spire-agent-wrapper:latest
+    container_name: spire-agent
+    hostname: spire-agent
+    depends_on:
+      spire-server:
+        condition: service_healthy
+      spire-token-generator:
+        condition: service_completed_successfully
+    volumes:
+      - ../../config/spire/agent.conf:/opt/spire/conf/agent/agent.conf:ro
+      - ./data/spire-agent:/opt/spire/data/agent
+      - spire-agent-socket:/tmp/spire-agent/public
+      - spire-join-token:/token:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro  # Required for Docker workload attestor
+    healthcheck:
+      test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - control-plane
+    # Privileged mode required for Docker socket access.
+    # Host PID namespace required so the Docker workload attestor can resolve
+    # PIDs from other containers' PID namespaces via SO_PEERCRED on the
+    # shared Workload API Unix socket.
+    privileged: true
+    pid: host
+
+  # SPIRE Entry Registrar - One-shot init to register workload SPIFFE IDs
+  # Must complete BEFORE spike-nexus / gateway start so they can obtain SVIDs.
+  spire-entry-registrar:
+    image: spire-token-generator:latest   # Reuse image that has spire-server binary + shell
+    container_name: spire-entry-registrar
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+    volumes:
+      - spire-server-socket:/tmp/spire-server:ro
+      - ../../scripts/register-spire-entries.sh:/register.sh:ro
+    entrypoint: ["/bin/sh", "/register.sh"]
+    networks:
+      - control-plane
+    restart: "no"
+
+  # SPIKE Nexus - Late-binding secrets vault with SPIFFE mTLS (RFA-a2y.1)
+  # Provides token-based secret redemption so agents never see raw credentials.
+  # Docker Compose Tier 1: AES-256-GCM encrypted SQLite with persistent volume (RFA-oyg).
+  # Root key delivered via spike-bootstrap -> Keeper Shamir shard recovery on startup.
+  spike-nexus:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.spike-nexus
+    image: spike-nexus:latest
+    container_name: spike-nexus
+    hostname: spike-nexus
+    depends_on:
+      spire-entry-registrar:
+        condition: service_completed_successfully  # Entries must exist before SVID fetch
+      spike-keeper-1:
+        condition: service_healthy  # Keeper must be healthy before Nexus starts
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - spike-nexus-data:/opt/spike/data  # RFA-oyg: persistent SQLite (AES-256-GCM encrypted)
+    ports:
+      - "8443:8443"  # HTTPS API
+    environment:
+      - SPIKE_NEXUS_TLS_PORT=:8443
+      - SPIKE_NEXUS_BACKEND_STORE=sqlite
+      - SPIKE_NEXUS_DATA_DIR=/opt/spike/data  # RFA-oyg: explicit data dir for SQLite volume mount
+      # Local demo profile: single Keeper and 1-of-1 recovery for easy bootstrap.
+      # Production-intent overrides in docker-compose.prod-intent.yml require
+      # multi-share recovery and additional keeper peers.
+      - SPIKE_NEXUS_KEEPER_PEERS=https://spike-keeper-1:8443
+      - SPIKE_NEXUS_SHAMIR_THRESHOLD=1
+      - SPIKE_NEXUS_SHAMIR_SHARES=1
+      # RFA-67xd: repave reliability. Nexus periodically re-contributes keeper shards;
+      # short interval ensures keeper shard recovery before next dependent restart.
+      - SPIKE_NEXUS_KEEPER_UPDATE_INTERVAL=5s
+      - SPIKE_SYSTEM_LOG_LEVEL=INFO
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+      - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
+      - SPIKE_TRUST_ROOT_KEEPER=poc.local
+      - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      # Avoid IPv6 localhost resolution ([::1]) issues; services bind IPv4 in-container.
+      - HEALTHCHECK_URL=https://127.0.0.1:8443/
+    networks:
+      - secrets-plane
+    labels:
+      - "spiffe-id=spike-nexus"
+      - "component=secrets"
+      - "service=spike"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  # SPIKE Keeper 1 - Shamir key shard holder for Nexus root key recovery (RFA-oyg)
+  # Single Keeper with threshold=1, shares=1 is intentionally isolated to the
+  # local demo/dev compose path.
+  # Keeper holds root encryption key shard in memory; Nexus contacts it on startup
+  # to reconstruct the AES-256-GCM root key for SQLite backend encryption.
+  spike-keeper-1:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.spike-keeper
+    image: spike-keeper:latest
+    container_name: spike-keeper-1
+    hostname: spike-keeper-1
+    depends_on:
+      spire-entry-registrar:
+        condition: service_completed_successfully  # SPIRE entry must exist before Keeper fetches SVID
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+    environment:
+      - SPIKE_KEEPER_TLS_PORT=:8443
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_KEEPER=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+      - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
+      - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
+      - SPIKE_SYSTEM_LOG_LEVEL=INFO
+      # Avoid IPv6 localhost resolution ([::1]) issues; Keeper listens on IPv4 in-container.
+      - HEALTHCHECK_ADDR=127.0.0.1:8443
+    networks:
+      - secrets-plane
+    labels:
+      - "spiffe-id=spike-keeper-1"
+      - "component=secrets"
+      - "service=spike"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    restart: "no"
+
+  # SPIKE Bootstrap - One-shot init container to deliver root encryption key (RFA-oyg)
+  # Generates a root key, splits it via Shamir Secret Sharing, and broadcasts shards
+  # directly to Keeper(s). Nexus's retry loop then recovers the shards from Keepers
+  # and initializes the AES-256-GCM encrypted SQLite backing store.
+  # Uses the dedicated bootstrap image (ghcr.io/spiffe/spike-bootstrap) with the
+  # 'bootstrap' binary that speaks mTLS to Keepers via SPIRE SVID.
+  # NOTE: Bootstrap depends on Keeper (not Nexus) because it sends shards TO Keepers.
+  # Nexus runs in parallel, retrying until Keepers have shards.
+  spike-bootstrap:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.spike-bootstrap
+    image: poc-spike-bootstrap:latest
+    container_name: spike-bootstrap
+    depends_on:
+      spire-entry-registrar:
+        condition: service_completed_successfully  # SPIRE entry must exist for bootstrap's SVID
+      spike-keeper-1:
+        condition: service_healthy  # Keeper must be serving mTLS before bootstrap sends shards
+      # Demo reliability: bootstrap verifies initialization by calling SPIKE Nexus.
+      # On slower machines this can race Nexus startup and fail the one-shot container.
+      # We only require Nexus to be started (not healthy) to avoid any potential
+      # dependency deadlocks with shard initialization.
+      spike-nexus:
+        condition: service_started
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - SPIKE_NEXUS_API_URL=https://spike-nexus:8443  # For VerifyInitialization after shard delivery
+      - SPIKE_NEXUS_KEEPER_PEERS=https://spike-keeper-1:8443
+      - SPIKE_NEXUS_SHAMIR_THRESHOLD=1
+      - SPIKE_NEXUS_SHAMIR_SHARES=1
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+      - SPIKE_TRUST_ROOT_BOOTSTRAP=poc.local
+      - SPIKE_TRUST_ROOT_KEEPER=poc.local
+      - SPIKE_TRUST_ROOT_LITE_WORKLOAD=poc.local
+      - SPIKE_SYSTEM_LOG_LEVEL=DEBUG  # Verbose for bootstrap troubleshooting
+      - BOOTSTRAP_TIMEOUT=30  # RFA-w78: Guard kills hung verify loop after 30s (already-initialized case)
+    command: ["-init"]
+    networks:
+      - secrets-plane
+    labels:
+      - "spiffe-id=spike-bootstrap"
+    restart: "no"
+
+  # SPIKE Secret Seeder - One-shot init to pre-seed test secrets via SPIKE Pilot CLI (RFA-1l2)
+  # Uses the official SPIKE Pilot CLI ('spike secret put' / 'spike policy create') instead
+  # of the custom Go binary. Seeds ref "deadbeef" with a test value so demo test 18 can
+  # prove full SPIKE token redemption end-to-end.
+  # RFA-cjc: Also seeds 'groq-api-key' from .env for step-up guard model access.
+  spike-secret-seeder:
+    image: ghcr.io/spiffe/spike-pilot:0.8.0@sha256:86b26666c171c5284c522bfb42f16473c85be6f3e3e32b1e3deaa8cd5a18eaff
+    container_name: spike-secret-seeder
+    depends_on:
+      spike-nexus:
+        condition: service_healthy  # Nexus must be healthy and serving mTLS
+      spike-bootstrap:
+        condition: service_completed_successfully  # RFA-oyg: root key must be delivered before seeding secrets
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - ../../.env:/run/secrets/env:ro  # RFA-cjc: Mount .env as secret file (not env_file) so docker compose config cannot reveal key values
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - SPIKE_NEXUS_API_URL=https://spike-nexus:8443
+      - SPIKE_TRUST_ROOT=poc.local
+      - SPIKE_TRUST_ROOT_NEXUS=poc.local
+      - SPIKE_TRUST_ROOT_PILOT=poc.local
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        # RFA-cjc: Source .env from mounted secret file to keep keys out of docker compose config
+        if [ -f /run/secrets/env ]; then
+          set -a
+          . /run/secrets/env
+          set +a
+        fi
+        echo 'spike-seeder: waiting for SPIKE Nexus readiness...'
+        sleep 5
+        echo 'spike-seeder: seeding ref=deadbeef'
+        seeded=0
+        attempt=1
+        max_attempts=15
+        while [ "$$attempt" -le "$$max_attempts" ]; do
+          echo "spike-seeder: secret put attempt $$attempt/$$max_attempts"
+          PUT_OUT="$$(spike secret put deadbeef value=test-secret-value-12345 2>&1 || true)"
+          echo "$$PUT_OUT"
+
+          LIST_OUT="$$(spike secret list 2>&1 || true)"
+          echo "$$LIST_OUT"
+
+          if ! echo "$$PUT_OUT" | grep -qi "Error:" && echo "$$LIST_OUT" | grep -q "deadbeef"; then
+            seeded=1
+            break
+          fi
+
+          attempt=$$((attempt + 1))
+          sleep 2
+        done
+
+        if [ "$$seeded" -ne 1 ]; then
+          echo 'spike-seeder: warning: failed to seed deadbeef after retries (continuing for POC compatibility)'
+        fi
+
+        # RFA-cjc: Seed Groq API key for step-up guard model (late-binding via SPIKE)
+        if [ -n "$${GROQ_API_KEY:-}" ]; then
+          echo 'spike-seeder: seeding groq-api-key'
+          groq_seeded=0
+          attempt=1
+          while [ "$$attempt" -le "$$max_attempts" ]; do
+            echo "spike-seeder: groq-api-key put attempt $$attempt/$$max_attempts"
+            GROQ_OUT="$$(spike secret put groq-api-key "value=$$GROQ_API_KEY" 2>&1 || true)"
+
+            GROQ_LIST="$$(spike secret list 2>&1 || true)"
+            if ! echo "$$GROQ_OUT" | grep -qi "Error:" || echo "$$GROQ_LIST" | grep -q "groq-api-key"; then
+              groq_seeded=1
+              break
+            fi
+
+            attempt=$$((attempt + 1))
+            sleep 2
+          done
+
+          if [ "$$groq_seeded" -eq 1 ]; then
+            echo 'spike-seeder: groq-api-key seeded successfully'
+          else
+            echo 'spike-seeder: warning: failed to seed groq-api-key after retries (step-up guard will degrade to fail-open)'
+          fi
+        else
+          echo 'spike-seeder: GROQ_API_KEY not set, skipping guard model key seeding (step-up guard will degrade to fail-open)'
+        fi
+
+        # RFA-ajf6: Seed messaging platform API keys for per-message SPIKE token resolution.
+        # These are placeholder values for the POC. In production, real platform credentials
+        # would be pre-seeded by an operator or secrets pipeline. The messaging simulator
+        # accepts any non-empty Bearer token, so placeholder values work for E2E testing.
+        echo 'spike-seeder: seeding messaging platform secrets...'
+        spike secret put whatsapp-api-key value=whatsapp-api-key-placeholder || echo 'spike-seeder: whatsapp-api-key put failed (non-fatal)'
+        spike secret put telegram-bot-token value=telegram-bot-token-placeholder || echo 'spike-seeder: telegram-bot-token put failed (non-fatal)'
+        spike secret put slack-bot-token value=slack-bot-token-placeholder || echo 'spike-seeder: slack-bot-token put failed (non-fatal)'
+        echo 'spike-seeder: messaging secrets seeded'
+
+        echo 'spike-seeder: creating gateway-read ACL policy'
+        policy_created=0
+        attempt=1
+        while [ "$$attempt" -le "$$max_attempts" ]; do
+          echo "spike-seeder: policy create attempt $$attempt/$$max_attempts"
+          POLICY_OUT="$$(spike policy create --name=gateway-read \
+          --path-pattern='.*' \
+          --spiffeid-pattern='^spiffe://poc.local/gateways/.*' \
+          --permissions=read 2>&1 || true)"
+          echo "$$POLICY_OUT"
+
+          if ! echo "$$POLICY_OUT" | grep -qi "Error:" || echo "$$POLICY_OUT" | grep -qi "already exists"; then
+            policy_created=1
+            break
+          fi
+
+          attempt=$$((attempt + 1))
+          sleep 2
+        done
+
+        if [ "$$policy_created" -ne 1 ]; then
+          echo 'spike-seeder: warning: failed to create policy after retries (continuing for POC compatibility)'
+        fi
+
+        echo 'spike-seeder: done'
+    networks:
+      - secrets-plane
+    labels:
+      - "spiffe-id=spike-seeder"
+    restart: "no"
+
+  # KeyDB - Redis-compatible session persistence store (RFA-hh5.1)
+  # Enables cross-request exfiltration detection by persisting session context
+  # across HTTP requests. BSD-3-Clause licensed.
+  #
+  # RFA-8z8.2: In SPIFFE_MODE=prod, KeyDB also listens on TLS port 6380 using
+  # SPIRE-issued X.509 SVIDs written to /certs/ by keydb-svid-init. The gateway
+  # connects via rediss://keydb:6380 with mTLS.
+  # In SPIFFE_MODE=dev (compose demo profile), only port 6379 is used (no TLS).
+  keydb:
+    # Pin by digest (manifest-list) to avoid floating tags while keeping multi-arch support.
+    image: eqalpha/keydb@sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac
+    container_name: keydb
+    hostname: keydb
+    ports:
+      - "6379:6379"    # Plain Redis protocol (dev mode)
+      - "6380:6380"    # TLS Redis protocol (prod mode, RFA-8z8.2)
+    volumes:
+      - keydb-data:/data
+      - keydb-certs:/certs:ro      # RFA-8z8.2: SVID PEM files from keydb-svid-init
+    networks:
+      - data-plane
+    labels:
+      - "spiffe-id=keydb"          # RFA-8z8.2: SPIRE workload attestation
+      - "component=session-store"
+    healthcheck:
+      test: ["CMD", "keydb-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # KeyDB SVID Init - One-shot init container to fetch SPIRE SVID for KeyDB TLS (RFA-8z8.2)
+  # KeyDB cannot speak the SPIRE Workload API natively. This container fetches
+  # the X.509 SVID from SPIRE Agent and writes PEM files to a shared volume.
+  # KeyDB then uses these PEM files for its TLS listener on port 6380.
+  #
+  # In SPIFFE_MODE=dev, this service is defined but KeyDB ignores the certs
+  # (it only listens on plain port 6379). The init runs harmlessly.
+  keydb-svid-init:
+    profiles: ["prod"]  # Only needed for SPIFFE_MODE=prod (KeyDB mTLS on port 6380)
+    image: spire-agent-wrapper:latest  # Busybox-based wrapper with /bin/sh
+    container_name: keydb-svid-init
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - keydb-certs:/certs
+      - ../../scripts/keydb-svid-refresh.sh:/tmp/keydb-svid-refresh.sh:ro
+    environment:
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - CERT_DIR=/certs
+    entrypoint: ["/bin/sh", "-c", "/bin/sh /tmp/keydb-svid-refresh.sh init"]
+    networks:
+      - control-plane
+    labels:
+      - "spiffe-id=keydb"
+    restart: "no"
+
+  # OpenTelemetry Collector and Phoenix are now in docker-compose.phoenix.yml (RFA-80d)
+  # The gateway reaches otel-collector via the shared phoenix-observability-network.
+  # Start Phoenix first: make phoenix-up
+
+  # Mock MCP Server - Canned Streamable HTTP MCP server for E2E demo (RFA-71u)
+  # Speaks MCP Streamable HTTP per spec 2025-03-26. Returns canned tool results
+  # for tavily_search and echo tools, enabling self-contained E2E testing
+  # without external dependencies (Docker MCP Gateway, Tavily API keys).
+  mock-mcp-server:
+    build:
+      context: ../../examples/mock-mcp-server
+      dockerfile: Dockerfile
+    container_name: mock-mcp-server
+    hostname: mock-mcp-server
+    networks:
+      - tool-plane
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  # Mock Guard Model - Canned "OpenAI chat completions" endpoint for Deep Scan (RFA-6fse.3)
+  # Allows demo-compose to deterministically exercise Step 10 deep scan deny behavior
+  # without external API keys or network calls.
+  mock-guard-model:
+    build:
+      context: ../../examples/mock-guard-model
+      dockerfile: Dockerfile
+    container_name: mock-guard-model
+    hostname: mock-guard-model
+    networks:
+      - tool-plane
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  # Content Scanner - Extension slot sidecar for post_inspection content analysis
+  # Pluggable pattern-based scanner detecting prompt injection, dangerous code,
+  # and credential leakage. Reference implementation of the extension protocol.
+  content-scanner:
+    build:
+      context: ../../examples/content-scanner
+      dockerfile: Dockerfile
+    container_name: content-scanner
+    hostname: content-scanner
+    networks:
+      - tool-plane
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8085/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  # Messaging Simulator - WhatsApp Cloud API stub for E2E demos (RFA-1fui)
+  messaging-sim:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.messaging-sim
+    container_name: messaging-sim
+    hostname: messaging-sim
+    networks:
+      - tool-plane
+    healthcheck:
+      test: ["CMD", "/messaging-sim", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    environment:
+      - PORT=8090
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+
+  # PRECINCT Gateway - Security enforcement point for all MCP requests
+  mcp-security-gateway:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.gateway
+    image: mcp-security-gateway:latest
+    container_name: mcp-security-gateway
+    hostname: mcp-security-gateway
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+      spike-nexus:
+        condition: service_healthy  # Zero Trust: gateway must not start until SPIKE Nexus
+                                    # is serving mTLS on port 8443.  The mTLS healthcheck
+                                    # binary verifies end-to-end SPIRE SVID + TLS readiness.
+      spike-secret-seeder:
+        condition: service_completed_successfully  # RFA-uln: test secret must be seeded before gateway starts
+      keydb:
+        condition: service_healthy
+      mock-mcp-server:
+        condition: service_healthy  # RFA-71u: Gateway needs mock MCP server ready before
+                                    # MCP transport auto-detection on first request.
+      mock-guard-model:
+        condition: service_healthy  # RFA-6fse.3: Deep scan uses mock guard model for deterministic demos.
+      content-scanner:
+        condition: service_healthy  # Extension slot: content scanner sidecar for post_inspection
+    volumes:
+      - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
+      - ../../config:/config:ro  # Mount config directory for OPA policies and tool registry
+    ports:
+      - "9090:9090"   # MCP JSON-RPC API (HTTP, dev mode)
+    environment:
+      - PORT=9090
+      - UPSTREAM_URL=http://mock-mcp-server:8082  # Dev profile default. Strict MCP profiles require https://... upstream.
+      - DEMO_RUGPULL_ADMIN_ENABLED=1  # Demo-only: gateway mediates upstream rugpull toggles (RFA-1r0x)
+      - OPA_POLICY_DIR=/config/opa
+      - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
+      - CAPABILITY_REGISTRY_V2_PATH=/config/capability-registry-v2.yaml
+      - MODEL_PROVIDER_CATALOG_PATH=/config/model-provider-catalog.v2.yaml
+      - MAX_REQUEST_SIZE_BYTES=10485760
+      - SPIFFE_MODE=dev
+      - ALLOW_INSECURE_DEV_MODE=1
+      - DEV_LISTEN_HOST=0.0.0.0
+      - ALLOW_NON_LOOPBACK_DEV_BIND=1
+      - ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS=spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
+      - ENFORCEMENT_PROFILE=dev
+      - SPIFFE_TRUST_DOMAIN=poc.local
+      - SPIFFE_LISTEN_PORT=9443
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - LOG_LEVEL=info
+      - SPIRE_AGENT_SOCKET=/tmp/spire-agent/public/api.sock
+      - AUDIT_LOG_PATH=/tmp/audit.jsonl
+      - SPIKE_NEXUS_URL=https://spike-nexus:8443
+      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_SERVICE_NAME=mcp-security-gateway
+      - KEYDB_URL=redis://keydb:6379  # RFA-hh5.1: KeyDB session persistence (auto-converts to rediss://keydb:6380 in prod mode per RFA-8z8.2)
+      - MCP_TRANSPORT_MODE=${MCP_TRANSPORT_MODE:-mcp}  # RFA-5u9: "mcp" (default) or "proxy" (backward compat reverse proxy)
+      # Strict transport profile example (Compose): set SPIFFE_MODE=prod, ENFORCEMENT_PROFILE=prod_standard,
+      # MCP_TRANSPORT_MODE=mcp, and UPSTREAM_URL=https://<spiffe-mtls-upstream>/mcp.
+      - DEEP_SCAN_TIMEOUT=${DEEP_SCAN_TIMEOUT:-5}  # RFA-o9z: Deep scan API timeout in seconds
+      - DEEP_SCAN_FALLBACK=${DEEP_SCAN_FALLBACK:-fail_closed}  # RFA-o9z: "fail_closed" (default) or "fail_open"
+      # Demo determinism: always point the deep scan guard model to the local mock service.
+      - GUARD_MODEL_ENDPOINT=http://mock-guard-model:8080/openai/v1  # RFA-6fse.3: deterministic, no external keys/network
+      # Phase 3 model egress demo determinism: route Groq provider calls to local mock endpoint.
+      # Keep this internal-only: agent containers are not attached to tool-plane, so they cannot
+      # bypass the gateway by calling mock-guard-model directly.
+      - MODEL_PROVIDER_ENDPOINT_GROQ=http://mock-guard-model:8080/openai/v1/chat/completions
+      - GUARD_MODEL_NAME=${GUARD_MODEL_NAME:-}  # RFA-j6c: Guard model identifier (default: llama-prompt-guard-2-86m)
+      # Demo determinism: ensure deep scan is enabled (non-empty key) without requiring real credentials.
+      - GUARD_API_KEY=demo-guard-key  # RFA-6fse.3: deterministic, dummy key
+      - DLP_INJECTION_POLICY=${DLP_INJECTION_POLICY:-}  # RFA-sd7: Override DLP injection policy ("block" or "flag", default: use YAML config)
+      - DLP_PII_POLICY=${DLP_PII_POLICY:-block}  # OC-di1n: Block PII (SSN, etc.) by default for channel mediation demo scenarios
+      - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}    # RFA-8ak: Demo-friendly rate limit (code default 600 is too generous for burst test)
+      - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}  # RFA-8ak: Small burst bucket so 200-call test triggers 429 quickly
+      - MESSAGING_PLATFORM_ENDPOINT_WHATSAPP=http://messaging-sim:8090/v1/messages
+      - EXTENSION_REGISTRY_PATH=/config/extensions-demo.yaml  # Extension slot: content scanner sidecar
+    networks:
+      - agentic-net
+      - tool-plane
+      - secrets-plane
+      - data-plane
+      - phoenix-net  # RFA-80d: Reach otel-collector on phoenix-observability-network
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    labels:
+      - "spiffe-id=mcp-security-gateway"
+      - "component=gateway"
+    healthcheck:
+      test: ["CMD", "/app/gateway", "health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 45s
+
+networks:
+  agentic-net:
+    driver: bridge
+    # RFA-545e.2: lock down agent runtime/demo network egress (containers on this network
+    # cannot reach the public Internet; they must go through the gateway chokepoint).
+    internal: true
+    name: agentic-security-network
+  tool-plane:
+    driver: bridge
+    internal: true
+    name: agentic-security-tool-plane
+  secrets-plane:
+    driver: bridge
+    internal: true
+    name: agentic-security-secrets-plane
+  data-plane:
+    driver: bridge
+    internal: true
+    name: agentic-security-data-plane
+  control-plane:
+    driver: bridge
+    internal: true
+    name: agentic-security-control-plane
+  phoenix-net:
+    external: true
+    name: phoenix-observability-network
+
+volumes:
+  # SPIRE Server persistent data
+  spire-server-data:
+    name: spire-server-data
+
+  # SPIRE Server socket (for registration API)
+  spire-server-socket:
+    name: spire-server-socket
+
+  # SPIRE Agent persistent data
+  spire-agent-data:
+    name: spire-agent-data
+
+  # SPIRE Agent socket - SHARED with gateway for workload attestation
+  spire-agent-socket:
+    name: spire-agent-socket
+
+  # SPIRE Join Token - Temporary volume for passing fresh join tokens from generator to agent
+  spire-join-token:
+    name: spire-join-token
+
+  # KeyDB persistent data (RFA-hh5.1)
+  keydb-data:
+    name: keydb-data
+
+  # SPIKE Nexus SQLite data (RFA-oyg: persistent secret storage, AES-256-GCM encrypted)
+  spike-nexus-data:
+    name: spike-nexus-data
+
+  # KeyDB SVID certificates (RFA-8z8.2) - shared between keydb-svid-init and keydb
+  keydb-certs:
+    name: keydb-certs
