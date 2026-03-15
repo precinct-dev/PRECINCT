@@ -29,8 +29,7 @@ if [ -z "$compose_log" ]; then
     # Check if the compose stack is running by looking for the gateway container
     if $DC ps --format '{{.Status}}' mcp-security-gateway 2>/dev/null | grep -qi "up"; then
         echo "[INFO] No artifact logs found; collecting live logs from running compose stack"
-        mkdir -p "$ART_DIR"
-        compose_log="$ART_DIR/rfa-02lt-demo-compose-live.log"
+        compose_log="$(mktemp /tmp/rfa-case26-live-XXXXXX.log)"
         $DC logs 2>/dev/null > "$compose_log"
         compose_from_live=true
 
