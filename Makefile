@@ -13,6 +13,10 @@ IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 LOCAL_REGISTRY ?= localhost:5050
 K8S_REGISTRY ?= registry:5000
 
+# Docker Compose
+COMPOSE_DIR := deploy/compose
+DC := docker compose -f $(COMPOSE_DIR)/docker-compose.yml
+
 # Compliance tooling
 AUDIT_LOG ?= /tmp/audit.jsonl
 COMPLIANCE_VENV := tools/compliance/.venv
@@ -58,13 +62,13 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 		$(MAKE) phoenix-up; \
 	fi
 	@echo "Building and starting services (waiting for all health checks)..."
-	@if docker compose up -d --build --wait --wait-timeout 180; then \
+	@if $(DC) up -d --build --wait --wait-timeout 180; then \
 		echo "All services healthy."; \
 	else \
 		echo "WARN: docker compose --wait timed out. Checking core service readiness..."; \
 		if ! bash scripts/compose-health-check.sh --verbose; then \
 			echo "Attempting gateway-only recovery after compose dependency timeout..."; \
-			docker compose up -d --no-deps mcp-security-gateway >/dev/null 2>&1 || true; \
+			$(DC) up -d --no-deps mcp-security-gateway >/dev/null 2>&1 || true; \
 		fi; \
 		echo "Waiting up to 60s for core services to become healthy..."; \
 		ready=0; \
@@ -78,7 +82,7 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 		if [ "$$ready" -ne 1 ]; then \
 			echo "ERROR: Compose startup failed and required services are not ready."; \
 			bash scripts/compose-health-check.sh --verbose || true; \
-			docker compose ps; \
+			$(DC) ps; \
 			exit 1; \
 		fi; \
 		echo "Core services are ready despite compose wait timeout; continuing."; \
@@ -88,12 +92,12 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 	$(MAKE) register-spire
 
 down: ## Stop Docker Compose stack
-	docker compose down
+	$(DC) down
 
 clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
-	docker compose down -v
-	-docker compose -f docker-compose.phoenix.yml down -v >/dev/null 2>&1 || true
-	-docker compose -f docker-compose.opensearch.yml down -v >/dev/null 2>&1 || true
+	$(DC) down -v
+	-docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml down -v >/dev/null 2>&1 || true
+	-docker compose -f $(COMPOSE_DIR)/docker-compose.opensearch.yml down -v >/dev/null 2>&1 || true
 	rm -rf build/sbom/ build/bin/
 	@echo "Clearing SPIRE data directories (stale SVIDs prevent clean restart)..."
 	rm -rf data/spire-server/ data/spire-agent/
@@ -127,7 +131,7 @@ upgrade-all: ## Upgrade all non-pinned components (VERIFY=1)
 	bash scripts/upgrade.sh $$args
 
 logs: ## Tail gateway logs
-	docker compose logs -f mcp-security-gateway
+	$(DC) logs -f mcp-security-gateway
 
 # Hidden: compose verification helpers (called by up)
 compose-verify:
@@ -143,14 +147,14 @@ compose-bootstrap-verify:
 .PHONY: phoenix-up phoenix-down phoenix-reset
 
 phoenix-up: ## Start standalone Phoenix + OTel collector (persistent traces)
-	docker compose -f docker-compose.phoenix.yml up -d --build --wait --wait-timeout 60
+	docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml up -d --build --wait --wait-timeout 60
 	@echo "Phoenix UI: http://localhost:6006"
 
 phoenix-down: ## Stop Phoenix stack (preserves trace data)
-	docker compose -f docker-compose.phoenix.yml down
+	docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml down
 
 phoenix-reset: ## Stop Phoenix stack and destroy trace data
-	docker compose -f docker-compose.phoenix.yml down -v
+	docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml down -v
 
 # ===========================================================================
 # 4. OpenSearch Observability (optional)
@@ -161,18 +165,18 @@ phoenix-reset: ## Stop Phoenix stack and destroy trace data
 
 opensearch-up: ## Start OpenSearch + Dashboards + audit forwarder (optional compliance/forensics profile)
 	@echo "Reconfiguring gateway audit sink for OpenSearch profile..."
-	docker compose -f docker-compose.yml -f docker-compose.opensearch-bridge.yml up -d --no-deps mcp-security-gateway
+	$(DC) -f $(COMPOSE_DIR)/docker-compose.opensearch-bridge.yml up -d --no-deps mcp-security-gateway
 	@echo "Starting OpenSearch stack..."
-	docker compose -f docker-compose.opensearch.yml up -d --wait --wait-timeout 120
+	docker compose -f $(COMPOSE_DIR)/docker-compose.opensearch.yml up -d --wait --wait-timeout 120
 	@echo "OpenSearch API: http://localhost:9200"
 	@echo "OpenSearch Dashboards: http://localhost:5601"
 	@echo "Next: make opensearch-seed"
 
 opensearch-down: ## Stop OpenSearch + Dashboards stack (preserves OpenSearch data)
-	docker compose -f docker-compose.opensearch.yml down
+	docker compose -f $(COMPOSE_DIR)/docker-compose.opensearch.yml down
 
 opensearch-reset: ## Stop OpenSearch + Dashboards and destroy all OpenSearch data
-	docker compose -f docker-compose.opensearch.yml down -v
+	docker compose -f $(COMPOSE_DIR)/docker-compose.opensearch.yml down -v
 
 opensearch-seed: ## Seed OpenSearch index template and import PRECINCT dashboard objects
 	@bash scripts/observability/seed-opensearch-dashboards.sh
@@ -303,7 +307,7 @@ demo-k8s: ## Run E2E demo (K8s; leaves cluster running for inspection)
 	@bash demo/run.sh k8s --no-teardown
 
 compose-down: ## Tear down Docker Compose stack and volumes
-	docker compose down -v
+	$(DC) down -v
 
 demo-cli: ## Run all CLI demos (precinct CLI, operate, compliance, repave, upgrade)
 	@bash scripts/ensure-stack.sh --resilient
@@ -690,7 +694,7 @@ benchmark:
 	BENCHMARK_REPORT=1 go test -run=TestPrintBenchmarkReport -v ./internal/gateway/middleware/
 	@echo ""
 	@echo "Phase 6: Load Test (Docker Compose)"
-	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
+	@if $(DC) ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
 		if command -v hey >/dev/null 2>&1; then \
 			bash tests/benchmark/load_test.sh; \
 		else \
@@ -739,7 +743,7 @@ build-images:
 
 build: build-cli ## Build service binaries and CLI
 	@echo "Building PRECINCT Gateway..."
-	docker compose build mcp-security-gateway
+	$(DC) build mcp-security-gateway
 
 build-cli: ## Build CLI binary (delegates to cli/Makefile)
 	$(MAKE) -C cli build
@@ -779,10 +783,10 @@ $(COMPLIANCE_VENV): tools/compliance/requirements.txt
 	$(COMPLIANCE_PYTHON) -m pip install --quiet -r tools/compliance/requirements.txt
 
 compliance-report: test-compliance
-	@if docker compose ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
+	@if $(DC) ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
 		echo "Running E2E suite for fresh audit logs..."; \
 		bash tests/e2e/run_all.sh 2>&1 || true; \
-		docker compose logs --no-log-prefix mcp-security-gateway 2>/dev/null | grep '{' > $(AUDIT_LOG) || true; \
+		$(DC) logs --no-log-prefix mcp-security-gateway 2>/dev/null | grep '{' > $(AUDIT_LOG) || true; \
 	else \
 		echo "Docker stack not running, using existing audit log at $(AUDIT_LOG)"; \
 	fi
@@ -865,7 +869,7 @@ k8s-prereqs:
 setup:
 	@bash scripts/setup.sh
 
-COMPOSE_SPIRE_EXEC := docker compose exec -T spire-server /opt/spire/bin/spire-server
+COMPOSE_SPIRE_EXEC := $(DC) exec -T spire-server /opt/spire/bin/spire-server
 COMPOSE_SPIRE_SOCK := /tmp/spire-server/private/api.sock
 COMPOSE_TRUST_DOMAIN := poc.local
 COMPOSE_PARENT_ID := spiffe://$(COMPOSE_TRUST_DOMAIN)/spire/agent/join_token

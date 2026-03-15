@@ -2,9 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASE_COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
-STRICT_COMPOSE_FILE="${ROOT_DIR}/docker-compose.strict.yml"
-PROD_COMPOSE_FILE="${ROOT_DIR}/docker-compose.prod-intent.yml"
+BASE_COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
+STRICT_COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.strict.yml"
+PROD_COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.prod-intent.yml"
 POLICY_FILE="${COMPOSE_PROD_POLICY_FILE:-${ROOT_DIR}/config/compose-production-intent-policy.json}"
 ENV_FILE="${COMPOSE_PROD_ENV_FILE:-${ROOT_DIR}/config/compose-production-intent.env}"
 VERIFY_SIGNATURES="${COMPOSE_PROD_VERIFY_SIGNATURE:-0}"
@@ -14,6 +14,7 @@ export STRICT_UPSTREAM_URL="${STRICT_UPSTREAM_URL:-https://strict-upstream.examp
 export APPROVAL_SIGNING_KEY="${APPROVAL_SIGNING_KEY:-compose-production-intent-approval-key-material-32chars}"
 export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="${UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS:-spiffe://poc.local/ns/tools/sa/mcp-tool}"
 export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="${KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS:-spiffe://poc.local/ns/data/sa/keydb}"
+export ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="${ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS:-spiffe://poc.local/ns/admin/sa/operator}"
 
 fail() {
   echo "[FAIL] $1" >&2

@@ -12,7 +12,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-POC_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+ROOT_DIR="${ROOT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+POC_DIR="${ROOT_DIR}"
 
 # ---- Terminal colors ----
 RED='\033[0;31m'
@@ -142,10 +143,10 @@ if [ "$DRY_RUN" = true ]; then
 
     if [ "$MODE" = "compose" ]; then
         log_info "Validating Docker Compose configuration files..."
-        if [ -f "${POC_DIR}/docker-compose.yml" ]; then
-            log_pass "docker-compose.yml exists"
+        if [ -f "${ROOT_DIR}/deploy/compose/docker-compose.yml" ]; then
+            log_pass "deploy/compose/docker-compose.yml exists"
         else
-            log_fail "docker-compose.yml" "File not found"
+            log_fail "deploy/compose/docker-compose.yml" "File not found"
             exit 1
         fi
 

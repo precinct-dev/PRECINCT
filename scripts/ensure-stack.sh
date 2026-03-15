@@ -38,7 +38,7 @@ ensure_host_access() {
 
   if ! host_port_reachable 9090; then
     echo "Gateway host port 9090 is not reachable. Recreating mcp-security-gateway to restore host access..."
-    docker compose up -d --force-recreate mcp-security-gateway >/dev/null
+    docker compose -f deploy/compose/docker-compose.yml up -d --force-recreate mcp-security-gateway >/dev/null
     gateway_recreated=1
   fi
 

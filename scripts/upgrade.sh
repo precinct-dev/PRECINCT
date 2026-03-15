@@ -6,8 +6,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSIONS_FILE="${ROOT_DIR}/config/versions.yaml"
 UPGRADE_CHECK="${ROOT_DIR}/scripts/upgrade-check.sh"
 
-DOCKER_COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
-PHOENIX_COMPOSE_FILE="${ROOT_DIR}/docker-compose.phoenix.yml"
+DOCKER_COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
+PHOENIX_COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.phoenix.yml"
 
 UPGRADES_DIR="${ROOT_DIR}/docs/upgrades"
 SNAPSHOT_DIR_BASE="${ROOT_DIR}/config/upgrade-snapshots"
@@ -156,8 +156,8 @@ cp "$VERSIONS_FILE" "$snapshot_file"
 # Capture a broader snapshot for rollback (not part of AC name, but needed for safe rollback).
 for f in \
   "config/versions.yaml" \
-  "docker-compose.yml" \
-  "docker-compose.phoenix.yml" \
+  "deploy/compose/docker-compose.yml" \
+  "deploy/compose/docker-compose.phoenix.yml" \
   "deploy/compose/Dockerfile.spire-agent" \
   "deploy/compose/Dockerfile.spike-nexus" \
   "deploy/compose/Dockerfile.spike-keeper" \

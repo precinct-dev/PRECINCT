@@ -23,7 +23,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-ps_out="$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"
+COMPOSE_FILE="${COMPOSE_FILE:-deploy/compose/docker-compose.yml}"
+ps_out="$(docker compose -f "$COMPOSE_FILE" ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"
 
 healthy=1
 for s in $SERVICES; do
