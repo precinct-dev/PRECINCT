@@ -47,6 +47,8 @@ require_cmd make
 
 mkdir -p "${BACKUP_DIR}" "${SPIKE_BACKUP_DIR}"
 
+DC="docker compose -f ${POC_DIR}/deploy/compose/docker-compose.yml"
+
 cd "${POC_DIR}"
 
 if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
@@ -54,25 +56,25 @@ if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
   make phoenix-up >/dev/null
 fi
 
-if ! docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep -q '^mcp-security-gateway running$'; then
+if ! $DC ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep -q '^mcp-security-gateway running$'; then
   echo "[INFO] compose stack not healthy; running make up"
   make up >/dev/null
 fi
 
-keydb_container="$(docker compose ps -q keydb)"
-spike_container="$(docker compose ps -q spike-nexus)"
-gateway_container="$(docker compose ps -q mcp-security-gateway)"
+keydb_container="$($DC ps -q keydb)"
+spike_container="$($DC ps -q spike-nexus)"
+gateway_container="$($DC ps -q mcp-security-gateway)"
 [[ -n "${keydb_container}" ]] || fail "keydb container not found"
 [[ -n "${spike_container}" ]] || fail "spike-nexus container not found"
 [[ -n "${gateway_container}" ]] || fail "mcp-security-gateway container not found"
 spike_volume="$(docker inspect -f '{{range .Mounts}}{{if eq .Destination "/opt/spike/data"}}{{.Name}}{{end}}{{end}}' "${spike_container}")"
 [[ -n "${spike_volume}" ]] || fail "unable to resolve spike-nexus data volume name"
 
-keydb_cli_bin="$(docker compose exec -T keydb sh -lc 'if command -v redis-cli >/dev/null 2>&1; then echo redis-cli; elif command -v keydb-cli >/dev/null 2>&1; then echo keydb-cli; else exit 1; fi')"
+keydb_cli_bin="$($DC exec -T keydb sh -lc 'if command -v redis-cli >/dev/null 2>&1; then echo redis-cli; elif command -v keydb-cli >/dev/null 2>&1; then echo keydb-cli; else exit 1; fi')"
 [[ -n "${keydb_cli_bin}" ]] || fail "redis/keydb cli not found in keydb container"
 
 run_keydb_cli() {
-  docker compose exec -T keydb sh -lc "${keydb_cli_bin} $*"
+  $DC exec -T keydb sh -lc "${keydb_cli_bin} $*"
 }
 
 echo "[INFO] Running KeyDB backup/restore drill"
@@ -85,9 +87,9 @@ run_keydb_cli "FLUSHALL" >/dev/null
 missing_after_flush="$(run_keydb_cli "GET '${DRILL_KEY}'" | tr -d '\r')"
 [[ -z "${missing_after_flush}" ]] || fail "keydb drill key still present after FLUSHALL"
 
-docker compose stop keydb >/dev/null
+$DC stop keydb >/dev/null
 docker cp "${KEYDB_BACKUP}" "${keydb_container}:/data/dump.rdb"
-docker compose start keydb >/dev/null
+$DC start keydb >/dev/null
 for _ in $(seq 1 30); do
   if run_keydb_cli "PING" >/dev/null 2>&1; then
     break
@@ -114,7 +116,7 @@ curl -sS -X POST "http://localhost:9090/" \
   -d '{"jsonrpc":"2.0","id":"ops-drill","method":"tools/list","params":{}}' >/dev/null || true
 
 if ! docker cp "${gateway_container}:/tmp/audit.jsonl" "${AUDIT_BACKUP}" >/dev/null 2>&1; then
-  docker compose logs --timestamps mcp-security-gateway > "${AUDIT_BACKUP}"
+  $DC logs --timestamps mcp-security-gateway > "${AUDIT_BACKUP}"
 fi
 [[ -s "${AUDIT_BACKUP}" ]] || fail "audit backup file is empty: ${AUDIT_BACKUP}"
 

@@ -14,6 +14,7 @@ set -euo pipefail
 
 # Resolve POC root from script location (scripts/ is one level below POC root)
 POC_DIR="${POC_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+DC="docker compose -f ${POC_DIR}/deploy/compose/docker-compose.yml"
 ENV_FILE="${POC_DIR}/.env"
 
 # ---- Terminal colors ----
@@ -595,7 +596,7 @@ echo "  Starting services with 'docker compose up -d'..."
 echo ""
 
 cd "$POC_DIR"
-docker compose up -d
+$DC up -d
 
 echo ""
 echo "  Waiting for services to become healthy..."
@@ -604,7 +605,7 @@ echo "  Waiting for services to become healthy..."
 TIMEOUT=120
 ELAPSED=0
 while [ $ELAPSED -lt $TIMEOUT ]; do
-    GATEWAY_STATUS=$(docker compose ps --format '{{.Status}}' mcp-security-gateway 2>/dev/null || echo "")
+    GATEWAY_STATUS=$($DC ps --format '{{.Status}}' mcp-security-gateway 2>/dev/null || echo "")
     if echo "$GATEWAY_STATUS" | grep -qi "healthy"; then
         break
     fi
@@ -629,7 +630,7 @@ echo "  Waiting for SPIRE server to be ready..."
 SPIRE_TIMEOUT=60
 SPIRE_ELAPSED=0
 while [ $SPIRE_ELAPSED -lt $SPIRE_TIMEOUT ]; do
-    SPIRE_STATUS=$(docker compose ps --format '{{.Status}}' spire-server 2>/dev/null || echo "")
+    SPIRE_STATUS=$($DC ps --format '{{.Status}}' spire-server 2>/dev/null || echo "")
     if echo "$SPIRE_STATUS" | grep -qi "healthy"; then
         break
     fi
@@ -641,7 +642,7 @@ echo ""
 
 if echo "$SPIRE_STATUS" | grep -qi "healthy"; then
     echo "  Registering SPIRE workload entries..."
-    docker compose exec -T spire-server /bin/bash < "${POC_DIR}/scripts/register-spire-entries.sh" 2>/dev/null || true
+    $DC exec -T spire-server /bin/bash < "${POC_DIR}/scripts/register-spire-entries.sh" 2>/dev/null || true
     echo -e "  ${GREEN}SPIRE entries registered.${NC}"
 else
     echo -e "  ${YELLOW}SPIRE server not healthy yet. SPIRE registration may need manual step: make register-spire${NC}"
@@ -769,7 +770,7 @@ echo ""
 
 sleep 1  # Allow audit log to flush
 
-AUDIT_LINE=$(docker compose logs --tail 10 mcp-security-gateway 2>/dev/null | grep "prev_hash" | tail -1 || echo "")
+AUDIT_LINE=$($DC logs --tail 10 mcp-security-gateway 2>/dev/null | grep "prev_hash" | tail -1 || echo "")
 
 if [ -n "$AUDIT_LINE" ]; then
     # Verify key fields exist

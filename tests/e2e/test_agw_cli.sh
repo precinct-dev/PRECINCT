@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
+COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
+DC="docker compose -f ${COMPOSE_FILE}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -178,7 +180,7 @@ ensure_compose_stack() {
   local required
   required="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"
   local ps_out
-  ps_out="$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"
+  ps_out="$($DC ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"
   local healthy=1
 
   for s in $required; do

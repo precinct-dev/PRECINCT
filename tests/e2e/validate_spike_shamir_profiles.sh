@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${ROOT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 POC_DIR="${ROOT_DIR}"
+COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
+DC="docker compose -f ${COMPOSE_FILE}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
@@ -112,7 +114,7 @@ require_cmd kustomize
 cd "${POC_DIR}"
 
 local_compose_json="${TMP_DIR}/compose-local.json"
-docker compose -f deploy/compose/docker-compose.yml config --format json >"${local_compose_json}"
+$DC config --format json >"${local_compose_json}"
 
 local_nexus_threshold="$(compose_env_value "${local_compose_json}" "spike-nexus" "SPIKE_NEXUS_SHAMIR_THRESHOLD")"
 local_nexus_shares="$(compose_env_value "${local_compose_json}" "spike-nexus" "SPIKE_NEXUS_SHAMIR_SHARES")"
@@ -130,9 +132,8 @@ APPROVAL_SIGNING_KEY="compose-production-intent-approval-key-material-32chars" \
 ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/ops/sa/gateway-admin" \
 UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/tools/sa/mcp-tool" \
 KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb" \
-docker compose --profile strict \
+$DC --profile strict \
   --env-file config/compose-production-intent.env \
-  -f deploy/compose/docker-compose.yml \
   -f deploy/compose/docker-compose.strict.yml \
   -f deploy/compose/docker-compose.prod-intent.yml \
   config --format json >"${prod_compose_json}"

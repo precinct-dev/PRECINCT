@@ -452,7 +452,7 @@ log_pass "spike-keeper-1 is healthy (holds Shamir shard for root key)"
 
 # Restart spike-nexus only (Keeper stays running, shard stays in memory)
 log_info "Restarting spike-nexus container..."
-docker compose restart spike-nexus
+$DC restart spike-nexus
 
 # Wait for spike-nexus to become healthy again (up to 60s, poll every 2s)
 MAX_WAIT=60
