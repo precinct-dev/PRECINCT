@@ -305,7 +305,10 @@ func New(cfg *Config) (*Gateway, error) {
 
 	// RFA-qq0.17: Create step-up gating components
 	// RFA-bci: Use resolved guardAPIKey (SPIKE -> env fallback) instead of cfg.GroqAPIKey
-	groqGuardClient := middleware.NewGroqGuardClient(guardAPIKey, time.Duration(cfg.DeepScanTimeout)*time.Second)
+	groqGuardClient := middleware.NewGroqGuardClient(guardAPIKey, time.Duration(cfg.DeepScanTimeout)*time.Second,
+		middleware.WithGuardEndpoint(cfg.GuardModelEndpoint),
+		middleware.WithGuardModelName(cfg.GuardModelName),
+	)
 
 	// Load destination allowlist (fall back to defaults if file not found)
 	var destinationAllowlist *middleware.DestinationAllowlist
@@ -2211,7 +2214,9 @@ func shouldFetchGuardAPIKeyFromSPIKE(cfg *Config) bool {
 	if cfg == nil || strings.TrimSpace(cfg.SPIKENexusURL) == "" {
 		return false
 	}
-	return !strings.Contains(strings.ToLower(strings.TrimSpace(cfg.GuardModelEndpoint)), "mock-guard-model")
+	// Always attempt SPIKE fetch when Nexus is available. If the key is found,
+	// shouldSwitchGuardModelEndpointToReal will switch from mock to real endpoint.
+	return true
 }
 
 func guardAPIKeyFetchSkipReason(cfg *Config) string {
