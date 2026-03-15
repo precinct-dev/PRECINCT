@@ -43,7 +43,7 @@ if [[ -z "${arg}" ]]; then
 fi
 
 compose_main=(docker compose -f "${poc_dir}/deploy/compose/docker-compose.yml")
-compose_phoenix=(docker compose -f docker-compose.phoenix.yml)
+compose_phoenix=(docker compose -f "${poc_dir}/deploy/compose/docker-compose.phoenix.yml")
 
 now_utc_iso() { date -u +'%Y-%m-%dT%H:%M:%SZ'; }
 now_utc_compact() { date -u +'%Y-%m-%d-%H%M%S'; }

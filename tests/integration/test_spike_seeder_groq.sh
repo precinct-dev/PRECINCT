@@ -62,7 +62,7 @@ log_info "Expected key hash (sha256): ${EXPECTED_HASH}"
 # Pre-flight: Verify Docker Compose stack is running
 # ============================================================
 
-if ! docker compose ps --format '{{.Name}}' 2>/dev/null | grep -q "spike-nexus"; then
+if ! $DC ps --format '{{.Name}}' 2>/dev/null | grep -q "spike-nexus"; then
     echo "SKIP: Docker Compose stack is not running. Start with: make up"
     exit 0
 fi
@@ -220,7 +220,7 @@ fi
 # ============================================================
 log_subheader "Test 6: docker compose config does not leak raw key"
 
-COMPOSE_CONFIG=$(cd "$POC_DIR" && docker compose config 2>&1)
+COMPOSE_CONFIG=$($DC config 2>&1)
 
 if echo "$COMPOSE_CONFIG" | grep -qF "$GROQ_API_KEY"; then
     log_fail "SECRET LEAK in docker compose config" "Raw GROQ_API_KEY value found in docker compose config output"

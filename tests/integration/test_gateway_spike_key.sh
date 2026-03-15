@@ -53,7 +53,7 @@ log_pass "GROQ_API_KEY loaded from .env (non-empty)"
 # Pre-flight: Verify Docker Compose stack is running
 # ============================================================
 
-if ! docker compose ps --format '{{.Name}}' 2>/dev/null | grep -q "mcp-security-gateway"; then
+if ! $DC ps --format '{{.Name}}' 2>/dev/null | grep -q "mcp-security-gateway"; then
     echo "SKIP: Docker Compose stack is not running (mcp-security-gateway not found). Start with: make up"
     exit 0
 fi
@@ -67,8 +67,8 @@ log_pass "mcp-security-gateway is healthy"
 
 # Collect gateway startup logs once (used by multiple tests).
 # Use --no-log-prefix for clean parsing (Docker Compose >= 2.19).
-GW_LOGS=$(docker compose logs --no-log-prefix mcp-security-gateway 2>/dev/null || \
-          docker compose logs mcp-security-gateway 2>/dev/null || echo "")
+GW_LOGS=$($DC logs --no-log-prefix mcp-security-gateway 2>/dev/null || \
+          $DC logs mcp-security-gateway 2>/dev/null || echo "")
 
 # ============================================================
 # Test 1: Gateway logs show SPIKE key fetch succeeded (AC1, AC2)
@@ -135,8 +135,8 @@ log_info "Response code: ${RESP_CODE}"
 
 # Check gateway logs for step-up audit that does NOT indicate missing key.
 # Collect recent logs (last 100 lines) to catch the step-up decision for our request.
-RECENT_GW_LOGS=$(docker compose logs --tail 100 --no-log-prefix mcp-security-gateway 2>/dev/null || \
-                 docker compose logs --tail 100 mcp-security-gateway 2>/dev/null || echo "")
+RECENT_GW_LOGS=$($DC logs --tail 100 --no-log-prefix mcp-security-gateway 2>/dev/null || \
+                 $DC logs --tail 100 mcp-security-gateway 2>/dev/null || echo "")
 
 # The fail-open indicator is: "guard model not configured" in the step_up_gating audit.
 # A working guard shows: "step-up controls passed" or "injection probability" or "guard model unavailable"
@@ -190,7 +190,7 @@ fi
 # ============================================================
 log_subheader "Test 5: GROQ_API_KEY removed from compose config"
 
-COMPOSE_CONFIG=$(cd "$POC_DIR" && docker compose config 2>&1)
+COMPOSE_CONFIG=$($DC config 2>&1)
 
 # Check that GROQ_API_KEY is not set as an environment variable for
 # the gateway service. The rendered config should not contain it.

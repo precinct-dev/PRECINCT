@@ -4,6 +4,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+POC_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+DC="docker compose -f ${POC_DIR}/deploy/compose/docker-compose.yml"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -45,7 +49,7 @@ log_fail() {
 test_spire_server_accessible() {
     log_info "Testing SPIRE server accessibility..."
 
-    if docker compose exec -T spire-server spire-server healthcheck 2>/dev/null; then
+    if $DC exec -T spire-server spire-server healthcheck 2>/dev/null; then
         log_pass "SPIRE server is accessible"
         return 0
     else
@@ -71,7 +75,7 @@ test_registration_script_exists() {
 test_run_registration() {
     log_info "Running SPIRE registration script..."
 
-    if docker compose exec -T spire-server bash < ./scripts/register-spire-entries.sh; then
+    if $DC exec -T spire-server bash < ./scripts/register-spire-entries.sh; then
         log_pass "Registration script executed successfully"
         return 0
     else
@@ -84,7 +88,7 @@ test_run_registration() {
 test_spiffe_id_registered() {
     local spiffe_id="$1"
 
-    if docker compose exec -T spire-server spire-server entry show \
+    if $DC exec -T spire-server spire-server entry show \
         -spiffeID "${spiffe_id}" 2>/dev/null | grep -q "SPIFFE ID"; then
         log_pass "SPIFFE ID registered: ${spiffe_id}"
         return 0
@@ -103,7 +107,7 @@ test_gateway_svid() {
     # For now, we'll check if the entry exists and has proper selectors
 
     local output
-    output=$(docker compose exec -T spire-server spire-server entry show \
+    output=$($DC exec -T spire-server spire-server entry show \
         -spiffeID "spiffe://${TRUST_DOMAIN}/gateways/mcp-security-gateway/dev" 2>/dev/null || echo "")
 
     if echo "${output}" | grep -q "docker:label:spiffe-id:mcp-security-gateway"; then
@@ -120,7 +124,7 @@ test_idempotency() {
     log_info "Testing registration script idempotency..."
 
     # Run registration a second time
-    if docker compose exec -T spire-server bash < ./scripts/register-spire-entries.sh 2>&1 | grep -q "already exists"; then
+    if $DC exec -T spire-server bash < ./scripts/register-spire-entries.sh 2>&1 | grep -q "already exists"; then
         log_pass "Registration script is idempotent (detected existing entries)"
         return 0
     else

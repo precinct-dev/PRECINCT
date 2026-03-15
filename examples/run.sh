@@ -29,6 +29,8 @@ COMPOSE_NETWORK="agentic-security-network"
 PF_PID=""
 PF_PID_MCP=""
 DOCKER_ADD_HOST=""
+COMPOSE_FILE="$POC_DIR/deploy/compose/docker-compose.yml"
+DC="docker compose -f $COMPOSE_FILE"
 COMPOSE_TORN_DOWN=false
 K8S_TORN_DOWN=false
 COMPOSE_DEMO_CONTAINER_NAMES=(
@@ -171,10 +173,7 @@ cleanup_compose_demo_containers() {
 
 start_compose() {
     log "Resetting Docker Compose stack to avoid stale named-container conflicts"
-    (
-        cd "$POC_DIR"
-        docker compose down --remove-orphans >/dev/null 2>&1 || true
-    )
+    $DC down --remove-orphans >/dev/null 2>&1 || true
     cleanup_compose_demo_containers
     log "Starting Docker Compose stack"
     make -C "$POC_DIR" up
@@ -231,11 +230,8 @@ wait_for_health() {
     echo ""
     if [ "$MODE" = "compose" ]; then
         warn "Compose gateway health timed out; dumping compose status and recent gateway logs"
-        (
-            cd "$POC_DIR"
-            docker compose ps || true
-            docker compose logs --tail 80 mcp-security-gateway || true
-        )
+        $DC ps || true
+        $DC logs --tail 80 mcp-security-gateway || true
     fi
     err "Gateway did not become healthy within ${timeout}s"
     return 1
@@ -1241,7 +1237,7 @@ teardown() {
     log "Tearing down environment ($mode)"
     if [ "$mode" = "compose" ]; then
         # Only tears down services in docker-compose.yml -- Phoenix is safe.
-        docker compose --project-directory "$POC_DIR" -f "$POC_DIR/docker-compose.yml" down -v --remove-orphans 2>/dev/null || true
+        $DC down -v --remove-orphans 2>/dev/null || true
         # Defensive fallback: if a previous run used a different compose project name,
         # the fixed container_name can still remain. Remove it explicitly.
         if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'mcp-security-gateway'; then
