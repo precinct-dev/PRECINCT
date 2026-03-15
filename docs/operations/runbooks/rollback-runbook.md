@@ -33,8 +33,8 @@ docker compose --profile strict \
 make k8s-validate
 
 # Re-apply previously approved overlay release material
-kustomize build infra/eks/overlays/staging | kubectl apply -f -
-kustomize build infra/eks/overlays/prod | kubectl apply -f -
+kustomize build deploy/terraform/overlays/staging | kubectl apply -f -
+kustomize build deploy/terraform/overlays/prod | kubectl apply -f -
 ```
 
 ## 4. Post-Rollback Verification

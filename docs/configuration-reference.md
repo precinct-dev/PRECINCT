@@ -335,10 +335,10 @@ environment variables. Source: `docker-compose.yml` service definitions.
 | `SPIKE_NEXUS_SHAMIR_SHARES` | `1` (local demo) / `3` (production-intent compose, EKS release bundle) | Bootstrap must match the active Nexus recovery profile |
 
 Release-facing compose (`docker-compose.prod-intent.yml`) and the standalone
-SPIKE EKS bundle (`infra/eks/spike/`) now require multi-share keeper recovery
+SPIKE EKS bundle (`deploy/terraform/spike/`) now require multi-share keeper recovery
 (`2-of-3` in repo defaults). Keep the `1-of-1` values only for isolated local
 demo/bootstrap flows from `docker-compose.yml` and
-`infra/eks/overlays/local/spike-bootstrap-job.yaml`.
+`deploy/terraform/overlays/local/spike-bootstrap-job.yaml`.
 
 ### SPIKE Secret Seeder
 
@@ -966,6 +966,6 @@ reg "spiffe://poc.local/gateways/mcp-security-gateway/dev" \
 
 ### K8s Attestation (Local Overlay)
 
-In the Kubernetes local overlay (`infra/eks/overlays/local/`), the trust domain
+In the Kubernetes local overlay (`deploy/terraform/overlays/local/`), the trust domain
 changes to `precinct.poc` and SPIRE uses `join_token` attestation
 instead of Docker labels.

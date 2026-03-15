@@ -8,11 +8,11 @@ This overlay composes:
 Build:
 
 ```bash
-kustomize build infra/eks/overlays/local-opensearch
+kustomize build deploy/terraform/overlays/local-opensearch
 ```
 
 Apply:
 
 ```bash
-kubectl apply -k infra/eks/overlays/local-opensearch
+kubectl apply -k deploy/terraform/overlays/local-opensearch
 ```

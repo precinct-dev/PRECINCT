@@ -96,5 +96,5 @@ Environment variables (via ConfigMap):
 ## Next Steps
 
 - **RFA-9fv.4**: Configure gateway to use SPIKE for token issuance/validation
-- **Local demo exception**: `infra/eks/overlays/local` patches this bundle back to `1-of-1` and removes keeper-2/3.
+- **Local demo exception**: `deploy/terraform/overlays/local` patches this bundle back to `1-of-1` and removes keeper-2/3.
 - **Validation**: Run `make -C ../../.. spike-shamir-validate` to verify the demo-versus-release keeper split.

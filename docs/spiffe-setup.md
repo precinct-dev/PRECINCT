@@ -57,7 +57,7 @@ The system includes these workload identities:
 Execute the registration script inside the SPIRE server container:
 
 ```bash
-# From the POC directory
+# From the repository root
 docker compose exec spire-server bash < scripts/register-spire-entries.sh
 ```
 

@@ -553,7 +553,7 @@ controls:
 
 ### ADR-010: Local K8s Deployment via Kustomize Overlay
 
-**Decision:** A dedicated Kustomize overlay at `infra/eks/overlays/local/kustomization.yaml` adapts the EKS manifests for Docker Desktop kubeadm.
+**Decision:** A dedicated Kustomize overlay at `deploy/terraform/overlays/local/kustomization.yaml` adapts the EKS manifests for Docker Desktop kubeadm.
 
 **Modifications from EKS:**
 
@@ -768,12 +768,12 @@ It is invoked via `make setup`.
 
 ### 3.7 Port Adapters
 
-Port adapters live in `POC/ports/` and mediate communication between external services
+Port adapters live in `ports/` and mediate communication between external services
 and the PRECINCT middleware chain. Each adapter translates protocol-specific requests
 into `PlaneRequestV2` structs, runs them through the full middleware chain, and handles
 protocol-specific responses and credential retrieval.
 
-#### Discord Adapter (POC/ports/discord/)
+#### Discord Adapter (ports/discord/)
 
 Routes: `/discord/send`, `/discord/webhooks`, `/discord/commands`
 
@@ -781,7 +781,7 @@ Routes: `/discord/send`, `/discord/webhooks`, `/discord/commands`
 - `/discord/webhooks`: inbound webhook receipt. Verifies Ed25519 signature (`DISCORD_PUBLIC_KEY` env), calls `ValidateConnector()`, emits `AuditLog` event.
 - `/discord/commands`: bot command evaluation via tool plane (`tool="discord_command"`).
 
-#### Email Adapter (POC/ports/email/)
+#### Email Adapter (ports/email/)
 
 Routes: `/email/send`, `/email/webhooks`, `/email/list`, `/email/read`
 
@@ -896,11 +896,11 @@ Services in Phase 2:
 
 ### 5.2 Local K8s (Docker Desktop kubeadm)
 
-Same services, deployed via Kustomize overlay `infra/eks/overlays/local/`. See ADR-010.
+Same services, deployed via Kustomize overlay `deploy/terraform/overlays/local/`. See ADR-010.
 
 ### 5.3 EKS (Validated Offline)
 
-Existing Phase 1 manifests in `infra/eks/`. Phase 2 updates:
+Existing Phase 1 manifests in `deploy/terraform/`. Phase 2 updates:
 - SPIKE Nexus image version updated to 0.8.0.
 - sigstore/policy-controller admission webhook added.
 - KeyDB StatefulSet added.
