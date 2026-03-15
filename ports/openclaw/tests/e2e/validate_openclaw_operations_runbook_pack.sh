@@ -46,7 +46,7 @@ assert_contains "${RUNBOOK_INCIDENT}" 'docker compose restart mcp-security-gatew
 assert_contains "${RUNBOOK_INCIDENT}" "TestGatewayAuthz_OpenClawWSDenyMatrix_Integration" "incident runbook must include WS authz verification command"
 assert_contains "${RUNBOOK_ROLLBACK}" 'make compose-production-intent-preflight' "rollback runbook must include compose preflight"
 assert_contains "${RUNBOOK_ROLLBACK}" 'go run ./cmd/openclaw-ws-smoke' "rollback runbook must include live OpenClaw WS smoke probe"
-assert_contains "${RUNBOOK_ROLLBACK}" 'kustomize build infra/eks/overlays/staging' "rollback runbook must include k8s rollback command"
+assert_contains "${RUNBOOK_ROLLBACK}" 'kustomize build deploy/terraform/overlays/staging' "rollback runbook must include k8s rollback command"
 assert_contains "${RUNBOOK_ROLLBACK}" 'make operations-readiness-validate' "rollback runbook must include readiness validation command"
 
 for control in Authn Authz Policy Audit Egress Approvals; do
