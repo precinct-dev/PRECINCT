@@ -1,6 +1,6 @@
-# OpenClaw Operations Drill Report (2026-02-21)
+# OpenClaw Operations Drill Report (2026-03-15)
 
-- Generated At (UTC): 2026-02-21T20:09:15Z
+- Generated At (UTC): 2026-03-15T03:56:28Z
 - Status: PASS
 
 ## Drill Scope
@@ -26,10 +26,10 @@ go run ./cmd/openclaw-ws-smoke --phase post-restart
 
 ## Artifacts
 
-- docs/operations/artifacts/openclaw-operations-drill-20260221T200915Z-incident.json
-- docs/operations/artifacts/openclaw-operations-drill-20260221T200915Z-recovery.json
-- docs/operations/artifacts/openclaw-operations-drill-20260221T200915Z-gateway.log
-- docs/operations/artifacts/openclaw-operations-drill-20260221T200915Z-preflight.log
-- docs/operations/artifacts/openclaw-operations-drill-20260221T200915Z-ws-pre-restart.json
-- docs/operations/artifacts/openclaw-operations-drill-20260221T200915Z-ws-post-restart.json
+- docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-incident.json
+- docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-recovery.json
+- docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-gateway.log
+- docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-preflight.log
+- docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-ws-pre-restart.json
+- docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-ws-post-restart.json
 - docs/operations/artifacts/openclaw-operations-drill-latest.json

@@ -1,7 +1,7 @@
 {
   "schema_version": "ops_backup_restore_drill.v1",
-  "generated_at": "2026-02-23T09:28:10Z",
-  "date": "2026-02-23",
+  "generated_at": "2026-03-15T03:56:28Z",
+  "date": "2026-03-15",
   "status": "pass",
   "commands": [
     "make phoenix-up",
@@ -14,13 +14,13 @@
     {
       "name": "keydb_backup_restore",
       "status": "pass",
-      "key": "ops:backup-restore:20260223T092810Z",
-      "expected_value": "drill-value-20260223T092810Z"
+      "key": "ops:backup-restore:20260315T035628Z",
+      "expected_value": "drill-value-20260315T035628Z"
     },
     {
       "name": "spike_nexus_backup_restore",
       "status": "pass",
-      "marker_file": "drill-marker-20260223T092810Z.txt"
+      "marker_file": "drill-marker-20260315T035628Z.txt"
     },
     {
       "name": "audit_log_backup_restore",
@@ -32,8 +32,8 @@
     }
   ],
   "artifacts": [
-    "docs/operations/artifacts/backups/20260223T092810Z/keydb-dump.rdb",
-    "docs/operations/artifacts/backups/20260223T092810Z/spike-nexus-data",
-    "docs/operations/artifacts/backups/20260223T092810Z/audit.jsonl"
+    "docs/operations/artifacts/backups/20260315T035628Z/keydb-dump.rdb",
+    "docs/operations/artifacts/backups/20260315T035628Z/spike-nexus-data",
+    "docs/operations/artifacts/backups/20260315T035628Z/audit.jsonl"
   ]
 }
