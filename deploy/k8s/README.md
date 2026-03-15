@@ -78,6 +78,91 @@ kubectl -n tools get pods
 kubectl -n observability get pods
 ```
 
+## ConfigMap Population
+
+The base kustomization creates a `gateway-config` ConfigMap with only a
+`_placeholder` key (to pass kubeconform validation). **The gateway pod will not
+start until this ConfigMap is populated with the actual configuration files.**
+
+### What happens if not populated
+
+The gateway deployment mounts specific keys from `gateway-config` with
+`optional: false`. If any key is missing, the kubelet cannot mount the volume
+and the pod stays in `ContainerCreating` or enters `CrashLoopBackOff`. You
+will see events like:
+
+```
+Warning  FailedMount  configmap "gateway-config" has no key "mcp_policy.rego"
+```
+
+### Required ConfigMap keys
+
+The deployment manifest (`base/gateway/gateway-deployment.yaml`) expects these
+keys in the `gateway-config` ConfigMap:
+
+**OPA policies** (mounted at `/config/opa/`):
+
+| Key | Source file |
+|-----|------------|
+| `mcp_policy.rego` | `config/opa/mcp_policy.rego` |
+| `ui_policy.rego` | `config/opa/ui_policy.rego` |
+| `ui_csp_policy.rego` | `config/opa/ui_csp_policy.rego` |
+| `exfiltration.rego` | `config/opa/exfiltration.rego` |
+| `context_policy.rego` | `config/opa/context_policy.rego` |
+| `principal_policy.rego` | `config/opa/principal_policy.rego` |
+| `tool_grants.yaml` | `config/opa/tool_grants.yaml` |
+| `ui_capability_grants.yaml` | `config/opa/ui_capability_grants.yaml` |
+
+**Registry and attestation artifacts** (mounted individually at `/config/`):
+
+| Key | Source file |
+|-----|------------|
+| `tool-registry.yaml` | `config/tool-registry.yaml` |
+| `tool-registry.yaml.sig` | `config/tool-registry.yaml.sig` |
+| `capability-registry-v2.yaml` | `config/capability-registry-v2.yaml` |
+| `model-provider-catalog.v2.yaml` | `config/model-provider-catalog.v2.yaml` |
+| `model-provider-catalog.v2.yaml.sig` | `config/model-provider-catalog.v2.yaml.sig` |
+| `attestation-ed25519.pub` | `config/attestation-ed25519.pub` |
+| `guard-artifact.bin` | `config/guard-artifact.bin` |
+| `guard-artifact.bin.sig` | `config/guard-artifact.bin.sig` |
+| `risk_thresholds.yaml` | `config/risk_thresholds.yaml` |
+
+### How to populate
+
+**Option 1 -- kubectl (one-liner):**
+
+```bash
+kubectl create configmap gateway-config \
+  --from-file=config/opa/ \
+  --from-file=tool-registry.yaml=config/tool-registry.yaml \
+  --from-file=tool-registry.yaml.sig=config/tool-registry.yaml.sig \
+  --from-file=capability-registry-v2.yaml=config/capability-registry-v2.yaml \
+  --from-file=model-provider-catalog.v2.yaml=config/model-provider-catalog.v2.yaml \
+  --from-file=model-provider-catalog.v2.yaml.sig=config/model-provider-catalog.v2.yaml.sig \
+  --from-file=attestation-ed25519.pub=config/attestation-ed25519.pub \
+  --from-file=guard-artifact.bin=config/guard-artifact.bin \
+  --from-file=guard-artifact.bin.sig=config/guard-artifact.bin.sig \
+  --from-file=risk_thresholds.yaml=config/risk_thresholds.yaml \
+  -n gateway --dry-run=client -o yaml | kubectl apply -f -
+```
+
+**Option 2 -- Makefile:**
+
+```bash
+make k8s-sync-config
+```
+
+This copies the canonical `config/` files into the Kustomize overlay directory
+so that `configMapGenerator` picks them up on the next `kubectl apply -k`.
+
+### When to re-populate
+
+Re-run the command above (or `make k8s-sync-config` followed by
+`kubectl apply -k`) whenever you change OPA policies, the tool registry, or
+any other config file. The gateway reads these files at startup; a rolling
+restart (`kubectl rollout restart deployment/mcp-security-gateway -n gateway`)
+picks up the new ConfigMap contents.
+
 ## Cloud-Specific Extensions
 
 The base manifests contain NO cloud-specific resources. Cloud-specific features
