@@ -434,7 +434,7 @@ run_python_demo() {
 collect_audit_proof_compose() {
     log "Audit hash-chain proof (Docker Compose logs)"
     echo ""
-    docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
         | grep -i "prev_hash" | tail -5 || echo "  (no prev_hash entries found in logs)"
     echo ""
 }
@@ -451,12 +451,12 @@ collect_mcp_transport_proof_compose() {
     log "MCP transport detection proof (Docker Compose logs)"
     echo ""
     # Check gateway logs for MCP transport initialization
-    docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
         | grep -i -E "streamable|mcp.*transport|mcp.*session|mock-mcp|transport.*mode" | tail -10 \
         || echo "  (no MCP transport entries found in logs)"
     echo ""
     # Check mock MCP server logs for session activity
-    docker compose -f "$POC_DIR/docker-compose.yml" logs mock-mcp-server 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs mock-mcp-server 2>/dev/null \
         | grep -i -E "session|tools" | tail -10 \
         || echo "  (no mock MCP server activity found)"
     echo ""
@@ -468,7 +468,7 @@ collect_dlp_injection_proof_compose() {
     # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
     # The audit JSON contains "safezone_flags":["potential_injection"] for flagged injection.
     # Use --no-log-prefix for cleaner grep matching (avoids container name prefix).
-    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
         | grep -E '"safezone_flags":\[.*"potential_injection"' | tail -5 \
         || echo "  (no injection detection entries found in logs)"
     echo ""
@@ -479,7 +479,7 @@ collect_dlp_credential_proof_compose() {
     echo ""
     # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
     # The audit JSON contains "safezone_flags":["blocked_content"] for blocked credentials.
-    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
         | grep -E '"safezone_flags":\[.*"blocked_content"' | tail -5 \
         || echo "  (no credential blocking entries found in logs)"
     echo ""
@@ -488,28 +488,28 @@ collect_dlp_credential_proof_compose() {
 collect_spike_token_proof_compose() {
     log "SPIKE token processing proof (Docker Compose logs)"
     echo ""
-    docker compose -f "$POC_DIR/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
         | grep -i -E "token_substitution|spike.*ref|spike.*redeem|token.*redeem" | tail -10 \
         || echo "  (no SPIKE token processing entries found in logs)"
     echo ""
 
     log "SPIKE Keeper proof (spike-keeper-1 logs)"
     echo ""
-    docker compose -f "$POC_DIR/docker-compose.yml" logs spike-keeper-1 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs spike-keeper-1 2>/dev/null \
         | grep -i -E "svid|shard|ready|serving|healthy|keeper" | tail -10 \
         || echo "  (no spike-keeper-1 log entries found)"
     echo ""
 
     log "SPIKE Bootstrap proof (spike-bootstrap logs)"
     echo ""
-    docker compose -f "$POC_DIR/docker-compose.yml" logs spike-bootstrap 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs spike-bootstrap 2>/dev/null \
         | tail -10 \
         || echo "  (no spike-bootstrap log entries found)"
     echo ""
 
     log "SPIKE Secret Seeder proof (spike-secret-seeder logs)"
     echo ""
-    docker compose -f "$POC_DIR/docker-compose.yml" logs spike-secret-seeder 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs spike-secret-seeder 2>/dev/null \
         | tail -10 \
         || echo "  (no spike-secret-seeder log entries found)"
     echo ""
@@ -517,7 +517,7 @@ collect_spike_token_proof_compose() {
     log "SPIKE groq-api-key seeding proof"
     echo ""
     local groq_seed_log
-    groq_seed_log="$(docker compose -f "$POC_DIR/docker-compose.yml" logs spike-secret-seeder 2>/dev/null \
+    groq_seed_log="$(docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs spike-secret-seeder 2>/dev/null \
         | grep -i 'groq-api-key' || true)"
     if [ -n "$groq_seed_log" ]; then
         echo "$groq_seed_log"
@@ -601,22 +601,22 @@ collect_extension_proof_compose() {
     log "Extension slot proof (Docker Compose logs)"
     echo ""
     # Look for extension blocked events (content scanner denied a request)
-    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
         | grep -E 'ext_content_scanner_blocked|extension_blocked|extension.*block' | tail -5 \
         || echo "  (no extension block entries found in logs)"
     echo ""
     # Look for extension flagged events (content scanner flagged a request)
-    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
         | grep -E 'extension.*flag|extension_flagged' | tail -5 \
         || echo "  (no extension flag entries found in logs)"
     echo ""
     # Look for extension allow events (content scanner allowed a request)
-    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
         | grep -E 'extension.*allow|extension_allow' | tail -5 \
         || echo "  (no extension allow entries found in logs)"
     echo ""
     # Content scanner sidecar logs
-    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix content-scanner 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix content-scanner 2>/dev/null \
         | tail -10 \
         || echo "  (no content-scanner log entries found)"
     echo ""
@@ -846,7 +846,7 @@ print_otel_proof() {
 
 capture_observability_evidence_compose() {
     mkdir -p "$OBS_EVIDENCE_DIR"
-    docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
     if [ "$PHOENIX_AVAILABLE" = true ]; then
         docker compose -f "$POC_DIR/docker-compose.phoenix.yml" logs --no-color otel-collector >"$TRACE_EVIDENCE_FILE" 2>/dev/null || true
     else
@@ -917,7 +917,7 @@ run_guard_model_test() {
 
     # Check gateway logs for guard_result containing probability scores.
     local guard_logs
-    guard_logs="$(docker compose -f "$POC_DIR/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    guard_logs="$(docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
         | grep -E 'guard_result|injection_probability|jailbreak_probability' | tail -10 || true)"
 
     if [ -z "$guard_logs" ]; then
@@ -1017,7 +1017,7 @@ run_demo_cycle() {
             # from ./data/, so stale server/agent state can carry expired SVIDs
             # across sessions and cause spire-server to crash on startup.
             log "Resetting SPIKE Nexus state for deterministic compose demo (local-only)"
-            docker compose -f "$POC_DIR/docker-compose.yml" down >/dev/null 2>&1 || true
+            docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" down >/dev/null 2>&1 || true
             docker volume rm spike-nexus-data >/dev/null 2>&1 || true
             log "Clearing SPIRE data directories for deterministic compose demo (local-only)"
             rm -rf "$POC_DIR/data/spire-server/" "$POC_DIR/data/spire-agent/"
@@ -1027,8 +1027,8 @@ run_demo_cycle() {
         # from any previous run. Without this, accumulated 502s keep the
         # circuit breaker open and subsequent demo runs fail with 503.
         log "Clearing rate-limit keys and restarting gateway"
-        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
-        docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
+        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
+        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         # Health check via localhost (host-side port mapping)
         wait_for_health "http://localhost:9090" || exit 1
         # Determinism: ensure upstream rugpull state is OFF before running tests.
@@ -1149,8 +1149,8 @@ run_demo_cycle() {
     # Rate limits persist in KeyDB, so gateway restart alone is insufficient.
     if [ "$mode" = "compose" ]; then
         log "Clearing rate-limit keys and restarting gateway for Python demo"
-        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
-        docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
+        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
+        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         wait_for_health "http://localhost:9090" || exit 1
     elif [ "$mode" = "k8s" ]; then
         log "Clearing rate-limit keys and restarting gateway for Python demo"
@@ -1169,8 +1169,8 @@ run_demo_cycle() {
         # burst window. Reset before Phase 3 scenarios so they validate plane
         # controls (not residual rate-limit state).
         log "Clearing rate-limit keys and restarting gateway for Phase 3 scenarios"
-        docker compose -f "$POC_DIR/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
-        docker compose -f "$POC_DIR/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
+        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
+        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
         wait_for_health "http://localhost:9090" || exit 1
 
         log "Running Phase 3 compose scenario"

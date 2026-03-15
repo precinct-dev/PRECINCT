@@ -5,7 +5,7 @@ WORKDIR /src
 COPY sdk/go/ /sdk/go/
 
 # Copy demo source
-COPY demo/go/ ./
+COPY examples/go/ ./
 RUN go mod tidy && go build -o /demo .
 
 FROM alpine:3.21

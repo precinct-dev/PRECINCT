@@ -11,7 +11,7 @@ RUN groupadd -g 1000 appuser && \
 COPY sdk/python/mcp_gateway_sdk/ /sdk/python/mcp_gateway_sdk/
 
 # Copy demo
-COPY demo/python/demo.py ./demo.py
+COPY examples/python/demo.py ./demo.py
 
 # Point at SDK
 ENV PYTHONPATH=/sdk/python
