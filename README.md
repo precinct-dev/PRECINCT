@@ -6,7 +6,7 @@
 
 This is a **reference implementation of a PRECINCT Gateway** that implements a 13-layer
 middleware chain for securing AI agent tool calls. It validates the
-[PRECINCT v2.5](../docs/architecture/reference-architecture.md),
+[PRECINCT v2.5](docs/architecture/reference-architecture.md),
 a 200+ page document defining security patterns for production agentic AI systems.
 
 The gateway interposes between AI agents and MCP tool servers, enforcing
@@ -151,7 +151,12 @@ docs/                     All documentation
 tests/e2e/                E2E demo test suites
 tests/integration/        Go integration tests
 tests/benchmark/          Load testing scripts
-demo/                     Demo harness (Go + Python test clients, mock MCP server)
+cli/                      PRECINCT CLI (agw)
+agents/                   Reference agent implementations
+ports/                    Platform integrations (Discord, OpenClaw)
+examples/                 Starter examples for extending the gateway
+contracts/                PRECINCT specification versions
+site/                     Project website (precinct.dev)
 scripts/                  Setup and operational scripts
 ```
 
@@ -240,7 +245,7 @@ scripts/                  Setup and operational scripts
 ## Status
 
 This is a **reference implementation** validating
-[PRECINCT v2.5](../docs/architecture/reference-architecture.md).
+[PRECINCT v2.5](docs/architecture/reference-architecture.md).
 It demonstrates that a 13-layer security middleware chain can be implemented,
 deployed, and tested end-to-end with real infrastructure (SPIRE, SPIKE, KeyDB,
 OPA, Phoenix, optional OpenSearch) in both Docker Compose and Kubernetes environments.
