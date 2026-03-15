@@ -13,7 +13,13 @@
 set -euo pipefail
 
 VERBOSE=0
-SERVICES="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"
+# Service list adapts to DEMO_SERVICE_MODE: real mode checks for tavily-mcp-server
+# instead of mock services. Content-scanner is in both modes.
+if [ "${DEMO_SERVICE_MODE:-mock}" = "real" ]; then
+  SERVICES="keydb mcp-security-gateway tavily-mcp-server content-scanner spire-server spire-agent spike-nexus spike-keeper-1"
+else
+  SERVICES="keydb mcp-security-gateway mock-guard-model mock-mcp-server content-scanner spire-server spire-agent spike-nexus spike-keeper-1"
+fi
 
 while [[ $# -gt 0 ]]; do
   case "$1" in

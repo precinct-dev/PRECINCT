@@ -10,8 +10,11 @@ package main
 
 import (
 	"encoding/json"
+	"flag"
+	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -39,6 +42,25 @@ type chatCompletionResponse struct {
 }
 
 func main() {
+	healthcheck := flag.Bool("healthcheck", false, "perform a health check and exit 0/1")
+	flag.Parse()
+
+	port := "8080"
+
+	if *healthcheck {
+		resp, err := http.Get("http://127.0.0.1:" + port + "/health")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
+			os.Exit(1)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "healthcheck returned %d\n", resp.StatusCode)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +112,7 @@ func main() {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 
-	addr := ":8080"
+	addr := ":" + port
 	log.Printf("[mock-guard] listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, mux))
 }

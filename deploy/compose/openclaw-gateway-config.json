@@ -1,0 +1,26 @@
+{
+  "gateway": {
+    "bind": "lan",
+    "controlUi": {
+      "dangerouslyAllowHostHeaderOriginFallback": true
+    }
+  },
+  "agents": {
+    "defaults": {
+      "model": "openai/gpt-oss-120b"
+    }
+  },
+  "models": {
+    "providers": {
+      "openai": {
+        "baseUrl": "http://mcp-security-gateway:9090/openai/v1",
+        "apiKey": "${OPENAI_API_KEY}",
+        "headers": {
+          "X-SPIFFE-ID": "spiffe://poc.local/openclaw",
+          "X-Model-Provider": "groq"
+        },
+        "models": []
+      }
+    }
+  }
+}

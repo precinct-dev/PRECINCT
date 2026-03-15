@@ -13,12 +13,17 @@ MODE="${1:-compose}"
 SKIP_SETUP=false
 NO_TEARDOWN=false
 STRICT_OBSERVABILITY_MODE="${DEMO_STRICT_OBSERVABILITY:-0}"
+DEMO_SERVICE_MODE="mock"   # "mock" (default) or "real"
 
 for arg in "$@"; do
     if [ "$arg" = "--skip-setup" ]; then
         SKIP_SETUP=true
     elif [ "$arg" = "--no-teardown" ]; then
         NO_TEARDOWN=true
+    elif [ "$arg" = "--mock" ]; then
+        DEMO_SERVICE_MODE="mock"
+    elif [ "$arg" = "--real" ]; then
+        DEMO_SERVICE_MODE="real"
     fi
 done
 
@@ -33,22 +38,32 @@ COMPOSE_FILE="$POC_DIR/deploy/compose/docker-compose.yml"
 DC="docker compose -f $COMPOSE_FILE"
 COMPOSE_TORN_DOWN=false
 K8S_TORN_DOWN=false
-COMPOSE_DEMO_CONTAINER_NAMES=(
-    mcp-security-gateway
-    spike-nexus
-    spike-secret-seeder
-    spike-bootstrap
-    spike-keeper-1
-    spire-entry-registrar
-    spire-agent
-    spire-token-generator
-    spire-server
-    keydb
-    mock-mcp-server
-    mock-guard-model
-    content-scanner
-    messaging-sim
-)
+if [ "$DEMO_SERVICE_MODE" = "real" ]; then
+    COMPOSE_DEMO_CONTAINER_NAMES=(
+        mcp-security-gateway
+        spire-server spire-agent spire-token-generator spire-entry-registrar
+        spike-nexus spike-keeper-1 spike-bootstrap spike-secret-seeder
+        keydb content-scanner
+        tavily-mcp-server openclaw
+    )
+else
+    COMPOSE_DEMO_CONTAINER_NAMES=(
+        mcp-security-gateway
+        spike-nexus
+        spike-secret-seeder
+        spike-bootstrap
+        spike-keeper-1
+        spire-entry-registrar
+        spire-agent
+        spire-token-generator
+        spire-server
+        keydb
+        mock-mcp-server
+        mock-guard-model
+        content-scanner
+        messaging-sim
+    )
+fi
 
 # Lua script for targeted rate-limit key cleanup (avoids FLUSHALL).
 # Scans for ratelimit:* keys only, leaving other KeyDB data intact.
@@ -173,10 +188,23 @@ cleanup_compose_demo_containers() {
 
 start_compose() {
     log "Resetting Docker Compose stack to avoid stale named-container conflicts"
-    $DC down --remove-orphans >/dev/null 2>&1 || true
+    # Tear down all profiles to clean up containers from any previous mode.
+    make -C "$POC_DIR" down >/dev/null 2>&1 || true
+    # Clean ephemeral bind-mount dirs (recreated by make up with correct ownership).
+    rm -rf "$POC_DIR/deploy/compose/data/spire-join-token" "$POC_DIR/deploy/compose/data/spire-agent-socket"
     cleanup_compose_demo_containers
     log "Starting Docker Compose stack"
-    make -C "$POC_DIR" up
+    export DEMO_SERVICE_MODE
+    # In real mode, override gateway env vars to point at real services.
+    if [ "$DEMO_SERVICE_MODE" = "real" ]; then
+        export UPSTREAM_URL="http://tavily-mcp-server:8082/mcp"
+        export GUARD_MODEL_ENDPOINT="https://api.groq.com/openai/v1"
+        export MODEL_PROVIDER_ENDPOINT_GROQ="https://api.groq.com/openai/v1/chat/completions"
+        export GUARD_API_KEY="${GROQ_API_KEY}"
+        export RATE_LIMIT_RPM=120
+        export RATE_LIMIT_BURST=20
+    fi
+    make -C "$POC_DIR" up DEMO_SERVICE_MODE="$DEMO_SERVICE_MODE"
 }
 
 start_k8s() {
@@ -985,6 +1013,17 @@ run_demo_cycle() {
             set -a
             . "$POC_DIR/.env"
             set +a
+        fi
+
+        # Preflight check for real mode.
+        if [ "$DEMO_SERVICE_MODE" = "real" ]; then
+            if [ -z "${TAVILY_API_KEY:-}" ]; then
+                echo "ERROR: TAVILY_API_KEY must be set in .env for real mode"
+                exit 1
+            fi
+            log "Service mode: REAL (OpenClaw + Tavily + Groq)"
+        else
+            log "Service mode: MOCK (deterministic, no external APIs)"
         fi
 
         # Log key status (never the value) for debugging guard model mode.

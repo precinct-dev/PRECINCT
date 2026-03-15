@@ -71,7 +71,7 @@ services:
       spire-entry-registrar:
         condition: service_completed_successfully
     volumes:
-      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - ./data/spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
       - SPIKE_KEEPER_TLS_PORT=:8443
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
@@ -107,7 +107,7 @@ services:
       spire-entry-registrar:
         condition: service_completed_successfully
     volumes:
-      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - ./data/spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
       - SPIKE_KEEPER_TLS_PORT=:8443
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock

@@ -2604,11 +2604,12 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 
 	sseLog := &mcpServerLog{}
 
-	// mu protects sseWriters
+	// mu protects sseConns
 	var mu sync.Mutex
 	type sseConn struct {
-		w http.ResponseWriter
-		f http.Flusher
+		w    http.ResponseWriter
+		f    http.Flusher
+		done <-chan struct{} // closed when the SSE client disconnects
 	}
 	var sseConns []sseConn
 
@@ -2631,13 +2632,24 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
 			flusher.Flush()
 
-			// Register this SSE connection
+			// Register this SSE connection with its context for liveness checks
 			mu.Lock()
-			sseConns = append(sseConns, sseConn{w: w, f: flusher})
+			sseConns = append(sseConns, sseConn{w: w, f: flusher, done: r.Context().Done()})
 			mu.Unlock()
 
 			// Keep connection open until client disconnects
 			<-r.Context().Done()
+
+			// Remove this connection so the broadcast loop never touches a dead writer
+			mu.Lock()
+			alive := sseConns[:0]
+			for _, c := range sseConns {
+				if c.w != w {
+					alive = append(alive, c)
+				}
+			}
+			sseConns = alive
+			mu.Unlock()
 
 		case r.Method == http.MethodPost && r.URL.Path == "/message":
 			// Message endpoint: handle JSON-RPC requests
@@ -2711,9 +2723,15 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 			// Acknowledge the POST
 			w.WriteHeader(http.StatusAccepted)
 
-			// Send response via all SSE connections
+			// Send response only to live SSE connections
 			mu.Lock()
 			for _, conn := range sseConns {
+				select {
+				case <-conn.done:
+					// Client already disconnected; skip to avoid panic on dead writer
+					continue
+				default:
+				}
 				_, _ = fmt.Fprintf(conn.w, "event: message\ndata: %s\n\n", string(respJSON))
 				conn.f.Flush()
 			}

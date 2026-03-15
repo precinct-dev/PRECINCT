@@ -44,7 +44,7 @@ services:
         condition: service_healthy
     volumes:
       - spire-server-socket:/tmp/spire-server:ro
-      - spire-join-token:/token
+      - ./data/spire-join-token:/token
     networks:
       - control-plane
     restart: "no"  # Run once and exit
@@ -65,8 +65,8 @@ services:
     volumes:
       - ../../config/spire/agent.conf:/opt/spire/conf/agent/agent.conf:ro
       - ./data/spire-agent:/opt/spire/data/agent
-      - spire-agent-socket:/tmp/spire-agent/public
-      - spire-join-token:/token:ro
+      - ./data/spire-agent-socket:/tmp/spire-agent/public
+      - ./data/spire-join-token:/token:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Required for Docker workload attestor
     healthcheck:
       test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck"]
@@ -82,6 +82,11 @@ services:
     # shared Workload API Unix socket.
     privileged: true
     pid: host
+    # Grant Docker socket access to non-root spire user (UID 1000).
+    # GID 0 is the socket's group inside Docker Desktop's Linux VM.
+    # Required for Docker workload attestor to read container labels.
+    group_add:
+      - "0"
 
   # SPIRE Entry Registrar - One-shot init to register workload SPIFFE IDs
   # Must complete BEFORE spike-nexus / gateway start so they can obtain SVIDs.
@@ -116,7 +121,7 @@ services:
       spike-keeper-1:
         condition: service_healthy  # Keeper must be healthy before Nexus starts
     volumes:
-      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - ./data/spire-agent-socket:/tmp/spire-agent/public:ro
       - spike-nexus-data:/opt/spike/data  # RFA-oyg: persistent SQLite (AES-256-GCM encrypted)
     ports:
       - "8443:8443"  # HTTPS API
@@ -173,7 +178,7 @@ services:
       spire-entry-registrar:
         condition: service_completed_successfully  # SPIRE entry must exist before Keeper fetches SVID
     volumes:
-      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - ./data/spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
       - SPIKE_KEEPER_TLS_PORT=:8443
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
@@ -227,7 +232,7 @@ services:
       spike-nexus:
         condition: service_started
     volumes:
-      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - ./data/spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
       - SPIKE_NEXUS_API_URL=https://spike-nexus:8443  # For VerifyInitialization after shard delivery
@@ -263,7 +268,7 @@ services:
       spike-bootstrap:
         condition: service_completed_successfully  # RFA-oyg: root key must be delivered before seeding secrets
     volumes:
-      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - ./data/spire-agent-socket:/tmp/spire-agent/public:ro
       - ../../.env:/run/secrets/env:ro  # RFA-cjc: Mount .env as secret file (not env_file) so docker compose config cannot reveal key values
     environment:
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
@@ -422,7 +427,7 @@ services:
       spire-agent:
         condition: service_healthy
     volumes:
-      - spire-agent-socket:/tmp/spire-agent/public:ro
+      - ./data/spire-agent-socket:/tmp/spire-agent/public:ro
       - keydb-certs:/certs
       - ../../scripts/keydb-svid-refresh.sh:/tmp/keydb-svid-refresh.sh:ro
     environment:
@@ -443,7 +448,9 @@ services:
   # Speaks MCP Streamable HTTP per spec 2025-03-26. Returns canned tool results
   # for tavily_search and echo tools, enabling self-contained E2E testing
   # without external dependencies (Docker MCP Gateway, Tavily API keys).
+  # Profile: mock -- excluded in real mode (make demo-compose uses real services).
   mock-mcp-server:
+    profiles: ["mock"]
     build:
       context: ../../examples/mock-mcp-server
       dockerfile: Dockerfile
@@ -452,7 +459,7 @@ services:
     networks:
       - tool-plane
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8082/health"]
+      test: ["CMD", "/mock-mcp-server", "-healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -467,7 +474,9 @@ services:
   # Mock Guard Model - Canned "OpenAI chat completions" endpoint for Deep Scan (RFA-6fse.3)
   # Allows demo-compose to deterministically exercise Step 10 deep scan deny behavior
   # without external API keys or network calls.
+  # Profile: mock -- excluded in real mode (uses real Groq API).
   mock-guard-model:
+    profiles: ["mock"]
     build:
       context: ../../examples/mock-guard-model
       dockerfile: Dockerfile
@@ -476,7 +485,7 @@ services:
     networks:
       - tool-plane
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      test: ["CMD", "/usr/local/bin/mock-guard", "-healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -500,7 +509,7 @@ services:
     networks:
       - tool-plane
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8085/health"]
+      test: ["CMD", "/usr/local/bin/content-scanner", "-healthcheck"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -513,7 +522,9 @@ services:
       - /tmp
 
   # Messaging Simulator - WhatsApp Cloud API stub for E2E demos (RFA-1fui)
+  # Profile: mock -- excluded in real mode.
   messaging-sim:
+    profiles: ["mock"]
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile.messaging-sim
@@ -553,21 +564,16 @@ services:
         condition: service_completed_successfully  # RFA-uln: test secret must be seeded before gateway starts
       keydb:
         condition: service_healthy
-      mock-mcp-server:
-        condition: service_healthy  # RFA-71u: Gateway needs mock MCP server ready before
-                                    # MCP transport auto-detection on first request.
-      mock-guard-model:
-        condition: service_healthy  # RFA-6fse.3: Deep scan uses mock guard model for deterministic demos.
       content-scanner:
         condition: service_healthy  # Extension slot: content scanner sidecar for post_inspection
     volumes:
-      - spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
+      - ./data/spire-agent-socket:/tmp/spire-agent/public:ro  # SPIRE agent socket mounted read-only
       - ../../config:/config:ro  # Mount config directory for OPA policies and tool registry
     ports:
       - "9090:9090"   # MCP JSON-RPC API (HTTP, dev mode)
     environment:
       - PORT=9090
-      - UPSTREAM_URL=http://mock-mcp-server:8082  # Dev profile default. Strict MCP profiles require https://... upstream.
+      - UPSTREAM_URL=${UPSTREAM_URL:-http://mock-mcp-server:8082}  # Overridden in real mode to tavily-mcp-server.
       - DEMO_RUGPULL_ADMIN_ENABLED=1  # Demo-only: gateway mediates upstream rugpull toggles (RFA-1r0x)
       - OPA_POLICY_DIR=/config/opa
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
@@ -596,14 +602,14 @@ services:
       - DEEP_SCAN_TIMEOUT=${DEEP_SCAN_TIMEOUT:-5}  # RFA-o9z: Deep scan API timeout in seconds
       - DEEP_SCAN_FALLBACK=${DEEP_SCAN_FALLBACK:-fail_closed}  # RFA-o9z: "fail_closed" (default) or "fail_open"
       # Demo determinism: always point the deep scan guard model to the local mock service.
-      - GUARD_MODEL_ENDPOINT=http://mock-guard-model:8080/openai/v1  # RFA-6fse.3: deterministic, no external keys/network
+      - GUARD_MODEL_ENDPOINT=${GUARD_MODEL_ENDPOINT:-http://mock-guard-model:8080/openai/v1}  # Overridden in real mode to Groq API.
       # Phase 3 model egress demo determinism: route Groq provider calls to local mock endpoint.
       # Keep this internal-only: agent containers are not attached to tool-plane, so they cannot
       # bypass the gateway by calling mock-guard-model directly.
-      - MODEL_PROVIDER_ENDPOINT_GROQ=http://mock-guard-model:8080/openai/v1/chat/completions
+      - MODEL_PROVIDER_ENDPOINT_GROQ=${MODEL_PROVIDER_ENDPOINT_GROQ:-http://mock-guard-model:8080/openai/v1/chat/completions}
       - GUARD_MODEL_NAME=${GUARD_MODEL_NAME:-}  # RFA-j6c: Guard model identifier (default: llama-prompt-guard-2-86m)
       # Demo determinism: ensure deep scan is enabled (non-empty key) without requiring real credentials.
-      - GUARD_API_KEY=demo-guard-key  # RFA-6fse.3: deterministic, dummy key
+      - GUARD_API_KEY=${GUARD_API_KEY:-demo-guard-key}  # Overridden in real mode to GROQ_API_KEY.
       - DLP_INJECTION_POLICY=${DLP_INJECTION_POLICY:-}  # RFA-sd7: Override DLP injection policy ("block" or "flag", default: use YAML config)
       - DLP_PII_POLICY=${DLP_PII_POLICY:-block}  # OC-di1n: Block PII (SSN, etc.) by default for channel mediation demo scenarios
       - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}    # RFA-8ak: Demo-friendly rate limit (code default 600 is too generous for burst test)
@@ -672,14 +678,6 @@ volumes:
   # SPIRE Agent persistent data
   spire-agent-data:
     name: spire-agent-data
-
-  # SPIRE Agent socket - SHARED with gateway for workload attestation
-  spire-agent-socket:
-    name: spire-agent-socket
-
-  # SPIRE Join Token - Temporary volume for passing fresh join tokens from generator to agent
-  spire-join-token:
-    name: spire-join-token
 
   # KeyDB persistent data (RFA-hh5.1)
   keydb-data:

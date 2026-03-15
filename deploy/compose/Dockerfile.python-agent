@@ -5,219 +5,66 @@
 # ============================================================================
 # Stage 1: Builder
 # ============================================================================
-# Use official Python slim image based on Debian Bookworm
-# Slim variant: ~120MB vs ~900MB for full python:3.12
-# NOTE: Update digest monthly or when security advisories are published
-FROM python:3.12-slim-bookworm@sha256:73dbd1a2ad74137451593a8ac30f7bdd0f5010fc05fb34644190cffa7696bbf3 AS builder
+FROM python:3.13-slim-bookworm@sha256:1245b6c39d0b8e49e911c7d07b60cd9ed26016b0e439b6903d5e08730e417553 AS builder
 
 # Install system dependencies required for building Python packages
-# Only include what's needed for your dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /build
 
 # Create virtual environment in builder
-# This isolates dependencies and makes copying to runtime easier
 RUN python -m venv /opt/venv
-
-# Activate virtual environment
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Upgrade pip and install build tools
-RUN pip install --no-cache-dir --upgrade \
-    pip \
-    setuptools \
-    wheel
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 # Copy requirements first for layer caching
-# This allows Docker to cache dependency installation when source changes
 COPY requirements.txt ./
 
 # Install Python dependencies
-# --no-cache-dir: Don't cache downloaded packages (smaller layer)
-# --no-deps: Don't install dependencies of dependencies (use lock file)
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy source code
 COPY . .
 
-# Optional: Build package if using setup.py/pyproject.toml
-# RUN pip install --no-cache-dir -e .
-
-# Optional: Run tests in builder stage
-# RUN python -m pytest tests/
-
 # ============================================================================
-# Stage 2: Runtime (Slim - Current Recommendation)
+# Stage 2: Runtime
 # ============================================================================
-# Use slim variant for runtime (same as builder for Python compatibility)
-# Future: Migrate to gcr.io/distroless/python3-debian12:nonroot when ready
-# NOTE: Update digest monthly or when security advisories are published
-FROM python:3.12-slim-bookworm@sha256:73dbd1a2ad74137451593a8ac30f7bdd0f5010fc05fb34644190cffa7696bbf3
+FROM python:3.13-slim-bookworm@sha256:1245b6c39d0b8e49e911c7d07b60cd9ed26016b0e439b6903d5e08730e417553
 
 # Install only runtime system dependencies
-# Example: libpq5 for PostgreSQL, libgomp1 for OpenMP
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user for security
-# UID 1000 is standard for application users
-RUN groupadd -g 1000 appuser && \
-    useradd -r -u 1000 -g appuser -s /sbin/nologin -c "Application user" appuser
+# Create non-root user
+RUN groupadd -g 65532 appuser && \
+    useradd -r -u 65532 -g appuser -s /sbin/nologin -c "Application user" appuser
 
-# Set working directory
 WORKDIR /app
 
 # Copy virtual environment from builder
-# This includes all installed packages without build dependencies
-COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
 
 # Copy application code
-COPY --from=builder /build /app
+COPY --from=builder --chown=appuser:appuser /build /app
 
 # Set PATH to use virtual environment
-ENV PATH="/opt/venv/bin:$PATH"
-
-# Set Python environment variables
-ENV PYTHONUNBUFFERED=1 \
+ENV PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app
-
-# Change ownership to non-root user
-RUN chown -R appuser:appuser /app /opt/venv
 
 # Switch to non-root user
 USER appuser
 
-# Expose port (adjust as needed)
+# Expose port
 EXPOSE 8000
 
-# Health check (optional - adjust as needed)
-# HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-#   CMD python -c "import requests; requests.get('http://localhost:8000/health')"
-
 # Run the application
-# Adjust to your application's entry point
 ENTRYPOINT ["python", "-m"]
 CMD ["agent.main"]
-
-# ============================================================================
-# Alternative Stage 2: Runtime (Distroless - Future)
-# ============================================================================
-# Use this when dependency footprint is finalized and tested
-# FROM gcr.io/distroless/python3-debian12:nonroot@sha256:[DIGEST] AS runtime-distroless
-#
-# WORKDIR /app
-#
-# # Copy virtual environment from builder
-# COPY --from=builder /opt/venv /opt/venv
-#
-# # Copy application code
-# COPY --from=builder /build /app
-#
-# # Set environment
-# ENV PATH="/opt/venv/bin:$PATH" \
-#     PYTHONUNBUFFERED=1 \
-#     PYTHONDONTWRITEBYTECODE=1 \
-#     PYTHONPATH=/app
-#
-# EXPOSE 8000
-# ENTRYPOINT ["python", "-m", "agent.main"]
-
-# ============================================================================
-# Build Instructions
-# ============================================================================
-# Build the image:
-#   docker build -f deploy/compose/Dockerfile.python-agent -t python-agent:latest .
-#
-# Run the image:
-#   docker run -p 8000:8000 python-agent:latest
-#
-# Run with environment variables:
-#   docker run -e API_KEY=secret -p 8000:8000 python-agent:latest
-#
-# Scan for vulnerabilities:
-#   trivy image python-agent:latest
-#   docker scout cves python-agent:latest
-#
-# Get image size:
-#   docker images python-agent:latest
-#
-# Expected size: 150-250MB (depends on dependencies)
-# Distroless would be ~50-100MB
-
-# ============================================================================
-# Security Notes
-# ============================================================================
-# 1. Runs as non-root user (UID 1000)
-# 2. Uses virtual environment (isolated dependencies)
-# 3. No build tools in runtime (smaller attack surface)
-# 4. Minimal system packages (only runtime requirements)
-# 5. Python bytecode writing disabled (PYTHONDONTWRITEBYTECODE=1)
-# 6. No pip cache (--no-cache-dir reduces size)
-
-# ============================================================================
-# Customization Points
-# ============================================================================
-# 1. Adjust Python version in both stages (python:3.12-slim-bookworm)
-# 2. Add system dependencies in builder stage:
-#    RUN apt-get install -y libpq-dev postgresql-client
-# 3. Add runtime system dependencies in runtime stage:
-#    RUN apt-get install -y libpq5
-# 4. Use requirements-lock.txt or poetry.lock for reproducible builds
-# 5. Add build-time ARGs for version info:
-#    ARG VERSION=dev
-#    ENV APP_VERSION=${VERSION}
-# 6. Add runtime secrets management:
-#    ENV API_KEY_FILE=/run/secrets/api_key
-# 7. Mount volumes for model cache:
-#    VOLUME /app/models
-# 8. Add COPY commands for config files:
-#    COPY --from=builder /build/config.yaml /app/config.yaml
-
-# ============================================================================
-# Dependencies Management
-# ============================================================================
-# For reproducible builds, use one of:
-#
-# 1. pip freeze > requirements.txt
-#    Simple but includes transitive dependencies
-#
-# 2. pip-compile (pip-tools)
-#    Generates requirements.txt from requirements.in
-#    Better for managing direct dependencies
-#
-# 3. Poetry (pyproject.toml + poetry.lock)
-#    Full dependency management with lockfile
-#    COPY pyproject.toml poetry.lock ./
-#    RUN pip install poetry && poetry install --no-dev --no-root
-#
-# 4. PDM (pyproject.toml + pdm.lock)
-#    PEP 582 compliant, faster than Poetry
-#    COPY pyproject.toml pdm.lock ./
-#    RUN pip install pdm && pdm install --prod --no-self
-
-# ============================================================================
-# AI Agent Specific Considerations
-# ============================================================================
-# 1. Model caching: Mount volume for downloaded models
-#    VOLUME /app/.cache/huggingface
-#
-# 2. GPU support: Use nvidia/cuda base image in builder
-#    FROM nvidia/cuda:12.3.1-cudnn9-runtime-ubuntu22.04
-#
-# 3. Memory limits: Set in docker-compose or runtime
-#    docker run --memory="4g" python-agent:latest
-#
-# 4. Environment variables for API keys (never hardcode):
-#    ENV OPENAI_API_KEY_FILE=/run/secrets/openai_key
-#    ENV ANTHROPIC_API_KEY_FILE=/run/secrets/anthropic_key
-#
-# 5. Logging configuration:
-#    ENV LOG_LEVEL=INFO
-#    ENV LOG_FORMAT=json

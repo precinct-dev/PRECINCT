@@ -7,9 +7,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 )
 
 const (
@@ -159,10 +161,32 @@ func newMux(scanner Scanner, patternCount int) *http.ServeMux {
 }
 
 func main() {
+	healthcheck := flag.Bool("healthcheck", false, "perform a health check and exit 0/1")
+	flag.Parse()
+
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8085"
+	}
+
+	if *healthcheck {
+		resp, err := http.Get("http://127.0.0.1:" + port + "/health")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
+			os.Exit(1)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "healthcheck returned %d\n", resp.StatusCode)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	scanner := NewPatternScanner()
 	mux := newMux(scanner, scanner.PatternCount())
 
-	addr := ":8085"
+	addr := ":" + port
 	log.Printf("[content-scanner] listening on %s (%d patterns loaded)", addr, scanner.PatternCount())
 	log.Fatal(http.ListenAndServe(addr, mux))
 }

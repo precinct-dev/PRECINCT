@@ -4,7 +4,7 @@
 # ============================================================================
 # Stage 1: Builder
 # ============================================================================
-FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS builder
+FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
 
 # Install build dependencies
 RUN apk add --no-cache \
@@ -18,8 +18,6 @@ WORKDIR /build
 COPY go.mod go.sum ./
 
 # Download dependencies
-# Set GOTOOLCHAIN=auto to allow automatic Go version download if needed
-ENV GOTOOLCHAIN=auto
 RUN go mod download && go mod verify
 
 # Copy source code
@@ -29,8 +27,9 @@ COPY . .
 # CGO_ENABLED=0: Creates statically linked binary (required for distroless)
 # -ldflags="-s -w": Strip debug info and symbol table (smaller binary)
 # -trimpath: Remove file system paths from binary (reproducible builds)
-# GOTOOLCHAIN=auto: Allow Go to download required toolchain version if needed
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build \
+# TARGETARCH: Set by Docker BuildKit (amd64/arm64) based on --platform or host
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w" \
     -trimpath \
     -o /build/gateway \
@@ -39,7 +38,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 GOTOOLCHAIN=auto go build \
 # ============================================================================
 # Stage 2: Runtime (Distroless)
 # ============================================================================
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:cba10d7abd3e203428e86f5b2d7fd5eb7d8987c387864ae4996cf97191b33764
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
 
 # Set working directory
 WORKDIR /app
