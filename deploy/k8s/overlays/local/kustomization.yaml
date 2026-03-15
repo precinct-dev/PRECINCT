@@ -1,0 +1,55 @@
+# ------------------------------------------------------------------------------
+# Kustomize Local Overlay (Cloud-Agnostic)
+# Story: oc-ko5 (GAP-7)
+#
+# Minimal local development configuration for:
+#   - kind clusters
+#   - Docker Desktop Kubernetes
+#   - k3s
+#   - minikube
+#
+# This is a lightweight overlay that simply references the base.
+# For the full local overlay with SPIRE, SPIKE, KeyDB, and admission control,
+# see deploy/k8s/overlays/ variants.
+#
+# PodSecurity is relaxed to "baseline" for gateway and tools namespaces because
+# local clusters lack the SPIRE CSI driver; the base manifests use hostPath as
+# a placeholder for the SPIRE agent socket.
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+commonAnnotations:
+  app.kubernetes.io/environment: local
+
+patches:
+  # Relax PodSecurity for gateway namespace (hostPath for SPIRE agent socket)
+  - target:
+      kind: Namespace
+      name: gateway
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: gateway
+        labels:
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: baseline
+          pod-security.kubernetes.io/warn: baseline
+
+  # Relax PodSecurity for tools namespace (hostPath for SPIRE agent socket)
+  - target:
+      kind: Namespace
+      name: tools
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: tools
+        labels:
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: baseline
+          pod-security.kubernetes.io/warn: baseline

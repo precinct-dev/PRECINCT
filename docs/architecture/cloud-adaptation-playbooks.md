@@ -22,7 +22,7 @@ Use this with:
 2. Install tools: `kubectl`, `kustomize`, `helm`, `cosign`, `jq`.
 3. Clone repo and set working dir:
 ```bash
-cd /path/to/PRECINCT/POC
+cd /path/to/PRECINCT
 ```
 4. Define target context variables:
 ```bash
@@ -49,7 +49,7 @@ A provider adaptation is considered aligned only when all of the following are t
 1. Provision EKS cluster with managed node groups and OIDC enabled.
 2. Install cluster prerequisites:
 ```bash
-kubectl --context "${CLUSTER_CONTEXT}" apply -f infra/eks/crds/policy-controller-crds.yaml
+kubectl --context "${CLUSTER_CONTEXT}" apply -f deploy/terraform/crds/policy-controller-crds.yaml
 kubectl --context "${CLUSTER_CONTEXT}" apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.16.0/deploy/gatekeeper.yaml
 ```
 3. Configure workload identity and IAM bindings (IRSA or equivalent) for:
@@ -59,7 +59,7 @@ kubectl --context "${CLUSTER_CONTEXT}" apply -f https://raw.githubusercontent.co
 4. Configure immutable audit destination (S3 Object Lock) and retention policy.
 5. Deploy chosen overlay:
 ```bash
-kubectl --context "${CLUSTER_CONTEXT}" apply -k "infra/eks/overlays/${ENV_OVERLAY}"
+kubectl --context "${CLUSTER_CONTEXT}" apply -k "deploy/terraform/overlays/${ENV_OVERLAY}"
 ```
 6. Register SPIRE entries and verify identities are issued.
 7. Run validation suite:
@@ -101,7 +101,7 @@ Acceptance rule: do not mark parity if a control is downgraded without documente
 4. Configure immutable audit retention path (Cloud Storage bucket with retention lock).
 5. Deploy overlay:
 ```bash
-kubectl --context "${CLUSTER_CONTEXT}" apply -k "infra/eks/overlays/${ENV_OVERLAY}"
+kubectl --context "${CLUSTER_CONTEXT}" apply -k "deploy/terraform/overlays/${ENV_OVERLAY}"
 ```
 6. Validate:
 ```bash
@@ -122,7 +122,7 @@ make observability-evidence-gate-validate
 4. Configure immutable audit retention path (Blob immutability policy).
 5. Deploy overlay:
 ```bash
-kubectl --context "${CLUSTER_CONTEXT}" apply -k "infra/eks/overlays/${ENV_OVERLAY}"
+kubectl --context "${CLUSTER_CONTEXT}" apply -k "deploy/terraform/overlays/${ENV_OVERLAY}"
 ```
 6. Validate:
 ```bash

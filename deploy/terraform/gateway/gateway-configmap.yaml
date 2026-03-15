@@ -1,0 +1,67 @@
+# ------------------------------------------------------------------------------
+# Gateway ConfigMap
+# Story: RFA-9fv.4
+#
+# Contains OPA policies and tool registry configuration for the MCP Security
+# Gateway. These files are mounted into the gateway pod at /config/.
+#
+# In production, these would be managed by a CI/CD pipeline that updates the
+# ConfigMap from the source of truth in config/opa/ and config/tool-registry.yaml.
+#
+# This manifest is a TEMPLATE. The Makefile "deploy" target generates the actual
+# ConfigMap from the source files using:
+#   kubectl create configmap gateway-config --from-file=...
+#
+# The declarative version below shows the structure; the Makefile approach
+# ensures the ConfigMap always matches the committed policy files.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: mcp-security-gateway
+    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/component: config
+data:
+  # OPA policies and data files are loaded from config/opa/ at deploy time.
+  # The Makefile uses --from-file to populate this ConfigMap with:
+  #   opa/mcp_policy.rego
+  #   opa/ui_policy.rego
+  #   opa/ui_csp_policy.rego
+  #   opa/exfiltration.rego
+  #   opa/context_policy.rego
+  #   opa/tool_grants.yaml
+  #   opa/ui_capability_grants.yaml
+  #   tool-registry.yaml
+  #
+  # Placeholder entry to make this a valid ConfigMap for kubeconform validation.
+  # The deploy target replaces this with real data.
+  _placeholder: |
+    # This ConfigMap is populated at deploy time by the Makefile.
+    # Run: make -C infra/eks/gateway deploy
+  # Extension registry for content-scanner sidecar (K8s variant).
+  # Source: config/extensions-demo-k8s.yaml
+  extensions-demo-k8s.yaml: |
+    # PRECINCT Extension Registry -- Content Scanner Demo (Kubernetes)
+    # Configures the content-scanner sidecar in the post_inspection slot.
+    # Used by K8s: EXTENSION_REGISTRY_PATH=/config/extensions-demo-k8s.yaml
+    version: "1"
+    extensions:
+      - name: "content_scanner"
+        slot: "post_inspection"
+        enabled: true
+        endpoint: "http://content-scanner.tools.svc.cluster.local:8085/scan"
+        timeout_ms: 2000
+        fail_mode: "fail_open"
+        priority: 100
+        description: "Content scanner sidecar for prompt injection, dangerous code, and credential leak detection"
+        filters:
+          methods: ["tools/call"]
+          tools: []
+        request_fields:
+          include_body: true
+          include_spiffe_id: true
+          include_tool_name: true
+          include_security_flags: true

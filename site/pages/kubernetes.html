@@ -209,7 +209,7 @@
                 Deploy the full stack to a local Kubernetes cluster (Docker Desktop) and validate
                 it with the E2E demo.
               </p>
-              <pre data-lang="bash"><code>cd POC
+              <pre data-lang="bash"><code>
 make k8s-up        # Deploy to local K8s (Docker Desktop)
 make k8s-opensearch-up  # Optional: add OpenSearch + Dashboards extension
 make demo-k8s      # Run E2E demo
@@ -445,9 +445,9 @@ graph TB
               <p>
                 Preview and validate overlays before applying them to the cluster.
               </p>
-              <pre data-lang="bash"><code>kustomize build infra/eks/overlays/local/   # Preview local
-kustomize build infra/eks/overlays/local-opensearch/  # Preview local + OpenSearch
-kustomize build infra/eks/overlays/prod/    # Preview prod
+              <pre data-lang="bash"><code>kustomize build deploy/terraform/overlays/local/   # Preview local
+kustomize build deploy/terraform/overlays/local-opensearch/  # Preview local + OpenSearch
+kustomize build deploy/terraform/overlays/prod/    # Preview prod
 make k8s-validate                            # Validate all overlays</code></pre>
             </section>
 
@@ -607,7 +607,7 @@ spec:
   source:
     repoURL: https://github.com/precinct-dev/PRECINCT
     targetRevision: main
-    path: POC/infra/eks/overlays/prod
+    path: deploy/terraform/overlays/prod
   destination:
     server: https://kubernetes.default.svc
     namespace: precinct
@@ -624,7 +624,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 5m
-  path: ./POC/infra/eks/overlays/prod
+  path: ./deploy/terraform/overlays/prod
   prune: true
   sourceRef:
     kind: GitRepository
@@ -633,7 +633,7 @@ spec:
               <h3>GitHub Actions</h3>
               <pre data-lang="yaml"><code>- name: Deploy PRECINCT
   run: |
-    kustomize build POC/infra/eks/overlays/${{ env.ENVIRONMENT }} | kubectl apply -f -
+    kustomize build deploy/terraform/overlays/${{ env.ENVIRONMENT }} | kubectl apply -f -
     kubectl rollout status deployment/gateway -n precinct --timeout=300s</code></pre>
             </section>
 

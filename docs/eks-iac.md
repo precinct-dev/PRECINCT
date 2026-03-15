@@ -175,7 +175,7 @@ For the PRECINCT, OpenTofu/Terraform is the strongest choice because:
 ### Suggested Project Structure
 
 ```
-POC/infra/eks/
+deploy/terraform/
   main.tf              # Root module: EKS cluster, VPC, IAM
   variables.tf         # Input variables (region, cluster name, node sizing)
   outputs.tf           # Cluster endpoint, kubeconfig, OIDC provider ARN
@@ -336,7 +336,7 @@ For this project, managed node groups with explicit instance types provide bette
 ### Next Steps (for story RFA-9fv.2)
 
 1. Create S3 bucket and DynamoDB table for Terraform state (can be done via CLI or a bootstrap Terraform config)
-2. Write `POC/infra/eks/` Terraform configuration using the recommended modules
+2. Write `deploy/terraform/` Terraform configuration using the recommended modules
 3. Validate with `tofu plan` in dry-run mode
 4. Apply to create the cluster
 5. Verify with `kubectl get nodes` and deploy a test workload

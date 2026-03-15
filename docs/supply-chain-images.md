@@ -39,7 +39,7 @@ Based on current industry standards and security research:
 
 ## Approved Base Images
 
-### Go Services (PRECINCT Gateway, spike-cli, Context Fetcher)
+### Go Services (PRECINCT Gateway, precinct CLI, Context Fetcher)
 
 **Builder Stage:**
 ```dockerfile
@@ -140,8 +140,8 @@ All Dockerfiles MUST use multi-stage builds to:
 4. Enable layer caching for faster builds
 
 See template Dockerfiles:
-- `docker/Dockerfile.go-service` - Go services template
-- `docker/Dockerfile.python-agent` - Python agents template
+- `deploy/compose/Dockerfile.go-service` - Go services template
+- `deploy/compose/Dockerfile.python-agent` - Python agents template
 
 ## Docker Ignore
 

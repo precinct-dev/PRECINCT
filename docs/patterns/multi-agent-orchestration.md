@@ -85,7 +85,7 @@ pattern described in Section 3 below.
 
 ### 2.1 SPIFFE ID Scheme for Multi-Agent Workloads
 
-The existing SPIRE registration entries (see `infra/eks/spire/registration-entries.yaml`)
+The existing SPIRE registration entries (see `deploy/terraform/spire/registration-entries.yaml`)
 use the scheme:
 
 ```
@@ -474,6 +474,6 @@ SPIFFE IDs are pseudonymous identifiers under GDPR Recital 26. In multi-agent sc
 - SPIKE token validation: `internal/gateway/middleware/spike_token.go`
 - Context propagation: `internal/gateway/middleware/context.go`
 - OPA policy middleware: `internal/gateway/middleware/opa.go`
-- SPIRE registration entries: `infra/eks/spire/registration-entries.yaml`
+- SPIRE registration entries: `deploy/terraform/spire/registration-entries.yaml`
 - Deployment patterns: `docs/architecture/deployment-patterns.md`
 - GDPR deletion: `internal/gateway/middleware/gdpr_delete.go`

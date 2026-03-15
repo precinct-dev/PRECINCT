@@ -25,9 +25,9 @@ explicit allow/deny checks and machine-readable evidence output.
 Run from repository root:
 
 ```bash
-make -C POC k8s-up
-make -C POC k8s-runtime-campaign
-make -C POC demo-k8s
+k8s-up
+k8s-runtime-campaign
+demo-k8s
 ```
 
 ## Evidence Artifacts

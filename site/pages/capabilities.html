@@ -619,7 +619,7 @@
                   </tr>
                   <tr>
                     <td><strong>CLI Operations</strong></td>
-                    <td><code>agw</code> flows for compliance evidence, operations, status, and governance commands.</td>
+                    <td><code>precinct</code> flows for compliance evidence, operations, status, and governance commands.</td>
                     <td><a href="cli.html">CLI reference</a></td>
                   </tr>
                   <tr>
@@ -654,7 +654,7 @@
               <li>Compliance reporting and evidence collection flows for audit packages.</li>
               <li>Dual observability backends: Phoenix for trace analysis and OpenSearch Dashboards for indexed compliance evidence search.</li>
               <li>Kubernetes OpenSearch extension wired with Secret-backed certs/credentials, SPIRE identities, and NetworkPolicy isolation.</li>
-              <li><code>agw</code> evidence export can pull from OpenSearch over HTTPS + mTLS for compliance-proof workflows.</li>
+              <li><code>precinct</code> evidence export can pull from OpenSearch over HTTPS + mTLS for compliance-proof workflows.</li>
               <li>GDPR ROPA visibility and right-to-erasure operation support.</li>
               <li>Conformance and benchmark harnesses for behavioral and performance validation.</li>
             </ul>
@@ -687,8 +687,8 @@ make opensearch-validate
 make k8s-opensearch-up
 
 # Compliance evidence from OpenSearch (HTTPS + mTLS)
-export AGW_OPENSEARCH_PASSWORD='<secret>'
-go run ./cmd/agw compliance collect \
+export PRECINCT_OPENSEARCH_PASSWORD='<secret>'
+go run ./cli/agw compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \

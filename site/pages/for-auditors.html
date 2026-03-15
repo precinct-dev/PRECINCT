@@ -898,21 +898,21 @@ make production-readiness-validate</code></pre>
 }</code></pre>
 
             <h3>CLI audit commands</h3>
-            <p>Use the <code>agw</code> CLI to query and verify audit trails:</p>
+            <p>Use the <code>precinct</code> CLI to query and verify audit trails:</p>
             <pre><code class="language-bash"># Search audit records by agent identity
-agw audit search --spiffe-id "spiffe://precinct.dev/agent/research-bot" --last 24h
+precinct audit search --spiffe-id "spiffe://precinct.dev/agent/research-bot" --last 24h
 
 # Explain a specific audit decision
-agw audit explain --request-id req-c8d4e512
+precinct audit explain --request-id req-c8d4e512
 
 # Verify hash chain integrity
-agw audit verify --from "2025-11-15T00:00:00Z" --to "2025-11-15T23:59:59Z"</code></pre>
+precinct audit verify --from "2025-11-15T00:00:00Z" --to "2025-11-15T23:59:59Z"</code></pre>
 
             <h3>CLI compliance evidence commands (OpenSearch-backed, secure path)</h3>
-            <pre><code class="language-bash">export AGW_OPENSEARCH_PASSWORD='&lt;secret&gt;'
+            <pre><code class="language-bash">export PRECINCT_OPENSEARCH_PASSWORD='&lt;secret&gt;'
 
 # Collect SOC2 evidence from indexed audit records over HTTPS + mTLS
-agw compliance collect \
+precinct compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \

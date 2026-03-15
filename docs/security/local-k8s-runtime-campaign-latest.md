@@ -13,9 +13,9 @@ Machine-readable artifact: `docs/security/artifacts/local-k8s-runtime-campaign-2
 
 **PASS**
 
-- `make -C POC k8s-runtime-campaign` passed (`controls=5/5 checks=10/10`).
-- `make -C POC demo-k8s` passed (`ALL CYCLES PASSED`).
-- `make -C POC k8s-validate` passed.
+- `k8s-runtime-campaign` passed (`controls=5/5 checks=10/10`).
+- `demo-k8s` passed (`ALL CYCLES PASSED`).
+- `k8s-validate` passed.
 
 ## Residual Risk
 

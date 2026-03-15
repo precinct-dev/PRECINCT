@@ -1,242 +1,248 @@
-# PRECINCT
+# PRECINCT (Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools) -- Reference Implementation
 
-**Policy-driven Runtime Enforcement and Cryptographic Identity for Networked Compute and Tools**
+> Website: [https://precinct.dev](https://precinct.dev)
 
-[precinct.dev](https://precinct.dev)
+## What Is This?
 
----
+This is a **reference implementation of a PRECINCT Gateway** that implements a 13-layer
+middleware chain for securing AI agent tool calls. It validates the
+[PRECINCT v2.5](../docs/architecture/reference-architecture.md),
+a 200+ page document defining security patterns for production agentic AI systems.
 
-PRECINCT is a security reference architecture and working implementation for **agentic AI systems** -- autonomous agents that reason about goals, invoke tools, access data, and orchestrate sub-agents.
+The gateway interposes between AI agents and MCP tool servers, enforcing
+authentication, authorization, audit, data-loss prevention, rate limiting,
+and secret management at every layer -- without the agents needing to know
+about any of it.
 
-Traditional security frameworks assume human users and static service accounts. Agents break those assumptions: they generate unpredictable tool calls, chain actions across trust boundaries, and operate at machine speed. PRECINCT addresses this by placing an inline **MCP Security Gateway** between agents and their resources, enforcing identity, authorization, data protection, and audit at every interaction -- without modifying upstream agent code.
-
-## What's in This Repository
-
-This repo contains two things:
-
-| Layer | What it is | Where |
-|-------|-----------|-------|
-| **Reference Architecture** | A 200+ page specification defining security controls, threat models, compliance mappings, and deployment patterns for securing agentic AI | [`docs/`](docs/) |
-| **Working Implementation** | A Go gateway with a 13-layer security middleware chain, Docker Compose and Kubernetes deployments, Go/Python SDKs, and 43 E2E tests that exercise every control against real infrastructure (no mocks) | [`POC/`](POC/) |
-
-### What's Ready to Run
-
-The implementation in `POC/` is a fully functional security gateway you can deploy locally in under five minutes. It includes:
-
-- A **13-layer middleware chain** (size limits, JSON-RPC validation, SPIFFE auth, audit, tool registry, OPA policy, DLP, session tracking, step-up gating, deep scan, rate limiting, circuit breaker, secret injection)
-- **Docker Compose** deployment with all supporting infrastructure (SPIRE, SPIKE Nexus, KeyDB, OPA, Phoenix, optional OpenSearch)
-- **Kubernetes manifests** (EKS-targeted, with a local overlay for Docker Desktop)
-- **Go and Python SDKs** for integrating your own agents
-- **43 E2E demo tests** (21 Go + 22 Python) that exercise every middleware layer through the full stack
-- **Compliance automation** generating SOC 2, ISO 27001, HIPAA, and PCI-DSS evidence bundles
-- **Observability** via OpenTelemetry traces (Phoenix UI) and optional OpenSearch dashboards
-
-### What's a Reference You Adapt
-
-The architecture documents in `docs/` define patterns you adapt to your environment:
-
-- **Cloud adaptation playbooks** for AWS (EKS/Fargate), GCP (GKE), and Azure (AKS) -- step-by-step guides, not deployable IaC
-- **Compliance mappings** (SOC 2, HIPAA, PCI-DSS, GDPR, ISO 27001) -- control inventories and RACI matrices you tailor to your org
-- **Threat models** (STRIDE/PASTA) -- threat coverage analysis you extend with your own attack surfaces
-- **Deployment patterns** -- classification of controls as Universal, K8s-Native, or K8s-Equivalent, so you know what translates to your runtime
-
-## Quick Start
-
-Prerequisites: Docker 25+, Docker Compose 2.24+, Go 1.24.6+, make, bash 4+.
-
-```bash
-git clone https://github.com/precinct-dev/PRECINCT.git
-cd PRECINCT/POC
-
-make setup            # Interactive setup wizard (configures .env)
-make phoenix-up       # Start observability (Phoenix + OTel collector)
-make up               # Start all services (SPIRE, SPIKE, KeyDB, gateway, mock MCP)
-make demo-compose     # Run 43 E2E tests through the full stack
+```
+Agent --> [1.Size] --> [2.Shape] --> [3.Auth] --> [4.Audit] --> [5.Registry]
+      --> [6.Policy] --> [7.DLP] --> [8.Session] --> [9.StepUp] --> [10.DeepScan]
+      --> [11.RateLimit] --> [12.CircuitBreaker] --> [13.TokenSub] --> MCP Server
 ```
 
-Phoenix trace UI: `http://localhost:6006`
+Two deployment modes are supported: **Docker Compose** (local development) and
+**Kubernetes** (EKS-targeted, with a local overlay for Docker Desktop K8s).
+Go and Python SDKs are provided for agent integration.
 
-To enable LLM-based deep content scanning (layer 10):
-
-```bash
-export GROQ_API_KEY=your-key-here
-make down && make up
-```
-
-For Kubernetes deployment on Docker Desktop:
-
-```bash
-make k8s-up           # Build, push to local registry, deploy to Docker Desktop K8s
-make demo-k8s         # Run E2E tests against K8s deployment
-```
-
-See the full [Deployment Guide](docs/deployment-guide.md) for production and EKS instructions.
 
 ## Architecture at a Glance
 
-```
-Agent --> [Size] --> [Shape] --> [Auth] --> [Audit] --> [Registry]
-      --> [Policy] --> [DLP] --> [Session] --> [StepUp] --> [DeepScan]
-      --> [RateLimit] --> [CircuitBreaker] --> [TokenSub] --> MCP Server
-```
-
-| # | Middleware | What It Does |
-|---|-----------|-------------|
-| 1 | Size Guard | Rejects oversized payloads (configurable, default 10 MB) |
-| 2 | Shape Validator | Validates JSON-RPC 2.0 envelope structure |
-| 3 | SPIFFE Auth | Cryptographic agent identity via SPIRE SVIDs (mTLS in prod, header in dev) |
-| 4 | Audit Logger | Hash-chained structured decision records with OTel spans |
-| 5 | Tool Registry | SHA-256 tool hash verification with cosign-attested hot-reload |
-| 6 | OPA Policy | Embedded Rego evaluation for tool grants, risk levels, and step-up rules |
-| 7 | DLP Scanner | Credential blocking (fail-closed), PII flagging, injection detection |
-| 8 | Session Context | KeyDB-backed cross-request exfiltration detection with GDPR delete |
-| 9 | Step-Up Gating | Risk-based approval (auto/manual/deny) with configurable thresholds |
-| 10 | Deep Scan | LLM-based content analysis via configurable guard model |
-| 11 | Rate Limiter | Token bucket per SPIFFE ID via KeyDB (configurable RPM/burst) |
+| # | Middleware Layer | Description |
+|---|-----------------|-------------|
+| 1 | Request Size Guard | Rejects oversized payloads (configurable, default 10 MB) |
+| 2 | Request Shape Validator | Validates JSON-RPC 2.0 envelope structure |
+| 3 | SPIFFE Authentication | Validates X-SPIFFE-ID header against trust domain |
+| 4 | Audit Logger | Decision journal with structured JSON logging + OTel spans |
+| 5 | Tool Registry | Verifies tool existence and SHA-256 hash integrity |
+| 6 | OPA Policy Engine | Embedded Rego evaluation (tool grants, risk levels, step-up) |
+| 7 | DLP Scanner | Credentials detection (always block), PII flagging, injection detection |
+| 8 | Session Context | Cross-request exfiltration detection via KeyDB |
+| 9 | Step-Up Gating | Risk-based approval flow (auto/manual/deny by risk level) |
+| 10 | Deep Scan (Guard Model) | LLM-based content analysis via configurable guard model (default Groq) |
+| 11 | Rate Limiter | Token bucket via KeyDB (configurable RPM/burst per SPIFFE ID) |
 | 12 | Circuit Breaker | Per-tool circuit breaker (closed/open/half-open states) |
-| 13 | Token Substitution | SPIKE late-binding secret injection (innermost layer -- security invariant) |
+| 13 | Token Substitution | SPIKE late-binding secret injection (MUST be innermost -- security invariant) |
 
-### Control Plane Endpoints
+### Control Plane Endpoints (Phase 3)
 
-Beyond MCP tool call proxying, the gateway provides five governance planes:
+The gateway exposes per-plane control endpoints for framework-agnostic governance:
 
-| Endpoint | Plane | Purpose |
-|----------|-------|---------|
-| `POST /v1/ingress/admit` | Ingress | Envelope validation, SPIFFE source matching, SHA-256 content-addressing, replay detection |
-| `POST /v1/context/admit` | Context | Memory tier enforcement (ephemeral/session/long_term/regulated), DLP classification |
+| Endpoint | Plane | Function |
+|----------|-------|----------|
+| `POST /v1/ingress/admit` | Ingress | Canonical envelope validation, SPIFFE source principal matching, SHA-256 payload content-addressing, replay detection (30min nonce TTL) |
+| `POST /v1/context/admit` | Context | Memory tier enforcement (ephemeral/session/long_term/regulated), provenance validation, DLP classification |
 | `POST /v1/model/call` | Model | Provider authorization, data residency, HIPAA-aware prompt safety, budget tracking |
-| `POST /v1/tool/execute` | Tool | Capability registry, shell-injection prevention, step-up gating |
-| `POST /v1/loop/check` | Loop | 8-state governance machine, 8-dimension budget limits, operator halt (kill switch) |
+| `POST /v1/tool/execute` | Tool | Capability registry, CLI shell-injection prevention (command allowlist, max-args, denied-arg-tokens), step-up |
+| `POST /v1/loop/check` | Loop | 8-state governance state machine, 8-dimension immutable budget limits, operator halt, provider unavailability |
 
-### Supporting Infrastructure
+### Multi-Agent Governance
 
-| Component | Role |
-|-----------|------|
-| [SPIRE](https://spiffe.io/) | SPIFFE workload identity -- cryptographic agent identity without shared secrets |
-| [SPIKE Nexus](https://spike.ist/) | Late-binding secrets vault with SPIFFE-based access control |
-| [KeyDB](https://docs.keydb.dev/) | Session state persistence, rate-limit counters, exfiltration detection |
-| [OPA](https://www.openpolicyagent.org/) | Policy-as-code engine (Rego) for authorization decisions |
-| [Phoenix](https://phoenix.arize.com/) + OTel | Distributed tracing and AI observability |
-| [OpenSearch](https://opensearch.org/) (optional) | Indexed audit evidence for compliance and forensics |
+- **RLM Governance Engine**: Cross-cutting lineage tracking with depth (max 6), subcall (max 64), and budget-unit (max 128) limits. UASGS bypass prevention.
+- **Loop State Machine**: 8 states (CREATED, RUNNING, WAITING_APPROVAL, COMPLETED, HALTED_POLICY, HALTED_BUDGET, HALTED_PROVIDER_UNAVAILABLE, HALTED_OPERATOR)
+- **Loop Admin API**: `GET /admin/loop/runs`, `GET /admin/loop/runs/<id>`, `POST /admin/loop/runs/<id>/halt` (operator kill switch)
+- **CLI Tool Adapter**: Shell injection prevention via command allowlists, max-args, denied-arg-token detection (`;`, `&&`, `||`, `|`, `$(`, `` ` ``, `>`, `<`)
+- **Context Memory Tiering**: Four-tier classification with DLP enforcement for `long_term` writes and step-up for `regulated` reads
+- **Ingress Connector Envelope**: SPIFFE principal matching, SHA-256 content-addressing, replay detection with composite nonce key + 30min TTL
+- **Go SDK SPIKE Token Builder**: `BuildSPIKETokenRef` and `BuildSPIKETokenRefWithScope` functions matching the Python SDK
 
-## Documentation
+Supporting infrastructure:
 
-All documentation lives in [`docs/`](docs/). The [documentation index](docs/README.md) has the complete catalog. Key entry points by audience:
+- **SPIRE** -- SPIFFE identity for all workloads (mTLS-ready)
+- **SPIKE Nexus** -- Late-binding secret vault with SPIFFE-based access control
+- **KeyDB** -- Session state and rate-limit counters
+- **OPA** -- Policy-as-code with Rego
+- **Phoenix + OTel Collector** -- Distributed tracing and observability
+- **OpenSearch + Dashboards (optional)** -- Indexed audit evidence search for compliance operations and forensics
 
-### "I want to understand the architecture"
 
-| Document | Description |
-|----------|-------------|
-| [Securing Agentic AI](docs/securing-agentic-ai-reference-architecture.md) | Narrative overview -- the problem, the approach, and why existing frameworks fall short |
-| [Reference Architecture](docs/architecture/reference-architecture.md) | The full v2.5 specification: identity, authorization, secrets, gateway, observability |
-| [Multi-Agent Orchestration Patterns](docs/patterns/multi-agent-orchestration.md) | Security patterns for orchestrator-to-worker delegation through the gateway |
+## Quick Start
 
-### "I want to deploy and run it"
+Prerequisites: Docker, Docker Compose, Go 1.24.6+, make.
 
-| Document | Description |
-|----------|-------------|
-| [Prerequisites](docs/getting-started/prerequisites.md) | Required tools and minimum versions |
-| [Deployment Guide](docs/deployment-guide.md) | Step-by-step for Docker Compose, local K8s, and EKS |
-| [Configuration Reference](docs/configuration-reference.md) | Every environment variable and config file |
-| [API Reference](docs/api-reference.md) | Gateway HTTP API: endpoints, JSON-RPC protocol, error codes |
-| [SPIFFE Setup](docs/spiffe-setup.md) | SPIFFE ID schema and SPIRE registration |
-
-### "I want to integrate my own agents"
-
-| Document | Description |
-|----------|-------------|
-| [Go SDK](POC/sdk/go/README.md) | Go client with retry logic and session management |
-| [Python SDK](POC/sdk/python/README.md) | Python client compatible with PydanticAI, DSPy, LangGraph, CrewAI |
-| [Integration Playbook](docs/sdk/no-upstream-mod-integration-playbook.md) | How to onboard agent apps without modifying upstream source |
-| [App Pack Authoring](docs/sdk/app-pack-authoring-guide.md) | Write thin adaptation layers to connect your app to the gateway |
-
-### "I need compliance and security documentation"
-
-| Document | Description |
-|----------|-------------|
-| [Security Review](docs/security/security-review.md) | Independent review: threat coverage, trust boundaries, residual risks |
-| [STRIDE/PASTA Mapping](docs/security/stride-pasta-assurance.md) | Threat model mapped to STRIDE classes and PASTA risk lifecycle |
-| [RACI Mapping](docs/compliance/raci-mapping.md) | SOC 2, ISO 27001, GDPR, HIPAA crosswalk with 10-role RACI |
-| [GDPR Article 30 ROPA](docs/compliance/gdpr-article-30-ropa.md) | Records of Processing Activities |
-| [HIPAA Technical Profile](docs/compliance/hipaa-technical-profile.md) | Technical safeguard mappings with evidence sources |
-| [Zero-Trust FAQ](docs/security/agentic-zero-trust-faq.md) | Answers to recurring stakeholder security questions |
-
-### "I want to adapt this for my cloud"
-
-| Document | Description |
-|----------|-------------|
-| [Cloud Adaptation Playbooks](docs/architecture/cloud-adaptation-playbooks.md) | Step-by-step for AWS, GCP, Azure |
-| [Non-K8s Adaptation](docs/architecture/non-k8s-cloud-adaptation-guide.md) | Adapting to non-Kubernetes runtimes |
-| [K8s Hardening Matrix](docs/architecture/k8s-hardening-portability-matrix.md) | Per-control portability classification |
-| [Cloudflare Workers](docs/architecture/cloudflare-workers-compensating-controls.md) | Compensating controls for serverless edge |
-| [Deployment Patterns](docs/architecture/deployment-patterns.md) | Universal vs K8s-Native vs K8s-Equivalent controls |
-
-### "I want the executive summary"
-
-| Document | Description |
-|----------|-------------|
-| [Executive Narrative](docs/executive-narrative.md) | CIO/CISO/CTO-level brief on security posture and trade-offs |
-| [Current State and Roadmap](docs/current-state-and-roadmap.md) | What is implemented, what is planned |
-
-## Repository Structure
-
-```
-docs/                 All documentation (architecture, security, compliance, operations, SDK)
-POC/                  Reference implementation
-  cmd/gateway/          Gateway binary entrypoint
-  internal/gateway/     Gateway core + 13-layer middleware chain
-  config/               OPA policies, tool registry, SPIFFE IDs, risk thresholds
-  sdk/go/               Go SDK
-  sdk/python/           Python SDK
-  ports/openclaw/       Example port: securing OpenClaw without modifying its source
-  docker/               Dockerfiles for all services
-  infra/eks/            Kubernetes manifests (base + EKS + local overlays)
-  tests/                Unit, integration, E2E, conformance, and benchmark tests
-  tools/compliance/     Compliance report automation
-  demo/                 Demo harness (Go + Python test clients, mock MCP server)
-  scripts/              Setup, security, and operational scripts
-site/                 Project website (precinct.dev)
-scripts/              Repository-level scripts
+```bash
+make phoenix-up      # Start observability stack (Phoenix + OTel collector)
+make up              # Start all services (SPIRE, SPIKE, KeyDB, gateway, mock MCP server)
+make demo-compose    # Run 43 E2E demo tests (21 Go + 22 Python)
 ```
 
-## Key Make Targets
+The demo exercises every middleware layer with real requests through the full
+stack -- no mocks. Expected output: all 43 tests pass.
 
-Run these from the `POC/` directory:
+To enable deep scan (requires a Groq API key):
+
+```bash
+export GROQ_API_KEY=your-key-here
+# Restart the stack to pick up the key
+make down && make up
+```
+
+Phoenix UI is available at `http://localhost:6006` for trace inspection.
+
+Optional compliance/forensics observability profile (Apache-2 stack):
+
+```bash
+make opensearch-up
+make opensearch-seed
+```
+
+OpenSearch Dashboards is available at `http://localhost:5601`.
+
+## Git Hooks (historical beads compatibility)
+
+`nd` is the canonical tracker for current work. The repo still carries a root
+`.beads` symlink only for historical hook compatibility when
+inspecting older automation or archived branches that still reference `bd`.
+
+If you ever see a pre-commit warning about a missing historical beads database, treat it as
+a warning (not a failed commit) and set:
+
+```bash
+export BEADS_DIR=.beads  # historical compatibility only
+```
+
+from the repository root before committing.
+
+For current delivery workflow, prefer:
+
+```bash
+nd ready
+nd show <story-id>
+nd update <story-id> --status=in_progress
+nd update <story-id> --append-notes "<nd_contract block>"
+make story-evidence-validate STORY_ID=<story-id>
+make tracker-surface-validate
+```
+
+
+## Directory Structure
+
+```
+cmd/gateway/              Gateway binary entrypoint
+internal/gateway/         Gateway core + 13-layer middleware chain
+config/                   OPA policies, tool registry, SPIFFE IDs, risk thresholds
+sdk/go/mcpgateway/        Go SDK
+sdk/python/               Python SDK
+deploy/compose/           Docker Compose files and Dockerfiles
+deploy/k8s/               Cloud-agnostic Kubernetes manifests (base + overlays)
+deploy/terraform/         EKS-specific Terraform and Kustomize overlays
+deploy/helm/              Helm chart for PRECINCT
+tools/compliance/         GDPR/SOC2/ISO27001/NIST compliance automation
+docs/                     All documentation
+tests/e2e/                E2E demo test suites
+tests/integration/        Go integration tests
+tests/benchmark/          Load testing scripts
+demo/                     Demo harness (Go + Python test clients, mock MCP server)
+scripts/                  Setup and operational scripts
+```
+
+
+## Make Commands
 
 | Target | Description |
 |--------|-------------|
-| `make setup` | Interactive setup wizard |
-| `make up` | Start Docker Compose stack (waits for healthy) |
-| `make down` | Stop stack |
-| `make demo-compose` | Run 43 E2E tests (Docker Compose) |
-| `make demo-k8s` | Run E2E tests (Kubernetes) |
-| `make test` | Run all tests (unit + integration + OPA) |
-| `make k8s-up` | Deploy to local Kubernetes |
+| `make help` | Show available targets |
+| `make setup` | Interactive CLI setup wizard |
+| **Core** | |
+| `make up` | Start Docker Compose stack (waits for all services healthy) |
+| `make down` | Stop Docker Compose stack |
+| `make test` | Run all tests (unit + tagged integration + OPA) |
+| `make test-unit` | Run unit tests (Go packages + non-tagged suites) |
+| `make test-integration` | Run tagged integration tests against an ensured local stack |
+| `make test-opa` | Run OPA policy tests |
+| `make test-e2e` | Run the full E2E demo suite (Compose + K8s) |
+| `make lint` | Run linters (golangci-lint or go fmt/vet) |
+| `make clean` | Full cleanup (containers, volumes, build artifacts, logs) |
+| `make logs` | Tail gateway logs |
+| **Demo** | |
+| `make demo` | Run E2E demo (Docker Compose + K8s) |
+| `make demo-compose` | Run E2E demo (Docker Compose only) |
+| `make demo-k8s` | Run E2E demo (K8s only) |
+| **Phoenix Observability** | |
+| `make phoenix-up` | Start Phoenix + OTel collector (persistent traces) |
+| `make phoenix-down` | Stop Phoenix stack (preserves trace data) |
+| `make phoenix-reset` | Stop Phoenix stack and destroy trace data |
+| **OpenSearch Observability (Optional)** | |
+| `make opensearch-up` | Start OpenSearch + Dashboards + audit forwarder |
+| `make opensearch-seed` | Seed OpenSearch index template and dashboard objects |
+| `make opensearch-validate` | Validate OpenSearch health and template wiring |
+| `make opensearch-down` | Stop OpenSearch profile (preserves indexed data) |
+| `make opensearch-reset` | Stop OpenSearch profile and destroy indexed data |
+| `make observability-up` | Start both observability backends (Phoenix + OpenSearch) |
+| `make observability-down` | Stop both observability backends (preserves data) |
+| `make observability-reset` | Destroy all observability backend data |
+| **Kubernetes** | |
+| `make k8s-up` | Deploy to local K8s (Docker Desktop; syncs config, builds, deploys) |
+| `make k8s-sync-config` | Sync K8s overlay gateway config from canonical config/ source |
+| `make k8s-check-config` | Check K8s overlay gateway config for drift (CI use) |
+| `make k8s-opensearch-up` | Deploy local K8s stack plus OpenSearch observability extension |
+| `make k8s-opensearch-down` | Remove OpenSearch extension resources from local K8s deployment |
+| `make k8s-down` | Tear down local K8s deployment |
+| **CI / Quality** | |
+| `make ci` | Full CI pipeline (lint + test + build) |
 | `make security-scan` | Run security scans (gosec, trivy) |
-| `make compliance-report` | Generate compliance evidence bundle |
-| `make phoenix-up` | Start Phoenix observability |
-| `make opensearch-up` | Start OpenSearch (optional compliance/forensics) |
-| `make help` | Show all available targets |
+| `make story-evidence-validate STORY_ID=<id>` | Validate evidence paths referenced in an `nd` story |
+| `make tracker-surface-validate` | Audit active release workflow surfaces for stale non-archival `bd`/beads references |
+| `make benchmark` | Run performance benchmarks (Go microbenchmarks + load test) |
+| **Compliance** | |
+| `make compliance-report` | Generate SOC2/ISO27001/NIST compliance report |
+| `make gdpr-ropa` | Display GDPR Article 30 Record of Processing Activities |
+| `make gdpr-delete` | GDPR right-to-erasure (usage: `make gdpr-delete SPIFFE_ID=...`) |
 
-## Implementation Metrics
 
-| Metric | Value |
-|--------|-------|
-| Go source | ~16,700 lines |
-| Go tests | ~43,300 lines (1,002 test functions) |
-| OPA Rego policies | ~2,000 lines (67 policy tests) |
-| Kubernetes YAML | ~28,400 lines |
-| OpenTofu IaC | ~29,400 lines |
-| E2E demo tests | 43 (21 Go + 22 Python) |
-| K8s NetworkPolicies | 26 across 6 namespaces |
-| Completed epics | 29 |
+## Documentation
 
-## Contributing
+| Document | Description |
+|----------|-------------|
+| [docs/BUSINESS.md](docs/BUSINESS.md) | Business outcomes and goals |
+| [docs/DESIGN.md](docs/DESIGN.md) | User needs, UX/DX design |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Full technical architecture |
+| [docs/current-state-and-roadmap.md](docs/current-state-and-roadmap.md) | Project status and roadmap |
+| [docs/spiffe-setup.md](docs/spiffe-setup.md) | SPIFFE/SPIRE identity setup |
+| [docs/spike-token-substitution.md](docs/spike-token-substitution.md) | SPIKE late-binding secrets |
+| [docs/operations/performance.md](docs/operations/performance.md) | Performance benchmarks |
+| [docs/operations/session-management.md](docs/operations/session-management.md) | Session and exfiltration detection |
+| [docs/operations/opensearch-observability.md](docs/operations/opensearch-observability.md) | Optional OpenSearch + Dashboards observability profile |
+| [docs/compliance/gdpr-article-30-ropa.md](docs/compliance/gdpr-article-30-ropa.md) | GDPR Article 30 compliance |
+| [docs/security/baseline.md](docs/security/baseline.md) | Security baseline |
+| [docs/security/agentic-zero-trust-faq.md](docs/security/agentic-zero-trust-faq.md) | Living FAQ for zero-trust security review questions |
+| [docs/architecture/deployment-patterns.md](docs/architecture/deployment-patterns.md) | Deployment architecture |
+| [docs/architecture/cloud-adaptation-playbooks.md](docs/architecture/cloud-adaptation-playbooks.md) | Step-by-step adaptation playbooks for AWS/GCP/Azure |
+| [docs/architecture/cloudflare-workers-compensating-controls.md](docs/architecture/cloudflare-workers-compensating-controls.md) | Cloudflare Workers compensating controls and sign-off checklist |
+| [docs/patterns/multi-agent-orchestration.md](docs/patterns/multi-agent-orchestration.md) | Multi-agent orchestration patterns |
+| [docs/api-reference.md](docs/api-reference.md) | Gateway HTTP API reference (endpoints, wire format, error codes) |
+| [docs/deployment-guide.md](docs/deployment-guide.md) | Deployment guide (Docker Compose, K8s, Phoenix) |
+| [docs/configuration-reference.md](docs/configuration-reference.md) | All environment variables and configuration files |
+| [docs/agentic-security-architecture.skill.md](docs/agentic-security-architecture.skill.md) | AI coding assistant skill file |
+| [sdk/go/README.md](sdk/go/README.md) | Go SDK documentation and usage |
+| [sdk/python/README.md](sdk/python/README.md) | Python SDK documentation and usage |
 
-Contributing guidelines are coming soon. If you find issues or want to discuss the architecture, please open a GitHub issue.
 
-When submitting PRs with known pre-existing test failures, use explicit baseline language in acceptance criteria: declare which tests are already failing and write criteria as "all tests pass OR only baseline failures `<list>` remain."
+## Status
 
-## License
+This is a **reference implementation** validating
+[PRECINCT v2.5](../docs/architecture/reference-architecture.md).
+It demonstrates that a 13-layer security middleware chain can be implemented,
+deployed, and tested end-to-end with real infrastructure (SPIRE, SPIKE, KeyDB,
+OPA, Phoenix, optional OpenSearch) in both Docker Compose and Kubernetes environments.
 
-See [LICENSE](LICENSE) for details.
+All 233 backlog stories have been completed and verified.

@@ -1068,7 +1068,7 @@ type DLPScanner interface {
 }
 ```
 
-Current POC base (production starting point): `BuiltInScanner` with Go regex and checksum/context-aware rules for credentials, PII, and suspicious patterns. This behavior is implemented in `POC/internal/gateway/middleware/dlp.go`.
+Current POC base (production starting point): `BuiltInScanner` with Go regex and checksum/context-aware rules for credentials, PII, and suspicious patterns. This behavior is implemented in `internal/gateway/middleware/dlp.go`.
 
 All providers must map to normalized gateway outcomes so policy behavior is stable:
 - `blocked_content` (hard block path)
@@ -1790,7 +1790,7 @@ This closes bypass ambiguity and makes model-provider governance auditable.
 
 ### 7.11 Context Admission Invariants (Hard Requirements)
 
-**Status: IMPLEMENTED** -- `evaluateContextInvariants()` in `POC/internal/gateway/phase3_runtime_helpers.go`
+**Status: IMPLEMENTED** -- `evaluateContextInvariants()` in `internal/gateway/phase3_runtime_helpers.go`
 
 All model-bound context must satisfy:
 
@@ -1821,7 +1821,7 @@ Regulated profile behavior:
 
 ### 7.12 Ingress Connector Conformance (Non-MITM by Default)
 
-**Status: IMPLEMENTED** -- `ingressPlanePolicyEngine` in `POC/internal/gateway/phase3_ingress_plane.go`
+**Status: IMPLEMENTED** -- `ingressPlanePolicyEngine` in `internal/gateway/phase3_ingress_plane.go`
 
 PRECINCT Gateway remains protocol-agnostic and does not need to be a universal transparent MITM.
 
@@ -1850,17 +1850,17 @@ Decision outputs:
 
 PRECINCT extends its enforcement boundary to autonomous agent communication channels via port adapters. Three adapters address threats documented in 'Agents of Chaos' (Shapira et al., 2026, arXiv:2602.20021v1):
 
-**Discord Adapter** (`POC/ports/discord/`) mediates:
+**Discord Adapter** (`ports/discord/`) mediates:
 - Outbound message sends: DLP scanning of content, OPA policy on recipient channels, SPIKE token for bot credentials
 - Inbound webhooks: Ed25519 signature verification, connector validation, audit logging
 - Bot command execution: tool plane evaluation before dispatch
 
-**Email Adapter** (`POC/ports/email/`) mediates:
+**Email Adapter** (`ports/email/`) mediates:
 - Outbound sends: DLP scanning of subject+body, mass-email step-up (>10 recipients), SPIKE token for SMTP credentials, recipient domain OPA enforcement
 - Inbound reads: automatic content classification (sensitive/standard) for exfiltration detection
 - List operations: session context tracking with standard classification
 
-**OpenClaw Adapter** (`POC/ports/openclaw/`) mediates WebSocket (`/openclaw/ws`) and HTTP traffic for the OpenClaw messaging platform:
+**OpenClaw Adapter** (`ports/openclaw/`) mediates WebSocket (`/openclaw/ws`) and HTTP traffic for the OpenClaw messaging platform:
 - Outbound messaging egress: DLP scanning, OPA policy enforcement, SPIKE token substitution for platform credentials
 - Inbound webhooks: connector validation, payload content-addressing, audit logging
 - WebSocket sessions: session context tracking for real-time communication channels
@@ -1928,7 +1928,7 @@ These values feed both the escalation accumulator and the step-up gating risk sc
 
 ### 7.18 Tool Plane Governance
 
-**Status: IMPLEMENTED** -- `toolPlanePolicyEngine` in `POC/internal/gateway/phase3_plane_stubs.go`
+**Status: IMPLEMENTED** -- `toolPlanePolicyEngine` in `internal/gateway/phase3_plane_stubs.go`
 
 The tool plane governance engine enforces capability-level authorization for all tool execution requests, extending the hash-verification controls in Section 7.3 with structured policy enforcement.
 
@@ -1955,7 +1955,7 @@ Decision outputs:
 
 ### 7.19 Loop Governor
 
-**Status: IMPLEMENTED** -- `loopPlanePolicyEngine` in `POC/internal/gateway/phase3_loop_plane.go`, admin API in `POC/internal/gateway/admin_phase3.go`
+**Status: IMPLEMENTED** -- `loopPlanePolicyEngine` in `internal/gateway/phase3_loop_plane.go`, admin API in `internal/gateway/admin_phase3.go`
 
 External immutable limits for autonomous loops, enforced at the gateway boundary (not inside framework-specific loop engines).
 
@@ -3248,7 +3248,7 @@ Protocols like UCP introduce high-stakes actions (payments, checkout, customer d
 
 #### 10.12.6 RLM-Style Runtime Code Execution (Model-Generated Code)
 
-**RLM Governance Engine: IMPLEMENTED** -- `rlmGovernanceEngine` in `POC/internal/gateway/phase3_rlm.go`
+**RLM Governance Engine: IMPLEMENTED** -- `rlmGovernanceEngine` in `internal/gateway/phase3_rlm.go`
 
 RLM (Recursive Language Model) refers to a pattern where models generate code that recursively invokes sub-LLMs, enabling long-context analysis and multi-step reasoning inside a sandboxed REPL.
 
@@ -4061,7 +4061,7 @@ Use the addendum artifacts as the source for backlog decomposition and delivery 
 - [SEP-1865: MCP Apps Pull Request](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1865)
 
 ### Implementation
-- [POC Built-In DLP Scanner (`dlp.go`)](POC/internal/gateway/middleware/dlp.go)
+- [POC Built-In DLP Scanner (`dlp.go`)](internal/gateway/middleware/dlp.go)
 - [DLP Provider-Agnostic Architecture Section](#75-dlp-engine-provider-agnostic)
 - [Groq Guard Models](https://console.groq.com/docs/content-moderation)
 - [Llama Prompt Guard 2](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M)

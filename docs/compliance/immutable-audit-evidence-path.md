@@ -11,13 +11,13 @@ Kustomize-rendered manifests, then emits a machine-readable proof artifact.
 Commands:
 
 ```bash
-kustomize build POC/infra/eks/observability
-bash POC/tests/e2e/validate_immutable_audit_sink.sh
+kustomize build deploy/terraform/observability
+bash tests/e2e/validate_immutable_audit_sink.sh
 ```
 
 Expected artifact:
 
-- `POC/tests/e2e/artifacts/immutable-audit-sink-proof.json`
+- `tests/e2e/artifacts/immutable-audit-sink-proof.json`
 
 Artifact fields:
 
@@ -32,9 +32,9 @@ Artifact fields:
 
 ## Evidence Extraction Path
 
-- K8s manifest source: `POC/infra/eks/observability/audit/audit-s3-config.yaml`
-- K8s render path: `POC/infra/eks/observability/kustomization.yaml`
-- Proof artifact generator: `POC/tests/e2e/validate_immutable_audit_sink.sh`
+- K8s manifest source: `deploy/terraform/observability/audit/audit-s3-config.yaml`
+- K8s render path: `deploy/terraform/observability/kustomization.yaml`
+- Proof artifact generator: `tests/e2e/validate_immutable_audit_sink.sh`
 - Compliance evidence package copy target: `evidence/immutable-audit-sink-proof.json`
 
 ## Compose Fallback Boundaries
