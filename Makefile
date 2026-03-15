@@ -297,14 +297,14 @@ tracker-surface-validate: ## Audit active release workflow surfaces for stale tr
 .PHONY: demo demo-compose demo-k8s demo-cli compose-down
 
 demo: ## Run E2E demo (Docker Compose + K8s)
-	@bash demo/run.sh compose
-	@bash demo/run.sh k8s
+	@bash examples/run.sh compose
+	@bash examples/run.sh k8s
 
 demo-compose: ## Run E2E demo (Docker Compose; leaves stack running for inspection)
-	@bash demo/run.sh compose --no-teardown
+	@bash examples/run.sh compose --no-teardown
 
 demo-k8s: ## Run E2E demo (K8s; leaves cluster running for inspection)
-	@bash demo/run.sh k8s --no-teardown
+	@bash examples/run.sh k8s --no-teardown
 
 compose-down: ## Tear down Docker Compose stack and volumes
 	$(DC) down -v
@@ -341,7 +341,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	$(MAKE) k8s-registry
 	@echo "Building and pushing local images..."
 	docker build -f deploy/compose/Dockerfile.gateway -t mcp-security-gateway:latest .
-	docker build -f demo/mock-mcp-server/Dockerfile -t poc-mock-mcp-server:latest demo/mock-mcp-server/
+	docker build -f examples/mock-mcp-server/Dockerfile -t poc-mock-mcp-server:latest examples/mock-mcp-server/
 	docker build -f deploy/compose/Dockerfile.spire-agent -t spire-agent-wrapper:latest .
 	docker tag mcp-security-gateway:latest $(LOCAL_REGISTRY)/mcp-security-gateway:latest
 	docker push $(LOCAL_REGISTRY)/mcp-security-gateway:latest
@@ -352,7 +352,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	docker build -f deploy/compose/Dockerfile.spike-keeper -t spike-keeper:latest .
 	docker tag spike-keeper:latest $(LOCAL_REGISTRY)/spike-keeper:latest
 	docker push $(LOCAL_REGISTRY)/spike-keeper:latest
-	docker build -f demo/content-scanner/Dockerfile -t poc-content-scanner:latest demo/content-scanner/
+	docker build -f examples/content-scanner/Dockerfile -t poc-content-scanner:latest examples/content-scanner/
 	docker tag poc-content-scanner:latest $(LOCAL_REGISTRY)/poc-content-scanner:latest
 	docker push $(LOCAL_REGISTRY)/poc-content-scanner:latest
 	$(MAKE) k8s-prereqs
@@ -660,10 +660,10 @@ upgrade-demo:
 	$(call run_demo_test,upgrade-demo,tests/e2e/test_upgrade.sh)
 
 demo-compose-strict-observability:
-	@DEMO_STRICT_OBSERVABILITY=1 bash demo/run.sh compose --no-teardown
+	@DEMO_STRICT_OBSERVABILITY=1 bash examples/run.sh compose --no-teardown
 
 demo-extensions:
-	@docker build -f demo/content-scanner/Dockerfile -t poc-content-scanner:latest demo/content-scanner/
+	@docker build -f examples/content-scanner/Dockerfile -t poc-content-scanner:latest examples/content-scanner/
 	@bash tests/e2e/scenario_h_extensions.sh
 
 # ---------------------------------------------------------------------------
