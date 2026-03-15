@@ -7,7 +7,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
+COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
 
 fail() {
   echo "[FAIL] $1" >&2

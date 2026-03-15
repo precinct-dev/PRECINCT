@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-POC_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+ROOT_DIR="${ROOT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+POC_DIR="${ROOT_DIR}"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
@@ -111,7 +112,7 @@ require_cmd kustomize
 cd "${POC_DIR}"
 
 local_compose_json="${TMP_DIR}/compose-local.json"
-docker compose -f docker-compose.yml config --format json >"${local_compose_json}"
+docker compose -f deploy/compose/docker-compose.yml config --format json >"${local_compose_json}"
 
 local_nexus_threshold="$(compose_env_value "${local_compose_json}" "spike-nexus" "SPIKE_NEXUS_SHAMIR_THRESHOLD")"
 local_nexus_shares="$(compose_env_value "${local_compose_json}" "spike-nexus" "SPIKE_NEXUS_SHAMIR_SHARES")"
@@ -131,9 +132,9 @@ UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/tools/sa/mcp-tool" \
 KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb" \
 docker compose --profile strict \
   --env-file config/compose-production-intent.env \
-  -f docker-compose.yml \
-  -f docker-compose.strict.yml \
-  -f docker-compose.prod-intent.yml \
+  -f deploy/compose/docker-compose.yml \
+  -f deploy/compose/docker-compose.strict.yml \
+  -f deploy/compose/docker-compose.prod-intent.yml \
   config --format json >"${prod_compose_json}"
 
 for service in spike-keeper-1 spike-keeper-2 spike-keeper-3; do

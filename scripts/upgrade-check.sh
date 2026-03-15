@@ -4,8 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 VERSIONS_FILE="${ROOT_DIR}/config/versions.yaml"
-COMPOSE_FILE="${ROOT_DIR}/docker-compose.yml"
-PHOENIX_COMPOSE_FILE="${ROOT_DIR}/docker-compose.phoenix.yml"
+COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
+PHOENIX_COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.phoenix.yml"
 COMPLIANCE_REQS="${ROOT_DIR}/tools/compliance/requirements.txt"
 COMPLIANCE_VENV_PY="${ROOT_DIR}/tools/compliance/.venv/bin/python3"
 

@@ -2,7 +2,8 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-POC_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+ROOT_DIR="${ROOT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+POC_DIR="${ROOT_DIR}"
 cd "${POC_DIR}"
 
 TMP_DIR="$(mktemp -d)"
@@ -79,7 +80,7 @@ export UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/tools/sa/mcp-
 export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb"
 
 compose_out="${TMP_DIR}/compose-strict.yaml"
-docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.yml config >"${compose_out}"
+docker compose --profile strict -f deploy/compose/docker-compose.yml -f deploy/compose/docker-compose.strict.yml config >"${compose_out}"
 
 assert_contains "${compose_out}" 'ENFORCEMENT_PROFILE:[[:space:]]*prod_standard' "compose strict: ENFORCEMENT_PROFILE must be prod_standard"
 assert_contains "${compose_out}" 'MCP_TRANSPORT_MODE:[[:space:]]*mcp' "compose strict: MCP_TRANSPORT_MODE must be mcp"

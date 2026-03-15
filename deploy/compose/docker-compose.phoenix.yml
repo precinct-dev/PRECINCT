@@ -46,7 +46,7 @@ services:
     container_name: otel-collector
     hostname: otel-collector
     volumes:
-      - ./config/otel-collector-phoenix.yaml:/etc/otel-collector-config.yaml:ro
+      - ../../config/otel-collector-phoenix.yaml:/etc/otel-collector-config.yaml:ro
     command: ["--config=/etc/otel-collector-config.yaml"]
     ports:
       - "4317:4317"  # OTLP gRPC receiver (exposed to host + shared network)
