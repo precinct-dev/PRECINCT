@@ -1,15 +1,27 @@
 # Messaging Simulator - WhatsApp Cloud API stub (RFA-1fui)
-# Multi-stage: build on golang:1.24-alpine, run on distroless.
+# Multi-stage: build on golang, run on distroless.
 
-FROM golang:1.24-alpine@sha256:8bee1901f1e530bfb4a7850aa7a479d17ae3a18beb6e09064ed54cfd245b7191 AS builder
+FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
+
+RUN apk add --no-cache ca-certificates
+
 WORKDIR /build
 COPY go.mod go.sum ./
-RUN go mod download
+RUN go mod download && go mod verify
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /messaging-sim ./cmd/messaging-sim/
 
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:cba10d7abd3e203428e86f5b2d7fd5eb7d8987c387864ae4996cf97191b33764
-COPY --from=builder /messaging-sim /messaging-sim
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/messaging-sim \
+    ./cmd/messaging-sim/
+
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
+
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+COPY --from=builder /build/messaging-sim /messaging-sim
+
 EXPOSE 8090
 HEALTHCHECK --interval=5s --timeout=3s --retries=5 CMD ["/messaging-sim", "-healthcheck"]
 ENTRYPOINT ["/messaging-sim"]

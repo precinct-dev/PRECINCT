@@ -7,6 +7,7 @@ providers:
     allowed_models:
       - "llama-3.3-70b-versatile"
       - "llama-3.1-8b-instant"
+      - "openai/gpt-oss-120b"
     allowed_residency:
       - "us"
     allow_high_risk_mode: false

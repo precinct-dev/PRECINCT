@@ -16,10 +16,12 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 )
 
@@ -487,8 +489,27 @@ func minInt(a, b int) int {
 }
 
 func main() {
+	healthcheck := flag.Bool("healthcheck", false, "perform a health check and exit 0/1")
+	flag.Parse()
+
+	port := "8082"
+
+	if *healthcheck {
+		resp, err := http.Get("http://127.0.0.1:" + port + "/health")
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "healthcheck failed: %v\n", err)
+			os.Exit(1)
+		}
+		defer func() { _ = resp.Body.Close() }()
+		if resp.StatusCode != http.StatusOK {
+			fmt.Fprintf(os.Stderr, "healthcheck returned %d\n", resp.StatusCode)
+			os.Exit(1)
+		}
+		os.Exit(0)
+	}
+
 	server := NewServer()
-	addr := ":8082"
+	addr := ":" + port
 	log.Printf("[mock-mcp] Starting mock MCP server on %s", addr)
 	log.Printf("[mock-mcp] Available tools: tavily_search, echo")
 	if err := http.ListenAndServe(addr, server); err != nil {

@@ -16,6 +16,8 @@ K8S_REGISTRY ?= registry:5000
 # Docker Compose
 COMPOSE_DIR := deploy/compose
 DC := docker compose -f $(COMPOSE_DIR)/docker-compose.yml
+DC_MOCK := $(DC) -f $(COMPOSE_DIR)/docker-compose.mock.yml --profile mock
+DC_REAL := $(DC) --env-file .env -f $(COMPOSE_DIR)/docker-compose.real.yml
 
 # Compliance tooling
 AUDIT_LOG ?= /tmp/audit.jsonl
@@ -61,14 +63,25 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 		echo "phoenix-observability-network not found; starting Phoenix stack..."; \
 		$(MAKE) phoenix-up; \
 	fi
-	@echo "Building and starting services (waiting for all health checks)..."
-	@if $(DC) up -d --build --wait --wait-timeout 180; then \
+	@# Clean and recreate ephemeral bind-mount dirs writable by non-root (UID 1000).
+	@rm -rf $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket
+	@mkdir -p $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
+	@chmod 777 $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
+	@# Real mode: ensure OpenClaw config dir exists with gateway bind config.
+	@if [ "$(DEMO_SERVICE_MODE)" = "real" ]; then \
+		mkdir -p $(COMPOSE_DIR)/data/openclaw-config && \
+		chmod 777 $(COMPOSE_DIR)/data/openclaw-config && \
+		cp -n $(COMPOSE_DIR)/openclaw-gateway-config.json $(COMPOSE_DIR)/data/openclaw-config/openclaw.json 2>/dev/null || true; \
+	fi
+	@# Select compose command based on DEMO_SERVICE_MODE (mock=default, real=external APIs)
+	@echo "Building and starting services [mode=$(or $(DEMO_SERVICE_MODE),mock)] (waiting for all health checks)..."
+	@if $(if $(filter real,$(DEMO_SERVICE_MODE)),$(DC_REAL),$(DC_MOCK)) up -d --build --wait --wait-timeout 180; then \
 		echo "All services healthy."; \
 	else \
 		echo "WARN: docker compose --wait timed out. Checking core service readiness..."; \
 		if ! bash scripts/compose-health-check.sh --verbose; then \
 			echo "Attempting gateway-only recovery after compose dependency timeout..."; \
-			$(DC) up -d --no-deps mcp-security-gateway >/dev/null 2>&1 || true; \
+			$(if $(filter real,$(DEMO_SERVICE_MODE)),$(DC_REAL),$(DC_MOCK)) up -d --no-deps mcp-security-gateway >/dev/null 2>&1 || true; \
 		fi; \
 		echo "Waiting up to 60s for core services to become healthy..."; \
 		ready=0; \
@@ -82,7 +95,7 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 		if [ "$$ready" -ne 1 ]; then \
 			echo "ERROR: Compose startup failed and required services are not ready."; \
 			bash scripts/compose-health-check.sh --verbose || true; \
-			$(DC) ps; \
+			$(if $(filter real,$(DEMO_SERVICE_MODE)),$(DC_REAL),$(DC_MOCK)) ps; \
 			exit 1; \
 		fi; \
 		echo "Core services are ready despite compose wait timeout; continuing."; \
@@ -91,8 +104,11 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 	@echo "Running register-spire for any additional entries..."
 	$(MAKE) register-spire
 
-down: ## Stop Docker Compose stack
-	$(DC) down
+down: ## Stop Docker Compose stack (all profiles)
+	@# Tear down with all profiles to catch mock+real containers from any previous run.
+	-$(DC_MOCK) down --remove-orphans 2>/dev/null
+	-$(DC_REAL) down --remove-orphans 2>/dev/null
+	-$(DC) down --remove-orphans 2>/dev/null
 
 clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
 	$(DC) down -v
@@ -294,14 +310,17 @@ tracker-surface-validate: ## Audit active release workflow surfaces for stale tr
 # 5. Demos (demo, demo-compose, demo-k8s, demo-cli)
 # ===========================================================================
 
-.PHONY: demo demo-compose demo-k8s demo-cli compose-down
+.PHONY: demo demo-compose demo-compose-mock demo-k8s demo-cli compose-down
 
 demo: ## Run E2E demo (Docker Compose + K8s)
 	@bash examples/run.sh compose
 	@bash examples/run.sh k8s
 
-demo-compose: ## Run E2E demo (Docker Compose; leaves stack running for inspection)
-	@bash examples/run.sh compose --no-teardown
+demo-compose: ## Run E2E demo with real services (OpenClaw, Tavily, Groq). Requires .env keys.
+	@bash examples/run.sh compose --no-teardown --real
+
+demo-compose-mock: ## Run E2E demo with mock services (deterministic, no external APIs)
+	@bash examples/run.sh compose --no-teardown --mock
 
 demo-k8s: ## Run E2E demo (K8s; leaves cluster running for inspection)
 	@bash examples/run.sh k8s --no-teardown
@@ -928,6 +947,11 @@ register-spire:
 		-parentID $$PARENT_ID \
 		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/keydb \
 		-selector docker:label:spiffe-id:keydb 2>/dev/null || true; \
+	echo "  Registering OpenClaw..."; \
+	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/openclaw \
+		-selector docker:label:spiffe-id:openclaw 2>/dev/null || true; \
 	echo "  Current entry count:"; \
 	ENTRY_COUNT=$$($(COMPOSE_SPIRE_EXEC) entry show -socketPath $(COMPOSE_SPIRE_SOCK) | grep -c '^Entry ID' || true); \
 	echo "    $$ENTRY_COUNT entries"

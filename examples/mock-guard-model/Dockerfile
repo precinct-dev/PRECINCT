@@ -1,12 +1,11 @@
-FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f AS build
-
+FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS build
 WORKDIR /src
 COPY . .
-RUN go build -o /out/mock-guard .
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" -trimpath -o /out/mock-guard .
 
-FROM alpine:3.20@sha256:a4f4213abb84c497377b8544c81b3564f313746700372ec4fe84653e4fb03805
-RUN adduser -D -u 10001 app
-USER app
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
 COPY --from=build /out/mock-guard /usr/local/bin/mock-guard
 EXPOSE 8080
 ENTRYPOINT ["/usr/local/bin/mock-guard"]

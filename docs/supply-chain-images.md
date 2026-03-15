@@ -1,6 +1,6 @@
 # Supply Chain Security: Hardened Base Images
 
-**Last Updated**: 2026-02-05
+**Last Updated**: 2026-03-15
 **Context**: PRECINCT
 
 ## Executive Summary
@@ -39,28 +39,28 @@ Based on current industry standards and security research:
 
 ## Approved Base Images
 
-### Go Services (PRECINCT Gateway, precinct CLI, Context Fetcher)
+### Go Services (PRECINCT Gateway, precinct CLI, S3 MCP Server, etc.)
 
 **Builder Stage:**
 ```dockerfile
-FROM golang:1.23-alpine@sha256:383395b794dffa5b53012a212365d40c8e37109a626ca30d6151c8348d380b5f
+FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039
 ```
 - **Rationale**: Official Go image with Alpine base, minimal toolchain
 - **Security**: Regular security updates, minimal dependencies
 - **Size**: Smaller builder reduces build cache size
 - **Note**: Update digest monthly or when security advisories are published
-- **Digest Date**: 2026-02-05
+- **Digest Date**: 2026-03-15
 
-**Runtime Stage (Recommended):**
+**Runtime Stage:**
 ```dockerfile
-FROM gcr.io/distroless/static-debian12:nonroot@sha256:cba10d7abd3e203428e86f5b2d7fd5eb7d8987c387864ae4996cf97191b33764
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
 ```
 - **Rationale**: Google distroless static image (no libc), runs as non-root user
 - **Security**: No shell, no package manager, minimal attack surface
 - **Requirements**: Requires `CGO_ENABLED=0` for static linking
 - **User**: Runs as UID 65532 (nonroot)
 - **Size**: ~2MB runtime image
-- **Digest Date**: 2026-02-05
+- **Digest Date**: 2026-03-15
 
 **Runtime Stage (Alternative - if CGO needed):**
 ```dockerfile
@@ -74,31 +74,60 @@ FROM gcr.io/distroless/base-debian12:nonroot@sha256:[DIGEST]
 
 **Builder Stage:**
 ```dockerfile
-FROM python:3.12-slim-bookworm@sha256:73dbd1a2ad74137451593a8ac30f7bdd0f5010fc05fb34644190cffa7696bbf3
+FROM python:3.13-slim-bookworm@sha256:1245b6c39d0b8e49e911c7d07b60cd9ed26016b0e439b6903d5e08730e417553
 ```
 - **Rationale**: Official Python slim image based on Debian Bookworm
 - **Security**: Debian security updates, minimal system packages
-- **Size**: ~120MB (vs ~900MB for full python:3.12)
+- **Size**: ~120MB (vs ~900MB for full python:3.13)
 - **Note**: Update digest monthly
-- **Digest Date**: 2026-02-05
+- **Digest Date**: 2026-03-15
 
-**Runtime Stage (Recommended):**
+**Runtime Stage:**
 ```dockerfile
-FROM python:3.12-slim-bookworm@sha256:73dbd1a2ad74137451593a8ac30f7bdd0f5010fc05fb34644190cffa7696bbf3
+FROM python:3.13-slim-bookworm@sha256:1245b6c39d0b8e49e911c7d07b60cd9ed26016b0e439b6903d5e08730e417553
 ```
-- **Rationale**: Currently, Python distroless is challenging for AI agents with many dependencies
-- **Security**: Slim variant removes most unnecessary packages
-- **Future**: Migrate to `gcr.io/distroless/python3-debian12:nonroot` when dependency footprint is finalized
-- **User**: Create non-root user in Dockerfile (UID 1000)
+- **Rationale**: Python slim with non-root user (UID 65532)
+- **Security**: Slim variant removes most unnecessary packages, non-root enforced
+- **User**: Non-root user created in Dockerfile (UID 65532)
 
-**Runtime Stage (Future Distroless):**
+### SPIRE Utility Containers (token-generator, spire-agent)
+
+**Runtime Stage:**
 ```dockerfile
-FROM gcr.io/distroless/python3-debian12:nonroot@sha256:[DIGEST]
+FROM alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709
 ```
-- **Rationale**: True distroless for maximum security
-- **Requirements**: All dependencies must be installed in builder and copied
-- **Challenge**: Complex dependency trees may require custom distroless build
-- **Size**: ~50MB runtime image
+- **Rationale**: Minimal image with shell support required for SPIRE scripts
+- **Security**: Non-root user (UID 1000), digest-pinned
+- **Note**: These are init/utility containers that require shell for SPIRE token operations
+- **Digest Date**: 2026-03-15
+
+## Multi-Architecture Support
+
+All Go Dockerfiles use Docker BuildKit's `TARGETARCH` build argument instead of
+hardcoded `GOARCH`. This supports both `amd64` (server) and `arm64` (local dev)
+architectures:
+
+```dockerfile
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build ...
+```
+
+Build for a specific platform:
+```bash
+docker build --platform linux/amd64 -f Dockerfile.gateway .
+docker build --platform linux/arm64 -f Dockerfile.gateway .
+```
+
+## Non-Root Enforcement
+
+All containers MUST run as non-root. No exceptions.
+
+| Image Type | User | UID |
+|---|---|---|
+| Distroless (Go services) | nonroot (built-in) | 65532 |
+| Python slim | appuser (created) | 65532 |
+| Alpine (SPIRE utilities) | spire (created) | 1000 |
+| SPIKE upstream | upstream default | 1000 |
 
 ## Image Pinning Strategy
 
@@ -106,12 +135,12 @@ All images MUST be pinned by digest, not just tag:
 
 **WRONG:**
 ```dockerfile
-FROM golang:1.23-alpine
+FROM golang:1.26-alpine
 ```
 
 **CORRECT:**
 ```dockerfile
-FROM golang:1.23-alpine@sha256:abc123...
+FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039
 ```
 
 ### Digest Update Policy
@@ -124,11 +153,11 @@ FROM golang:1.23-alpine@sha256:abc123...
 
 ```bash
 # Pull image and get digest
-docker pull golang:1.23-alpine
-docker inspect golang:1.23-alpine --format='{{.RepoDigests}}'
+docker pull golang:1.26.1-alpine
+docker inspect golang:1.26.1-alpine --format='{{.RepoDigests}}'
 
 # Or use crane (recommended for CI/CD)
-crane digest golang:1.23-alpine
+crane digest golang:1.26.1-alpine
 ```
 
 ## Multi-Stage Build Pattern
