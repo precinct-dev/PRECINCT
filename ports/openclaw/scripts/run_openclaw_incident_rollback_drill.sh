@@ -67,6 +67,8 @@ require_cmd curl
 require_cmd make
 require_cmd go
 
+DC="docker compose -f ${POC_DIR}/deploy/compose/docker-compose.yml"
+
 mkdir -p "${ARTIFACT_DIR}"
 cd "${POC_DIR}"
 
@@ -74,7 +76,7 @@ if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
   make phoenix-up >/dev/null
 fi
 
-if ! docker compose ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep -q '^mcp-security-gateway running$'; then
+if ! $DC ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep -q '^mcp-security-gateway running$'; then
   make up >/dev/null
 fi
 
@@ -91,10 +93,10 @@ incident_code="$(curl -sS -o "${INCIDENT_BODY}" -w '%{http_code}' \
 incident_reason="$(jq -r '.reason_code // .error.reason_code // empty' "${INCIDENT_BODY}")"
 [[ -n "${incident_reason}" ]] || fail "incident simulation response missing reason_code"
 
-docker compose logs --timestamps --tail 300 mcp-security-gateway > "${GATEWAY_LOG}"
+$DC logs --timestamps --tail 300 mcp-security-gateway > "${GATEWAY_LOG}"
 [[ -s "${GATEWAY_LOG}" ]] || fail "gateway log capture is empty"
 
-docker compose restart mcp-security-gateway >/dev/null
+$DC restart mcp-security-gateway >/dev/null
 check_gateway_health || fail "gateway did not recover after restart containment"
 
 if ! make compose-production-intent-preflight > "${PREFLIGHT_LOG}" 2>&1; then
