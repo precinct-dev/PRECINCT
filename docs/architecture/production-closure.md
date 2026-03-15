@@ -130,7 +130,7 @@ Enforce all mandatory context invariants at gateway boundary.
 
 ### Status: IMPLEMENTED
 
-The context admission engine is fully implemented in `evaluateContextInvariants()` (`POC/internal/gateway/phase3_runtime_helpers.go`). All four invariants are enforced, plus context memory tiering.
+The context admission engine is fully implemented in `evaluateContextInvariants()` (`internal/gateway/phase3_runtime_helpers.go`). All four invariants are enforced, plus context memory tiering.
 
 ### Required input contract
 
@@ -173,7 +173,7 @@ Move `/v1/tool/execute` from placeholder to enforced capability boundary.
 
 ### Status: IMPLEMENTED
 
-The tool plane governance engine is fully implemented in `toolPlanePolicyEngine` (`POC/internal/gateway/phase3_plane_stubs.go`).
+The tool plane governance engine is fully implemented in `toolPlanePolicyEngine` (`internal/gateway/phase3_plane_stubs.go`).
 
 ### Controls
 
@@ -204,7 +204,7 @@ External immutable limits for autonomous loops.
 
 ### Status: IMPLEMENTED
 
-The loop governor is fully implemented as `loopPlanePolicyEngine` (`POC/internal/gateway/phase3_loop_plane.go`) with an admin API for observability and operator halt (`POC/internal/gateway/admin_phase3.go`).
+The loop governor is fully implemented as `loopPlanePolicyEngine` (`internal/gateway/phase3_loop_plane.go`) with an admin API for observability and operator halt (`internal/gateway/admin_phase3.go`).
 
 ### Enforced limits
 
@@ -245,7 +245,7 @@ Govern multi-agent lineage tracking, subcall budgets, and UASGS bypass preventio
 
 ### Status: IMPLEMENTED
 
-The RLM governance engine is fully implemented as `rlmGovernanceEngine` (`POC/internal/gateway/phase3_rlm.go`).
+The RLM governance engine is fully implemented as `rlmGovernanceEngine` (`internal/gateway/phase3_rlm.go`).
 
 ### Controls
 
@@ -279,7 +279,7 @@ Canonical connector envelope validation with structured replay detection, source
 
 ### Status: IMPLEMENTED
 
-The ingress connector envelope engine is fully implemented as `ingressPlanePolicyEngine` (`POC/internal/gateway/phase3_ingress_plane.go`).
+The ingress connector envelope engine is fully implemented as `ingressPlanePolicyEngine` (`internal/gateway/phase3_ingress_plane.go`).
 
 ### Controls
 
@@ -305,7 +305,7 @@ The ingress connector envelope engine is fully implemented as `ingressPlanePolic
 
 ### Status: IMPLEMENTED
 
-The Go SDK provides `BuildSPIKETokenRef` and `BuildSPIKETokenRefWithScope` functions (`POC/sdk/go/mcpgateway/spike_token.go`) that produce Bearer SPIKE token reference strings compatible with the Python SDK format: `Bearer $SPIKE{ref:<ref>,exp:<exp>}` with optional scope qualifier.
+The Go SDK provides `BuildSPIKETokenRef` and `BuildSPIKETokenRefWithScope` functions (`sdk/go/mcpgateway/spike_token.go`) that produce Bearer SPIKE token reference strings compatible with the Python SDK format: `Bearer $SPIKE{ref:<ref>,exp:<exp>}` with optional scope qualifier.
 
 ---
 

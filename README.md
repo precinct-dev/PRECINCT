@@ -110,7 +110,7 @@ OpenSearch Dashboards is available at `http://localhost:5601`.
 ## Git Hooks (historical beads compatibility)
 
 `nd` is the canonical tracker for current work. The repo still carries a root
-`.beads` symlink to `POC/.beads` only for historical hook compatibility when
+`.beads` symlink only for historical hook compatibility when
 inspecting older automation or archived branches that still reference `bd`.
 
 If you ever see a pre-commit warning about a missing historical beads database, treat it as
@@ -142,8 +142,10 @@ internal/gateway/         Gateway core + 13-layer middleware chain
 config/                   OPA policies, tool registry, SPIFFE IDs, risk thresholds
 sdk/go/mcpgateway/        Go SDK
 sdk/python/               Python SDK
-docker/                   Dockerfiles for all services
-infra/eks/                Kubernetes manifests (base + overlays)
+deploy/compose/           Docker Compose files and Dockerfiles
+deploy/k8s/               Cloud-agnostic Kubernetes manifests (base + overlays)
+deploy/terraform/         EKS-specific Terraform and Kustomize overlays
+deploy/helm/              Helm chart for PRECINCT
 tools/compliance/         GDPR/SOC2/ISO27001/NIST compliance automation
 docs/                     All documentation
 tests/e2e/                E2E demo test suites
@@ -198,7 +200,7 @@ scripts/                  Setup and operational scripts
 | **CI / Quality** | |
 | `make ci` | Full CI pipeline (lint + test + build) |
 | `make security-scan` | Run security scans (gosec, trivy) |
-| `make story-evidence-validate STORY_ID=<id>` | Validate `POC/` evidence paths referenced in an `nd` story |
+| `make story-evidence-validate STORY_ID=<id>` | Validate evidence paths referenced in an `nd` story |
 | `make tracker-surface-validate` | Audit active release workflow surfaces for stale non-archival `bd`/beads references |
 | `make benchmark` | Run performance benchmarks (Go microbenchmarks + load test) |
 | **Compliance** | |

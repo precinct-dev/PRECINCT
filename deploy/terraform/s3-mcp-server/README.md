@@ -35,7 +35,7 @@ for S3 access. It provides two tools:
 
 ## Prerequisites
 
-1. EKS cluster deployed (`make -C .. apply` in `infra/eks/`)
+1. EKS cluster deployed (`make -C .. apply` in `deploy/terraform/`)
 2. `tools` namespace exists (from `make -C ../mcp-server deploy`)
 3. SPIRE deployed (`make -C ../spire deploy`)
 4. IAM role created: `cd s3-mcp-server && tofu init && tofu apply`

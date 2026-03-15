@@ -52,8 +52,8 @@ OpenSearch API: `http://localhost:9200`
 
 Optional Kubernetes extension:
 
-- manifests: `infra/eks/observability/opensearch/`
-- local overlay: `infra/eks/overlays/local-opensearch/`
+- manifests: `deploy/terraform/observability/opensearch/`
+- local overlay: `deploy/terraform/overlays/local-opensearch/`
 
 Commands:
 
@@ -62,7 +62,7 @@ Commands:
 make k8s-opensearch-up
 
 # Validate manifests only
-make -C infra/eks/observability dry-run-opensearch
+make -C deploy/terraform/observability dry-run-opensearch
 ```
 
 Secrets required before deploy (namespace `observability`):

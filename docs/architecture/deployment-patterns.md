@@ -74,8 +74,8 @@ should know, and the production recommendation.
 namespaces. Only explicitly allowed traffic (gateway-to-MCP-server, MCP-server-to-S3)
 can flow. All other network paths are blocked at the CNI level.
 
-**Manifests**: `infra/eks/policies/default-deny.yaml`, `infra/eks/policies/gateway-allow.yaml`,
-`infra/eks/policies/mcp-server-allow.yaml`
+**Manifests**: `deploy/terraform/policies/default-deny.yaml`, `deploy/terraform/policies/gateway-allow.yaml`,
+`deploy/terraform/policies/mcp-server-allow.yaml`
 
 **Why not in Docker Compose**: Docker bridge networking does not support NetworkPolicy
 enforcement. All containers on the same Docker network can reach each other. There is no
@@ -98,7 +98,7 @@ per-namespace allow rules for your topology.
 enforces read-only root filesystems, and drops all Linux capabilities. Applied via
 namespace labels (`pod-security.kubernetes.io/enforce: restricted`).
 
-**Manifests**: `infra/eks/gateway/gateway-namespace.yaml` (labels on namespace metadata)
+**Manifests**: `deploy/terraform/gateway/gateway-namespace.yaml` (labels on namespace metadata)
 
 **Why not in Docker Compose**: Docker Compose has no built-in admission controller that
 enforces Pod Security Standards. While individual `docker-compose.yml` directives
@@ -122,9 +122,9 @@ requests and verifies that container images have valid cosign signatures. Signat
 are verified against the Fulcio CA (keyless OIDC via GitHub Actions) and the Rekor
 transparency log. Unsigned or tampered images are rejected at admission time.
 
-**Manifests**: `infra/eks/admission/policy-controller/cluster-image-policy.yaml`,
-`infra/eks/admission/policy-controller/deployment.yaml`,
-`infra/eks/admission/policy-controller/webhook.yaml`
+**Manifests**: `deploy/terraform/admission/policy-controller/cluster-image-policy.yaml`,
+`deploy/terraform/admission/policy-controller/deployment.yaml`,
+`deploy/terraform/admission/policy-controller/webhook.yaml`
 
 **Why not in Docker Compose**: Docker Compose builds images from source (`docker compose
 build`). The supply chain is the source code itself, not a remote registry. There is
@@ -150,11 +150,11 @@ policies: image digest pinning (no `:latest` tags) and registry allowlisting (on
 approved registries). This is distinct from the gateway's OPA engine (step 6), which
 enforces tool-level authorization.
 
-**Manifests**: `infra/eks/admission/gatekeeper-system.yaml`,
-`infra/eks/admission/constraint-templates/require-image-digest.yaml`,
-`infra/eks/admission/constraint-templates/require-image-signature.yaml`,
-`infra/eks/admission/constraints/enforce-image-digest.yaml`,
-`infra/eks/admission/constraints/enforce-image-signature.yaml`
+**Manifests**: `deploy/terraform/admission/gatekeeper-system.yaml`,
+`deploy/terraform/admission/constraint-templates/require-image-digest.yaml`,
+`deploy/terraform/admission/constraint-templates/require-image-signature.yaml`,
+`deploy/terraform/admission/constraints/enforce-image-digest.yaml`,
+`deploy/terraform/admission/constraints/enforce-image-signature.yaml`
 
 **Why not in Docker Compose**: Same rationale as cosign admission -- Docker Compose has
 no admission webhook mechanism. Additionally, the Gatekeeper policies (digest pinning,
@@ -178,7 +178,7 @@ before switching to `deny`.
 and KeyDB for session persistence) are backed by encrypted EBS volumes. AWS KMS
 encryption at rest protects SPIRE registration entries, trust bundles, and session data.
 
-**Manifests**: Configured via the EKS Terraform module (`infra/eks/main.tf`) and
+**Manifests**: Configured via the EKS Terraform module (`deploy/terraform/main.tf`) and
 StorageClass annotations, not individual YAML manifests.
 
 **Why not in Docker Compose**: Docker Compose volumes are ephemeral by design in the development
@@ -204,7 +204,7 @@ these tokens against the cluster's OIDC provider, establishing cryptographic pro
 the agent is running in a specific Kubernetes cluster. This provides strong node identity
 tied to the Kubernetes control plane.
 
-**Manifests**: `infra/eks/spire/agent-configmap.yaml` (k8s_psat configuration)
+**Manifests**: `deploy/terraform/spire/agent-configmap.yaml` (k8s_psat configuration)
 
 **Why not in Docker Compose**: Docker Desktop's kubeadm-provisioned clusters lack an OIDC
 provider, so `k8s_psat` attestation does not work. The Docker Compose deployment uses
@@ -323,9 +323,9 @@ layer controls, which are the primary security boundary.
 
 - Gateway middleware chain: `internal/gateway/gateway.go` (Handler method)
 - Control taxonomy: `tools/compliance/control_taxonomy.yaml`
-- K8s NetworkPolicies: `infra/eks/policies/`
-- K8s admission control: `infra/eks/admission/`
+- K8s NetworkPolicies: `deploy/terraform/policies/`
+- K8s admission control: `deploy/terraform/admission/`
 - SPIRE configuration (Docker): `config/spire/agent.conf`
-- SPIRE configuration (K8s base): `infra/eks/spire/agent-configmap.yaml`
-- SPIRE configuration (K8s local): `infra/eks/overlays/local/patch-spire-agent-config.yaml`
+- SPIRE configuration (K8s base): `deploy/terraform/spire/agent-configmap.yaml`
+- SPIRE configuration (K8s local): `deploy/terraform/overlays/local/patch-spire-agent-config.yaml`
 - RFA-7bh retrospective: Docker Desktop uses join_token (not k8s_psat) -- intentional

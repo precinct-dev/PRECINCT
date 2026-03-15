@@ -1,6 +1,6 @@
 # OpenSearch Observability Extension (EKS)
 
-Optional extension for `infra/eks/observability` that adds:
+Optional extension for `deploy/terraform/observability` that adds:
 
 - OpenSearch (TLS + mTLS)
 - OpenSearch Dashboards (HTTPS UI + mTLS client cert)
@@ -33,7 +33,7 @@ kubectl -n observability create secret generic opensearch-admin-credentials \
 
 ```bash
 # Base observability + OpenSearch extension
-kustomize build infra/eks/overlays/local-opensearch | kubectl apply -f -
+kustomize build deploy/terraform/overlays/local-opensearch | kubectl apply -f -
 ```
 
 ## Verify

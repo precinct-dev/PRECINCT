@@ -332,7 +332,7 @@ sequenceDiagram
             <h2>The PortAdapter Interface</h2>
             <p>
               The contract for a port adapter is deliberately minimal. It consists of two methods
-              defined in <code>POC/internal/gateway/port.go</code>:
+              defined in <code>internal/gateway/port.go</code>:
             </p>
 
             <pre data-lang="go"><code>// PortAdapter is the extension point for third-party agent integrations.
@@ -402,7 +402,7 @@ type PortAdapter interface {
             <p>
               The <code>PortGatewayServices</code> interface is the narrow API surface that
               adapters use to access gateway internals. It is defined in
-              <code>POC/internal/gateway/port.go</code> and implemented by the
+              <code>internal/gateway/port.go</code> and implemented by the
               <code>*Gateway</code> struct in <code>port_services.go</code>.
             </p>
 
@@ -508,7 +508,7 @@ StatusForToolReason(reason ReasonCode) int</code></pre>
 
             <h3>Key Protocol Types</h3>
             <p>
-              From <code>POC/ports/openclaw/protocol/http_adapter.go</code>:
+              From <code>ports/openclaw/protocol/http_adapter.go</code>:
             </p>
             <pre data-lang="go"><code>const (
     ResponsesPath   = "/v1/responses"
@@ -979,7 +979,7 @@ if !allowed {
               Before building a full adapter, create a walking skeleton that validates your
               plane request shapes against the gateway's policy engine. The reference adapter
               includes a walking skeleton in
-              <code>POC/ports/openclaw/walking_skeleton/</code> that provides typed builders
+              <code>ports/openclaw/walking_skeleton/</code> that provides typed builders
               for each plane without any gateway dependency:
             </p>
             <pre data-lang="go"><code>// walking_skeleton/adapter.go
@@ -1099,14 +1099,14 @@ curl -s -D - -X POST http://localhost:9090/v1/responses \
               <code>RegisterPort</code>:
             </p>
 
-            <pre data-lang="go"><code>// POC/cmd/gateway/main.go, line 96
+            <pre data-lang="go"><code>// cmd/gateway/main.go, line 96
 gw.RegisterPort(openclaw.NewAdapter(gw))</code></pre>
 
             <p>
               The <code>RegisterPort</code> method appends the adapter to the gateway's
               dispatch chain:
             </p>
-            <pre data-lang="go"><code>// POC/internal/gateway/port_services.go
+            <pre data-lang="go"><code>// internal/gateway/port_services.go
 func (g *Gateway) RegisterPort(adapter PortAdapter) {
     g.portAdapters = append(g.portAdapters, adapter)
 }</code></pre>

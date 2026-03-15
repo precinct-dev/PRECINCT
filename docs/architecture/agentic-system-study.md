@@ -207,7 +207,7 @@ axiom/
   docker-compose.yml              # Personal deployment (SurrealDB)
   docker-compose.enterprise.yml   # Enterprise overlay (AGE + security stack)
 
-  infra/k8s/
+  deploy/k8s/
     base/                         # Core services (axiom, keydb, sidecars)
       namespace.yaml
       axiom-deployment.yaml
@@ -1061,7 +1061,7 @@ message HealthResponse {
 ```yaml
 services:
   axiom:
-    build: { context: ., dockerfile: docker/Dockerfile.axiom }
+    build: { context: ., dockerfile: deploy/compose/Dockerfile.axiom }
     depends_on:
       keydb: { condition: service_healthy }
       surrealdb: { condition: service_healthy }
@@ -1099,7 +1099,7 @@ services:
       test: ["CMD", "keydb-cli", "ping"]
 
   rlm-sidecar:
-    build: { context: ., dockerfile: docker/Dockerfile.rlm-sidecar }
+    build: { context: ., dockerfile: deploy/compose/Dockerfile.rlm-sidecar }
     environment:
       GRPC_PORT: "50051"
       DEFAULT_BACKEND: anthropic
@@ -1109,14 +1109,14 @@ services:
       test: ["CMD", "grpc_health_probe", "-addr=:50051"]
 
   rustreason-sidecar:
-    build: { context: ., dockerfile: docker/Dockerfile.rustreason-sidecar }
+    build: { context: ., dockerfile: deploy/compose/Dockerfile.rustreason-sidecar }
     environment: { GRPC_PORT: "50052" }
     networks: [axiom-net]
     healthcheck:
       test: ["CMD", "grpc_health_probe", "-addr=:50052"]
 
   synareason-sidecar:
-    build: { context: ., dockerfile: docker/Dockerfile.synareason-sidecar }
+    build: { context: ., dockerfile: deploy/compose/Dockerfile.synareason-sidecar }
     environment:
       GRPC_PORT: "50053"
       LLM_BACKEND: anthropic
@@ -1171,12 +1171,12 @@ services:
   mcp-security-gateway:
     # Inherits from reference architecture
     extends:
-      file: ../PRECINCT/POC/docker-compose.yml
+      file: ../PRECINCT/deploy/compose/docker-compose.yml
       service: mcp-security-gateway
     networks: [axiom-net]
 
   # SPIFFE/SPIRE, SPIKE, OPA, OTel inherited from reference architecture
-  # See POC/docker-compose.yml for full security stack
+  # See deploy/compose/docker-compose.yml for full security stack
 
 volumes:
   age-data:

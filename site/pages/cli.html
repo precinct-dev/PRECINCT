@@ -284,7 +284,7 @@
             </div>
 
             <p>
-              Source code: <a href="https://github.com/precinct-dev/PRECINCT/tree/main/POC/cli/agw" target="_blank" rel="noopener noreferrer"><code>POC/cli/agw/</code></a>
+              Source code: <a href="https://github.com/precinct-dev/PRECINCT/tree/main/cli/agw" target="_blank" rel="noopener noreferrer"><code>cli/agw/</code></a>
             </p>
           </section>
 
@@ -355,20 +355,20 @@ precinct compliance collect \
 
           <!-- ========== gdpr ========== -->
           <section id="gdpr">
-            <h2>agw gdpr</h2>
+            <h2>precinct gdpr</h2>
             <p>
               Handle GDPR data subject access requests (DSARs), data deletion (right to be
               forgotten), and consent management.
             </p>
 
             <pre data-lang="bash"><code># Process a subject access request
-agw gdpr sar --subject "user@example.com" --output sar-report.json
+precinct gdpr sar --subject "user@example.com" --output sar-report.json
 
 # Delete all data for a subject (right to be forgotten)
-agw gdpr delete --subject "user@example.com" --confirm
+precinct gdpr delete --subject "user@example.com" --confirm
 
 # List consent records
-agw gdpr consent list --subject "user@example.com"</code></pre>
+precinct gdpr consent list --subject "user@example.com"</code></pre>
           </section>
 
           <!-- ========== identity ========== -->
@@ -430,7 +430,7 @@ precinct policy eval --identity "spiffe://poc.local/agents/test" --tool "tavily_
 
           <!-- ========== repave ========== -->
           <section id="repave">
-            <h2>agw repave</h2>
+            <h2>precinct repave</h2>
             <p>
               Tear down and rebuild the entire PRECINCT stack from trusted base images. This
               is the third "R" in the
@@ -439,13 +439,13 @@ precinct policy eval --identity "spiffe://poc.local/agents/test" --tool "tavily_
             </p>
 
             <pre data-lang="bash"><code># Repave the Docker Compose stack
-agw repave --target compose
+precinct repave --target compose
 
 # Repave the Kubernetes deployment
-agw repave --target k8s --namespace precinct
+precinct repave --target k8s --namespace precinct
 
 # Dry-run to preview what will be rebuilt
-agw repave --target compose --dry-run</code></pre>
+precinct repave --target compose --dry-run</code></pre>
 
             <div class="callout callout-warning">
               <div class="callout-title">
@@ -453,7 +453,7 @@ agw repave --target compose --dry-run</code></pre>
                 Destructive Operation
               </div>
               <p>
-                <code>agw repave</code> tears down running services before rebuilding.
+                <code>precinct repave</code> tears down running services before rebuilding.
                 In production, coordinate repave operations with your deployment pipeline
                 to ensure zero-downtime rotation.
               </p>
@@ -462,34 +462,34 @@ agw repave --target compose --dry-run</code></pre>
 
           <!-- ========== secret ========== -->
           <section id="secret">
-            <h2>agw secret</h2>
+            <h2>precinct secret</h2>
             <p>
               Manage SPIKE token references and inspect the secret lifecycle. This command
               interacts with the SPIKE secrets store through the gateway.
             </p>
 
             <pre data-lang="bash"><code># List active token references
-agw secret list
+precinct secret list
 
 # Create a new token reference
-agw secret create --name "api-key-tavily" --value "$TAVILY_API_KEY"
+precinct secret create --name "api-key-tavily" --value "$TAVILY_API_KEY"
 
 # Rotate a token reference
-agw secret rotate --name "api-key-tavily"
+precinct secret rotate --name "api-key-tavily"
 
 # Inspect reference metadata (without revealing the value)
-agw secret inspect --name "api-key-tavily"</code></pre>
+precinct secret inspect --name "api-key-tavily"</code></pre>
           </section>
 
           <!-- ========== status ========== -->
           <section id="status">
-            <h2>agw status</h2>
+            <h2>precinct status</h2>
             <p>
               Display the health and operational status of the PRECINCT deployment.
             </p>
 
             <pre data-lang="bash"><code># Overall gateway status
-agw status
+precinct status
 
 # Example output:
 # Gateway:       healthy (uptime: 3d 14h 22m)
@@ -501,10 +501,10 @@ agw status
 # Active sessions: 23</code></pre>
 
             <pre data-lang="bash"><code># Per-middleware latency (live)
-agw status latency
+precinct status latency
 
 # Upstream health details
-agw status upstreams</code></pre>
+precinct status upstreams</code></pre>
           </section>
 
         </article>
