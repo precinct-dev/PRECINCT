@@ -527,12 +527,78 @@ Notes:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `GROQ_API_KEY` | (empty) | API key for Groq deep scan guard model. Required for deep scan functionality |
-| `GUARD_MODEL_ENDPOINT` | (empty) | Guard model API base URL. Defaults to Groq if empty |
-| `GUARD_MODEL_NAME` | (empty) | Guard model identifier. Defaults to `llama-prompt-guard-2-86m` |
+| `GUARD_MODEL_ENDPOINT` | `https://api.groq.com/openai/v1` | Guard model API base URL. See [Guard Model Configuration](#guard-model-configuration) |
+| `GUARD_MODEL_NAME` | `meta-llama/llama-prompt-guard-2-86m` | Guard model identifier. See [Guard Model Configuration](#guard-model-configuration) |
 | `GUARD_API_KEY` | (empty) | Guard model API key. Falls back to `GROQ_API_KEY` if empty |
 | `DEEP_SCAN_TIMEOUT` | `5` | Deep scan API timeout in seconds |
 | `DEEP_SCAN_FALLBACK` | `fail_closed` | Behavior when deep scan fails: `fail_closed` or `fail_open` |
 | `DLP_INJECTION_POLICY` | (empty) | Override DLP injection action: `block` or `flag`. Default uses YAML config |
+
+### Guard Model Configuration
+
+The guard model provides LLM-based prompt injection detection and step-up risk assessment. It is used by two middleware layers in the security chain:
+
+- **Deep scan** (middleware step 10): Scans request content for prompt injection patterns using the guard model as a classifier.
+- **Step-up gating** (middleware step 9): Queries the guard model to assess risk for medium-risk requests that require step-up verification before proceeding.
+
+#### Default Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GUARD_MODEL_ENDPOINT` | `https://api.groq.com/openai/v1` | Base URL for the guard model API (any OpenAI-compatible chat completions endpoint) |
+| `GUARD_MODEL_NAME` | `meta-llama/llama-prompt-guard-2-86m` | Model identifier sent to the guard model endpoint |
+| `GUARD_API_KEY` | (empty) | API key for the guard model provider. Falls back to `GROQ_API_KEY` if not set |
+| `GROQ_API_KEY` | (empty) | Legacy/fallback API key. Used when `GUARD_API_KEY` is not set |
+
+#### How Keys Are Loaded
+
+The guard model API key is resolved at gateway startup using a two-tier lookup:
+
+1. **SPIKE secret store (preferred):** When `SPIKE_NEXUS_URL` is configured, the gateway attempts to fetch the key from SPIKE Nexus via SPIFFE mTLS (reference `groq-api-key`). The `spike-secret-seeder` init container seeds this secret from `.env` into SPIKE during stack startup. The gateway retries up to 15 times (2-second intervals) to allow the seeder to complete.
+2. **Environment variable fallback:** If SPIKE is unavailable or returns an empty value, the gateway falls back to `GUARD_API_KEY`, then `GROQ_API_KEY` from the environment.
+
+When a real API key is loaded from SPIKE and the current endpoint points to the mock guard model, the gateway automatically switches to the real Groq API endpoint.
+
+#### Groq Dependency Notice
+
+The default model (`meta-llama/llama-prompt-guard-2-86m`) runs on Groq's PREVIEW tier, which carries no SLA. Groq has historically deprecated guard models on roughly an annual cadence. The gateway code is provider-agnostic -- any OpenAI-compatible chat completions endpoint can be substituted without code changes.
+
+#### How to Swap Providers
+
+Set `GUARD_MODEL_ENDPOINT` and `GUARD_MODEL_NAME` to point at any OpenAI-compatible chat completions API. Examples:
+
+| Provider | `GUARD_MODEL_ENDPOINT` | `GUARD_MODEL_NAME` |
+|----------|------------------------|--------------------|
+| Groq (default) | `https://api.groq.com/openai/v1` | `meta-llama/llama-prompt-guard-2-86m` |
+| Self-hosted vLLM | `http://vllm-host:8000/v1` | `meta-llama/Llama-Prompt-Guard-2-86M` |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` (or any suitable classifier) |
+| Azure OpenAI | `https://<resource>.openai.azure.com/openai/deployments/<deployment>/v1` | (deployment name) |
+
+Set `GUARD_API_KEY` to the corresponding provider's API key.
+
+#### Behavior When Guard Model Is Unavailable
+
+The behavior depends on the enforcement profile (`ENFORCEMENT_PROFILE`):
+
+| Profile | Behavior | Effect |
+|---------|----------|--------|
+| `dev` (default) | Fails open | Step-up gating allows medium-risk requests through without guard model verification |
+| `prod_standard` / `prod_regulated_hipaa` | Fails closed | Step-up gating denies requests when the guard model cannot be reached |
+
+Deep scan timeout behavior is controlled independently by `DEEP_SCAN_FALLBACK` (`fail_closed` by default).
+
+#### Verification
+
+After starting the stack, confirm the guard model key was loaded:
+
+```bash
+docker compose logs mcp-security-gateway | grep "guard model"
+```
+
+Expected output (one of):
+
+- `guard model API key loaded from SPIKE` -- key was fetched from SPIKE Nexus (preferred path)
+- `no guard model API key available from SPIKE or environment; step-up guard will degrade to fail-open` -- no key found; guard model is inactive
 
 ### Rate Limiting
 
