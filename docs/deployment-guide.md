@@ -192,6 +192,24 @@ the keeper stage to `spike-keeper-1`, `spike-keeper-2`, and `spike-keeper-3`.
 
 This deploys the full stack to Docker Desktop's built-in Kubernetes cluster using Kustomize overlays that adapt EKS manifests for a single-node kubeadm environment.
 
+### ConfigMap Population (Important)
+
+The gateway pod requires a populated `gateway-config` ConfigMap before it can
+start. The base manifest ships with a placeholder only. If you deploy without
+populating the ConfigMap, the gateway pod will stay in `ContainerCreating` or
+`CrashLoopBackOff`.
+
+See [`deploy/k8s/README.md` -- ConfigMap Population](../deploy/k8s/README.md#configmap-population)
+for the full list of required keys and population commands. The short version:
+
+```bash
+# Populate from canonical config/ directory
+make k8s-sync-config
+```
+
+`make k8s-up` runs this automatically, but if you apply base manifests manually
+(`kubectl apply -k deploy/k8s/base`), you must populate the ConfigMap yourself.
+
 ### Step-by-Step
 
 ```bash
