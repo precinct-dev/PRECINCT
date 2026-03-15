@@ -36,7 +36,7 @@ else
     log_fail "Model egress with SPIKE header reference" "Expected HTTP 200 with choices; got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
 
-AUDIT_HIT=$(docker compose logs --no-log-prefix --tail 250 mcp-security-gateway 2>/dev/null | grep "openai/v1/chat/completions" | grep "MODEL_" || true)
+AUDIT_HIT=$($DC logs --no-log-prefix --tail 250 mcp-security-gateway 2>/dev/null | grep "openai/v1/chat/completions" | grep "MODEL_" || true)
 if [ -n "$AUDIT_HIT" ]; then
     log_pass "Audit includes model egress decision for OpenAI-compatible route"
 else

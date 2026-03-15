@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
+COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
+DC="docker compose -f ${COMPOSE_FILE}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -173,7 +175,7 @@ gateway_call() {
 }
 
 latest_spire_serial() {
-  docker compose exec -T spire-server /opt/spire/bin/spire-server agent list -output json \
+  $DC exec -T spire-server /opt/spire/bin/spire-server agent list -output json \
     | jq -r '.agents | sort_by(.x509svid_expires_at|tonumber) | last | .x509svid_serial_number'
 }
 
@@ -185,7 +187,7 @@ assert_all_main_services_healthy() {
   local services
   services="spire-server spire-agent keydb spike-keeper-1 spike-nexus mock-mcp-server mock-guard-model mcp-security-gateway"
   local ps_out
-  ps_out="$(docker compose ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"
+  ps_out="$($DC ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"
   local s line state health
   for s in $services; do
     line="$(printf '%s\n' "$ps_out" | awk -v svc="$s" '$1==svc {print}')"
@@ -295,7 +297,7 @@ main() {
   fi
   log_pass "pre-repave KeyDB snapshot captured"
 
-  run_cmd "compose_hash_snapshot" docker compose ps --format json
+  run_cmd "compose_hash_snapshot" $DC ps --format json
   local spire_serial_before
   spire_serial_before="$(latest_spire_serial)"
   if [ -z "$spire_serial_before" ] || [ "$spire_serial_before" = "null" ]; then

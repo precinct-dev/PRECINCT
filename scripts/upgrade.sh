@@ -371,19 +371,19 @@ apply_component_update() {
     spire-agent)
       update_dockerfile_from "${ROOT_DIR}/deploy/compose/Dockerfile.spire-agent" "ghcr.io/spiffe/spire-agent" "$lat"
       if [[ "${UPGRADE_SKIP_DOCKER:-0}" != "1" ]] && have_cmd docker; then
-        docker compose build spire-agent >/dev/null 2>&1 || true
+        docker compose -f "${DOCKER_COMPOSE_FILE}" build spire-agent >/dev/null 2>&1 || true
       fi
       ;;
     spike-nexus)
       update_dockerfile_from "${ROOT_DIR}/deploy/compose/Dockerfile.spike-nexus" "ghcr.io/spiffe/spike-nexus" "$lat"
       if [[ "${UPGRADE_SKIP_DOCKER:-0}" != "1" ]] && have_cmd docker; then
-        docker compose build spike-nexus >/dev/null 2>&1 || true
+        docker compose -f "${DOCKER_COMPOSE_FILE}" build spike-nexus >/dev/null 2>&1 || true
       fi
       ;;
     spike-keeper)
       update_dockerfile_from "${ROOT_DIR}/deploy/compose/Dockerfile.spike-keeper" "ghcr.io/spiffe/spike-keeper" "$lat"
       if [[ "${UPGRADE_SKIP_DOCKER:-0}" != "1" ]] && have_cmd docker; then
-        docker compose build spike-keeper-1 >/dev/null 2>&1 || true
+        docker compose -f "${DOCKER_COMPOSE_FILE}" build spike-keeper-1 >/dev/null 2>&1 || true
       fi
       ;;
     keydb)

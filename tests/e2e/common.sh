@@ -17,9 +17,13 @@ GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
 PHOENIX_URL="${PHOENIX_URL:-http://localhost:6006}"
 OTEL_URL="${OTEL_URL:-http://localhost:4318}"
 
-# POC directory - resolved from env var or discovered from script location.
-# The e2e scripts live in tests/e2e/ so the POC root is two levels up.
+# Project root - resolved from env var or discovered from script location.
+# The e2e scripts live in tests/e2e/ so the project root is two levels up.
 POC_DIR="${POC_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
+
+# Docker Compose command with explicit compose file
+COMPOSE_FILE="${POC_DIR}/deploy/compose/docker-compose.yml"
+DC="docker compose -f ${COMPOSE_FILE}"
 
 # Resolve the effective OPA allowlist base path used by the running gateway.
 # Priority: explicit env override -> container ALLOWED_BASE_PATH -> container workdir.
@@ -193,14 +197,14 @@ gateway_get() {
 # Get the last N lines of gateway logs
 gateway_logs() {
     local count="${1:-20}"
-    docker compose logs --tail "$count" mcp-security-gateway 2>/dev/null | grep -v "^mcp-security-gateway" || true
+    $DC logs --tail "$count" mcp-security-gateway 2>/dev/null | grep -v "^mcp-security-gateway" || true
 }
 
 # Get gateway logs containing a specific field/value
 gateway_logs_grep() {
     local pattern="$1"
     local count="${2:-50}"
-    docker compose logs --tail "$count" mcp-security-gateway 2>/dev/null | grep "$pattern" || true
+    $DC logs --tail "$count" mcp-security-gateway 2>/dev/null | grep "$pattern" || true
 }
 
 # ---- Service health helpers ----
@@ -208,7 +212,7 @@ gateway_logs_grep() {
 check_service_healthy() {
     local service="$1"
     local status
-    status=$(docker compose ps --format '{{.Status}}' "$service" 2>/dev/null || echo "not found")
+    status=$($DC ps --format '{{.Status}}' "$service" 2>/dev/null || echo "not found")
     if echo "$status" | grep -qi "healthy\|Up"; then
         return 0
     fi

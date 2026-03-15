@@ -86,7 +86,7 @@ reset_rate_limit_state() {
     local spiffe_id="$1"
     local tokens_key="ratelimit:${spiffe_id}:tokens"
     local last_fill_key="ratelimit:${spiffe_id}:last_fill"
-    docker compose exec -T keydb keydb-cli DEL "$tokens_key" "$last_fill_key" >/dev/null 2>&1 || true
+    $DC exec -T keydb keydb-cli DEL "$tokens_key" "$last_fill_key" >/dev/null 2>&1 || true
 }
 
 assert_conformance_shape() {

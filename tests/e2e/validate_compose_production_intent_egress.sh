@@ -5,6 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${ROOT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 POC_DIR="${ROOT_DIR}"
 BASE_ENV_FILE="${POC_DIR}/config/compose-production-intent.env"
+COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
+DC="docker compose -f ${COMPOSE_FILE}"
 tmp_dir=""
 
 fail() {
@@ -122,9 +124,8 @@ main() {
   export ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/admin/sa/operator"
 
   info "Rendering strict+production-intent compose config"
-  docker compose --profile strict \
+  $DC --profile strict \
     --env-file "${BASE_ENV_FILE}" \
-    -f "${ROOT_DIR}/deploy/compose/docker-compose.yml" \
     -f "${ROOT_DIR}/deploy/compose/docker-compose.strict.yml" \
     -f "${ROOT_DIR}/deploy/compose/docker-compose.prod-intent.yml" \
     config --format json >"${cfg_json}"

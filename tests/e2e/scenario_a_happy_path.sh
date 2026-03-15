@@ -106,7 +106,7 @@ else
 fi
 
 # Check OTEL collector is running
-if check_service_healthy "otel-collector" 2>/dev/null || docker compose ps otel-collector 2>/dev/null | grep -q "Up"; then
+if check_service_healthy "otel-collector" 2>/dev/null || $DC ps otel-collector 2>/dev/null | grep -q "Up"; then
     log_pass "OpenTelemetry Collector is running"
 else
     log_skip "OTEL Collector" "Not running -- traces may not be collected"

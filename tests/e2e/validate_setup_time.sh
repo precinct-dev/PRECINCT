@@ -14,6 +14,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="${ROOT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 POC_DIR="${ROOT_DIR}"
+COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
+DC="docker compose -f ${COMPOSE_FILE}"
 
 # ---- Terminal colors ----
 RED='\033[0;31m'
@@ -122,7 +124,7 @@ if [ "$DRY_RUN" = false ]; then
 
     if [ "$MODE" = "compose" ]; then
         log_info "Pulling Docker Compose images..."
-        docker compose pull 2>&1 | sed 's/^/    /'
+        $DC pull 2>&1 | sed 's/^/    /'
         log_pass "Images pre-pulled"
     elif [ "$MODE" = "k8s" ]; then
         log_info "Building images for K8s (uses local images)..."
@@ -249,7 +251,7 @@ if [ "$MODE" = "compose" ]; then
     log_info "Waiting for services to be healthy (max 5 minutes)..."
     timeout=300
     while [ $timeout -gt 0 ]; do
-        if docker compose ps --format '{{.Name}}\t{{.Status}}' 2>/dev/null | grep -q "mcp-security-gateway.*healthy\|Up"; then
+        if $DC ps --format '{{.Name}}\t{{.Status}}' 2>/dev/null | grep -q "mcp-security-gateway.*healthy\|Up"; then
             log_pass "Gateway is healthy"
             break
         fi
