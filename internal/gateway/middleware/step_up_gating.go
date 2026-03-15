@@ -129,26 +129,54 @@ type GuardResult struct {
 const openAICompatChatCompletionsPath = "/openai/v1/chat/completions"
 const openClawResponsesPath = "/v1/responses"
 
-// GroqGuardClient is the interface for calling the guard model
-type GroqGuardClient interface {
+// GuardModelClient is the interface for calling the guard model
+type GuardModelClient interface {
 	ClassifyContent(ctx context.Context, content string) (*GuardResult, error)
 }
 
-// GroqGuardHTTPClient implements GroqGuardClient using the Groq API
+// GroqGuardClient is an alias for backward compatibility
+type GroqGuardClient = GuardModelClient
+
+// GroqGuardHTTPClient implements GuardModelClient using any OpenAI-compatible API
 type GroqGuardHTTPClient struct {
 	apiKey     string
 	baseURL    string
+	modelName  string
 	httpClient *http.Client
 }
 
-// NewGroqGuardClient creates a new Groq guard client
-func NewGroqGuardClient(apiKey string, timeout time.Duration) *GroqGuardHTTPClient {
-	return &GroqGuardHTTPClient{
-		apiKey:  apiKey,
-		baseURL: "https://api.groq.com/openai/v1",
+// NewGroqGuardClient creates a new guard model client with the given endpoint and model name.
+// Both baseURL and modelName are configurable to support any OpenAI-compatible provider.
+func NewGroqGuardClient(apiKey string, timeout time.Duration, opts ...func(*GroqGuardHTTPClient)) *GroqGuardHTTPClient {
+	c := &GroqGuardHTTPClient{
+		apiKey:    apiKey,
+		baseURL:   "https://api.groq.com/openai/v1",
+		modelName: "meta-llama/llama-prompt-guard-2-86m",
 		httpClient: &http.Client{
 			Timeout: timeout,
 		},
+	}
+	for _, opt := range opts {
+		opt(c)
+	}
+	return c
+}
+
+// WithGuardEndpoint sets the base URL for the guard model API
+func WithGuardEndpoint(url string) func(*GroqGuardHTTPClient) {
+	return func(c *GroqGuardHTTPClient) {
+		if url != "" {
+			c.baseURL = url
+		}
+	}
+}
+
+// WithGuardModelName sets the model name for classification requests
+func WithGuardModelName(name string) func(*GroqGuardHTTPClient) {
+	return func(c *GroqGuardHTTPClient) {
+		if name != "" {
+			c.modelName = name
+		}
 	}
 }
 
@@ -164,7 +192,7 @@ func (g *GroqGuardHTTPClient) ClassifyContent(ctx context.Context, content strin
 	}
 
 	reqBody := map[string]interface{}{
-		"model": "meta-llama/llama-prompt-guard-2-86m",
+		"model": g.modelName,
 		"messages": []map[string]string{
 			{
 				"role":    "user",

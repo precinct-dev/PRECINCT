@@ -4936,17 +4936,14 @@ func TestShouldFetchGuardAPIKeyFromSPIKE(t *testing.T) {
 		}
 	})
 
-	t.Run("disabled for mock guard endpoint", func(t *testing.T) {
+	t.Run("enabled even for mock guard endpoint when nexus available", func(t *testing.T) {
 		cfg := &Config{
 			SPIKENexusURL:      "https://spike-nexus:8443",
 			GuardModelEndpoint: "http://mock-guard-model:8080/openai/v1",
 			GuardAPIKey:        "demo-guard-key",
 		}
-		if shouldFetchGuardAPIKeyFromSPIKE(cfg) {
-			t.Fatal("expected fetch to be disabled for mock guard endpoint")
-		}
-		if reason := guardAPIKeyFetchSkipReason(cfg); reason != "mock_guard_model_endpoint" {
-			t.Fatalf("expected mock skip reason, got %q", reason)
+		if !shouldFetchGuardAPIKeyFromSPIKE(cfg) {
+			t.Fatal("expected fetch to be enabled when SPIKE nexus is available, even with mock endpoint")
 		}
 	})
 
