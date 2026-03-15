@@ -395,7 +395,7 @@ make readiness-state-validate
 make gdpr-delete SPIFFE_ID=spiffe://poc.local/agent/example
 
 # EKS manifest validation (offline)
-cd infra/eks && tofu validate
+cd deploy/terraform && tofu validate
 kubeconform --strict deploy/terraform/**/*.yaml
 kustomize build deploy/terraform/overlays/dev
 ```
