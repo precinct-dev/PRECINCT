@@ -33,6 +33,20 @@ if [ -z "$compose_log" ]; then
         compose_log="$ART_DIR/rfa-02lt-demo-compose-live.log"
         $DC logs 2>/dev/null > "$compose_log"
         compose_from_live=true
+
+        # Ensure temp file is cleaned up on any exit (set -e, fail(), etc.)
+        cleanup_live_log() {
+            if [ "$compose_from_live" = true ] && [ -f "$compose_log" ]; then
+                rm -f "$compose_log"
+            fi
+        }
+        trap cleanup_live_log EXIT
+
+        # Check if live logs contain case26 demo activity
+        if ! grep -q "Gateway -- Go SDK Demo\|case26\|bypass" "$compose_log" 2>/dev/null; then
+            echo "[SKIP] Live compose logs contain no case26 demo activity. Run 'make demo-compose' first."
+            exit 0
+        fi
     fi
 fi
 
@@ -132,10 +146,5 @@ for mode in compose k8s; do
     [ "$py_fails" -eq 0 ] || fail "Python case26 FAIL proof found in $mode log"
     pass "$mode case26 parity verified (Go PASS=$go_passes, Python PASS=$py_passes)"
 done
-
-# Clean up live log if we created it
-if [ "$compose_from_live" = true ] && [ -f "$compose_log" ]; then
-    rm -f "$compose_log"
-fi
 
 pass "Gateway bypass case26 conformance validation passed"
