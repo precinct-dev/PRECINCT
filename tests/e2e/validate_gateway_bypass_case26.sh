@@ -3,8 +3,8 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 ART_DIR="$ROOT_DIR/tests/e2e/artifacts"
-GO_FILE="$ROOT_DIR/demo/go/main.go"
-PY_FILE="$ROOT_DIR/demo/python/demo.py"
+GO_FILE="$ROOT_DIR/examples/go/main.go"
+PY_FILE="$ROOT_DIR/examples/python/demo.py"
 
 compose_log="${1:-}"
 k8s_log="${2:-}"
