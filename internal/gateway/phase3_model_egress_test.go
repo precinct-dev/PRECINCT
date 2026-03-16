@@ -632,6 +632,381 @@ func TestModelPlane_DirectEgressBypassDenied(t *testing.T) {
 	}
 }
 
+// postModelProxy is a generic helper that posts a JSON payload to any model proxy path.
+func postModelProxy(t *testing.T, handler http.Handler, path string, headers map[string]string, payload map[string]any) *httptest.ResponseRecorder {
+	t.Helper()
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal payload: %v", err)
+	}
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBuffer(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	for k, v := range headers {
+		req.Header.Set(k, v)
+	}
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	return rec
+}
+
+// ---------------------------------------------------------------------------
+// isModelProxyPath unit tests
+// ---------------------------------------------------------------------------
+
+func TestIsModelProxyPath(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/openai/v1/chat/completions", true},
+		{"/openai/v1/responses", true},
+		{"/v1/messages", true},
+		{"/openai/v1/chat/completions/", false},
+		{"/v1/messages/", false},
+		{"/other", false},
+		{"/mcp/v1/call", false},
+	}
+	for _, tt := range tests {
+		if got := isModelProxyPath(tt.path); got != tt.want {
+			t.Errorf("isModelProxyPath(%q) = %v, want %v", tt.path, got, tt.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI Responses API (/openai/v1/responses) tests
+// ---------------------------------------------------------------------------
+
+func TestResponsesAPI_ModelEgressSuccess(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Fatalf("expected Authorization header to be forwarded")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"resp-1","output":[{"type":"message","content":[{"type":"text","text":"ok"}]}]}`))
+	}))
+	defer provider.Close()
+
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	rec := postModelProxy(t, handler, openAICompatResponsesPath, map[string]string{
+		"Authorization":            "Bearer test-token",
+		"X-Model-Provider":         "groq",
+		"X-Provider-Endpoint-Groq": provider.URL,
+		"X-Residency-Intent":       "us",
+		"X-Budget-Profile":         "standard",
+		"X-Budget-Units":           "1",
+	}, map[string]any{
+		"model": "llama-3.3-70b-versatile",
+		"messages": []map[string]any{
+			{"role": "user", "content": "Hello model"},
+		},
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("X-Precinct-Reason-Code") != string(ReasonModelAllow) {
+		t.Fatalf("expected reason %s, got %s", ReasonModelAllow, rec.Header().Get("X-Precinct-Reason-Code"))
+	}
+	if rec.Header().Get("X-Precinct-Provider-Used") != "groq" {
+		t.Fatalf("expected provider groq, got %s", rec.Header().Get("X-Precinct-Provider-Used"))
+	}
+}
+
+func TestResponsesAPI_InvalidJSON(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	req := httptest.NewRequest(http.MethodPost, openAICompatResponsesPath, bytes.NewBufferString(`{invalid`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if got := body["middleware"]; got != "model_plane" {
+		t.Fatalf("expected middleware=model_plane, got %v", got)
+	}
+	if got, ok := body["middleware_step"].(float64); !ok || int(got) != 14 {
+		t.Fatalf("expected middleware_step=14, got %v", body["middleware_step"])
+	}
+}
+
+func TestResponsesAPI_MissingModel(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	rec := postModelProxy(t, handler, openAICompatResponsesPath, map[string]string{}, map[string]any{
+		"messages": []map[string]any{
+			{"role": "user", "content": "test"},
+		},
+	})
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if got := body["middleware"]; got != "model_plane" {
+		t.Fatalf("expected middleware=model_plane, got %v", got)
+	}
+	if got, ok := body["middleware_step"].(float64); !ok || int(got) != 14 {
+		t.Fatalf("expected middleware_step=14, got %v", body["middleware_step"])
+	}
+}
+
+func TestResponsesAPI_ModelPlaneDenied(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	rec := postModelProxy(t, handler, openAICompatResponsesPath, map[string]string{
+		"X-Model-Provider": "unknown-provider",
+	}, map[string]any{
+		"model": "whatever",
+		"messages": []map[string]any{
+			{"role": "user", "content": "test"},
+		},
+	})
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if got := body["reason_code"]; got != string(ReasonModelProviderDenied) {
+		t.Fatalf("expected reason_code=%s, got %v", ReasonModelProviderDenied, got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Anthropic Messages API (/v1/messages) tests
+// ---------------------------------------------------------------------------
+
+func TestAnthropicMessages_ModelEgressSuccess(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer test-anthropic-key" {
+			t.Fatalf("expected Authorization header to be forwarded")
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"msg-1","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}]}`))
+	}))
+	defer provider.Close()
+
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	rec := postModelProxy(t, handler, anthropicMessagesPath, map[string]string{
+		"Authorization":            "Bearer test-anthropic-key",
+		"X-Model-Provider":         "groq",
+		"X-Provider-Endpoint-Groq": provider.URL,
+		"X-Residency-Intent":       "us",
+		"X-Budget-Profile":         "standard",
+		"X-Budget-Units":           "1",
+	}, map[string]any{
+		"model":      "llama-3.3-70b-versatile",
+		"max_tokens": 1024,
+		"messages": []map[string]any{
+			{"role": "user", "content": "Hello model"},
+		},
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Header().Get("X-Precinct-Reason-Code") != string(ReasonModelAllow) {
+		t.Fatalf("expected reason %s, got %s", ReasonModelAllow, rec.Header().Get("X-Precinct-Reason-Code"))
+	}
+	if rec.Header().Get("X-Precinct-Provider-Used") != "groq" {
+		t.Fatalf("expected provider groq, got %s", rec.Header().Get("X-Precinct-Provider-Used"))
+	}
+}
+
+func TestAnthropicMessages_InvalidJSON(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	req := httptest.NewRequest(http.MethodPost, anthropicMessagesPath, bytes.NewBufferString(`not-json`))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if got := body["middleware"]; got != "model_plane" {
+		t.Fatalf("expected middleware=model_plane, got %v", got)
+	}
+	if got, ok := body["middleware_step"].(float64); !ok || int(got) != 14 {
+		t.Fatalf("expected middleware_step=14, got %v", body["middleware_step"])
+	}
+}
+
+func TestAnthropicMessages_MissingModel(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	rec := postModelProxy(t, handler, anthropicMessagesPath, map[string]string{}, map[string]any{
+		"max_tokens": 1024,
+		"messages": []map[string]any{
+			{"role": "user", "content": "test"},
+		},
+	})
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if got := body["middleware"]; got != "model_plane" {
+		t.Fatalf("expected middleware=model_plane, got %v", got)
+	}
+	if got, ok := body["middleware_step"].(float64); !ok || int(got) != 14 {
+		t.Fatalf("expected middleware_step=14, got %v", body["middleware_step"])
+	}
+}
+
+func TestAnthropicMessages_ModelPlaneDenied(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	handler := gw.Handler()
+
+	rec := postModelProxy(t, handler, anthropicMessagesPath, map[string]string{
+		"X-Model-Provider": "unknown-provider",
+	}, map[string]any{
+		"model": "whatever",
+		"messages": []map[string]any{
+			{"role": "user", "content": "test"},
+		},
+	})
+
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	if got := body["reason_code"]; got != string(ReasonModelProviderDenied) {
+		t.Fatalf("expected reason_code=%s, got %v", ReasonModelProviderDenied, got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cross-path: all model proxy paths produce logPlaneDecision audit entries
+// ---------------------------------------------------------------------------
+
+func TestAllModelProxyPaths_ProduceAuditMetadata(t *testing.T) {
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-1","choices":[{"index":0,"message":{"role":"assistant","content":"ok"}}]}`))
+	}))
+	defer provider.Close()
+
+	paths := []struct {
+		name string
+		path string
+	}{
+		{"chat_completions", openAICompatChatCompletionsPath},
+		{"responses", openAICompatResponsesPath},
+		{"anthropic_messages", anthropicMessagesPath},
+	}
+
+	for _, tt := range paths {
+		t.Run(tt.name, func(t *testing.T) {
+			gw, _ := newPhase3TestGateway(t)
+			handler := gw.Handler()
+
+			rec := postModelProxy(t, handler, tt.path, map[string]string{
+				"Authorization":            "Bearer test-token",
+				"X-Model-Provider":         "groq",
+				"X-Provider-Endpoint-Groq": provider.URL,
+				"X-Residency-Intent":       "us",
+				"X-Budget-Profile":         "standard",
+				"X-Budget-Units":           "1",
+			}, map[string]any{
+				"model": "llama-3.3-70b-versatile",
+				"messages": []map[string]any{
+					{"role": "user", "content": "Hello model"},
+				},
+			})
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+			}
+			// All paths must produce Precinct decision headers (evidence of logPlaneDecision)
+			if rec.Header().Get("X-Precinct-Decision-ID") == "" {
+				t.Fatal("expected X-Precinct-Decision-ID header from logPlaneDecision")
+			}
+			if rec.Header().Get("X-Precinct-Trace-ID") == "" {
+				t.Fatal("expected X-Precinct-Trace-ID header from logPlaneDecision")
+			}
+			if rec.Header().Get("X-Precinct-Reason-Code") == "" {
+				t.Fatal("expected X-Precinct-Reason-Code header from logPlaneDecision")
+			}
+			if rec.Header().Get("X-Precinct-Provider-Used") == "" {
+				t.Fatal("expected X-Precinct-Provider-Used header from logPlaneDecision")
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Cross-path: guard model, DLP, rate limiting apply equally (evaluateModelPlaneDecision)
+// ---------------------------------------------------------------------------
+
+func TestAllModelProxyPaths_EvaluateModelPlaneDecision(t *testing.T) {
+	paths := []struct {
+		name string
+		path string
+	}{
+		{"chat_completions", openAICompatChatCompletionsPath},
+		{"responses", openAICompatResponsesPath},
+		{"anthropic_messages", anthropicMessagesPath},
+	}
+
+	for _, tt := range paths {
+		t.Run(tt.name+"_unauthenticated", func(t *testing.T) {
+			gw, _ := newPhase3TestGateway(t)
+			handler := gw.Handler()
+
+			body, _ := json.Marshal(map[string]any{
+				"model": "llama-3.3-70b-versatile",
+				"messages": []map[string]any{
+					{"role": "user", "content": "test"},
+				},
+			})
+			// No X-SPIFFE-ID header -> unauthenticated -> 401
+			req := httptest.NewRequest(http.MethodPost, tt.path, bytes.NewBuffer(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("expected 401, got %d body=%s", rec.Code, rec.Body.String())
+			}
+		})
+	}
+}
+
 func TestModelPlane_RegulatedPromptUsesPhase3DecisionEnvelope(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	handler := gw.Handler()
