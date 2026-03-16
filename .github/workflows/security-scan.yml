@@ -126,7 +126,7 @@ jobs:
           file: deploy/compose/Dockerfile.gateway
           push: false
           load: true
-          tags: mcp-security-gateway:scan
+          tags: precinct-gateway:scan
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -134,7 +134,7 @@ jobs:
         uses: aquasecurity/trivy-action@0.35.0
         with:
           scan-type: 'image'
-          image-ref: 'mcp-security-gateway:scan'
+          image-ref: 'precinct-gateway:scan'
           format: 'sarif'
           output: 'trivy-image-results.sarif'
           severity: 'CRITICAL,HIGH,MEDIUM'

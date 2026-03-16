@@ -5,7 +5,7 @@
 #   docker compose -f docker-compose.yml -f docker-compose.mock.yml --profile mock up -d
 
 services:
-  mcp-security-gateway:
+  precinct-gateway:
     depends_on:
       mock-mcp-server:
         condition: service_healthy

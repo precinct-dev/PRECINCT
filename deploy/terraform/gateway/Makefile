@@ -69,7 +69,7 @@ deploy-gateway: ## Deploy gateway Deployment and Service
 	$(KUBECTL) apply -f gateway-deployment.yaml
 	$(KUBECTL) apply -f gateway-service.yaml
 	@echo "Waiting for gateway pod to be ready..."
-	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/mcp-security-gateway --timeout=120s
+	$(KUBECTL) -n $(NAMESPACE) rollout status deployment/precinct-gateway --timeout=120s
 	@echo "PRECINCT Gateway deployed."
 
 # ---------------------------------------------------------------------------
@@ -78,10 +78,10 @@ deploy-gateway: ## Deploy gateway Deployment and Service
 
 verify: ## Verify gateway health (pods, services, config)
 	@echo "=== Gateway Pod Health ==="
-	$(KUBECTL) -n $(NAMESPACE) get pods -l app.kubernetes.io/name=mcp-security-gateway
+	$(KUBECTL) -n $(NAMESPACE) get pods -l app.kubernetes.io/name=precinct-gateway
 	@echo ""
 	@echo "=== Gateway Service ==="
-	$(KUBECTL) -n $(NAMESPACE) get svc mcp-security-gateway
+	$(KUBECTL) -n $(NAMESPACE) get svc precinct-gateway
 	@echo ""
 	@echo "=== ConfigMap Keys ==="
 	$(KUBECTL) -n $(NAMESPACE) get configmap gateway-config -o jsonpath='{.data}' | \
@@ -89,7 +89,7 @@ verify: ## Verify gateway health (pods, services, config)
 		$(KUBECTL) -n $(NAMESPACE) describe configmap gateway-config | head -30
 	@echo ""
 	@echo "=== Gateway Logs (last 10 lines) ==="
-	$(KUBECTL) -n $(NAMESPACE) logs -l app.kubernetes.io/name=mcp-security-gateway --tail=10 2>/dev/null || echo "(no logs yet)"
+	$(KUBECTL) -n $(NAMESPACE) logs -l app.kubernetes.io/name=precinct-gateway --tail=10 2>/dev/null || echo "(no logs yet)"
 
 status: ## Show pod and service status
 	@echo "=== Pods ==="
@@ -102,7 +102,7 @@ status: ## Show pod and service status
 	$(KUBECTL) -n $(NAMESPACE) get deployments
 
 logs: ## Tail gateway logs
-	$(KUBECTL) -n $(NAMESPACE) logs -f -l app.kubernetes.io/name=mcp-security-gateway
+	$(KUBECTL) -n $(NAMESPACE) logs -f -l app.kubernetes.io/name=precinct-gateway
 
 # ---------------------------------------------------------------------------
 # Dry run (validation without a cluster)

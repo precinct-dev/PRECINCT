@@ -104,7 +104,7 @@ ensure_running() {
   echo "[repave] service ${svc} not running; starting it..."
   if [[ "${svc}" == "phoenix" || "${svc}" == "otel-collector" ]]; then
     "${compose_phoenix[@]}" up -d --wait --wait-timeout 180 "${svc}"
-  elif [[ "${svc}" == "mcp-security-gateway" ]]; then
+  elif [[ "${svc}" == "precinct-gateway" ]]; then
     # Gateway repave must not block on one-shot bootstrap services that may remain
     # in long-running/retry states after prior incidents.
     "${compose_main[@]}" up -d --no-deps --wait --wait-timeout 180 "${svc}" || true
@@ -221,7 +221,7 @@ repave_one_main() {
   "${compose_main[@]}" rm -f "${svc}"
 
   echo "[repave] starting new container and waiting for health..."
-  if [[ "${svc}" == "mcp-security-gateway" ]]; then
+  if [[ "${svc}" == "precinct-gateway" ]]; then
     # Gateway depends on one-shot init jobs that may already have completed;
     # avoid re-triggering those dependencies during repave.
     # In practice, compose --wait can report unhealthy before the gateway's
@@ -241,7 +241,7 @@ repave_one_main() {
   fi
 
   health="$(inspect_health_status "${cid}")"
-  if [[ "${svc}" == "mcp-security-gateway" ]]; then
+  if [[ "${svc}" == "precinct-gateway" ]]; then
     local gateway_ready=0
     local deadline=$((SECONDS + 120))
     while (( SECONDS < deadline )); do
@@ -276,7 +276,7 @@ repave_one_main() {
         return 1
       fi
       ;;
-    mcp-security-gateway)
+    precinct-gateway)
       if ! verify_gateway_health; then
         echo "ERROR: gateway /health check failed after repave" >&2
         return 1
@@ -433,7 +433,7 @@ repave_all() {
 
   trap 'finalize_report' EXIT
 
-  local order=(spire-server spire-agent keydb spike-keeper-1 spike-nexus mcp-security-gateway mock-mcp-server otel-collector phoenix)
+  local order=(spire-server spire-agent keydb spike-keeper-1 spike-nexus precinct-gateway mock-mcp-server otel-collector phoenix)
   local i total
   total="${#order[@]}"
 

@@ -4,10 +4,10 @@
 # to a shared volume consumed by the OpenSearch forwarder stack.
 #
 # Example:
-#   docker compose -f docker-compose.yml -f docker-compose.opensearch-bridge.yml up -d mcp-security-gateway
+#   docker compose -f docker-compose.yml -f docker-compose.opensearch-bridge.yml up -d precinct-gateway
 
 services:
-  mcp-security-gateway:
+  precinct-gateway:
     environment:
       - AUDIT_LOG_PATH=/var/log/gateway/audit.jsonl
     volumes:

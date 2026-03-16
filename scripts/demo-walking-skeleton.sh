@@ -87,9 +87,9 @@ echo "Checking audit logs..."
 sleep 1  # Give audit log time to flush
 
 # Try to read audit log from container
-if $DC logs --tail 1 mcp-security-gateway 2>/dev/null | grep -q "session_id"; then
+if $DC logs --tail 1 precinct-gateway 2>/dev/null | grep -q "session_id"; then
     echo -e "${GREEN}Audit event emitted${NC}:"
-    AUDIT_JSON=$($DC logs --tail 1 mcp-security-gateway 2>/dev/null | grep "session_id" | tail -n1)
+    AUDIT_JSON=$($DC logs --tail 1 precinct-gateway 2>/dev/null | grep "session_id" | tail -n1)
 
     # Parse and display key fields
     SESSION_ID=$(echo "$AUDIT_JSON" | jq -r '.session_id // "N/A"' 2>/dev/null || echo "N/A")

@@ -13,7 +13,7 @@ global:
 gateway:
   replicas: 1
   image:
-    repository: registry:5000/mcp-security-gateway
+    repository: registry:5000/precinct-gateway
     tag: latest
     pullPolicy: Always
   resources:

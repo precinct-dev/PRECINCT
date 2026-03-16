@@ -27,7 +27,7 @@ data:
 
     [INPUT]
         Name                  tail
-        Path                  /var/log/containers/*mcp-security-gateway*.log
+        Path                  /var/log/containers/*precinct-gateway*.log
         Parser                cri
         Tag                   gateway.audit
         Refresh_Interval      5

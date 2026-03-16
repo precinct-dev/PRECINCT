@@ -84,7 +84,7 @@ services:
       - "component=agent"
 
   # Gateway: add tavily-mcp-server dependency (replaces mock-mcp-server)
-  mcp-security-gateway:
+  precinct-gateway:
     depends_on:
       tavily-mcp-server:
         condition: service_healthy

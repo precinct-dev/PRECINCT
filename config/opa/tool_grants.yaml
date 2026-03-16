@@ -8,7 +8,7 @@
 # Tool grants map SPIFFE ID patterns to allowed tools and data classification limits
 tool_grants:
   # Gateway - should have full access for its enforcement role
-  - spiffe_pattern: "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+  - spiffe_pattern: "spiffe://poc.local/gateways/precinct-gateway/dev"
     description: "PRECINCT Gateway - enforcement point with full access"
     allowed_tools:
       - "*"  # Gateway needs access to all tools for inspection/forwarding

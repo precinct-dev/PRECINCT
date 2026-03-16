@@ -19,36 +19,36 @@
 # Image: Set to a generic local name. Override via Kustomize overlay to point
 # to your container registry (ECR, GCR, ACR, Docker Hub, ghcr.io, etc.).
 #
-# SPIFFE ID: spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway
+# SPIFFE ID: spiffe://precinct.poc/ns/gateway/sa/precinct-gateway
 # ------------------------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: mcp-security-gateway
+  name: precinct-gateway
   namespace: gateway
   labels:
-    app.kubernetes.io/name: mcp-security-gateway
-    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/name: precinct-gateway
+    app.kubernetes.io/part-of: precinct-gateway
     app.kubernetes.io/component: gateway
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: mcp-security-gateway
+      app.kubernetes.io/name: precinct-gateway
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: mcp-security-gateway
-        app.kubernetes.io/part-of: mcp-security-gateway
+        app.kubernetes.io/name: precinct-gateway
+        app.kubernetes.io/part-of: precinct-gateway
         app.kubernetes.io/component: gateway
     spec:
-      serviceAccountName: mcp-security-gateway
+      serviceAccountName: precinct-gateway
       terminationGracePeriodSeconds: 15
       containers:
-        - name: mcp-security-gateway
+        - name: precinct-gateway
           # Generic image name. Override via Kustomize images transformer
           # to point to your container registry.
-          image: mcp-security-gateway:latest
+          image: precinct-gateway:latest
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

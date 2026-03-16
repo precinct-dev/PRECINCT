@@ -38,7 +38,7 @@ jobs:
           cosign verify \
             --certificate-identity-regexp="${SOURCE_CERT_IDENTITY_REGEX}" \
             --certificate-oidc-issuer="${SOURCE_CERT_OIDC_ISSUER}" \
-            "ghcr.io/${REPO}/mcp-security-gateway@${IMAGE_DIGEST}"
+            "ghcr.io/${REPO}/precinct-gateway@${IMAGE_DIGEST}"
 
   promote:
     needs: verify-provenance
@@ -54,7 +54,7 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           cd "deploy/terraform/overlays/${TARGET_ENV}"
-          kustomize edit set image "ghcr.io/${REPO}/mcp-security-gateway@${IMAGE_DIGEST}"
+          kustomize edit set image "ghcr.io/${REPO}/precinct-gateway@${IMAGE_DIGEST}"
 
       - name: Validate overlay
         env:

@@ -81,13 +81,13 @@ patches:
   # --------------------------------------------------------------------------
   - target:
       kind: Service
-      name: mcp-security-gateway
+      name: precinct-gateway
       namespace: gateway
     patch: |
       apiVersion: v1
       kind: Service
       metadata:
-        name: mcp-security-gateway
+        name: precinct-gateway
         namespace: gateway
       spec:
         type: NodePort
@@ -100,13 +100,13 @@ patches:
 
   - target:
       kind: Deployment
-      name: mcp-security-gateway
+      name: precinct-gateway
       namespace: gateway
     patch: |
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: mcp-security-gateway
+        name: precinct-gateway
         namespace: gateway
       spec:
         replicas: 1
@@ -144,8 +144,8 @@ patches:
                   seccompProfile:
                     type: RuntimeDefault
             containers:
-              - name: mcp-security-gateway
-                image: registry:5000/mcp-security-gateway:latest
+              - name: precinct-gateway
+                image: registry:5000/precinct-gateway:latest
                 imagePullPolicy: Always
                 env:
                   - name: LOG_LEVEL
@@ -170,7 +170,7 @@ patches:
                   - name: OTEL_EXPORTER_OTLP_ENDPOINT
                     value: "otel-collector.observability.svc.cluster.local:4317"
                   - name: OTEL_SERVICE_NAME
-                    value: "mcp-security-gateway"
+                    value: "precinct-gateway"
                   - name: GROQ_API_KEY
                     valueFrom:
                       secretKeyRef:

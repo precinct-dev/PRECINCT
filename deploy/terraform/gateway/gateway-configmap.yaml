@@ -21,8 +21,8 @@ metadata:
   name: gateway-config
   namespace: gateway
   labels:
-    app.kubernetes.io/name: mcp-security-gateway
-    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/name: precinct-gateway
+    app.kubernetes.io/part-of: precinct-gateway
     app.kubernetes.io/component: config
 data:
   # OPA policies and data files are loaded from config/opa/ at deploy time.

@@ -57,15 +57,15 @@ data:
     echo "=== Registering SPIRE entries ==="
 
     # Gateway workload
-    echo "  Workload: mcp-security-gateway..."
+    echo "  Workload: precinct-gateway..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
       -parentID spiffe://precinct.poc/agent/local \
-      -spiffeID spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway \
+      -spiffeID spiffe://precinct.poc/ns/gateway/sa/precinct-gateway \
       -selector k8s:ns:gateway \
-      -selector k8s:sa:mcp-security-gateway \
-      -dns mcp-security-gateway \
-      -dns mcp-security-gateway.gateway.svc.cluster.local \
+      -selector k8s:sa:precinct-gateway \
+      -dns precinct-gateway \
+      -dns precinct-gateway.gateway.svc.cluster.local \
     || echo "  (entry may already exist, continuing)"
 
     # Tool server workloads

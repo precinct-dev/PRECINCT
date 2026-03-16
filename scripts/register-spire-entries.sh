@@ -76,8 +76,8 @@ reg() {
         "$@" 2>/dev/null || true
 }
 
-reg "spiffe://$DOMAIN/gateways/mcp-security-gateway/dev" \
-    -selector docker:label:spiffe-id:mcp-security-gateway \
+reg "spiffe://$DOMAIN/gateways/precinct-gateway/dev" \
+    -selector docker:label:spiffe-id:precinct-gateway \
     -selector docker:label:component:gateway
 
 reg "spiffe://$DOMAIN/agents/mcp-client/dspy-researcher/dev" \

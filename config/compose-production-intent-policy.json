@@ -6,7 +6,7 @@
     "release_workflow_path": ".github/workflows/ci.yaml"
   },
   "required_services": {
-    "mcp-security-gateway": {
+    "precinct-gateway": {
       "image_env": "PROD_GATEWAY_IMAGE",
       "cosign": {
         "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",

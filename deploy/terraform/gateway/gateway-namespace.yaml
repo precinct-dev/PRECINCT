@@ -15,7 +15,7 @@ kind: Namespace
 metadata:
   name: gateway
   labels:
-    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/part-of: precinct-gateway
     # Opt-in namespace for sigstore/policy-controller admission interception.
     policy.sigstore.dev/include: "true"
     # NetworkPolicy ingress allowlist marker for gateway consumers.
