@@ -8,8 +8,8 @@ labels: [agents-of-chaos, principal-hierarchy]
 parent: OC-qkal
 created_at: 2026-03-08T02:42:27Z
 created_by: ramirosalas
-updated_at: 2026-03-08T17:35:05Z
-content_hash: "sha256:899b8c5fc5307f87e42464bd28f46a89cbf0a08c48fd447e2d218b0a9fdd5f0f"
+updated_at: 2026-03-14T22:20:36Z
+content_hash: "sha256:b5a0c2f69ff095a6c7451939166d39f6ceff923347f12c5228766d531acec90d"
 was_blocked_by: [OC-70gv]
 closed_at: 2026-03-08T17:35:05Z
 close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."

@@ -8,8 +8,8 @@ labels: [agents-of-chaos, escalation-detection, delivered, accepted]
 parent: OC-kd8y
 created_at: 2026-03-08T02:41:24Z
 created_by: ramirosalas
-updated_at: 2026-03-09T01:31:57Z
-content_hash: "sha256:01dd35a5723e01cef10a60993277ed979c1e3fac1302ce219b8107bc12b639a9"
+updated_at: 2026-03-14T22:20:36Z
+content_hash: "sha256:774dc6c4bda1fa6c919b889ff5cfa06c98a7ae101d15b354cf75a8e19c297b8f"
 was_blocked_by: [OC-12ng, OC-pgxd, OC-d77k]
 follows: [OC-12ng, OC-pgxd, OC-d77k]
 closed_at: 2026-03-09T01:31:57Z
