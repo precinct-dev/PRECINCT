@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/precinct-dev/precinct/internal/gateway"
+	"github.com/precinct-dev/precinct/internal/gateway/middleware"
 	"github.com/precinct-dev/precinct/ports/openclaw/protocol"
 )
 
@@ -86,5 +87,24 @@ func (a *Adapter) RouteAuthorizations() []gateway.PortRouteAuth {
 	}
 }
 
-// Compile-time check.
+// OpenClawSPIFFEID is the SPIFFE identity used by the OpenClaw agent.
+// OC-xj4w: Used to register the trusted agent DLP bypass.
+const OpenClawSPIFFEID = "spiffe://poc.local/openclaw"
+
+// TrustedAgentDLPEntries returns the trusted agent DLP entries for the
+// OpenClaw port. System prompt content (role=system) from OpenClaw bypasses
+// DLP scanning to avoid false positives on agent instructions. User messages
+// (role=user) are always scanned.
+// OC-xj4w: Port-scoped trusted agent DLP bypass.
+func (a *Adapter) TrustedAgentDLPEntries() []middleware.TrustedAgentDLPEntry {
+	return []middleware.TrustedAgentDLPEntry{
+		{
+			SPIFFEID:       OpenClawSPIFFEID,
+			DLPBypassScope: "system_prompt",
+		},
+	}
+}
+
+// Compile-time checks.
 var _ gateway.PortAdapter = (*Adapter)(nil)
+var _ gateway.TrustedAgentDLPProvider = (*Adapter)(nil)

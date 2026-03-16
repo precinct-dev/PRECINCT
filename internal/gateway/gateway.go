@@ -70,6 +70,7 @@ type Gateway struct {
 	extensionRegistryStop      func()                            // stop function for extension registry fsnotify watcher
 	adminAuthzAllowedSPIFFEIDs map[string]struct{}               // explicit SPIFFE allowlist for /admin/* authorization
 	portAdapters               []PortAdapter                     // registered port adapters for third-party integrations
+	trustedAgentDLP            *middleware.TrustedAgentDLPConfig  // OC-xj4w: port-scoped trusted agent DLP overrides
 	rlmEngine                  *rlmGovernanceEngine              // OC-tjtj: RLM multi-agent lineage governance engine
 }
 
@@ -607,7 +608,14 @@ func (g *Gateway) Handler() http.Handler {
 	if g.extensionRegistry != nil {
 		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostInspection, g.auditor) // post_inspection: after DLP, before Session
 	}
-	handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy()) // 7
+	// OC-xj4w: Use trusted-agent-aware DLP when port adapters have registered
+	// trusted agent overrides. System prompts from trusted agents bypass DLP
+	// scanning; user messages are always scanned.
+	if g.trustedAgentDLP != nil && len(g.trustedAgentDLP.Agents) > 0 {
+		handler = middleware.DLPMiddlewareWithTrustedAgents(handler, g.dlpScanner, g.trustedAgentDLP, g.dlpPolicy()) // 7
+	} else {
+		handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy()) // 7
+	}
 	handler = middleware.OPAPolicy(handler, g.opa)                           // 6
 	if g.extensionRegistry != nil {
 		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostAuthz, g.auditor) // post_authz: after OPA, before DLP
