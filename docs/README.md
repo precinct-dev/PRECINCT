@@ -114,12 +114,13 @@ If you are new to PRECINCT, begin with these documents in order:
 
 ---
 
-## SDK
+## SDK and Integration
 
 | Document | Description |
 |----------|-------------|
 | [Go SDK](../sdk/go/README.md) | Go client for making MCP JSON-RPC tool calls through the gateway, with retry logic and session management |
 | [Python SDK](../sdk/python/README.md) | Python client library compatible with PydanticAI, DSPy, LangGraph, CrewAI, or raw HTTP |
+| [Sidecar Identity](sidecar-identity.md) | Deploy third-party tools (mcp2cli, DSPy, LangGraph, etc.) with automatic SPIFFE identity via Envoy sidecar -- no code changes required |
 | [No-Upstream-Mod Integration Playbook](sdk/no-upstream-mod-integration-playbook.md) | Claim-ready guide for onboarding agent applications without modifying upstream source code |
 | [App Pack Authoring Guide](sdk/app-pack-authoring-guide.md) | How application teams author integration packs to onboard to the gateway |
 | [Gateway Bypass Conformance](sdk/gateway-bypass-case26-conformance.md) | Conformance spec verifying that agent traffic cannot bypass gateway controls for remote-skill and model paths |

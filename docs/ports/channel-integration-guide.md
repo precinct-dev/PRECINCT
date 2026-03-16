@@ -93,7 +93,9 @@ The gateway's model proxy and tool plane are channel-agnostic. An external adapt
 
 For languages without an SDK, the gateway's API is standard HTTP + JSON-RPC 2.0. Any HTTP client can integrate by following the wire format documented in the API reference.
 
-**Key constraint:** The external adapter service must route all LLM and tool traffic through the gateway. Direct calls to model providers or tool backends bypass security controls. The [No-Upstream-Mod Integration Playbook](../sdk/no-upstream-mod-integration-playbook.md) documents the boundary invariants.
+**Automatic SPIFFE identity via Envoy sidecar:** If your adapter service (or any third-party tool) does not have native SPIFFE support, deploy it with the Envoy identity sidecar (`deploy/sidecar/`). The sidecar injects the `X-SPIFFE-ID` header into every outbound request, giving the tool a cryptographic identity without code changes. See [Sidecar Identity](../sidecar-identity.md) for Docker Compose and Kubernetes deployment instructions.
+
+**Key constraint:** The external adapter service must route all LLM and tool traffic through the gateway. Direct calls to model providers or tool backends bypass security controls. Network-level controls (Docker network isolation or Kubernetes NetworkPolicy) enforce this boundary. The [No-Upstream-Mod Integration Playbook](../sdk/no-upstream-mod-integration-playbook.md) documents the boundary invariants.
 
 ### Path 2: With Source Code Changes (Port Adapter)
 
