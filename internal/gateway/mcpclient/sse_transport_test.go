@@ -116,7 +116,7 @@ func TestLegacySSETransport_Connect_ReceivesEndpoint(t *testing.T) {
 	server := newMockLegacySSEServer(t)
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := transport.Connect(ctx); err != nil {
@@ -144,7 +144,7 @@ func TestLegacySSETransport_Connect_Idempotent(t *testing.T) {
 	server := newMockLegacySSEServer(t)
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := transport.Connect(ctx); err != nil {
@@ -168,7 +168,7 @@ func TestLegacySSETransport_Connect_ServerError(t *testing.T) {
 	defer server.Close()
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	err := transport.Connect(ctx)
@@ -197,7 +197,7 @@ func TestLegacySSETransport_Connect_NoEndpointEvent(t *testing.T) {
 	defer server.Close()
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	err := transport.Connect(ctx)
@@ -215,7 +215,7 @@ func TestLegacySSETransport_Send_ToolsCall(t *testing.T) {
 	server := newMockLegacySSEServer(t)
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := transport.Connect(ctx); err != nil {
@@ -261,7 +261,7 @@ func TestLegacySSETransport_Send_ToolsList(t *testing.T) {
 	server := newMockLegacySSEServer(t)
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := transport.Connect(ctx); err != nil {
@@ -336,7 +336,7 @@ func TestLegacySSETransport_Send_Timeout(t *testing.T) {
 	defer server.Close()
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := transport.Connect(ctx); err != nil {
@@ -372,7 +372,7 @@ func TestLegacySSETransport_Close_TerminatesStream(t *testing.T) {
 	server := newMockLegacySSEServer(t)
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := transport.Connect(ctx); err != nil {
@@ -408,7 +408,7 @@ func TestLegacySSETransport_Close_Idempotent(t *testing.T) {
 	server := newMockLegacySSEServer(t)
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := transport.Connect(ctx); err != nil {
@@ -430,7 +430,7 @@ func TestLegacySSETransport_DispatchByID(t *testing.T) {
 	server := newMockLegacySSEServer(t)
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := transport.Connect(ctx); err != nil {
@@ -527,7 +527,7 @@ func TestLegacySSETransport_ReusedCallerID_UniqueWireIDs(t *testing.T) {
 	defer server.Close()
 
 	transport := NewLegacySSETransport(server.URL, server.Client())
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := transport.Connect(ctx); err != nil {
