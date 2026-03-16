@@ -676,184 +676,52 @@ collect_mcp_transport_proof_k8s() {
 }
 
 k8s_probe_direct_external_egress() {
-    local probe_url="${1:-https://api.groq.com/openai/v1/chat/completions}"
+    local probe_url="${1:-https://httpbin.org/get}"
+    local pod_name="egress-probe-$$"
+    local namespace="tools"
     local probe_output=""
     local probe_rc=0
-    local probe_status=""
-    local probe_runtime=""
-    local attempt_summaries=()
 
-    _probe_exec_not_found() {
-        local msg
-        msg="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
-        [[ "$msg" == *"executable file not found"* ]] || [[ "$msg" == *"not found in \$path"* ]] || [[ "$msg" == *"no such file or directory"* ]]
-    }
+    log "Verifying in-cluster direct external egress is blocked (namespace=${namespace})"
 
-    _run_probe_attempt() {
-        local runtime="$1"
-        shift
-        probe_runtime="$runtime"
-        set +e
-        probe_output="$(kubectl -n tools exec deploy/mcp-server -- "$@" 2>&1)"
-        probe_rc=$?
-        set -e
+    # Clean up any leftover probe pod from a previous run.
+    kubectl -n "$namespace" delete pod "$pod_name" --ignore-not-found --wait=false >/dev/null 2>&1 || true
 
-        if [ "$probe_rc" -eq 0 ]; then
-            probe_status="allowed"
-            return 0
-        fi
-        if _probe_exec_not_found "$probe_output"; then
-            probe_status="unavailable"
-            return 0
-        fi
+    # Spawn a temporary debug pod with curl available.
+    # The pod inherits the namespace's NetworkPolicy, which should block egress.
+    kubectl -n "$namespace" run "$pod_name" \
+        --image=curlimages/curl:latest \
+        --restart=Never \
+        --command -- sleep 30 >/dev/null 2>&1
 
-        case "$runtime" in
-            curl)
-                probe_status="blocked"
-                ;;
-            wget)
-                if [ "$probe_rc" -eq 8 ]; then
-                    probe_status="allowed"
-                else
-                    probe_status="blocked"
-                fi
-                ;;
-            node|python3|python)
-                if [ "$probe_rc" -eq 7 ]; then
-                    probe_status="blocked"
-                else
-                    probe_status="error"
-                fi
-                ;;
-            *)
-                probe_status="error"
-                ;;
-        esac
-    }
+    # Wait for the pod to be running (up to 30s).
+    if ! kubectl -n "$namespace" wait --for=condition=Ready "pod/$pod_name" --timeout=30s >/dev/null 2>&1; then
+        DEMO_K8S_EGRESS_PROBE_RESULT="error"
+        err "Egress probe pod failed to start"
+        kubectl -n "$namespace" delete pod "$pod_name" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+        return 1
+    fi
 
-    log "Verifying in-cluster direct external egress is blocked (tools/mcp-server)"
+    # Attempt to reach an external URL from inside the namespace.
+    set +e
+    probe_output="$(kubectl -n "$namespace" exec "$pod_name" -- \
+        curl -m 5 -sS -o /dev/null -w '%{http_code}' "$probe_url" 2>&1)"
+    probe_rc=$?
+    set -e
 
-    _run_probe_attempt "curl" curl -m 4 -sS -o /dev/null -w '%{http_code}' "$probe_url"
-    attempt_summaries+=("curl status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
-    if [ "$probe_status" = "allowed" ]; then
+    # Clean up the probe pod.
+    kubectl -n "$namespace" delete pod "$pod_name" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+
+    if [ "$probe_rc" -eq 0 ]; then
         DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
-        err "In-cluster external egress probe reached a public endpoint (runtime=curl)"
+        err "In-cluster external egress probe reached a public endpoint"
         err "Probe output: ${probe_output}"
         return 1
     fi
-    if [ "$probe_status" = "blocked" ]; then
-        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
-        ok "In-cluster external egress is blocked as expected (runtime=curl)"
-        return 0
-    fi
 
-    _run_probe_attempt "wget" wget -T 4 -q -O /dev/null "$probe_url"
-    attempt_summaries+=("wget status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
-    if [ "$probe_status" = "allowed" ]; then
-        DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
-        err "In-cluster external egress probe reached a public endpoint (runtime=wget)"
-        err "Probe output: ${probe_output}"
-        return 1
-    fi
-    if [ "$probe_status" = "blocked" ]; then
-        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
-        ok "In-cluster external egress is blocked as expected (runtime=wget)"
-        return 0
-    fi
-
-    _run_probe_attempt "node" node -e '
-const https = require("https");
-const url = process.argv[1];
-const req = https.request(url, { method: "GET" }, (res) => {
-  console.log(`ALLOWED:${res.statusCode}`);
-  res.resume();
-  process.exit(0);
-});
-req.setTimeout(4000, () => req.destroy(new Error("timeout")));
-req.on("error", (err) => {
-  console.log(`BLOCKED:${err.name}:${err.message}`);
-  process.exit(7);
-});
-req.end();
-' "$probe_url"
-    attempt_summaries+=("node status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
-    if [ "$probe_status" = "allowed" ]; then
-        DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
-        err "In-cluster external egress probe reached a public endpoint (runtime=node)"
-        err "Probe output: ${probe_output}"
-        return 1
-    fi
-    if [ "$probe_status" = "blocked" ]; then
-        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
-        ok "In-cluster external egress is blocked as expected (runtime=node)"
-        return 0
-    fi
-
-    _run_probe_attempt "python3" python3 -c '
-import sys
-import urllib.error
-import urllib.request
-
-url = sys.argv[1]
-req = urllib.request.Request(url, method="GET")
-try:
-    with urllib.request.urlopen(req, timeout=4.0) as resp:
-        print(f"ALLOWED:{resp.status}")
-        raise SystemExit(0)
-except urllib.error.HTTPError as exc:
-    print(f"ALLOWED_HTTP_ERROR:{exc.code}")
-    raise SystemExit(0)
-except Exception as exc:
-    print(f"BLOCKED:{type(exc).__name__}:{exc}")
-    raise SystemExit(7)
-' "$probe_url"
-    attempt_summaries+=("python3 status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
-    if [ "$probe_status" = "allowed" ]; then
-        DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
-        err "In-cluster external egress probe reached a public endpoint (runtime=python3)"
-        err "Probe output: ${probe_output}"
-        return 1
-    fi
-    if [ "$probe_status" = "blocked" ]; then
-        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
-        ok "In-cluster external egress is blocked as expected (runtime=python3)"
-        return 0
-    fi
-
-    _run_probe_attempt "python" python -c '
-import sys
-import urllib
-
-url = sys.argv[1]
-req = urllib.request.Request(url, method="GET")
-try:
-    with urllib.request.urlopen(req, timeout=4.0) as resp:
-        print("ALLOWED:%s" % resp.status)
-        raise SystemExit(0)
-except urllib.error.HTTPError as exc:
-    print("ALLOWED_HTTP_ERROR:%s" % exc.code)
-    raise SystemExit(0)
-except Exception as exc:
-    print("BLOCKED:%s:%s" % (type(exc).__name__, exc))
-    raise SystemExit(7)
-' "$probe_url"
-    attempt_summaries+=("python status=${probe_status} rc=${probe_rc} out=$(printf '%s' "$probe_output" | head -n1)")
-    if [ "$probe_status" = "allowed" ]; then
-        DEMO_K8S_EGRESS_PROBE_RESULT="allowed"
-        err "In-cluster external egress probe reached a public endpoint (runtime=python)"
-        err "Probe output: ${probe_output}"
-        return 1
-    fi
-    if [ "$probe_status" = "blocked" ]; then
-        DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
-        ok "In-cluster external egress is blocked as expected (runtime=python)"
-        return 0
-    fi
-
-    DEMO_K8S_EGRESS_PROBE_RESULT="error"
-    err "In-cluster egress probe could not find a supported runtime inside tools/mcp-server"
-    err "Probe attempts: ${attempt_summaries[*]}"
-    return 1
+    DEMO_K8S_EGRESS_PROBE_RESULT="blocked"
+    ok "In-cluster external egress is blocked as expected (curl rc=${probe_rc})"
+    return 0
 }
 
 print_otel_proof() {
