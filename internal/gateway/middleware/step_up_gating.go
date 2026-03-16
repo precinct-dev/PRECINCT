@@ -127,6 +127,8 @@ type GuardResult struct {
 }
 
 const openAICompatChatCompletionsPath = "/openai/v1/chat/completions"
+const openAICompatResponsesPath = "/openai/v1/responses"
+const anthropicMessagesPath = "/v1/messages"
 const openClawResponsesPath = "/v1/responses"
 
 // GuardModelClient is the interface for calling the guard model
@@ -1071,7 +1073,13 @@ func requiresModelApproval(r *http.Request, body []byte) bool {
 	if r.Method != http.MethodPost || r.URL == nil {
 		return false
 	}
-	if r.URL.Path != openAICompatChatCompletionsPath && r.URL.Path != openClawResponsesPath {
+	switch r.URL.Path {
+	case openAICompatChatCompletionsPath,
+		openAICompatResponsesPath,
+		anthropicMessagesPath,
+		openClawResponsesPath:
+		// model proxy paths -- continue to check approval requirements
+	default:
 		return false
 	}
 

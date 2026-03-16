@@ -142,5 +142,16 @@ func StatusForToolReason(reason ReasonCode) int {
 	return statusForToolReason(reason)
 }
 
-// OpenAICompatChatCompletionsPath is the path for OpenAI-compatible model egress.
+// OpenAICompatChatCompletionsPath is the path for OpenAI Chat Completions model egress.
 const OpenAICompatChatCompletionsPath = "/openai/v1/chat/completions"
+
+// OpenAICompatResponsesPath is the path for OpenAI Responses API model egress.
+const OpenAICompatResponsesPath = "/openai/v1/responses"
+
+// AnthropicMessagesPath is the path for Anthropic Messages API model egress.
+const AnthropicMessagesPath = "/v1/messages"
+
+// IsModelProxyPath returns true if the path routes through the model plane middleware.
+func IsModelProxyPath(path string) bool {
+	return isModelProxyPath(path)
+}
