@@ -29,7 +29,7 @@ trap 'rm -f "${tmp_env}"' EXIT
 cp "${BASE_ENV_FILE}" "${tmp_env}"
 
 # Deterministic negative check: a non-digest image ref must fail preflight.
-perl -0pi -e 's/^PROD_GATEWAY_IMAGE=.*/PROD_GATEWAY_IMAGE=ghcr.io\/precinct-dev\/precinct\/mcp-security-gateway:latest/m' "${tmp_env}"
+perl -0pi -e 's/^PROD_GATEWAY_IMAGE=.*/PROD_GATEWAY_IMAGE=ghcr.io\/precinct-dev\/precinct\/precinct-gateway:latest/m' "${tmp_env}"
 
 if COMPOSE_PROD_ENV_FILE="${tmp_env}" "${PREFLIGHT_SCRIPT}" >/tmp/compose-prod-intent-negative.log 2>&1; then
   cat /tmp/compose-prod-intent-negative.log

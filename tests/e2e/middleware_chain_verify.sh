@@ -24,7 +24,7 @@ echo ""
 sleep 1
 
 # Capture the most recent audit log line
-AUDIT_LINE=$(docker compose logs --tail 3 mcp-security-gateway 2>/dev/null | grep "session_id" | tail -1 || echo "")
+AUDIT_LINE=$(docker compose logs --tail 3 precinct-gateway 2>/dev/null | grep "session_id" | tail -1 || echo "")
 
 if [ -z "$AUDIT_LINE" ]; then
     log_fail "Audit log capture" "No audit log entry found for the test request"

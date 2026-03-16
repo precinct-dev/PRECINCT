@@ -30,7 +30,7 @@ func setupTestTracer(t *testing.T) (*tracetest.InMemoryExporter, func()) {
 	otel.SetTracerProvider(tp)
 
 	// Re-create the package-level tracer so it uses the new provider.
-	tracer = tp.Tracer("mcp-security-gateway")
+	tracer = tp.Tracer("precinct-gateway")
 
 	return exporter, func() {
 		_ = tp.Shutdown(context.Background())

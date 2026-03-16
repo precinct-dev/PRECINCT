@@ -35,13 +35,13 @@ resolve_gateway_allowed_base_path() {
 
     local base_path=""
     local container_env=""
-    container_env=$(docker inspect mcp-security-gateway --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true)
+    container_env=$(docker inspect precinct-gateway --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || true)
     if [ -n "$container_env" ]; then
         base_path=$(echo "$container_env" | awk -F= '/^ALLOWED_BASE_PATH=/{print substr($0, index($0, "=") + 1); exit}')
     fi
 
     if [ -z "$base_path" ]; then
-        base_path=$(docker inspect mcp-security-gateway --format '{{.Config.WorkingDir}}' 2>/dev/null || true)
+        base_path=$(docker inspect precinct-gateway --format '{{.Config.WorkingDir}}' 2>/dev/null || true)
     fi
 
     if [ -z "$base_path" ]; then
@@ -197,14 +197,14 @@ gateway_get() {
 # Get the last N lines of gateway logs
 gateway_logs() {
     local count="${1:-20}"
-    $DC logs --tail "$count" mcp-security-gateway 2>/dev/null | grep -v "^mcp-security-gateway" || true
+    $DC logs --tail "$count" precinct-gateway 2>/dev/null | grep -v "^precinct-gateway" || true
 }
 
 # Get gateway logs containing a specific field/value
 gateway_logs_grep() {
     local pattern="$1"
     local count="${2:-50}"
-    $DC logs --tail "$count" mcp-security-gateway 2>/dev/null | grep "$pattern" || true
+    $DC logs --tail "$count" precinct-gateway 2>/dev/null | grep "$pattern" || true
 }
 
 # ---- Service health helpers ----

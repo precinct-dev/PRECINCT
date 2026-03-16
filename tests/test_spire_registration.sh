@@ -20,7 +20,7 @@ TESTS_FAILED=0
 
 # Expected SPIFFE IDs from config/spiffe-ids.yaml
 EXPECTED_SPIFFE_IDS=(
-    "spiffe://${TRUST_DOMAIN}/gateways/mcp-security-gateway/dev"
+    "spiffe://${TRUST_DOMAIN}/gateways/precinct-gateway/dev"
     "spiffe://${TRUST_DOMAIN}/agents/mcp-client/dspy-researcher/dev"
     "spiffe://${TRUST_DOMAIN}/agents/mcp-client/pydantic-researcher/dev"
     "spiffe://${TRUST_DOMAIN}/tools/docker-mcp-server/dev"
@@ -108,9 +108,9 @@ test_gateway_svid() {
 
     local output
     output=$($DC exec -T spire-server spire-server entry show \
-        -spiffeID "spiffe://${TRUST_DOMAIN}/gateways/mcp-security-gateway/dev" 2>/dev/null || echo "")
+        -spiffeID "spiffe://${TRUST_DOMAIN}/gateways/precinct-gateway/dev" 2>/dev/null || echo "")
 
-    if echo "${output}" | grep -q "docker:label:spiffe-id:mcp-security-gateway"; then
+    if echo "${output}" | grep -q "docker:label:spiffe-id:precinct-gateway"; then
         log_pass "Gateway entry has correct Docker label selectors"
         return 0
     else

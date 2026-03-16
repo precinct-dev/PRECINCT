@@ -30,10 +30,10 @@ fi
 SPIRE_ENTRIES=$(docker compose exec -T spire-server /opt/spire/bin/spire-server entry show 2>/dev/null || echo "")
 
 # Use here-strings (not echo | grep) to avoid SIGPIPE false negatives under pipefail.
-if grep -q "mcp-security-gateway" <<<"$SPIRE_ENTRIES"; then
-    log_pass "SPIRE entry exists for mcp-security-gateway"
+if grep -q "precinct-gateway" <<<"$SPIRE_ENTRIES"; then
+    log_pass "SPIRE entry exists for precinct-gateway"
 else
-    log_fail "SPIRE gateway entry" "No SPIRE entry found for mcp-security-gateway"
+    log_fail "SPIRE gateway entry" "No SPIRE entry found for precinct-gateway"
 fi
 
 if grep -q "dspy-researcher" <<<"$SPIRE_ENTRIES"; then
@@ -50,7 +50,7 @@ fi
 
 # 1d. Agent tool call shows SPIFFE ID in audit log
 gateway_request "$DEFAULT_SPIFFE_ID" "read" '{"file_path": "/tmp/test"}'
-AUDIT_LINE=$(docker compose logs --tail 3 mcp-security-gateway 2>/dev/null | grep "spiffe_id" | tail -1 || echo "")
+AUDIT_LINE=$(docker compose logs --tail 3 precinct-gateway 2>/dev/null | grep "spiffe_id" | tail -1 || echo "")
 
 if echo "$AUDIT_LINE" | grep -q "$DEFAULT_SPIFFE_ID"; then
     log_pass "Agent SPIFFE ID appears in audit log"
@@ -65,14 +65,14 @@ fi
 log_subheader "2. Policy (OPA)"
 
 # 2a. OPA policies loaded (check gateway started successfully with embedded OPA)
-if check_service_healthy "mcp-security-gateway"; then
+if check_service_healthy "precinct-gateway"; then
     log_pass "Gateway is healthy (OPA embedded, policies loaded)"
 else
     log_fail "Gateway health (OPA)" "Gateway not healthy -- OPA policies may have failed to load"
 fi
 
 # 2b. OPA decision_id appears in logs
-OPA_LOG=$(docker compose logs --tail 20 mcp-security-gateway 2>/dev/null | grep "decision_id" | tail -1 || echo "")
+OPA_LOG=$(docker compose logs --tail 20 precinct-gateway 2>/dev/null | grep "decision_id" | tail -1 || echo "")
 if [ -n "$OPA_LOG" ]; then
     log_pass "OPA decision_id appears in gateway logs"
     # Extract decision_id
@@ -139,7 +139,7 @@ log_info "Note: Full token substitution E2E requires upstream MCP server (Docker
 log_subheader "5. Audit (Structured Events + Hash Chain)"
 
 # 5a. Audit events have session_id and trace_id
-RECENT_AUDIT=$(docker compose logs --tail 5 mcp-security-gateway 2>/dev/null | grep "session_id" | tail -1 || echo "")
+RECENT_AUDIT=$(docker compose logs --tail 5 precinct-gateway 2>/dev/null | grep "session_id" | tail -1 || echo "")
 
 if echo "$RECENT_AUDIT" | grep -q '"session_id"'; then
     log_pass "Audit events contain session_id"

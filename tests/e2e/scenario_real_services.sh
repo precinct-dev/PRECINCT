@@ -50,7 +50,7 @@ echo "--- R2: Real Tavily search (single query, basic) ---"
 SEARCH_RESP=$(curl -s -X POST "$GATEWAY_URL/" \
     -H "Content-Type: application/json" \
     -H "X-SPIFFE-ID: $SPIFFE_ID" \
-    -d '{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"PRECINCT MCP security gateway","max_results":2},"id":1}' \
+    -d '{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"PRECINCT PRECINCT Gateway","max_results":2},"id":1}' \
     2>&1) || SEARCH_RESP=""
 
 if [ -n "$SEARCH_RESP" ]; then
@@ -143,7 +143,7 @@ fi
 
 # --- R6: Audit trail verification ---
 echo "--- R6: Audit trail ---"
-AUDIT_LINES=$(docker logs mcp-security-gateway 2>&1 | grep -c '"decision_id"' || echo "0")
+AUDIT_LINES=$(docker logs precinct-gateway 2>&1 | grep -c '"decision_id"' || echo "0")
 if [ "$AUDIT_LINES" -gt 0 ]; then
     echo "  [PASS] Audit log contains $AUDIT_LINES decision entries"
     PASS=$((PASS + 1))

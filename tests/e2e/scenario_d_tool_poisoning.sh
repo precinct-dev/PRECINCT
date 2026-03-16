@@ -13,7 +13,7 @@ log_header "Scenario D: Tool Poisoning Detection"
 # ============================================================
 log_subheader "Pre-flight checks"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1
@@ -95,14 +95,14 @@ done
 log_subheader "D4: Audit trail of poisoning attempts"
 
 sleep 1
-HASH_AUDIT=$(docker compose logs --tail 20 mcp-security-gateway 2>/dev/null | grep "hash_mismatch" | tail -1 || echo "")
+HASH_AUDIT=$(docker compose logs --tail 20 precinct-gateway 2>/dev/null | grep "hash_mismatch" | tail -1 || echo "")
 
 if [ -n "$HASH_AUDIT" ]; then
     log_pass "Hash mismatch events recorded in audit log"
     log_detail "Audit excerpt: ${HASH_AUDIT:0:200}"
 else
     # Check for 403 status code with tool verification context
-    DENY_AUDIT=$(docker compose logs --tail 20 mcp-security-gateway 2>/dev/null | grep '"status_code":403' | tail -1 || echo "")
+    DENY_AUDIT=$(docker compose logs --tail 20 precinct-gateway 2>/dev/null | grep '"status_code":403' | tail -1 || echo "")
     if [ -n "$DENY_AUDIT" ]; then
         log_pass "Denial (403) events recorded in audit log for hash verification failures"
     else

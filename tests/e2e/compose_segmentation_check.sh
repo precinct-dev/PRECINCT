@@ -75,14 +75,14 @@ assert_no_ports "mock-mcp-server"
 assert_no_ports "mock-guard-model"
 assert_not_on_network "mock-mcp-server" "agentic-net"
 assert_not_on_network "mock-guard-model" "agentic-net"
-assert_on_network "mcp-security-gateway" "agentic-net"
-assert_on_network "mcp-security-gateway" "tool-plane"
+assert_on_network "precinct-gateway" "agentic-net"
+assert_on_network "precinct-gateway" "tool-plane"
 
 # Runtime proof (assumes stack is up)
 pass "Runtime connectivity checks (from agentic-security-network)"
 
 docker run --rm --network agentic-security-network curlimages/curl:8.6.0 \
-  -sSf --max-time 3 "http://mcp-security-gateway:9090/health" >/dev/null
+  -sSf --max-time 3 "http://precinct-gateway:9090/health" >/dev/null
 pass "Gateway is reachable from agentic-security-network"
 
 if docker run --rm --network agentic-security-network curlimages/curl:8.6.0 \

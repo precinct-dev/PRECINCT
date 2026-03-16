@@ -553,7 +553,7 @@ func TestMiddlewareChainIntegration(t *testing.T) {
 	// Test valid request through full chain
 	body := []byte(`{"jsonrpc":"2.0","method":"file_read","params":{"path":"/test"},"id":1}`)
 	req := httptest.NewRequest("POST", "/", bytes.NewBuffer(body))
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -607,7 +607,7 @@ func TestTokenSubstitutionOrderingInRealHandler(t *testing.T) {
 	requestBody := `{"api_key":"` + tokenString + `"}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1531,7 +1531,7 @@ func TestMCPTransport_ToolsCall_ThroughAll13Layers(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tools/call","params":{"name":"tavily_search","arguments":{"query":"MCP test"}},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -1800,7 +1800,7 @@ func TestMCPTransport_ProxyMode_BypassesMCPPath(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -1880,7 +1880,7 @@ func TestMCPTransport_MCPMode_UpstreamError(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"error test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -2205,7 +2205,7 @@ func TestMCPTransport_LazyInit_NotAtStartup(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"lazy init test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -2274,7 +2274,7 @@ func TestMCPTransport_ErrorUsesWriteGatewayError(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"tools/list","params":{},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -2438,7 +2438,7 @@ func TestMCPTransport_SSEResponse_ThroughAll13Layers(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"SSE integration test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -2566,7 +2566,7 @@ func TestMCPTransport_404_SessionExpiry_ThroughGateway(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"session recovery test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -2958,7 +2958,7 @@ func TestMCPTransport_LegacySSE_ThroughAll13Layers(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"legacy SSE test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -3036,7 +3036,7 @@ func TestMCPTransport_AutoDetect_StreamableHTTP(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"auto-detect test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -3087,7 +3087,7 @@ func TestMCPTransport_AutoDetect_SSEFallback(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"fallback test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -3300,7 +3300,7 @@ func TestMCPTransport_UpstreamDropsMidStream(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"drop test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -3385,7 +3385,7 @@ func TestMCPTransport_OversizedResponse(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"oversize test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -3479,7 +3479,7 @@ func TestMCPTransport_404MidConversation(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"404 recovery test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
@@ -3580,7 +3580,7 @@ func TestMCPTransport_SessionIsolation(t *testing.T) {
 			requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"concurrent test"},"id":1}`
 			req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 			rec := httptest.NewRecorder()
 			handler.ServeHTTP(rec, req)
@@ -3684,7 +3684,7 @@ func TestMCPTransport_ReusedCallerID_UsesUniqueWireIDs(t *testing.T) {
 		reqBody := `{"jsonrpc":"2.0","method":"tools/list","params":{},"id":99}`
 		req := httptest.NewRequest("POST", "/", bytes.NewBufferString(reqBody))
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 		respBody, _ := io.ReadAll(rec.Body)
@@ -3845,7 +3845,7 @@ func TestMCPTransport_AllErrorsUseWriteGatewayError(t *testing.T) {
 	requestBody := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"error test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)

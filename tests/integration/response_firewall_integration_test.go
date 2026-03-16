@@ -225,7 +225,7 @@ func TestResponseFirewall_SensitiveToolReturnsHandle(t *testing.T) {
 	defer cleanup()
 
 	// "bash" has risk_level=critical -> ClassificationSensitive
-	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+	spiffeID := "spiffe://poc.local/gateways/precinct-gateway/dev"
 	resp := sensitiveToolCall(t, gwServer.URL, spiffeID, "rfw-sensitive-handle")
 	defer resp.Body.Close()
 
@@ -295,7 +295,7 @@ func TestResponseFirewall_DereferenceWithSameSPIFFEID(t *testing.T) {
 	defer cleanup()
 
 	// Step 1: Call sensitive tool to get a handle
-	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+	spiffeID := "spiffe://poc.local/gateways/precinct-gateway/dev"
 	resp := sensitiveToolCall(t, gwServer.URL, spiffeID, "rfw-deref-same")
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -357,7 +357,7 @@ func TestResponseFirewall_DereferenceAfterExpiry(t *testing.T) {
 	defer cleanup()
 
 	// Step 1: Call sensitive tool to get a handle
-	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+	spiffeID := "spiffe://poc.local/gateways/precinct-gateway/dev"
 	resp := sensitiveToolCall(t, gwServer.URL, spiffeID, "rfw-deref-expiry")
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -412,7 +412,7 @@ func TestResponseFirewall_DereferenceWithDifferentSPIFFEID(t *testing.T) {
 	defer cleanup()
 
 	// Step 1: Call sensitive tool as the gateway agent
-	originalSPIFFE := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+	originalSPIFFE := "spiffe://poc.local/gateways/precinct-gateway/dev"
 	resp := sensitiveToolCall(t, gwServer.URL, originalSPIFFE, "rfw-deref-mismatch")
 	body, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -465,7 +465,7 @@ func TestResponseFirewall_PublicToolRawResponse(t *testing.T) {
 	defer cleanup()
 
 	// "messaging_status" has risk_level=low -> ClassificationPublic
-	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+	spiffeID := "spiffe://poc.local/gateways/precinct-gateway/dev"
 	resp := publicToolCall(t, gwServer.URL, spiffeID)
 	defer resp.Body.Close()
 
@@ -536,7 +536,7 @@ func TestResponseFirewall_DereferenceEndpoint_ComposeGateway(t *testing.T) {
 	}
 
 	t.Run("NonExistentHandle_Returns410", func(t *testing.T) {
-		spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+		spiffeID := "spiffe://poc.local/gateways/precinct-gateway/dev"
 		resp := sendDereferenceRequest(t, gatewayURL, "nonexistent-handle-ref", spiffeID)
 		defer resp.Body.Close()
 
@@ -571,7 +571,7 @@ func TestResponseFirewall_DereferenceEndpoint_ComposeGateway(t *testing.T) {
 			t.Fatalf("Failed to create request: %v", err)
 		}
 		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 		client := &http.Client{Timeout: 5 * time.Second}
 		resp, err := client.Do(req)

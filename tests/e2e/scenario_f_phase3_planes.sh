@@ -138,7 +138,7 @@ reset_rate_limit_state() {
 
 log_header "Scenario F: Phase 3 Multi-Plane Compose Validation"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1
@@ -1228,7 +1228,7 @@ fi
 log_subheader "F5: Audit evidence for multi-plane decisions"
 sleep 1
 
-AUDIT_LINES=$($DC logs --no-log-prefix --tail 400 mcp-security-gateway 2>/dev/null | grep "${RUN_ID}" || true)
+AUDIT_LINES=$($DC logs --no-log-prefix --tail 400 precinct-gateway 2>/dev/null | grep "${RUN_ID}" || true)
 if [ -n "$AUDIT_LINES" ]; then
     log_pass "Audit contains events correlated to Phase 3 run id"
 else
@@ -1243,13 +1243,13 @@ for reason in INGRESS_ALLOW INGRESS_REPLAY_DETECTED INGRESS_FRESHNESS_STALE INGR
     fi
 done
 
-if [ -n "$CONNECTOR_DECISION_ID" ] && $DC logs --no-log-prefix --tail 400 mcp-security-gateway 2>/dev/null | grep -q "${CONNECTOR_DECISION_ID}"; then
+if [ -n "$CONNECTOR_DECISION_ID" ] && $DC logs --no-log-prefix --tail 400 precinct-gateway 2>/dev/null | grep -q "${CONNECTOR_DECISION_ID}"; then
     log_pass "Audit log contains conformance report decision id"
 else
     log_fail "Audit linkage for conformance report decision id" "decision id ${CONNECTOR_DECISION_ID:-<empty>} not found in gateway audit logs"
 fi
 
-if [ -n "$RULEOPS_ACTIVE_DECISION_ID" ] && $DC logs --no-log-prefix --tail 400 mcp-security-gateway 2>/dev/null | grep -q "${RULEOPS_ACTIVE_DECISION_ID}"; then
+if [ -n "$RULEOPS_ACTIVE_DECISION_ID" ] && $DC logs --no-log-prefix --tail 400 precinct-gateway 2>/dev/null | grep -q "${RULEOPS_ACTIVE_DECISION_ID}"; then
     log_pass "Audit log contains RuleOps active decision id"
 else
     log_fail "Audit linkage for RuleOps active decision id" "decision id ${RULEOPS_ACTIVE_DECISION_ID:-<empty>} not found in gateway audit logs"

@@ -28,7 +28,7 @@ func newDemoRugpullGateway(t *testing.T, upstreamURL string, auditPath string, e
 		RateLimitRPM:                 100000,
 		RateLimitBurst:               100000,
 		DemoRugpullAdminEnabled:      enabled,
-		AdminAuthzAllowedSPIFFEIDs:   []string{"spiffe://poc.local/gateways/mcp-security-gateway/dev"},
+		AdminAuthzAllowedSPIFFEIDs:   []string{"spiffe://poc.local/gateways/precinct-gateway/dev"},
 		EnforcementProfile:           "dev",
 		EnforceModelMediationGate:    true,
 		EnforceHIPAAPromptSafetyGate: true,
@@ -77,7 +77,7 @@ func TestDemoRugpullEndpointRequiresAdminAuthorization(t *testing.T) {
 
 	t.Run("admin identity allowed and forwarded", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/__demo__/rugpull/on", nil)
-		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {
@@ -98,7 +98,7 @@ func TestDemoRugpullEndpointDisabledByDefault(t *testing.T) {
 
 	gw := newDemoRugpullGateway(t, upstream.URL, "", false)
 	req := httptest.NewRequest(http.MethodPost, "/__demo__/rugpull/on", nil)
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 	gw.Handler().ServeHTTP(rec, req)
 
@@ -119,7 +119,7 @@ func TestDemoRugpullEndpointWritesAuditEvent(t *testing.T) {
 	gw := newDemoRugpullGateway(t, upstream.URL, auditPath, true)
 
 	req := httptest.NewRequest(http.MethodPost, "/__demo__/rugpull/on", nil)
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 	gw.Handler().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -135,7 +135,7 @@ func TestDemoRugpullEndpointWritesAuditEvent(t *testing.T) {
 	for _, want := range []string{
 		`"action":"demo_rugpull_enable"`,
 		`"result":"allowed"`,
-		`"spiffe_id":"spiffe://poc.local/gateways/mcp-security-gateway/dev"`,
+		`"spiffe_id":"spiffe://poc.local/gateways/precinct-gateway/dev"`,
 		`"path":"/__demo__/rugpull/on"`,
 	} {
 		if !strings.Contains(text, want) {

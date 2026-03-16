@@ -80,7 +80,7 @@ func TestRepaveAll_GeneratesReport_UpdatesState_AndPreservesKeyDBData(t *testing
 	}
 
 	// Wait for the core services needed by repave-all (skip if not up).
-	for _, svc := range []string{"spire-server", "spire-agent", "keydb", "spike-keeper-1", "spike-nexus", "mock-mcp-server", "mock-guard-model", "mcp-security-gateway"} {
+	for _, svc := range []string{"spire-server", "spire-agent", "keydb", "spike-keeper-1", "spike-nexus", "mock-mcp-server", "mock-guard-model", "precinct-gateway"} {
 		if err := waitHealthy(svc, 2*time.Minute); err != nil {
 			t.Skipf("compose stack not healthy; skipping repave-all integration test. Start it with `make up`. (%v)", err)
 		}
@@ -128,7 +128,7 @@ func TestRepaveAll_GeneratesReport_UpdatesState_AndPreservesKeyDBData(t *testing
 		"[repave-all] step 3/9 repaving keydb",
 		"[repave-all] step 4/9 repaving spike-keeper-1",
 		"[repave-all] step 5/9 repaving spike-nexus",
-		"[repave-all] step 6/9 repaving mcp-security-gateway",
+		"[repave-all] step 6/9 repaving precinct-gateway",
 		"[repave-all] step 7/9 repaving mock-mcp-server",
 		"[repave-all] step 8/9 repaving otel-collector",
 		"[repave-all] step 9/9 repaving phoenix",
@@ -189,7 +189,7 @@ func TestRepaveAll_GeneratesReport_UpdatesState_AndPreservesKeyDBData(t *testing
 	if err := json.Unmarshal(b, &state); err != nil {
 		t.Fatalf("failed to parse %s: %v", statePath, err)
 	}
-	wantComps := []string{"spire-server", "spire-agent", "keydb", "spike-keeper-1", "spike-nexus", "mcp-security-gateway", "mock-mcp-server", "otel-collector", "phoenix"}
+	wantComps := []string{"spire-server", "spire-agent", "keydb", "spike-keeper-1", "spike-nexus", "precinct-gateway", "mock-mcp-server", "otel-collector", "phoenix"}
 	for _, c := range wantComps {
 		v, ok := state.LastRepave[c]
 		if !ok {

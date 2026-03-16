@@ -38,7 +38,7 @@ func TestOTelMetrics_RequestTotalAndDenial(t *testing.T) {
 	defer otel.SetMeterProvider(prevMP)
 
 	// Create metrics instruments from the test meter
-	testMeter := mp.Meter("mcp-security-gateway")
+	testMeter := mp.Meter("precinct-gateway")
 	m, err := gwmetrics.NewMetrics(testMeter)
 	if err != nil {
 		t.Fatalf("NewMetrics() returned error: %v", err)

@@ -185,7 +185,7 @@ latest_report_file() {
 
 assert_all_main_services_healthy() {
   local services
-  services="spire-server spire-agent keydb spike-keeper-1 spike-nexus mock-mcp-server mock-guard-model mcp-security-gateway"
+  services="spire-server spire-agent keydb spike-keeper-1 spike-nexus mock-mcp-server mock-guard-model precinct-gateway"
   local ps_out
   ps_out="$($DC ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"
   local s line state health
@@ -358,7 +358,7 @@ main() {
     exit 1
   fi
   local expected
-  expected="spire-server spire-agent keydb spike-keeper-1 spike-nexus mcp-security-gateway mock-mcp-server otel-collector phoenix"
+  expected="spire-server spire-agent keydb spike-keeper-1 spike-nexus precinct-gateway mock-mcp-server otel-collector phoenix"
   local svc
   for svc in $expected; do
     if ! jq -e --arg s "$svc" '.containers[] | select(.name==$s) | (.last_repave != "NEVER")' "$TMP_DIR/agw_repave_status_all.out" >/dev/null; then

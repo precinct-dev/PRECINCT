@@ -14,7 +14,7 @@ EXPECT_APPROVAL_EXPIRE_EVENT=1
 # ============================================================
 log_subheader "Pre-flight checks"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1
@@ -445,14 +445,14 @@ fi
 log_subheader "B4: Denial appears in audit log"
 sleep 1
 
-DENIAL_AUDIT=$(docker compose logs --tail 10 mcp-security-gateway 2>/dev/null | grep "403\|denied" | tail -1 || echo "")
+DENIAL_AUDIT=$(docker compose logs --tail 10 precinct-gateway 2>/dev/null | grep "403\|denied" | tail -1 || echo "")
 
 if [ -n "$DENIAL_AUDIT" ]; then
     log_pass "Denial event recorded in audit log"
     log_detail "Audit excerpt: ${DENIAL_AUDIT:0:200}"
 else
     log_info "Checking for status_code 403 in audit..."
-    DENIAL_AUDIT=$(docker compose logs --tail 10 mcp-security-gateway 2>/dev/null | grep '"status_code":403' | tail -1 || echo "")
+    DENIAL_AUDIT=$(docker compose logs --tail 10 precinct-gateway 2>/dev/null | grep '"status_code":403' | tail -1 || echo "")
     if [ -n "$DENIAL_AUDIT" ]; then
         log_pass "Denial event (status_code: 403) recorded in audit log"
     else

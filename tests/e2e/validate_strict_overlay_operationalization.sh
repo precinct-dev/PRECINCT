@@ -36,7 +36,7 @@ for overlay in staging prod; do
     fail "${overlay}: inline literal approval_signing_key detected in rendered manifests"
   fi
 
-  grep -Eq 'image:[[:space:]]*ghcr\.io/[a-z0-9._-]+/precinct/mcp-security-gateway([:@][^[:space:]]+)?' "${rendered}" \
+  grep -Eq 'image:[[:space:]]*ghcr\.io/[a-z0-9._-]+/precinct/precinct-gateway([:@][^[:space:]]+)?' "${rendered}" \
     || fail "${overlay}: gateway image is not set to a non-placeholder GHCR path"
 
   grep -Eq 'image:[[:space:]]*ghcr\.io/[a-z0-9._-]+/precinct/s3-mcp-server([:@][^[:space:]]+)?' "${rendered}" \

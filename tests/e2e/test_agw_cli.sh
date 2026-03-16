@@ -178,7 +178,7 @@ ensure_compose_stack() {
   fi
 
   local required
-  required="keydb mcp-security-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"
+  required="keydb precinct-gateway mock-guard-model mock-mcp-server spire-server spire-agent spike-nexus spike-keeper-1"
   local ps_out
   ps_out="$($DC ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"
   local healthy=1

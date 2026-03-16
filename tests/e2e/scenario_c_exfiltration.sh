@@ -13,7 +13,7 @@ log_header "Scenario C: Exfiltration Detection"
 # ============================================================
 log_subheader "Pre-flight checks"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1
@@ -74,7 +74,7 @@ log_subheader "C2: Session context tracking"
 
 # Check audit logs for session tracking evidence
 sleep 1
-AUDIT_LINES=$(docker compose logs --tail 20 mcp-security-gateway 2>/dev/null | grep "session_id" || echo "")
+AUDIT_LINES=$(docker compose logs --tail 20 precinct-gateway 2>/dev/null | grep "session_id" || echo "")
 
 if [ -n "$AUDIT_LINES" ]; then
     log_pass "Session context middleware is active (session_id present in audit)"

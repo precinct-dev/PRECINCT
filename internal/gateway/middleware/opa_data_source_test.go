@@ -56,7 +56,7 @@ const dataSourceGrants = `data_source_grants:
   - spiffe_pattern: "spiffe://poc.local/admin/*"
     uri_pattern: "**"
     description: "Admin identities - full data source access"
-  - spiffe_pattern: "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+  - spiffe_pattern: "spiffe://poc.local/gateways/precinct-gateway/dev"
     uri_pattern: "**"
     description: "Gateway - full data source access"
 `
@@ -482,7 +482,7 @@ func TestEvaluateDataSourcePolicy_GlobPatternMatching(t *testing.T) {
 		},
 		{
 			name:      "gateway_full_access",
-			spiffeID:  "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+			spiffeID:  "spiffe://poc.local/gateways/precinct-gateway/dev",
 			uri:       "https://any-uri.example.com/anything",
 			wantAllow: true,
 		},

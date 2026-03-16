@@ -334,7 +334,7 @@ func ConfigFromEnv() *Config {
 		SPIFFETrustDomain:               spiffeTrustDomain,
 		SPIFFEListenPort:                spiffeListenPort,
 		OTelEndpoint:                    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), // empty = no-op (AC6)
-		OTelServiceName:                 getEnvOrDefault("OTEL_SERVICE_NAME", "mcp-security-gateway"),
+		OTelServiceName:                 getEnvOrDefault("OTEL_SERVICE_NAME", "precinct-gateway"),
 		KeyDBURL:                        getEnvOrDefault("KEYDB_URL", ""),
 		KeyDBPoolMin:                    keyDBPoolMin,
 		KeyDBPoolMax:                    keyDBPoolMax,

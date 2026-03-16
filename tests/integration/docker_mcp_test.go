@@ -49,7 +49,7 @@ func TestDockerMCPTavilyTool(t *testing.T) {
 	}
 	req.Header.Set("Content-Type", "application/json")
 	// Use gateway SPIFFE ID which has wildcard access to all tools
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -276,7 +276,7 @@ func TestDockerMCPBashToolStepUpRequired(t *testing.T) {
 			}
 			req.Header.Set("Content-Type", "application/json")
 			// Use gateway SPIFFE ID which has wildcard access to all tools
-			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 			if tt.stepUpToken != "" {
 				req.Header.Set("X-Step-Up-Token", tt.stepUpToken)
 			}
@@ -351,7 +351,7 @@ func TestDockerMCPBashToolWorkspaceScope(t *testing.T) {
 			}
 			req.Header.Set("Content-Type", "application/json")
 			// Use gateway SPIFFE ID with step-up token
-			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 			req.Header.Set("X-Step-Up-Token", "valid-step-up-token-12345")
 
 			client := &http.Client{Timeout: 5 * time.Second}
@@ -445,7 +445,7 @@ func TestDockerMCPToolHashVerification(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 			if tt.tool == "bash" {
 				req.Header.Set("X-Step-Up-Token", "valid-step-up-token-12345")
 			}
@@ -493,7 +493,7 @@ func TestDockerMCPToolHashVerification(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 			if tt.tool == "bash" {
 				req.Header.Set("X-Step-Up-Token", "valid-step-up-token-12345")
 			}
