@@ -161,7 +161,7 @@ The Docker Compose stack runs 11 services plus 3 one-shot init containers. Servi
 | `keydb` | Redis-compatible store | Session persistence and distributed rate limiting. Ports 6379 (plain) and 6380 (mTLS) |
 | `keydb-svid-init` | One-shot init (prod profile) | Fetches SPIRE SVID and writes PEM files for KeyDB mTLS on port 6380. Only runs in `prod` profile |
 | `mock-mcp-server` | Simulated MCP tool server | Speaks MCP Streamable HTTP. Returns canned results for `tavily_search` and `echo` tools. Port 8082 |
-| `mcp-security-gateway` | 13-layer security gateway | The core security enforcement point. Port 9090 (HTTP) and 9443 (mTLS) |
+| `precinct-gateway` | 13-layer security gateway | The core security enforcement point. Port 9090 (HTTP) and 9443 (mTLS) |
 
 ### Service Startup Order
 
@@ -176,9 +176,9 @@ spire-server (healthy)
           -> spike-nexus (healthy)
             -> spike-bootstrap (completed)
               -> spike-secret-seeder (completed)
-                -> mcp-security-gateway
-keydb (healthy) -> mcp-security-gateway
-mock-mcp-server (healthy) -> mcp-security-gateway
+                -> precinct-gateway
+keydb (healthy) -> precinct-gateway
+mock-mcp-server (healthy) -> precinct-gateway
 ```
 
 The gateway is the last service to start because it requires all identity, secret,
@@ -492,7 +492,7 @@ the network is missing.
 
 ## 8. Environment Variables Quick Reference
 
-The gateway is configured via environment variables. The most commonly needed ones are listed here. For the full list, see the `mcp-security-gateway` service definition in `docker-compose.yml`.
+The gateway is configured via environment variables. The most commonly needed ones are listed here. For the full list, see the `precinct-gateway` service definition in `docker-compose.yml`.
 
 ### Gateway Core
 
@@ -610,7 +610,7 @@ Deep scan timeout behavior is controlled independently by `DEEP_SCAN_FALLBACK` (
 After starting the stack, confirm the guard model key was loaded:
 
 ```bash
-docker compose logs mcp-security-gateway | grep "guard model"
+docker compose logs precinct-gateway | grep "guard model"
 ```
 
 Expected output (one of):
@@ -638,7 +638,7 @@ Expected output (one of):
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `otel-collector:4317` | OpenTelemetry collector gRPC endpoint |
-| `OTEL_SERVICE_NAME` | `mcp-security-gateway` | Service name in traces |
+| `OTEL_SERVICE_NAME` | `precinct-gateway` | Service name in traces |
 | `AUDIT_LOG_PATH` | `/tmp/audit.jsonl` | Default audit sink path. OpenSearch profile overrides to `/var/log/gateway/audit.jsonl` |
 
 Strict observability evidence gate:
@@ -668,7 +668,7 @@ docker compose --profile strict -f docker-compose.yml -f docker-compose.strict.y
 
 The strict override replaces the gateway's inherited dev/demo runtime state from
 `docker-compose.yml`. A rendered strict config should expose only `9443:9443`
-for `mcp-security-gateway` and should not include
+for `precinct-gateway` and should not include
 `ALLOW_INSECURE_DEV_MODE`, `ALLOW_NON_LOOPBACK_DEV_BIND`,
 `DEMO_RUGPULL_ADMIN_ENABLED`, `DEV_LISTEN_HOST=0.0.0.0`,
 `GUARD_MODEL_ENDPOINT=http://mock-guard-model:8080/openai/v1`, or

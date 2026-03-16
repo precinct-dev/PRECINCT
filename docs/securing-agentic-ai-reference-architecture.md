@@ -173,7 +173,7 @@ This brings up:
 | `keydb` | Distributed session store and rate-limit state |
 | `mock-mcp-server` | Upstream tool server (MCP Streamable HTTP) |
 | `mock-guard-model` | Prompt injection detection model |
-| `mcp-security-gateway` | The 13-layer enforcement gateway |
+| `precinct-gateway` | The 13-layer enforcement gateway |
 
 Run the full E2E demo (28 test scenarios):
 

@@ -1,7 +1,7 @@
 # Incident Triage and Response Runbook
 
 Last Updated: 2026-02-15
-Scope: `mcp-security-gateway`, SPIRE, SPIKE, KeyDB, observability path.
+Scope: `precinct-gateway`, SPIRE, SPIKE, KeyDB, observability path.
 
 ## 1. Trigger Conditions
 
@@ -16,7 +16,7 @@ Scope: `mcp-security-gateway`, SPIRE, SPIKE, KeyDB, observability path.
 make phoenix-up
 make up
 docker compose ps
-docker compose logs --tail 200 mcp-security-gateway
+docker compose logs --tail 200 precinct-gateway
 docker compose logs --tail 200 spire-agent spire-server
 docker compose logs --tail 200 spike-nexus spike-keeper-1 keydb
 ```
@@ -25,10 +25,10 @@ docker compose logs --tail 200 spike-nexus spike-keeper-1 keydb
 
 ```bash
 # Stop ingress path if gateway is compromised
-docker compose stop mcp-security-gateway
+docker compose stop precinct-gateway
 
 # Restart only affected service(s) after config/material check
-docker compose restart mcp-security-gateway
+docker compose restart precinct-gateway
 docker compose restart spike-nexus keydb
 ```
 

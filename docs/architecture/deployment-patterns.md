@@ -58,7 +58,7 @@ kept aligned with `ToolRegistryVerify` behavior when policy scopes evolve.
 
 All middleware controls plus the response firewall are identical in Docker Compose
 and Kubernetes deployments because they are compiled into the same Go binary
-(`mcp-security-gateway`).
+(`precinct-gateway`).
 
 ---
 

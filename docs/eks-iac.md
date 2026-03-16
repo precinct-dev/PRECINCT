@@ -166,7 +166,7 @@ For the PRECINCT, OpenTofu/Terraform is the strongest choice because:
 
 2. **SPIRE integration requires precise networking.** SPIRE server/agent communication, workload attestation, and OIDC federation all require careful VPC, security group, and IAM configuration. Terraform's explicit resource model makes this auditable.
 
-3. **The docker-compose stack maps cleanly to Terraform.** Each service in our `docker-compose.yml` (spire-server, spire-agent, otel-collector, phoenix, mcp-security-gateway) becomes a Kubernetes Deployment + Service, and Terraform can manage the Kubernetes resources alongside the cluster.
+3. **The docker-compose stack maps cleanly to Terraform.** Each service in our `docker-compose.yml` (spire-server, spire-agent, otel-collector, phoenix, precinct-gateway) becomes a Kubernetes Deployment + Service, and Terraform can manage the Kubernetes resources alongside the cluster.
 
 4. **Reproducibility matters for a reference architecture.** Others will clone this and deploy it. `tofu plan` + `tofu apply` is the most widely understood IaC workflow. eksctl's lack of plan mode makes it harder to review changes before applying.
 

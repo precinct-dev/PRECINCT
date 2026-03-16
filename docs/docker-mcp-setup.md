@@ -136,7 +136,7 @@ curl http://localhost:9090/health
 ```bash
 curl -X POST http://localhost:9090 \
   -H "Content-Type: application/json" \
-  -H "X-SPIFFE-ID: spiffe://poc.local/gateways/mcp-security-gateway/dev" \
+  -H "X-SPIFFE-ID: spiffe://poc.local/gateways/precinct-gateway/dev" \
   -d '{
     "jsonrpc": "2.0",
     "method": "tools/call",
@@ -195,7 +195,7 @@ curl -X POST http://localhost:9090 \
 ```bash
 curl -X POST http://localhost:9090 \
   -H "Content-Type: application/json" \
-  -H "X-SPIFFE-ID: spiffe://poc.local/gateways/mcp-security-gateway/dev" \
+  -H "X-SPIFFE-ID: spiffe://poc.local/gateways/precinct-gateway/dev" \
   -H "X-Step-Up-Token: valid-step-up-token-12345" \
   -d '{
     "jsonrpc": "2.0",

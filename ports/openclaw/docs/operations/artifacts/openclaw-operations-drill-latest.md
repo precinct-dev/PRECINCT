@@ -19,7 +19,7 @@ make phoenix-up
 make up
 go run ./cmd/openclaw-ws-smoke --phase pre-restart
 curl -X POST http://localhost:9090/tools/invoke ...
-docker compose restart mcp-security-gateway
+docker compose restart precinct-gateway
 make compose-production-intent-preflight
 go run ./cmd/openclaw-ws-smoke --phase post-restart
 ```

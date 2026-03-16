@@ -16,12 +16,12 @@ Scope: OpenClaw secure-port wrapper rollback across Compose and K8s release path
 make compose-production-intent-preflight
 
 # Roll wrapper service back to known-good material.
-docker compose stop mcp-security-gateway
+docker compose stop precinct-gateway
 docker compose --profile strict \
   --env-file config/compose-production-intent.env \
   -f docker-compose.yml \
   -f docker-compose.strict.yml \
-  -f docker-compose.prod-intent.yml up -d mcp-security-gateway
+  -f docker-compose.prod-intent.yml up -d precinct-gateway
 ```
 
 ## 3. K8s Rollback

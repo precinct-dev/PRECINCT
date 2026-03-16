@@ -27,7 +27,7 @@ and runtime values in `docker-compose.yml`.
 
 ## 1. Gateway Environment Variables
 
-These variables configure the `mcp-security-gateway` service. Source: `internal/gateway/config.go`
+These variables configure the `precinct-gateway` service. Source: `internal/gateway/config.go`
 function `ConfigFromEnv()`.
 
 ### Core
@@ -247,7 +247,7 @@ export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb,sp
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | _(empty -- no-op)_ | OTLP gRPC endpoint for trace export. When empty, tracing is disabled |
-| `OTEL_SERVICE_NAME` | `mcp-security-gateway` | Service name in emitted traces |
+| `OTEL_SERVICE_NAME` | `precinct-gateway` | Service name in emitted traces |
 
 ### MCP Transport Timeouts
 
@@ -508,7 +508,7 @@ reference; the actual SPIFFE entries are registered by `scripts/register-spire-e
 
 | SPIFFE ID | Workload | Docker Selector |
 |-----------|----------|-----------------|
-| `spiffe://poc.local/gateways/mcp-security-gateway/dev` | Gateway | `docker:label:spiffe-id:mcp-security-gateway` |
+| `spiffe://poc.local/gateways/precinct-gateway/dev` | Gateway | `docker:label:spiffe-id:precinct-gateway` |
 | `spiffe://poc.local/agents/mcp-client/dspy-researcher/dev` | DSPy Agent | `docker:label:spiffe-id:dspy-researcher` |
 | `spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev` | PydanticAI Agent | `docker:label:spiffe-id:pydantic-researcher` |
 | `spiffe://poc.local/spike/nexus` | SPIKE Nexus | `docker:label:spiffe-id:spike-nexus` |
@@ -932,7 +932,7 @@ spiffe://<trust-domain>/<agent-class>/<agent-purpose>/<environment>
 |-----------|-------------|---------|
 | `trust-domain` | Organization identifier | `poc.local` |
 | `agent-class` | Workload category | `gateways`, `agents/mcp-client`, `tools`, `spike`, `infrastructure` |
-| `agent-purpose` | Functional identifier | `mcp-security-gateway`, `dspy-researcher` |
+| `agent-purpose` | Functional identifier | `precinct-gateway`, `dspy-researcher` |
 | `environment` | Deployment environment | `dev`, `staging`, `prod` |
 
 ### Wildcard Patterns for OPA Policies
@@ -953,14 +953,14 @@ registration in `scripts/register-spire-entries.sh`.
 Example:
 ```yaml
 # docker-compose.yml
-mcp-security-gateway:
+precinct-gateway:
   labels:
-    - "spiffe-id=mcp-security-gateway"    # Matches SPIRE selector
+    - "spiffe-id=precinct-gateway"    # Matches SPIRE selector
     - "component=gateway"
 
 # register-spire-entries.sh
-reg "spiffe://poc.local/gateways/mcp-security-gateway/dev" \
-    -selector docker:label:spiffe-id:mcp-security-gateway \
+reg "spiffe://poc.local/gateways/precinct-gateway/dev" \
+    -selector docker:label:spiffe-id:precinct-gateway \
     -selector docker:label:component:gateway
 ```
 
