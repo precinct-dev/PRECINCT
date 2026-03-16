@@ -2093,6 +2093,12 @@ func testEmailDLP() bool {
 		return printProof(true, fmt.Sprintf("PROOF S-EMAIL-DLP: Email with SSN blocked before delivery by upstream authz gate -- code=%s, step=%d", code, step))
 	}
 
+	// Defense-in-depth: the email adapter or OPA may return 403 without a gateway error code
+	// when the request is blocked at the adapter layer before reaching DLP parsing.
+	if resp.StatusCode == http.StatusForbidden {
+		return printProof(true, fmt.Sprintf("PROOF S-EMAIL-DLP: Email with SSN blocked before delivery (HTTP 403, defense-in-depth) -- code=%s, step=%d", code, step))
+	}
+
 	// When DLP_PII_POLICY is not set to "block", PII is flagged but not blocked.
 	// The request may succeed (200) or hit 501 (not yet implemented).
 	if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNotImplemented || resp.StatusCode == http.StatusBadGateway {
