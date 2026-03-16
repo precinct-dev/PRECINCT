@@ -1694,3 +1694,55 @@ func TestDLPMiddlewareWithTrustedAgents_UserCredentialStillBlocked(t *testing.T)
 		t.Errorf("Expected code %q, got %q", ErrDLPCredentialsDetected, ge.Code)
 	}
 }
+
+func TestDLPMiddlewareWithTrustedAgents_SystemPromptOnly_SetsContext(t *testing.T) {
+	scanner := NewBuiltInScanner()
+	trustedAgents := &TrustedAgentDLPConfig{
+		Agents: []TrustedAgentDLPEntry{
+			{SPIFFEID: "spiffe://poc.local/openclaw", DLPBypassScope: "system_prompt"},
+		},
+	}
+
+	var capturedCtx context.Context
+	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedCtx = r.Context()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := DLPMiddlewareWithTrustedAgents(finalHandler, scanner, trustedAgents)
+
+	// Only system messages -- all bypassed, nothing to scan.
+	body := `{"messages":[{"role":"system","content":"You are a helpful assistant."}]}`
+
+	req := httptest.NewRequest("POST", "/openai/v1/chat/completions", nil)
+	ctx := WithRequestBody(context.Background(), []byte(body))
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/openclaw")
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected 200, got %d", w.Code)
+	}
+
+	// Verify DLP ruleset metadata was set even though scan was bypassed.
+	ver := GetDLPRulesetVersion(capturedCtx)
+	if ver == "" {
+		t.Error("Expected DLP ruleset version to be set in bypass path, got empty string")
+	}
+	dig := GetDLPRulesetDigest(capturedCtx)
+	if dig == "" {
+		t.Error("Expected DLP ruleset digest to be set in bypass path, got empty string")
+	}
+
+	// Verify security flags were set (empty slice, not nil) so downstream
+	// middleware sees a clean DLP result instead of an absent one.
+	flags := GetSecurityFlags(capturedCtx)
+	if flags == nil {
+		t.Error("Expected security flags to be set (empty slice) in bypass path, got nil")
+	}
+	if len(flags) != 0 {
+		t.Errorf("Expected empty security flags in bypass path, got %v", flags)
+	}
+}
