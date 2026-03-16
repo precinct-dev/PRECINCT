@@ -42,7 +42,7 @@ reset_rate_limit_state() {
 
 log_header "Scenario J: OpenClaw secure port walking skeleton"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1

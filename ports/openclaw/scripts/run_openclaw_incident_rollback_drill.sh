@@ -76,7 +76,7 @@ if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
   make phoenix-up >/dev/null
 fi
 
-if ! $DC ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep -q '^mcp-security-gateway running$'; then
+if ! $DC ps --format '{{.Service}} {{.State}}' 2>/dev/null | grep -q '^precinct-gateway running$'; then
   make up >/dev/null
 fi
 
@@ -93,10 +93,10 @@ incident_code="$(curl -sS -o "${INCIDENT_BODY}" -w '%{http_code}' \
 incident_reason="$(jq -r '.reason_code // .error.reason_code // empty' "${INCIDENT_BODY}")"
 [[ -n "${incident_reason}" ]] || fail "incident simulation response missing reason_code"
 
-$DC logs --timestamps --tail 300 mcp-security-gateway > "${GATEWAY_LOG}"
+$DC logs --timestamps --tail 300 precinct-gateway > "${GATEWAY_LOG}"
 [[ -s "${GATEWAY_LOG}" ]] || fail "gateway log capture is empty"
 
-$DC restart mcp-security-gateway >/dev/null
+$DC restart precinct-gateway >/dev/null
 check_gateway_health || fail "gateway did not recover after restart containment"
 
 if ! make compose-production-intent-preflight > "${PREFLIGHT_LOG}" 2>&1; then
@@ -139,7 +139,7 @@ jq -n \
       "make up",
       "go run ./cmd/openclaw-ws-smoke --phase pre-restart",
       "curl -X POST http://localhost:9090/tools/invoke (sessions_send incident probe)",
-      "docker compose restart mcp-security-gateway",
+      "docker compose restart precinct-gateway",
       "make compose-production-intent-preflight",
       "go run ./cmd/openclaw-ws-smoke --phase post-restart"
     ],
@@ -221,7 +221,7 @@ make phoenix-up
 make up
 go run ./cmd/openclaw-ws-smoke --phase pre-restart
 curl -X POST http://localhost:9090/tools/invoke ...
-docker compose restart mcp-security-gateway
+docker compose restart precinct-gateway
 make compose-production-intent-preflight
 go run ./cmd/openclaw-ws-smoke --phase post-restart
 \`\`\`
