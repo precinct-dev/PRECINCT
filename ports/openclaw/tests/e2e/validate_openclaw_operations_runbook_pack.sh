@@ -42,7 +42,7 @@ assert_file "${DRILL_MD}"
 
 assert_contains "${RUNBOOK_INCIDENT}" '/tools/invoke' "incident runbook must include OpenClaw tool incident probe"
 assert_contains "${RUNBOOK_INCIDENT}" 'go run ./cmd/openclaw-ws-smoke' "incident runbook must include live OpenClaw WS smoke probe"
-assert_contains "${RUNBOOK_INCIDENT}" 'docker compose restart mcp-security-gateway' "incident runbook must include containment restart"
+assert_contains "${RUNBOOK_INCIDENT}" 'docker compose restart precinct-gateway' "incident runbook must include containment restart"
 assert_contains "${RUNBOOK_INCIDENT}" "TestGatewayAuthz_OpenClawWSDenyMatrix_Integration" "incident runbook must include WS authz verification command"
 assert_contains "${RUNBOOK_ROLLBACK}" 'make compose-production-intent-preflight' "rollback runbook must include compose preflight"
 assert_contains "${RUNBOOK_ROLLBACK}" 'go run ./cmd/openclaw-ws-smoke' "rollback runbook must include live OpenClaw WS smoke probe"
