@@ -139,6 +139,7 @@ If you are new to PRECINCT, begin with these documents in order:
 
 | Document | Description |
 |----------|-------------|
+| [Channel Integration Guide](ports/channel-integration-guide.md) | Current channel support, what happens with unsupported channels, and how to extend -- with or without source code changes |
 | [OpenClaw Adaptation](../ports/openclaw/docs/) | Documentation for the OpenClaw port, adapting the reference architecture to the OpenClaw messaging platform |
 
 ---
