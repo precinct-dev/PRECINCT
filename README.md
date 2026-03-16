@@ -1,4 +1,20 @@
-# PRECINCT (Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools) -- Reference Implementation
+<p align="center">
+  <img src="docs/assets/precinct-logo.svg" alt="PRECINCT" width="500">
+</p>
+
+<p align="center">
+  <strong>Policy-driven Runtime Enforcement & Cryptographic Identity for Networked Compute and Tools</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/precinct-dev/PRECINCT/actions/workflows/ci.yml"><img src="https://github.com/precinct-dev/PRECINCT/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
+  <a href="https://github.com/precinct-dev/PRECINCT/actions/workflows/security-scan.yml"><img src="https://github.com/precinct-dev/PRECINCT/actions/workflows/security-scan.yml/badge.svg?branch=main" alt="Security Scan"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <a href="https://pkg.go.dev/github.com/precinct-dev/precinct"><img src="https://pkg.go.dev/badge/github.com/precinct-dev/precinct.svg" alt="Go Reference"></a>
+  <a href="https://precinct.dev"><img src="https://img.shields.io/badge/docs-precinct.dev-00d4aa" alt="Docs"></a>
+</p>
+
+---
 
 > Website: [https://precinct.dev](https://precinct.dev)
 
