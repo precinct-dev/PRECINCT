@@ -64,10 +64,10 @@ deploy-entries: ## Register workload entries (gateway, tools, spike)
 			-selector k8s_psat:agent_sa:spire-agent 2>/dev/null || true && \
 		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
 			-parentID spiffe://precinct.poc/agent/k8s-psat \
-			-spiffeID spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway \
-			-selector k8s:ns:gateway -selector k8s:sa:mcp-security-gateway \
-			-dns mcp-security-gateway \
-			-dns mcp-security-gateway.gateway.svc.cluster.local 2>/dev/null || true && \
+			-spiffeID spiffe://precinct.poc/ns/gateway/sa/precinct-gateway \
+			-selector k8s:ns:gateway -selector k8s:sa:precinct-gateway \
+			-dns precinct-gateway \
+			-dns precinct-gateway.gateway.svc.cluster.local 2>/dev/null || true && \
 		/opt/spire/bin/spire-server entry create -socketPath $$SOCK \
 			-parentID spiffe://precinct.poc/agent/k8s-psat \
 			-spiffeID spiffe://precinct.poc/ns/tools/sa/mcp-tool \

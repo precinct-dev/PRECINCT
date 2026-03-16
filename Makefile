@@ -5,7 +5,7 @@
 # Container image config
 REGISTRY ?= ghcr.io
 IMAGE_PREFIX ?= $(REGISTRY)/$(shell git config --get remote.origin.url 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|' | tr '[:upper:]' '[:lower:]')/precinct
-GATEWAY_IMAGE ?= $(IMAGE_PREFIX)/mcp-security-gateway
+GATEWAY_IMAGE ?= $(IMAGE_PREFIX)/precinct-gateway
 S3_MCP_IMAGE ?= $(IMAGE_PREFIX)/s3-mcp-server
 IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 
@@ -81,7 +81,7 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 		echo "WARN: docker compose --wait timed out. Checking core service readiness..."; \
 		if ! bash scripts/compose-health-check.sh --verbose; then \
 			echo "Attempting gateway-only recovery after compose dependency timeout..."; \
-			$(if $(filter real,$(DEMO_SERVICE_MODE)),$(DC_REAL),$(DC_MOCK)) up -d --no-deps mcp-security-gateway >/dev/null 2>&1 || true; \
+			$(if $(filter real,$(DEMO_SERVICE_MODE)),$(DC_REAL),$(DC_MOCK)) up -d --no-deps precinct-gateway >/dev/null 2>&1 || true; \
 		fi; \
 		echo "Waiting up to 60s for core services to become healthy..."; \
 		ready=0; \
@@ -147,7 +147,7 @@ upgrade-all: ## Upgrade all non-pinned components (VERIFY=1)
 	bash scripts/upgrade.sh $$args
 
 logs: ## Tail gateway logs
-	$(DC) logs -f mcp-security-gateway
+	$(DC) logs -f precinct-gateway
 
 # Hidden: compose verification helpers (called by up)
 compose-verify:
@@ -181,7 +181,7 @@ phoenix-reset: ## Stop Phoenix stack and destroy trace data
 
 opensearch-up: ## Start OpenSearch + Dashboards + audit forwarder (optional compliance/forensics profile)
 	@echo "Reconfiguring gateway audit sink for OpenSearch profile..."
-	$(DC) -f $(COMPOSE_DIR)/docker-compose.opensearch-bridge.yml up -d --no-deps mcp-security-gateway
+	$(DC) -f $(COMPOSE_DIR)/docker-compose.opensearch-bridge.yml up -d --no-deps precinct-gateway
 	@echo "Starting OpenSearch stack..."
 	docker compose -f $(COMPOSE_DIR)/docker-compose.opensearch.yml up -d --wait --wait-timeout 120
 	@echo "OpenSearch API: http://localhost:9200"
@@ -359,11 +359,11 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@bash scripts/k8s-sync-gateway-config.sh --sync
 	$(MAKE) k8s-registry
 	@echo "Building and pushing local images..."
-	docker build -f deploy/compose/Dockerfile.gateway -t mcp-security-gateway:latest .
+	docker build -f deploy/compose/Dockerfile.gateway -t precinct-gateway:latest .
 	docker build -f examples/mock-mcp-server/Dockerfile -t poc-mock-mcp-server:latest examples/mock-mcp-server/
 	docker build -f deploy/compose/Dockerfile.spire-agent -t spire-agent-wrapper:latest .
-	docker tag mcp-security-gateway:latest $(LOCAL_REGISTRY)/mcp-security-gateway:latest
-	docker push $(LOCAL_REGISTRY)/mcp-security-gateway:latest
+	docker tag precinct-gateway:latest $(LOCAL_REGISTRY)/precinct-gateway:latest
+	docker push $(LOCAL_REGISTRY)/precinct-gateway:latest
 	docker tag poc-mock-mcp-server:latest $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
 	docker push $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
 	docker tag spire-agent-wrapper:latest $(LOCAL_REGISTRY)/spire-agent-wrapper:latest
@@ -428,7 +428,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 		echo "WARNING: KeyDB not yet ready"
 	-kubectl -n tools rollout status deployment/mcp-server --timeout=60s 2>/dev/null || \
 		echo "WARNING: MCP Server not yet ready"
-	-kubectl -n gateway rollout status deployment/mcp-security-gateway --timeout=120s 2>/dev/null || \
+	-kubectl -n gateway rollout status deployment/precinct-gateway --timeout=120s 2>/dev/null || \
 		echo "WARNING: Gateway not yet ready"
 	-kubectl -n cosign-system rollout status deployment/policy-controller-webhook --timeout=60s 2>/dev/null || \
 		echo "WARNING: policy-controller webhook not yet ready"
@@ -438,7 +438,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo ""
 	@echo "To enable deep scan (optional):"
 	@echo "  kubectl -n gateway create secret generic gateway-secrets --from-literal=groq-api-key=$$GROQ_API_KEY --dry-run=client -o yaml | kubectl apply -f -"
-	@echo "  kubectl -n gateway rollout restart deploy/mcp-security-gateway"
+	@echo "  kubectl -n gateway rollout restart deploy/precinct-gateway"
 
 k8s-down: ## Tear down local K8s deployment
 	@-kubectl delete -k infra/eks/overlays/local/ --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
@@ -488,8 +488,8 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 		file="/tmp/precinct-k8s-$$o.yaml"; \
 		awk ' \
 			BEGIN { RS="---"; dep=""; svc="" } \
-			$$0 ~ /kind:[[:space:]]*Deployment([[:space:]]|$$)/ && $$0 ~ /name:[[:space:]]*mcp-security-gateway([[:space:]]|$$)/ { dep=$$0 } \
-			$$0 ~ /kind:[[:space:]]*Service([[:space:]]|$$)/ && $$0 ~ /name:[[:space:]]*mcp-security-gateway([[:space:]]|$$)/ { svc=$$0 } \
+			$$0 ~ /kind:[[:space:]]*Deployment([[:space:]]|$$)/ && $$0 ~ /name:[[:space:]]*precinct-gateway([[:space:]]|$$)/ { dep=$$0 } \
+			$$0 ~ /kind:[[:space:]]*Service([[:space:]]|$$)/ && $$0 ~ /name:[[:space:]]*precinct-gateway([[:space:]]|$$)/ { svc=$$0 } \
 			END { \
 				ok=1; \
 				if (dep == "" || svc == "") ok=0; \
@@ -762,7 +762,7 @@ build-images:
 
 build: build-cli ## Build service binaries and CLI
 	@echo "Building PRECINCT Gateway..."
-	$(DC) build mcp-security-gateway
+	$(DC) build precinct-gateway
 
 build-cli: ## Build CLI binary (delegates to cli/Makefile)
 	$(MAKE) -C cli build
@@ -805,7 +805,7 @@ compliance-report: test-compliance
 	@if $(DC) ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
 		echo "Running E2E suite for fresh audit logs..."; \
 		bash tests/e2e/run_all.sh 2>&1 || true; \
-		$(DC) logs --no-log-prefix mcp-security-gateway 2>/dev/null | grep '{' > $(AUDIT_LOG) || true; \
+		$(DC) logs --no-log-prefix precinct-gateway 2>/dev/null | grep '{' > $(AUDIT_LOG) || true; \
 	else \
 		echo "Docker stack not running, using existing audit log at $(AUDIT_LOG)"; \
 	fi
@@ -924,8 +924,8 @@ register-spire:
 	echo "  Registering gateway workload..."; \
 	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/gateways/mcp-security-gateway/dev \
-		-selector docker:label:spiffe-id:mcp-security-gateway \
+		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/gateways/precinct-gateway/dev \
+		-selector docker:label:spiffe-id:precinct-gateway \
 		-selector docker:label:component:gateway 2>/dev/null || true; \
 	echo "  Registering DSPy researcher agent..."; \
 	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
@@ -983,10 +983,10 @@ k8s-register-spire:
 	echo "  Registering gateway workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
-		-spiffeID spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway \
-		-selector k8s:ns:gateway -selector k8s:sa:mcp-security-gateway \
-		-dns mcp-security-gateway \
-		-dns mcp-security-gateway.gateway.svc.cluster.local 2>/dev/null || true; \
+		-spiffeID spiffe://precinct.poc/ns/gateway/sa/precinct-gateway \
+		-selector k8s:ns:gateway -selector k8s:sa:precinct-gateway \
+		-dns precinct-gateway \
+		-dns precinct-gateway.gateway.svc.cluster.local 2>/dev/null || true; \
 	echo "  Registering mcp-tool workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \

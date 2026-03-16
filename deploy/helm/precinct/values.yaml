@@ -19,13 +19,13 @@ global:
   # Example: ghcr.io/precinct-dev/precinct
   imageRegistry: ""
 
-# -- Gateway (mcp-security-gateway) configuration
+# -- Gateway (precinct-gateway) configuration
 gateway:
   # Number of gateway pod replicas
   replicas: 1
 
   image:
-    repository: mcp-security-gateway
+    repository: precinct-gateway
     tag: latest
     pullPolicy: IfNotPresent
 
@@ -130,7 +130,7 @@ observability:
   opensearch:
     enabled: false
   otelEndpoint: "host.docker.internal:4317"
-  otelServiceName: mcp-security-gateway
+  otelServiceName: precinct-gateway
 
 # -- Dependent services
 services:

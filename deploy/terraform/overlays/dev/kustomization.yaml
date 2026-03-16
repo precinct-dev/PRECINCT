@@ -23,9 +23,9 @@ resources:
 # namespaces (gateway, tools). Cross-namespace resources require explicit names.
 
 images:
-  - name: mcp-security-gateway
-    newName: ghcr.io/OWNER/precinct/mcp-security-gateway
-    newTag: dev  # mcp-security-gateway
+  - name: precinct-gateway
+    newName: ghcr.io/OWNER/precinct/precinct-gateway
+    newTag: dev  # precinct-gateway
   - name: python  # placeholder MCP server image
     newName: python
     newTag: "3.12-slim"
@@ -50,20 +50,20 @@ patches:
   # Gateway: 1 replica, debug logging
   - target:
       kind: Deployment
-      name: mcp-security-gateway
+      name: precinct-gateway
       namespace: gateway
     patch: |
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: mcp-security-gateway
+        name: precinct-gateway
         namespace: gateway
       spec:
         replicas: 1
         template:
           spec:
             containers:
-              - name: mcp-security-gateway
+              - name: precinct-gateway
                 env:
                   - name: LOG_LEVEL
                     value: "debug"

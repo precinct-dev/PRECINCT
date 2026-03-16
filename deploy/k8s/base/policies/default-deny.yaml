@@ -19,7 +19,7 @@ metadata:
   name: default-deny-all
   namespace: gateway
   labels:
-    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/part-of: precinct-gateway
     app.kubernetes.io/component: network-policy
 spec:
   podSelector: {}

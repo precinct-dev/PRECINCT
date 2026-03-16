@@ -7,7 +7,7 @@ services:
   # Release-facing SPIKE multi-share recovery is supplied by
   # docker-compose.prod-intent.yml, which adds keeper-2/3 and overrides the
   # Shamir settings for that topology.
-  mcp-security-gateway:
+  precinct-gateway:
     profiles:
       - strict
     ports: !override
@@ -28,7 +28,7 @@ services:
       AUDIT_LOG_PATH: /tmp/audit.jsonl
       SPIKE_NEXUS_URL: https://spike-nexus:8443
       OTEL_EXPORTER_OTLP_ENDPOINT: otel-collector:4317
-      OTEL_SERVICE_NAME: mcp-security-gateway
+      OTEL_SERVICE_NAME: precinct-gateway
       KEYDB_URL: ""
       MCP_TRANSPORT_MODE: mcp
       ENFORCE_MODEL_MEDIATION_GATE: "true"

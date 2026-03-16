@@ -53,7 +53,7 @@ spec:
               name: gateway
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: mcp-security-gateway
+              app.kubernetes.io/name: precinct-gateway
       ports:
         - protocol: TCP
           port: 6379

@@ -113,5 +113,5 @@ jobs:
         env:
           REPO: ${{ github.repository }}
         run: |
-          docker build -t "ghcr.io/${REPO}/mcp-security-gateway:${GITHUB_SHA}" .
-          docker push "ghcr.io/${REPO}/mcp-security-gateway:${GITHUB_SHA}"
+          docker build -t "ghcr.io/${REPO}/precinct-gateway:${GITHUB_SHA}" .
+          docker push "ghcr.io/${REPO}/precinct-gateway:${GITHUB_SHA}"

@@ -25,8 +25,8 @@ resources:
   - ../../admission/policy-controller/cert-manager
 
 images:
-  - name: mcp-security-gateway
-    newName: ghcr.io/precinct-dev/precinct/mcp-security-gateway
+  - name: precinct-gateway
+    newName: ghcr.io/precinct-dev/precinct/precinct-gateway
     digest: sha256:abaa43d59681dfb78ee948f87c11cc34d3017ad55e3c68345a5010b3b08ca388  # managed by promote.yaml
   - name: python
     newName: ghcr.io/precinct-dev/precinct/s3-mcp-server
@@ -52,20 +52,20 @@ patches:
   # Gateway: 3 replicas, structured logging, audit, higher resources
   - target:
       kind: Deployment
-      name: mcp-security-gateway
+      name: precinct-gateway
       namespace: gateway
     patch: |
       apiVersion: apps/v1
       kind: Deployment
       metadata:
-        name: mcp-security-gateway
+        name: precinct-gateway
         namespace: gateway
       spec:
         replicas: 3
         template:
           spec:
             containers:
-              - name: mcp-security-gateway
+              - name: precinct-gateway
                 env:
                   - name: LOG_LEVEL
                     value: "info"

@@ -7,7 +7,7 @@ cd "${POC_DIR}"
 
 OUTPUT_DIR="${SECURITY_SCAN_OUT_DIR:-build/security-scan/latest}"
 STRICT_MODE="${SECURITY_SCAN_STRICT:-0}"
-GATEWAY_SCAN_IMAGE="${GATEWAY_SCAN_IMAGE:-mcp-security-gateway:scan}"
+GATEWAY_SCAN_IMAGE="${GATEWAY_SCAN_IMAGE:-precinct-gateway:scan}"
 
 RAW_DIR="${OUTPUT_DIR}/raw"
 SUMMARY_DIR="${OUTPUT_DIR}/summaries"

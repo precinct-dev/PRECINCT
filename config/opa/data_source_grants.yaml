@@ -6,7 +6,7 @@ data_source_grants:
   # Gateway has full access to all data sources for inspection/forwarding.
   # URI pattern "**" matches any URI including dots and colons (OPA glob treats
   # "." as a default separator, so "*" alone would not cross domain segments).
-  - spiffe_pattern: "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+  - spiffe_pattern: "spiffe://poc.local/gateways/precinct-gateway/dev"
     uri_pattern: "**"
     description: "PRECINCT Gateway - enforcement point with full data source access"
 

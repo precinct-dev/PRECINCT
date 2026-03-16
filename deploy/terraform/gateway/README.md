@@ -33,7 +33,7 @@ audit, etc.) before proxying requests to tool servers.
 
 | Namespace | Purpose | SPIFFE ID |
 |-----------|---------|-----------|
-| `gateway` | PRECINCT Gateway | `spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway` |
+| `gateway` | PRECINCT Gateway | `spiffe://precinct.poc/ns/gateway/sa/precinct-gateway` |
 | `tools`   | MCP tool servers | `spiffe://precinct.poc/ns/tools/sa/mcp-tool` |
 
 ### NetworkPolicy Enforcement
@@ -54,12 +54,12 @@ Default-deny is applied to both namespaces. Explicit allow rules permit:
 5. Gateway container image built and available:
    ```bash
    # Build locally
-   docker build -t mcp-security-gateway:latest -f deploy/compose/Dockerfile.gateway .
+   docker build -t precinct-gateway:latest -f deploy/compose/Dockerfile.gateway .
 
    # Push to ECR (production)
    aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
-   docker tag mcp-security-gateway:latest <account>.dkr.ecr.<region>.amazonaws.com/mcp-security-gateway:latest
-   docker push <account>.dkr.ecr.<region>.amazonaws.com/mcp-security-gateway:latest
+   docker tag precinct-gateway:latest <account>.dkr.ecr.<region>.amazonaws.com/precinct-gateway:latest
+   docker push <account>.dkr.ecr.<region>.amazonaws.com/precinct-gateway:latest
    ```
 6. `kubeconform` installed for offline validation (`brew install kubeconform`)
 
@@ -144,7 +144,7 @@ When OPA policies change in `config/opa/`, redeploy the ConfigMap:
 ```bash
 make deploy-configmap
 # Then restart the gateway to pick up changes:
-kubectl -n gateway rollout restart deployment/mcp-security-gateway
+kubectl -n gateway rollout restart deployment/precinct-gateway
 ```
 
 ## Troubleshooting
@@ -152,7 +152,7 @@ kubectl -n gateway rollout restart deployment/mcp-security-gateway
 ### Gateway pod not starting
 - Check SPIRE agent is running: `kubectl -n spire-system get pods`
 - Check ConfigMap exists: `kubectl -n gateway get configmap gateway-config`
-- Check events: `kubectl -n gateway describe pod -l app.kubernetes.io/name=mcp-security-gateway`
+- Check events: `kubectl -n gateway describe pod -l app.kubernetes.io/name=precinct-gateway`
 
 ### Gateway cannot reach tool server
 - Verify NetworkPolicies: `make -C ../policies verify`

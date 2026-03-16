@@ -36,7 +36,7 @@ Story: RFA-9fv.3
 | Workload | SPIFFE ID | Selectors |
 |----------|-----------|-----------|
 | SPIRE Agent (node) | `spiffe://precinct.poc/agent/k8s-psat` | `k8s_psat:cluster:precinct-poc` |
-| PRECINCT Gateway | `spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway` | `k8s:ns:gateway`, `k8s:sa:mcp-security-gateway` |
+| PRECINCT Gateway | `spiffe://precinct.poc/ns/gateway/sa/precinct-gateway` | `k8s:ns:gateway`, `k8s:sa:precinct-gateway` |
 | MCP Tool Servers | `spiffe://precinct.poc/ns/tools/sa/mcp-tool` | `k8s:ns:tools`, `k8s:sa:mcp-tool` |
 | SPIKE Nexus | `spiffe://precinct.poc/ns/spike-system/sa/spike-nexus` | `k8s:ns:spike-system`, `k8s:sa:spike-nexus` |
 | OpenSearch | `spiffe://precinct.poc/ns/observability/sa/opensearch` | `k8s:ns:observability`, `k8s:sa:opensearch` |

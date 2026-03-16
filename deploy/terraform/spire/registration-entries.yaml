@@ -26,7 +26,7 @@
 #   spiffe://precinct.poc/ns/<namespace>/sa/<service-account>
 #
 # Registered workloads:
-#   1. mcp-security-gateway -- the security enforcement gateway
+#   1. precinct-gateway -- the security enforcement gateway
 #   2. tools/* -- MCP tool server workloads (wildcard-like via namespace selector)
 #   3. spike-nexus -- SPIKE token service
 #
@@ -83,15 +83,15 @@ data:
     || echo "  (entry may already exist, continuing)"
 
     # Gateway workload
-    echo "  Workload: mcp-security-gateway..."
+    echo "  Workload: precinct-gateway..."
     /opt/spire/bin/spire-server entry create \
       -socketPath "$SOCK" \
       -parentID spiffe://precinct.poc/agent/k8s-psat \
-      -spiffeID spiffe://precinct.poc/ns/gateway/sa/mcp-security-gateway \
+      -spiffeID spiffe://precinct.poc/ns/gateway/sa/precinct-gateway \
       -selector k8s:ns:gateway \
-      -selector k8s:sa:mcp-security-gateway \
-      -dns mcp-security-gateway \
-      -dns mcp-security-gateway.gateway.svc.cluster.local \
+      -selector k8s:sa:precinct-gateway \
+      -dns precinct-gateway \
+      -dns precinct-gateway.gateway.svc.cluster.local \
     || echo "  (entry may already exist, continuing)"
 
     # Tool server workloads

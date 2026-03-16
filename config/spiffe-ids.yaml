@@ -15,16 +15,16 @@ environment: dev
 # SPIFFE IDs for POC workloads
 workloads:
   # Gateway component - the PRECINCT Gateway that enforces all security controls
-  - spiffe_id: spiffe://poc.local/gateways/mcp-security-gateway/dev
+  - spiffe_id: spiffe://poc.local/gateways/precinct-gateway/dev
     description: PRECINCT Gateway
     purpose: >
       Enforces identity verification, authorization, content inspection,
       tool verification, secret substitution, and audit logging for all
       agent-to-tool communication.
     agent_class: gateways
-    agent_purpose: mcp-security-gateway
+    agent_purpose: precinct-gateway
     selectors:
-      - "docker:label:spiffe-id:mcp-security-gateway"
+      - "docker:label:spiffe-id:precinct-gateway"
       - "docker:label:component:gateway"
 
   # DSPy research agent - MCP client using DSPy framework

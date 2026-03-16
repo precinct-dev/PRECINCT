@@ -160,7 +160,7 @@ so that `configMapGenerator` picks them up on the next `kubectl apply -k`.
 Re-run the command above (or `make k8s-sync-config` followed by
 `kubectl apply -k`) whenever you change OPA policies, the tool registry, or
 any other config file. The gateway reads these files at startup; a rolling
-restart (`kubectl rollout restart deployment/mcp-security-gateway -n gateway`)
+restart (`kubectl rollout restart deployment/precinct-gateway -n gateway`)
 picks up the new ConfigMap contents.
 
 ## Cloud-Specific Extensions

@@ -27,12 +27,12 @@ metadata:
   name: gateway-allow-ingress
   namespace: gateway
   labels:
-    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/part-of: precinct-gateway
     app.kubernetes.io/component: network-policy
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: mcp-security-gateway
+      app.kubernetes.io/name: precinct-gateway
   policyTypes:
     - Ingress
   ingress:
@@ -51,12 +51,12 @@ metadata:
   name: gateway-allow-egress
   namespace: gateway
   labels:
-    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/part-of: precinct-gateway
     app.kubernetes.io/component: network-policy
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: mcp-security-gateway
+      app.kubernetes.io/name: precinct-gateway
   policyTypes:
     - Egress
   egress:

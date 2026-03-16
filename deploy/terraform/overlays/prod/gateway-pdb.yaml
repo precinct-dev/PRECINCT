@@ -8,13 +8,13 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: mcp-security-gateway
+  name: precinct-gateway
   namespace: gateway
   labels:
-    app.kubernetes.io/name: mcp-security-gateway
-    app.kubernetes.io/part-of: mcp-security-gateway
+    app.kubernetes.io/name: precinct-gateway
+    app.kubernetes.io/part-of: precinct-gateway
 spec:
   minAvailable: 2
   selector:
     matchLabels:
-      app.kubernetes.io/name: mcp-security-gateway
+      app.kubernetes.io/name: precinct-gateway

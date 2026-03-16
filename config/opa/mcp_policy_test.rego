@@ -19,7 +19,7 @@ import data.mcp
 # --------------------------------------------------------------------------
 mock_tool_grants := [
   {
-    "spiffe_pattern": "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+    "spiffe_pattern": "spiffe://poc.local/gateways/precinct-gateway/dev",
     "allowed_tools": ["*"],
   },
   {
@@ -53,7 +53,7 @@ mock_tool_registry := {
 # SPIFFE Matching
 # --------------------------------------------------------------------------
 test_spiffe_exact_match if {
-  mcp.spiffe_matches("spiffe://poc.local/gateways/mcp-security-gateway/dev", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+  mcp.spiffe_matches("spiffe://poc.local/gateways/precinct-gateway/dev", "spiffe://poc.local/gateways/precinct-gateway/dev")
 }
 
 test_spiffe_wildcard_match if {
@@ -195,7 +195,7 @@ test_destination_denied_unregistered_port_route if {
 
 test_allow_port_route_with_valid_spiffe if {
   result := mcp.allow with input as {
-    "spiffe_id": "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+    "spiffe_id": "spiffe://poc.local/gateways/precinct-gateway/dev",
     "tool": "",
     "path": "/v1/responses",
     "method": "POST",
@@ -230,7 +230,7 @@ test_deny_port_route_unknown_spiffe if {
 
 test_deny_port_route_high_session_risk if {
   result := mcp.allow with input as {
-    "spiffe_id": "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+    "spiffe_id": "spiffe://poc.local/gateways/precinct-gateway/dev",
     "tool": "",
     "path": "/v1/responses",
     "method": "POST",
@@ -303,7 +303,7 @@ test_session_risk_boundary if {
 # --------------------------------------------------------------------------
 test_allow_gateway_wildcard if {
   result := mcp.allow with input as {
-    "spiffe_id": "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+    "spiffe_id": "spiffe://poc.local/gateways/precinct-gateway/dev",
     "tool": "read",
     "params": {"file_path": "/workspace/POC/file.go"},
     "step_up_token": "",
@@ -380,7 +380,7 @@ test_deny_path_denied if {
 
 test_deny_session_risk_too_high if {
   result := mcp.allow with input as {
-    "spiffe_id": "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+    "spiffe_id": "spiffe://poc.local/gateways/precinct-gateway/dev",
     "tool": "read",
     "params": {"file_path": "/workspace/POC/file.go"},
     "step_up_token": "",

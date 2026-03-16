@@ -605,7 +605,7 @@ echo "  Waiting for services to become healthy..."
 TIMEOUT=120
 ELAPSED=0
 while [ $ELAPSED -lt $TIMEOUT ]; do
-    GATEWAY_STATUS=$($DC ps --format '{{.Status}}' mcp-security-gateway 2>/dev/null || echo "")
+    GATEWAY_STATUS=$($DC ps --format '{{.Status}}' precinct-gateway 2>/dev/null || echo "")
     if echo "$GATEWAY_STATUS" | grep -qi "healthy"; then
         break
     fi
@@ -617,7 +617,7 @@ echo ""
 
 if [ $ELAPSED -ge $TIMEOUT ]; then
     echo -e "  ${RED}[FAIL]${NC} Gateway did not become healthy within ${TIMEOUT}s"
-    echo "         Check logs with: docker compose logs mcp-security-gateway"
+    echo "         Check logs with: docker compose logs precinct-gateway"
     echo "         Try: make down && make up"
     exit 1
 fi
@@ -706,7 +706,7 @@ if [ "$RESP_CODE" = "200" ] || [ "$RESP_CODE" = "502" ] || [ "$RESP_CODE" = "404
 else
     smoke_fail "Authorized tool call" \
         "Expected 200/502/404, got HTTP ${RESP_CODE}. Body: ${RESP_BODY:0:200}" \
-        "Check gateway logs: docker compose logs mcp-security-gateway"
+        "Check gateway logs: docker compose logs precinct-gateway"
 fi
 
 # ---- Smoke 2: Policy Denial ----
@@ -770,7 +770,7 @@ echo ""
 
 sleep 1  # Allow audit log to flush
 
-AUDIT_LINE=$($DC logs --tail 10 mcp-security-gateway 2>/dev/null | grep "prev_hash" | tail -1 || echo "")
+AUDIT_LINE=$($DC logs --tail 10 precinct-gateway 2>/dev/null | grep "prev_hash" | tail -1 || echo "")
 
 if [ -n "$AUDIT_LINE" ]; then
     # Verify key fields exist
@@ -836,7 +836,7 @@ if [ "$SMOKE_FAIL" -gt 0 ]; then
     echo -e "  ${RED}Some smoke tests failed.${NC} See [FAIL] items above for remediation."
     echo ""
     echo "  Common troubleshooting steps:"
-    echo "    1. Check gateway logs:  docker compose logs mcp-security-gateway"
+    echo "    1. Check gateway logs:  docker compose logs precinct-gateway"
     echo "    2. Restart services:    make down && make up"
     echo "    3. Re-run wizard:       make setup"
     echo ""

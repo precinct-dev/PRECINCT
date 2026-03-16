@@ -546,13 +546,13 @@ services:
     read_only: true
 
   # PRECINCT Gateway - Security enforcement point for all MCP requests
-  mcp-security-gateway:
+  precinct-gateway:
     build:
       context: ../..
       dockerfile: deploy/compose/Dockerfile.gateway
-    image: mcp-security-gateway:latest
-    container_name: mcp-security-gateway
-    hostname: mcp-security-gateway
+    image: precinct-gateway:latest
+    container_name: precinct-gateway
+    hostname: precinct-gateway
     depends_on:
       spire-agent:
         condition: service_healthy
@@ -594,7 +594,7 @@ services:
       - AUDIT_LOG_PATH=/tmp/audit.jsonl
       - SPIKE_NEXUS_URL=https://spike-nexus:8443
       - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
-      - OTEL_SERVICE_NAME=mcp-security-gateway
+      - OTEL_SERVICE_NAME=precinct-gateway
       - KEYDB_URL=redis://keydb:6379  # RFA-hh5.1: KeyDB session persistence (auto-converts to rediss://keydb:6380 in prod mode per RFA-8z8.2)
       - MCP_TRANSPORT_MODE=${MCP_TRANSPORT_MODE:-mcp}  # RFA-5u9: "mcp" (default) or "proxy" (backward compat reverse proxy)
       # Strict transport profile example (Compose): set SPIFFE_MODE=prod, ENFORCEMENT_PROFILE=prod_standard,
@@ -630,7 +630,7 @@ services:
     tmpfs:
       - /tmp
     labels:
-      - "spiffe-id=mcp-security-gateway"
+      - "spiffe-id=precinct-gateway"
       - "component=gateway"
     healthcheck:
       test: ["CMD", "/app/gateway", "health"]
