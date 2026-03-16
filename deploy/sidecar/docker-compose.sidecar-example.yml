@@ -1,0 +1,87 @@
+# ------------------------------------------------------------------------------
+# Docker Compose Sidecar Example for Third-Party Tool SPIFFE Identity
+# Story: OC-ofhi
+#
+# This compose override adds a generic MCP client tool with an Envoy sidecar
+# for transparent SPIFFE identity injection. The tool sends requests to
+# localhost:9090, and the sidecar adds the X-SPIFFE-ID header before
+# forwarding to the PRECINCT Gateway.
+#
+# Usage:
+#   # Start the main PRECINCT stack first, then overlay this file:
+#   docker compose -f deploy/compose/docker-compose.yml \
+#                  -f deploy/sidecar/docker-compose.sidecar-example.yml \
+#                  up -d
+#
+# Prerequisites:
+#   1. Main PRECINCT stack running (spire-agent, precinct-gateway, etc.)
+#   2. SPIRE entry registered for the tool (see spire-registration-template.sh)
+#   3. The tool's container image available locally or in a registry
+#
+# Network architecture:
+#   The sidecar-client and envoy-sidecar share a network namespace via
+#   network_mode, so localhost communication works between them. Both are
+#   attached to agentic-net where the gateway lives.
+# ------------------------------------------------------------------------------
+
+services:
+  # Envoy sidecar - provides SPIFFE identity injection.
+  # Shares network namespace with the client tool via network_mode.
+  envoy-sidecar:
+    image: envoyproxy/envoy:v1.31-latest
+    container_name: envoy-sidecar
+    hostname: envoy-sidecar
+    volumes:
+      - ./envoy-sidecar.yaml:/etc/envoy/envoy.yaml:ro
+      # SPIRE agent socket for future mTLS/SDS support
+      - ../compose/data/spire-agent-socket:/tmp/spire-agent/public:ro
+    environment:
+      # SPIFFE identity for this tool. Set to the registered SPIFFE ID.
+      # The Lua filter reads this and injects it as X-SPIFFE-ID header.
+      - SPIFFE_ID=${SIDECAR_SPIFFE_ID:-spiffe://poc.local/agents/mcp-client/sidecar-client/dev}
+    command: ["envoy", "-c", "/etc/envoy/envoy.yaml", "--log-level", "info"]
+    networks:
+      agentic-net: {}
+    labels:
+      - "spiffe-id=${SIDECAR_TOOL_NAME:-sidecar-client}"
+      - "component=sidecar"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    healthcheck:
+      # Envoy admin endpoint health check
+      test: ["CMD", "sh", "-c", "wget -q -O /dev/null http://127.0.0.1:9901/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  # Example third-party MCP client tool.
+  # Replace this with your actual tool (mcp2cli, DSPy agent, LangGraph, etc.).
+  # The tool sends requests to localhost:9090 (the Envoy sidecar listener).
+  sidecar-client:
+    image: curlimages/curl:latest
+    container_name: sidecar-client
+    # Share network namespace with the envoy sidecar so localhost:9090 works.
+    network_mode: "service:envoy-sidecar"
+    depends_on:
+      envoy-sidecar:
+        condition: service_healthy
+    environment:
+      # The tool talks to the gateway via the local sidecar.
+      - GATEWAY_URL=http://127.0.0.1:9090
+    # Example: keep container running for interactive testing.
+    # Replace with your tool's actual entrypoint.
+    entrypoint: ["sh", "-c", "echo 'Sidecar client ready. Gateway at http://127.0.0.1:9090'; sleep infinity"]
+    labels:
+      - "spiffe-id=${SIDECAR_TOOL_NAME:-sidecar-client}"
+      - "component=mcp-client"
+
+networks:
+  agentic-net:
+    external: true
+    name: agentic-security-network
