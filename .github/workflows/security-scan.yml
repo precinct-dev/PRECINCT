@@ -174,8 +174,23 @@ jobs:
     needs: [gosec, trivy-fs, trivy-image]
     if: always()
     steps:
-      - name: Download all artifacts
+      - name: Download gosec results
         uses: actions/download-artifact@v4
+        with:
+          name: gosec-results
+          path: gosec-results
+
+      - name: Download Trivy fs results
+        uses: actions/download-artifact@v4
+        with:
+          name: trivy-fs-results
+          path: trivy-fs-results
+
+      - name: Download Trivy image results
+        uses: actions/download-artifact@v4
+        with:
+          name: trivy-image-results
+          path: trivy-image-results
 
       - name: Validate required scan artifacts exist
         run: |
