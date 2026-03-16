@@ -38,7 +38,7 @@ func TestDemoRugpullAdminAuthorizationFlow(t *testing.T) {
 		RateLimitRPM:                 100000,
 		RateLimitBurst:               100000,
 		DemoRugpullAdminEnabled:      true,
-		AdminAuthzAllowedSPIFFEIDs:   []string{"spiffe://poc.local/gateways/mcp-security-gateway/dev"},
+		AdminAuthzAllowedSPIFFEIDs:   []string{"spiffe://poc.local/gateways/precinct-gateway/dev"},
 		EnforcementProfile:           "dev",
 		EnforceModelMediationGate:    true,
 		EnforceHIPAAPromptSafetyGate: true,
@@ -74,7 +74,7 @@ func TestDemoRugpullAdminAuthorizationFlow(t *testing.T) {
 
 	t.Run("authorized admin succeeds", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/__demo__/rugpull/off", nil)
-		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+		req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 		rec := httptest.NewRecorder()
 		handler.ServeHTTP(rec, req)
 		if rec.Code != http.StatusOK {

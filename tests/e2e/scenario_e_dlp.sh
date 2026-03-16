@@ -13,7 +13,7 @@ log_header "Scenario E: DLP Detection"
 # ============================================================
 log_subheader "Pre-flight checks"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1
@@ -131,14 +131,14 @@ log_subheader "E6: DLP flags in audit log"
 sleep 1
 
 # Check for security flags in recent audit logs
-SECURITY_AUDIT=$(docker compose logs --tail 20 mcp-security-gateway 2>/dev/null | grep -E "safezone_flags|blocked_content|potential_pii|potential_injection|credential" | tail -1 || echo "")
+SECURITY_AUDIT=$(docker compose logs --tail 20 precinct-gateway 2>/dev/null | grep -E "safezone_flags|blocked_content|potential_pii|potential_injection|credential" | tail -1 || echo "")
 
 if [ -n "$SECURITY_AUDIT" ]; then
     log_pass "DLP security flags present in audit log"
     log_detail "Audit excerpt: ${SECURITY_AUDIT:0:200}"
 else
     # Even if flags are not in string output, the security block is present
-    SEC_BLOCK=$(docker compose logs --tail 20 mcp-security-gateway 2>/dev/null | grep '"security"' | tail -1 || echo "")
+    SEC_BLOCK=$(docker compose logs --tail 20 precinct-gateway 2>/dev/null | grep '"security"' | tail -1 || echo "")
     if [ -n "$SEC_BLOCK" ]; then
         log_pass "Security metadata block present in audit events (DLP scan executed)"
         log_detail "DLP flags may be embedded in security block"

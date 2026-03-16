@@ -27,7 +27,7 @@ func TestInitTracer_EmptyEndpoint_ReturnsNoopShutdown(t *testing.T) {
 }
 
 func TestInitTracer_EmptyServiceName_DefaultsToGateway(t *testing.T) {
-	// When service name is empty, it should default to "mcp-security-gateway".
+	// When service name is empty, it should default to "precinct-gateway".
 	// We test with an empty endpoint to avoid needing a real collector.
 	shutdown, err := InitTracer(context.Background(), "", "")
 	if err != nil {

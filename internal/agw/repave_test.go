@@ -34,7 +34,7 @@ func TestCollectRepaveStatus_AgeAndNeverRepaved(t *testing.T) {
 	runner := fakeRepaveRunner{
 		stdout: strings.Join([]string{
 			`{"Service":"keydb","Health":"healthy","Labels":"com.docker.compose.image=sha256:abc12345","State":"running"}`,
-			`{"Service":"mcp-security-gateway","Health":"healthy","Labels":"com.docker.compose.image=sha256:def67890","State":"running"}`,
+			`{"Service":"precinct-gateway","Health":"healthy","Labels":"com.docker.compose.image=sha256:def67890","State":"running"}`,
 		}, "\n"),
 	}
 
@@ -63,7 +63,7 @@ func TestCollectRepaveStatus_AgeAndNeverRepaved(t *testing.T) {
 		t.Fatalf("expected keydb hash match and age=51h, got %+v", keydb)
 	}
 
-	gw := byName["mcp-security-gateway"]
+	gw := byName["precinct-gateway"]
 	if gw.LastRepave != "NEVER" {
 		t.Fatalf("expected NEVER for non-repaved container, got %+v", gw)
 	}

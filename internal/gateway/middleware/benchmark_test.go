@@ -220,13 +220,13 @@ func BenchmarkPerMiddlewareLatency(b *testing.B) {
 	prev := otel.GetTracerProvider()
 	otel.SetTracerProvider(tp)
 	// Per story insight 2: reassign the package-level tracer
-	tracer = tp.Tracer("mcp-security-gateway")
+	tracer = tp.Tracer("precinct-gateway")
 
 	defer func() {
 		_ = tp.Shutdown(context.Background())
 		otel.SetTracerProvider(prev)
 		// Restore default tracer
-		tracer = otel.Tracer("mcp-security-gateway")
+		tracer = otel.Tracer("precinct-gateway")
 	}()
 
 	handler, cleanup := buildFullMiddlewareChain(b)
@@ -669,12 +669,12 @@ func TestPrintBenchmarkReport(t *testing.T) {
 	)
 	prev := otel.GetTracerProvider()
 	otel.SetTracerProvider(tp)
-	tracer = tp.Tracer("mcp-security-gateway")
+	tracer = tp.Tracer("precinct-gateway")
 
 	defer func() {
 		_ = tp.Shutdown(context.Background())
 		otel.SetTracerProvider(prev)
-		tracer = otel.Tracer("mcp-security-gateway")
+		tracer = otel.Tracer("precinct-gateway")
 	}()
 
 	// Build chains -- using a testing.B-like interface via testing.T

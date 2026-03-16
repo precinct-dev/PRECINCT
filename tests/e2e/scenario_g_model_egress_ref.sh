@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/common.sh"
 
 log_header "Scenario G: Model Egress via SPIKE Reference Header"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1
@@ -36,7 +36,7 @@ else
     log_fail "Model egress with SPIKE header reference" "Expected HTTP 200 with choices; got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
 
-AUDIT_HIT=$($DC logs --no-log-prefix --tail 250 mcp-security-gateway 2>/dev/null | grep "openai/v1/chat/completions" | grep "MODEL_" || true)
+AUDIT_HIT=$($DC logs --no-log-prefix --tail 250 precinct-gateway 2>/dev/null | grep "openai/v1/chat/completions" | grep "MODEL_" || true)
 if [ -n "$AUDIT_HIT" ]; then
     log_pass "Audit includes model egress decision for OpenAI-compatible route"
 else

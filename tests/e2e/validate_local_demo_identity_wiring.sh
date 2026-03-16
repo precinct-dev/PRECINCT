@@ -28,9 +28,9 @@ import sys
 from pathlib import Path
 
 text = Path(sys.argv[1]).read_text()
-parts = [part for part in text.split('---') if 'kind: Deployment' in part and 'name: mcp-security-gateway' in part]
+parts = [part for part in text.split('---') if 'kind: Deployment' in part and 'name: precinct-gateway' in part]
 if not parts:
-    print("[FAIL] local overlay missing mcp-security-gateway deployment", file=sys.stderr)
+    print("[FAIL] local overlay missing precinct-gateway deployment", file=sys.stderr)
     sys.exit(1)
 
 dep = parts[0]

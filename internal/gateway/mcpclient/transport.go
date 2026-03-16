@@ -71,7 +71,7 @@ func (t *StreamableHTTPTransport) Initialize(ctx context.Context) error {
 				Roots: &RootsCapability{ListChanged: true},
 			},
 			ClientInfo: ClientInfo{
-				Name:    "mcp-security-gateway",
+				Name:    "precinct-gateway",
 				Version: "1.0.0",
 			},
 		},

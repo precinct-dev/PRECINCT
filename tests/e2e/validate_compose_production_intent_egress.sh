@@ -25,13 +25,13 @@ require_cmd() {
 check_compose_cfg() {
   local cfg="$1"
 
-  jq -e '.services["mcp-security-gateway"]' "${cfg}" >/dev/null || {
+  jq -e '.services["precinct-gateway"]' "${cfg}" >/dev/null || {
     echo "gateway service missing"
     return 1
   }
 
   local network_mode
-  network_mode="$(jq -r '.services["mcp-security-gateway"].network_mode // ""' "${cfg}")"
+  network_mode="$(jq -r '.services["precinct-gateway"].network_mode // ""' "${cfg}")"
   if [ -n "${network_mode}" ]; then
     echo "gateway must not set network_mode (found: ${network_mode})"
     return 1
@@ -39,13 +39,13 @@ check_compose_cfg() {
 
   local expected_networks=(agentic-net tool-plane secrets-plane data-plane phoenix-net)
   for net in "${expected_networks[@]}"; do
-    jq -e --arg n "${net}" '.services["mcp-security-gateway"].networks | has($n)' "${cfg}" >/dev/null || {
+    jq -e --arg n "${net}" '.services["precinct-gateway"].networks | has($n)' "${cfg}" >/dev/null || {
       echo "gateway missing required network: ${net}"
       return 1
     }
   done
 
-  mapfile -t attached_networks < <(jq -r '.services["mcp-security-gateway"].networks | keys[]' "${cfg}")
+  mapfile -t attached_networks < <(jq -r '.services["precinct-gateway"].networks | keys[]' "${cfg}")
   for net in "${attached_networks[@]}"; do
     case "${net}" in
       agentic-net|tool-plane|secrets-plane|data-plane|phoenix-net) ;;
@@ -73,12 +73,12 @@ check_compose_cfg() {
   fi
 
   local profile mode spiffe mediation projection upstream
-  profile="$(jq -r '.services["mcp-security-gateway"].environment.ENFORCEMENT_PROFILE // ""' "${cfg}")"
-  mode="$(jq -r '.services["mcp-security-gateway"].environment.MCP_TRANSPORT_MODE // ""' "${cfg}")"
-  spiffe="$(jq -r '.services["mcp-security-gateway"].environment.SPIFFE_MODE // ""' "${cfg}")"
-  mediation="$(jq -r '.services["mcp-security-gateway"].environment.ENFORCE_MODEL_MEDIATION_GATE // "" | ascii_downcase' "${cfg}")"
-  projection="$(jq -r '.services["mcp-security-gateway"].environment.MODEL_POLICY_INTENT_PREPEND_ENABLED // "" | ascii_downcase' "${cfg}")"
-  upstream="$(jq -r '.services["mcp-security-gateway"].environment.UPSTREAM_URL // ""' "${cfg}")"
+  profile="$(jq -r '.services["precinct-gateway"].environment.ENFORCEMENT_PROFILE // ""' "${cfg}")"
+  mode="$(jq -r '.services["precinct-gateway"].environment.MCP_TRANSPORT_MODE // ""' "${cfg}")"
+  spiffe="$(jq -r '.services["precinct-gateway"].environment.SPIFFE_MODE // ""' "${cfg}")"
+  mediation="$(jq -r '.services["precinct-gateway"].environment.ENFORCE_MODEL_MEDIATION_GATE // "" | ascii_downcase' "${cfg}")"
+  projection="$(jq -r '.services["precinct-gateway"].environment.MODEL_POLICY_INTENT_PREPEND_ENABLED // "" | ascii_downcase' "${cfg}")"
+  upstream="$(jq -r '.services["precinct-gateway"].environment.UPSTREAM_URL // ""' "${cfg}")"
 
   [ "${profile}" = "prod_standard" ] || {
     echo "ENFORCEMENT_PROFILE must be prod_standard (got ${profile})"
@@ -134,7 +134,7 @@ main() {
   check_compose_cfg "${cfg_json}" || fail "compose strict production-intent egress checks failed"
 
   info "Running deterministic negative-path check (host networking must be rejected)"
-  jq '.services["mcp-security-gateway"].network_mode = "host"' "${cfg_json}" >"${bad_cfg}"
+  jq '.services["precinct-gateway"].network_mode = "host"' "${cfg_json}" >"${bad_cfg}"
   if check_compose_cfg "${bad_cfg}" >/dev/null 2>&1; then
     fail "negative-path check failed: validator accepted gateway network_mode=host"
   fi

@@ -149,7 +149,7 @@ func loadAuditJSONLEntries(path string) ([]map[string]any, error) {
 }
 
 func loadAuditFromDockerComposeLogs(ctx context.Context, projectRoot string) ([]map[string]any, error) {
-	cmd := exec.CommandContext(ctx, "docker", "compose", "logs", "--no-log-prefix", "mcp-security-gateway")
+	cmd := exec.CommandContext(ctx, "docker", "compose", "logs", "--no-log-prefix", "precinct-gateway")
 	cmd.Dir = projectRoot
 	out, err := cmd.CombinedOutput()
 	if err != nil {

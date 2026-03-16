@@ -36,7 +36,7 @@ readonly DNS_TIMEOUT=3        # seconds for DNS resolution attempts
 # Service endpoints (must match EKS manifests from RFA-9fv.4)
 readonly MCP_SERVER_SVC="mcp-server.tools.svc.cluster.local"
 readonly MCP_SERVER_PORT=8081
-readonly GATEWAY_SVC="mcp-security-gateway.gateway.svc.cluster.local"
+readonly GATEWAY_SVC="precinct-gateway.gateway.svc.cluster.local"
 readonly GATEWAY_PORT=9090
 readonly OTEL_COLLECTOR_SVC="otel-collector.observability.svc.cluster.local"
 readonly OTEL_COLLECTOR_PORT=4317
@@ -82,7 +82,7 @@ deploy_test_pod() {
 
     # Match real policy podSelectors so allow-rules are exercised by tests.
     if [ "${ns}" = "gateway" ]; then
-        app_label="mcp-security-gateway"
+        app_label="precinct-gateway"
     elif [ "${ns}" = "tools" ]; then
         app_label="mcp-server"
     fi

@@ -18,7 +18,7 @@ log_header "Scenario A: Happy Path"
 # ============================================================
 log_subheader "Pre-flight checks"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1
@@ -59,7 +59,7 @@ fi
 log_subheader "A2: Audit log verification"
 sleep 1
 
-AUDIT_LINE=$(docker compose logs --tail 5 mcp-security-gateway 2>/dev/null | grep "mcp_request" | tail -1 || echo "")
+AUDIT_LINE=$(docker compose logs --tail 5 precinct-gateway 2>/dev/null | grep "mcp_request" | tail -1 || echo "")
 
 if [ -n "$AUDIT_LINE" ]; then
     log_pass "Audit event emitted for tool call"
@@ -124,7 +124,7 @@ for i in 1 2 3; do
 done
 
 # Check that audit shows sequential events
-RECENT_AUDITS=$(docker compose logs --tail 10 mcp-security-gateway 2>/dev/null | grep "mcp_request" | wc -l || echo "0")
+RECENT_AUDITS=$(docker compose logs --tail 10 precinct-gateway 2>/dev/null | grep "mcp_request" | wc -l || echo "0")
 if [ "$RECENT_AUDITS" -ge 3 ]; then
     log_pass "Multiple tool calls produce sequential audit events ($RECENT_AUDITS events)"
 else

@@ -58,7 +58,7 @@ func TestEmbeddedOPAWithRealPolicies(t *testing.T) {
 		{
 			name: "AllowedGatewayRead",
 			input: middleware.OPAInput{
-				SPIFFEID: "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+				SPIFFEID: "spiffe://poc.local/gateways/precinct-gateway/dev",
 				Tool:     "read",
 				Action:   "execute",
 				Method:   "POST",

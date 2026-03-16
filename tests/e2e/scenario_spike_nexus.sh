@@ -35,7 +35,7 @@ TEST_SECRET_REF2="f6e5d4c3b2a1"
 # ============================================================
 log_subheader "Pre-flight checks"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1
@@ -176,7 +176,7 @@ log_subheader "S4: Audit log shows opaque token (not real secret)"
 sleep 2
 
 # Get recent audit logs from the gateway container
-AUDIT_LOGS=$(docker compose logs --tail 30 mcp-security-gateway 2>/dev/null || echo "")
+AUDIT_LOGS=$(docker compose logs --tail 30 precinct-gateway 2>/dev/null || echo "")
 
 # Check that the SPIKE token reference appears in the audit log
 # The audit middleware (step 4) logs the request body BEFORE token substitution (step 13)
@@ -188,7 +188,7 @@ elif echo "$AUDIT_LOGS" | grep -q "${TEST_SECRET_REF}"; then
 else
     log_info "SPIKE token reference not found in recent logs (may have scrolled)"
     # Check the JSONL audit file inside the container
-    AUDIT_FILE=$(docker compose exec -T mcp-security-gateway sh -c "cat /tmp/audit.jsonl 2>/dev/null | tail -5" 2>/dev/null || echo "")
+    AUDIT_FILE=$(docker compose exec -T precinct-gateway sh -c "cat /tmp/audit.jsonl 2>/dev/null | tail -5" 2>/dev/null || echo "")
     if echo "$AUDIT_FILE" | grep -q "SPIKE\|${TEST_SECRET_REF}"; then
         log_pass "Audit file (JSONL) contains SPIKE token reference"
     else
@@ -213,7 +213,7 @@ else
 fi
 
 # Also check the JSONL audit file
-AUDIT_FILE_CONTENT=$(docker compose exec -T mcp-security-gateway sh -c "cat /tmp/audit.jsonl 2>/dev/null" 2>/dev/null || echo "")
+AUDIT_FILE_CONTENT=$(docker compose exec -T precinct-gateway sh -c "cat /tmp/audit.jsonl 2>/dev/null" 2>/dev/null || echo "")
 if echo "$AUDIT_FILE_CONTENT" | grep -q "${TEST_SECRET_VALUE}"; then
     log_fail "SECRET LEAK IN AUDIT FILE" "Real secret found in /tmp/audit.jsonl"
 else
@@ -369,7 +369,7 @@ fi
 log_subheader "S9: Gateway stdout/stderr never contains real secret"
 
 # Check the last 50 lines of gateway output for the real secret
-GATEWAY_OUTPUT=$(docker compose logs --tail 50 mcp-security-gateway 2>&1 || echo "")
+GATEWAY_OUTPUT=$(docker compose logs --tail 50 precinct-gateway 2>&1 || echo "")
 
 if echo "$GATEWAY_OUTPUT" | grep -q "${TEST_SECRET_VALUE}"; then
     log_fail "SECRET LEAK IN STDOUT" "Real secret value found in gateway stdout/stderr"

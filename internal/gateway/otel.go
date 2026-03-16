@@ -27,7 +27,7 @@ func InitTracer(ctx context.Context, endpoint, serviceName string) (func(context
 	}
 
 	if serviceName == "" {
-		serviceName = "mcp-security-gateway"
+		serviceName = "precinct-gateway"
 	}
 
 	// Create OTLP gRPC exporter targeting the OTel Collector.

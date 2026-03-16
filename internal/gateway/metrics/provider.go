@@ -25,7 +25,7 @@ func InitMeterProvider(ctx context.Context, endpoint, serviceName string) (func(
 	}
 
 	if serviceName == "" {
-		serviceName = "mcp-security-gateway"
+		serviceName = "precinct-gateway"
 	}
 
 	// Create OTLP gRPC metric exporter targeting the OTel Collector.

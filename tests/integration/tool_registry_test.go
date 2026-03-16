@@ -306,7 +306,7 @@ func TestStepUpGating(t *testing.T) {
 			name:        "BashWithoutStepUpDenied",
 			tool:        "bash",
 			params:      map[string]interface{}{"command": "ls"},
-			spiffeID:    "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+			spiffeID:    "spiffe://poc.local/gateways/precinct-gateway/dev",
 			stepUpToken: "",
 			wantAllowed: false,
 			wantReason:  "step_up_required",
@@ -315,7 +315,7 @@ func TestStepUpGating(t *testing.T) {
 			name:        "BashWithStepUpAllowed",
 			tool:        "bash",
 			params:      map[string]interface{}{"command": "ls"},
-			spiffeID:    "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+			spiffeID:    "spiffe://poc.local/gateways/precinct-gateway/dev",
 			stepUpToken: "valid-step-up-token-12345",
 			wantAllowed: false,
 			wantReason:  "stepup_approval_required",
@@ -447,7 +447,7 @@ func TestPoisoningPatternDetection(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 			client := &http.Client{Timeout: 5 * time.Second}
 			resp, err := client.Do(req)

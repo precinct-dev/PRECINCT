@@ -53,22 +53,22 @@ log_pass "GROQ_API_KEY loaded from .env (non-empty)"
 # Pre-flight: Verify Docker Compose stack is running
 # ============================================================
 
-if ! $DC ps --format '{{.Name}}' 2>/dev/null | grep -q "mcp-security-gateway"; then
-    echo "SKIP: Docker Compose stack is not running (mcp-security-gateway not found). Start with: make up"
+if ! $DC ps --format '{{.Name}}' 2>/dev/null | grep -q "precinct-gateway"; then
+    echo "SKIP: Docker Compose stack is not running (precinct-gateway not found). Start with: make up"
     exit 0
 fi
 log_pass "Docker Compose stack is running"
 
-if ! check_service_healthy "mcp-security-gateway"; then
-    echo "SKIP: mcp-security-gateway is not healthy. Wait for stack initialization."
+if ! check_service_healthy "precinct-gateway"; then
+    echo "SKIP: precinct-gateway is not healthy. Wait for stack initialization."
     exit 0
 fi
-log_pass "mcp-security-gateway is healthy"
+log_pass "precinct-gateway is healthy"
 
 # Collect gateway startup logs once (used by multiple tests).
 # Use --no-log-prefix for clean parsing (Docker Compose >= 2.19).
-GW_LOGS=$($DC logs --no-log-prefix mcp-security-gateway 2>/dev/null || \
-          $DC logs mcp-security-gateway 2>/dev/null || echo "")
+GW_LOGS=$($DC logs --no-log-prefix precinct-gateway 2>/dev/null || \
+          $DC logs precinct-gateway 2>/dev/null || echo "")
 
 # ============================================================
 # Test 1: Gateway logs show SPIKE key fetch succeeded (AC1, AC2)
@@ -135,8 +135,8 @@ log_info "Response code: ${RESP_CODE}"
 
 # Check gateway logs for step-up audit that does NOT indicate missing key.
 # Collect recent logs (last 100 lines) to catch the step-up decision for our request.
-RECENT_GW_LOGS=$($DC logs --tail 100 --no-log-prefix mcp-security-gateway 2>/dev/null || \
-                 $DC logs --tail 100 mcp-security-gateway 2>/dev/null || echo "")
+RECENT_GW_LOGS=$($DC logs --tail 100 --no-log-prefix precinct-gateway 2>/dev/null || \
+                 $DC logs --tail 100 precinct-gateway 2>/dev/null || echo "")
 
 # The fail-open indicator is: "guard model not configured" in the step_up_gating audit.
 # A working guard shows: "step-up controls passed" or "injection probability" or "guard model unavailable"
@@ -170,7 +170,7 @@ fi
 log_subheader "Test 4: No secrets in gateway logs"
 
 if echo "$GW_LOGS" | grep -qF "$GROQ_API_KEY"; then
-    log_fail "SECRET LEAK IN GATEWAY LOGS" "Raw GROQ_API_KEY value found in mcp-security-gateway logs"
+    log_fail "SECRET LEAK IN GATEWAY LOGS" "Raw GROQ_API_KEY value found in precinct-gateway logs"
 else
     log_pass "Raw GROQ_API_KEY value NOT found in gateway logs (AC8 satisfied)"
 fi
@@ -194,7 +194,7 @@ COMPOSE_CONFIG=$($DC config 2>&1)
 
 # Check that GROQ_API_KEY is not set as an environment variable for
 # the gateway service. The rendered config should not contain it.
-GW_ENV=$(docker inspect mcp-security-gateway --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || echo "")
+GW_ENV=$(docker inspect precinct-gateway --format '{{range .Config.Env}}{{println .}}{{end}}' 2>/dev/null || echo "")
 
 if echo "$GW_ENV" | grep -q "^GROQ_API_KEY="; then
     log_fail "GROQ_API_KEY in gateway env" "Gateway container still has GROQ_API_KEY environment variable"

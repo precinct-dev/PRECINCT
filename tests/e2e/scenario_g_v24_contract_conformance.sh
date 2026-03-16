@@ -124,7 +124,7 @@ if [ ! -f "$CATALOG_PATH" ]; then
 fi
 log_pass "Catalog file exists"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway running" "Start with: make -C POC up"
     print_summary
     exit 1

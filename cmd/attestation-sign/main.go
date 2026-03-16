@@ -1,5 +1,5 @@
 // Command attestation-sign generates or loads an Ed25519 keypair and signs
-// configuration artifacts used by the MCP security gateway for attestation.
+// configuration artifacts used by the PRECINCT Gateway for attestation.
 //
 // Usage:
 //

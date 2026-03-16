@@ -28,7 +28,7 @@ fi
 
 # Container names are pinned via `container_name:` in deploy/compose/docker-compose.yml.
 hardened=(
-  "mcp-security-gateway"
+  "precinct-gateway"
   "mock-mcp-server"
   "mock-guard-model"
   "spike-nexus"
@@ -36,7 +36,7 @@ hardened=(
 )
 
 non_root_required=(
-  "mcp-security-gateway"
+  "precinct-gateway"
   "mock-mcp-server"
   "mock-guard-model"
 )

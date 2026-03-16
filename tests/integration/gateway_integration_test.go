@@ -58,7 +58,7 @@ func TestOPAIntegration(t *testing.T) {
 		},
 		{
 			name:       "AllowedGatewayAllTools",
-			spiffeID:   "spiffe://poc.local/gateways/mcp-security-gateway/dev",
+			spiffeID:   "spiffe://poc.local/gateways/precinct-gateway/dev",
 			tool:       "file_read",
 			wantStatus: http.StatusOK,
 			wantResult: "allow",
@@ -162,7 +162,7 @@ func TestToolRegistryIntegration(t *testing.T) {
 				t.Fatalf("Failed to create request: %v", err)
 			}
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 
 			client := &http.Client{Timeout: 5 * time.Second}
 			resp, err := client.Do(req)

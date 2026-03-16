@@ -37,7 +37,7 @@ pass "agentic-net is internal=true"
 pass "Runtime connectivity checks (from agentic-security-network)"
 
 docker run --rm --network agentic-security-network curlimages/curl:8.6.0 \
-  -sSf --max-time 3 "http://mcp-security-gateway:9090/health" >/dev/null
+  -sSf --max-time 3 "http://precinct-gateway:9090/health" >/dev/null
 pass "Gateway is reachable from agentic-security-network"
 
 if docker run --rm --network agentic-security-network curlimages/curl:8.6.0 \

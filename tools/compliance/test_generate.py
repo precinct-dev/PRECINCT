@@ -354,7 +354,7 @@ class TestLoadAuditLog:
             mode="w", suffix=".jsonl", delete=False
         ) as f:
             f.write(
-                'mcp-security-gateway  | 2026/02/06 07:33:41 '
+                'precinct-gateway  | 2026/02/06 07:33:41 '
                 + json.dumps({"action": "mcp_request", "session_id": "abc"})
                 + "\n"
             )

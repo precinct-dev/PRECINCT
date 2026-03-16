@@ -40,7 +40,7 @@ COMPOSE_TORN_DOWN=false
 K8S_TORN_DOWN=false
 if [ "$DEMO_SERVICE_MODE" = "real" ]; then
     COMPOSE_DEMO_CONTAINER_NAMES=(
-        mcp-security-gateway
+        precinct-gateway
         spire-server spire-agent spire-token-generator spire-entry-registrar
         spike-nexus spike-keeper-1 spike-bootstrap spike-secret-seeder
         keydb content-scanner
@@ -48,7 +48,7 @@ if [ "$DEMO_SERVICE_MODE" = "real" ]; then
     )
 else
     COMPOSE_DEMO_CONTAINER_NAMES=(
-        mcp-security-gateway
+        precinct-gateway
         spike-nexus
         spike-secret-seeder
         spike-bootstrap
@@ -259,7 +259,7 @@ wait_for_health() {
     if [ "$MODE" = "compose" ]; then
         warn "Compose gateway health timed out; dumping compose status and recent gateway logs"
         $DC ps || true
-        $DC logs --tail 80 mcp-security-gateway || true
+        $DC logs --tail 80 precinct-gateway || true
     fi
     err "Gateway did not become healthy within ${timeout}s"
     return 1
@@ -405,7 +405,7 @@ k8s_wait_ready() {
         kubectl -n tools get pods -o wide || true
         return 1
     fi
-    if ! kubectl -n gateway rollout status deployment/mcp-security-gateway --timeout=240s >/dev/null; then
+    if ! kubectl -n gateway rollout status deployment/precinct-gateway --timeout=240s >/dev/null; then
         err "Gateway not ready"
         kubectl -n gateway get pods -o wide || true
         return 1
@@ -458,7 +458,7 @@ run_python_demo() {
 collect_audit_proof_compose() {
     log "Audit hash-chain proof (Docker Compose logs)"
     echo ""
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs precinct-gateway 2>/dev/null \
         | grep -i "prev_hash" | tail -5 || echo "  (no prev_hash entries found in logs)"
     echo ""
 }
@@ -466,7 +466,7 @@ collect_audit_proof_compose() {
 collect_audit_proof_k8s() {
     log "Audit hash-chain proof (K8s logs)"
     echo ""
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
+    kubectl -n gateway logs deploy/precinct-gateway --tail=200 2>/dev/null \
         | grep -i "prev_hash" | tail -5 || echo "  (no prev_hash entries found in logs)"
     echo ""
 }
@@ -475,7 +475,7 @@ collect_mcp_transport_proof_compose() {
     log "MCP transport detection proof (Docker Compose logs)"
     echo ""
     # Check gateway logs for MCP transport initialization
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs precinct-gateway 2>/dev/null \
         | grep -i -E "streamable|mcp.*transport|mcp.*session|mock-mcp|transport.*mode" | tail -10 \
         || echo "  (no MCP transport entries found in logs)"
     echo ""
@@ -492,7 +492,7 @@ collect_dlp_injection_proof_compose() {
     # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
     # The audit JSON contains "safezone_flags":["potential_injection"] for flagged injection.
     # Use --no-log-prefix for cleaner grep matching (avoids container name prefix).
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix precinct-gateway 2>/dev/null \
         | grep -E '"safezone_flags":\[.*"potential_injection"' | tail -5 \
         || echo "  (no injection detection entries found in logs)"
     echo ""
@@ -503,7 +503,7 @@ collect_dlp_credential_proof_compose() {
     echo ""
     # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
     # The audit JSON contains "safezone_flags":["blocked_content"] for blocked credentials.
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix precinct-gateway 2>/dev/null \
         | grep -E '"safezone_flags":\[.*"blocked_content"' | tail -5 \
         || echo "  (no credential blocking entries found in logs)"
     echo ""
@@ -512,7 +512,7 @@ collect_dlp_credential_proof_compose() {
 collect_spike_token_proof_compose() {
     log "SPIKE token processing proof (Docker Compose logs)"
     echo ""
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs precinct-gateway 2>/dev/null \
         | grep -i -E "token_substitution|spike.*ref|spike.*redeem|token.*redeem" | tail -10 \
         || echo "  (no SPIKE token processing entries found in logs)"
     echo ""
@@ -562,7 +562,7 @@ collect_dlp_injection_proof_k8s() {
     log "DLP injection detection proof (K8s logs)"
     echo ""
     # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 2>/dev/null \
+    kubectl -n gateway logs deploy/precinct-gateway --tail=500 2>/dev/null \
         | grep -E '"safezone_flags":\[.*"potential_injection"' | tail -5 \
         || echo "  (no injection detection entries found in logs)"
     echo ""
@@ -572,7 +572,7 @@ collect_dlp_credential_proof_k8s() {
     log "DLP credential blocking proof (K8s logs)"
     echo ""
     # RFA-9i2: safezone_flags now propagates to audit log via SecurityFlagsCollector.
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 2>/dev/null \
+    kubectl -n gateway logs deploy/precinct-gateway --tail=500 2>/dev/null \
         | grep -E '"safezone_flags":\[.*"blocked_content"' | tail -5 \
         || echo "  (no credential blocking entries found in logs)"
     echo ""
@@ -581,7 +581,7 @@ collect_dlp_credential_proof_k8s() {
 collect_spike_token_proof_k8s() {
     log "SPIKE token processing proof (K8s logs)"
     echo ""
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
+    kubectl -n gateway logs deploy/precinct-gateway --tail=200 2>/dev/null \
         | grep -i -E "token_substitution|spike.*ref|spike.*redeem|token.*redeem" | tail -10 \
         || echo "  (no SPIKE token processing entries found in logs)"
     echo ""
@@ -625,17 +625,17 @@ collect_extension_proof_compose() {
     log "Extension slot proof (Docker Compose logs)"
     echo ""
     # Look for extension blocked events (content scanner denied a request)
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix precinct-gateway 2>/dev/null \
         | grep -E 'ext_content_scanner_blocked|extension_blocked|extension.*block' | tail -5 \
         || echo "  (no extension block entries found in logs)"
     echo ""
     # Look for extension flagged events (content scanner flagged a request)
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix precinct-gateway 2>/dev/null \
         | grep -E 'extension.*flag|extension_flagged' | tail -5 \
         || echo "  (no extension flag entries found in logs)"
     echo ""
     # Look for extension allow events (content scanner allowed a request)
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix precinct-gateway 2>/dev/null \
         | grep -E 'extension.*allow|extension_allow' | tail -5 \
         || echo "  (no extension allow entries found in logs)"
     echo ""
@@ -649,11 +649,11 @@ collect_extension_proof_compose() {
 collect_extension_proof_k8s() {
     log "Extension slot proof (K8s logs)"
     echo ""
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 2>/dev/null \
+    kubectl -n gateway logs deploy/precinct-gateway --tail=500 2>/dev/null \
         | grep -E 'ext_content_scanner_blocked|extension_blocked|extension.*block' | tail -5 \
         || echo "  (no extension block entries found in logs)"
     echo ""
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 2>/dev/null \
+    kubectl -n gateway logs deploy/precinct-gateway --tail=500 2>/dev/null \
         | grep -E 'extension.*flag|extension_flagged' | tail -5 \
         || echo "  (no extension flag entries found in logs)"
     echo ""
@@ -665,7 +665,7 @@ collect_extension_proof_k8s() {
 collect_mcp_transport_proof_k8s() {
     log "MCP transport detection proof (K8s logs)"
     echo ""
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=200 2>/dev/null \
+    kubectl -n gateway logs deploy/precinct-gateway --tail=200 2>/dev/null \
         | grep -i -E "streamable|mcp.*transport|mcp.*session|mock-mcp|transport.*mode" | tail -10 \
         || echo "  (no MCP transport entries found in logs)"
     echo ""
@@ -738,7 +738,7 @@ print_otel_proof() {
 
 capture_observability_evidence_compose() {
     mkdir -p "$OBS_EVIDENCE_DIR"
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix precinct-gateway >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
     if [ "$PHOENIX_AVAILABLE" = true ]; then
         docker compose -f "$POC_DIR/docker-compose.phoenix.yml" logs --no-color otel-collector >"$TRACE_EVIDENCE_FILE" 2>/dev/null || true
     else
@@ -748,7 +748,7 @@ capture_observability_evidence_compose() {
 
 capture_observability_evidence_k8s() {
     mkdir -p "$OBS_EVIDENCE_DIR"
-    kubectl -n gateway logs deploy/mcp-security-gateway --tail=500 >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
+    kubectl -n gateway logs deploy/precinct-gateway --tail=500 >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
     if [ "$PHOENIX_AVAILABLE" = true ]; then
         docker compose -f "$POC_DIR/docker-compose.phoenix.yml" logs --no-color otel-collector >"$TRACE_EVIDENCE_FILE" 2>/dev/null || true
     else
@@ -809,7 +809,7 @@ run_guard_model_test() {
 
     # Check gateway logs for guard_result containing probability scores.
     local guard_logs
-    guard_logs="$(docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix mcp-security-gateway 2>/dev/null \
+    guard_logs="$(docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix precinct-gateway 2>/dev/null \
         | grep -E 'guard_result|injection_probability|jailbreak_probability' | tail -10 || true)"
 
     if [ -z "$guard_logs" ]; then
@@ -871,7 +871,7 @@ run_demo_cycle() {
 
     if [ "$mode" = "compose" ]; then
         # Inside the Docker network, gateway is at service name:port
-        url="http://mcp-security-gateway:9090"
+        url="http://precinct-gateway:9090"
         network="$COMPOSE_NETWORK"
         DOCKER_ADD_HOST=""
 
@@ -931,7 +931,7 @@ run_demo_cycle() {
         # circuit breaker open and subsequent demo runs fail with 503.
         log "Clearing rate-limit keys and restarting gateway"
         docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
-        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
+        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart precinct-gateway >/dev/null 2>&1
         # Health check via localhost (host-side port mapping)
         wait_for_health "http://localhost:9090" || exit 1
         # Determinism: ensure upstream rugpull state is OFF before running tests.
@@ -973,9 +973,9 @@ run_demo_cycle() {
         fi
 
         local gateway_port
-        gateway_port="$(kubectl -n gateway get svc mcp-security-gateway -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)"
+        gateway_port="$(kubectl -n gateway get svc precinct-gateway -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)"
         if [ -z "$gateway_port" ]; then
-            err "Cannot determine gateway NodePort (svc/mcp-security-gateway)"
+            err "Cannot determine gateway NodePort (svc/precinct-gateway)"
             exit 1
         fi
 
@@ -996,7 +996,7 @@ run_demo_cycle() {
         ensure_k8s_demo_ingress "$network"
         if ! wait_for_health_k8s "$url" "$network"; then
             warn "Gateway NodePort probe failed from demo network; falling back to kubectl port-forward"
-            kubectl -n gateway port-forward svc/mcp-security-gateway 39090:9090 >/tmp/precinct-k8s-gateway-portforward.log 2>&1 &
+            kubectl -n gateway port-forward svc/precinct-gateway 39090:9090 >/tmp/precinct-k8s-gateway-portforward.log 2>&1 &
             PF_PID="$!"
             local pf_ready=0
             for _ in $(seq 1 30); do
@@ -1053,7 +1053,7 @@ run_demo_cycle() {
     if [ "$mode" = "compose" ]; then
         log "Clearing rate-limit keys and restarting gateway for Python demo"
         docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
-        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
+        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart precinct-gateway >/dev/null 2>&1
         wait_for_health "http://localhost:9090" || exit 1
     elif [ "$mode" = "k8s" ]; then
         log "Clearing rate-limit keys and restarting gateway for Python demo"
@@ -1073,7 +1073,7 @@ run_demo_cycle() {
         # controls (not residual rate-limit state).
         log "Clearing rate-limit keys and restarting gateway for Phase 3 scenarios"
         docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
-        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart mcp-security-gateway >/dev/null 2>&1
+        docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart precinct-gateway >/dev/null 2>&1
         wait_for_health "http://localhost:9090" || exit 1
 
         log "Running Phase 3 compose scenario"
@@ -1147,8 +1147,8 @@ teardown() {
         $DC down -v --remove-orphans 2>/dev/null || true
         # Defensive fallback: if a previous run used a different compose project name,
         # the fixed container_name can still remain. Remove it explicitly.
-        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'mcp-security-gateway'; then
-            docker rm -f mcp-security-gateway >/dev/null 2>&1 || true
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'precinct-gateway'; then
+            docker rm -f precinct-gateway >/dev/null 2>&1 || true
         fi
         COMPOSE_TORN_DOWN=true
     elif [ "$mode" = "k8s" ]; then

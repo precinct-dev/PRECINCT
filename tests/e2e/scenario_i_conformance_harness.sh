@@ -7,7 +7,7 @@ source "${SCRIPT_DIR}/common.sh"
 
 log_header "Scenario I: Conformance Harness"
 
-if ! check_service_healthy "mcp-security-gateway"; then
+if ! check_service_healthy "precinct-gateway"; then
     log_fail "Gateway not running" "Start with: make up"
     print_summary
     exit 1

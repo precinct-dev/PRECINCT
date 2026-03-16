@@ -175,7 +175,7 @@ func TestInitializeParams_Serialization(t *testing.T) {
 		ProtocolVersion: "2025-03-26",
 		Capabilities:    ClientCapabilities{},
 		ClientInfo: ClientInfo{
-			Name:    "mcp-security-gateway",
+			Name:    "precinct-gateway",
 			Version: "1.0.0",
 		},
 	}
@@ -195,8 +195,8 @@ func TestInitializeParams_Serialization(t *testing.T) {
 	}
 
 	clientInfo := decoded["clientInfo"].(map[string]interface{})
-	if clientInfo["name"] != "mcp-security-gateway" {
-		t.Errorf("Expected clientInfo.name=mcp-security-gateway, got %v", clientInfo["name"])
+	if clientInfo["name"] != "precinct-gateway" {
+		t.Errorf("Expected clientInfo.name=precinct-gateway, got %v", clientInfo["name"])
 	}
 }
 

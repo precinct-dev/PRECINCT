@@ -165,7 +165,7 @@ func tailString(s string, n int) string {
 // Returns the log content, or empty string with a warning if docker exec fails.
 func readGatewayAuditLog(t *testing.T) string {
 	t.Helper()
-	cmd := exec.Command("docker", "exec", "mcp-security-gateway", "cat", "/tmp/audit.jsonl")
+	cmd := exec.Command("docker", "exec", "precinct-gateway", "cat", "/tmp/audit.jsonl")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Logf("WARNING: could not read gateway audit log via docker exec: %v (output: %s)", err, string(out))

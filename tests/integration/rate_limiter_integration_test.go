@@ -22,7 +22,7 @@ func TestRateLimiterIntegration(t *testing.T) {
 
 	// Define agents for testing
 	researcher := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
-	gateway := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+	gateway := "spiffe://poc.local/gateways/precinct-gateway/dev"
 
 	t.Run("RateLimitHeadersPresent", func(t *testing.T) {
 		// Verify rate limit headers are present in normal responses

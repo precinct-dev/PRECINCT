@@ -53,7 +53,7 @@ func TestStepUpGating_CriticalTool_Blocked(t *testing.T) {
 
 	// Use the gateway identity so the request reaches step-up gating instead of
 	// being denied earlier by OPA tool authorization.
-	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+	spiffeID := "spiffe://poc.local/gateways/precinct-gateway/dev"
 	sessionID := GenerateTestSessionID()
 	client := &http.Client{Timeout: 5 * time.Second}
 
@@ -296,7 +296,7 @@ func TestStepUpGating_ResponseFormat(t *testing.T) {
 	// Use the gateway identity plus a synthetic step-up token so the request
 	// reaches the step-up gate itself instead of being stopped earlier by OPA's
 	// step_up_required precondition.
-	spiffeID := "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+	spiffeID := "spiffe://poc.local/gateways/precinct-gateway/dev"
 	sessionID := GenerateTestSessionID()
 	client := &http.Client{Timeout: 5 * time.Second}
 

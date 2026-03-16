@@ -251,7 +251,7 @@ if [ "$MODE" = "compose" ]; then
     log_info "Waiting for services to be healthy (max 5 minutes)..."
     timeout=300
     while [ $timeout -gt 0 ]; do
-        if $DC ps --format '{{.Name}}\t{{.Status}}' 2>/dev/null | grep -q "mcp-security-gateway.*healthy\|Up"; then
+        if $DC ps --format '{{.Name}}\t{{.Status}}' 2>/dev/null | grep -q "precinct-gateway.*healthy\|Up"; then
             log_pass "Gateway is healthy"
             break
         fi
@@ -276,7 +276,7 @@ elif [ "$MODE" = "k8s" ]; then
 
     # Wait for pods to be Running (Makefile already does rollout status, so we just verify)
     log_info "Verifying pods are Running..."
-    if kubectl -n gateway get pod -l app=mcp-security-gateway -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
+    if kubectl -n gateway get pod -l app=precinct-gateway -o jsonpath='{.items[0].status.phase}' 2>/dev/null | grep -q "Running"; then
         log_pass "Gateway pod is Running"
     else
         log_fail "Pod status" "Gateway pod not Running"

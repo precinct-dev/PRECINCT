@@ -61,7 +61,7 @@ def detect_gateway_url() -> tuple[str, str]:
             "gateway",
             "get",
             "svc",
-            "mcp-security-gateway",
+            "precinct-gateway",
             "-o",
             "jsonpath={.spec.ports[0].nodePort}",
         ]
@@ -144,7 +144,7 @@ def start_gateway_port_forward(local_port: int = 39090) -> tuple[subprocess.Pope
             "-n",
             "gateway",
             "port-forward",
-            "svc/mcp-security-gateway",
+            "svc/precinct-gateway",
             f"{local_port}:9090",
         ],
         stdout=subprocess.DEVNULL,

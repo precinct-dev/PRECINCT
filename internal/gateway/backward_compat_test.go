@@ -56,7 +56,7 @@ func TestBackwardCompat_ProxyMode_UsesReverseProxy(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"backward compat test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -115,7 +115,7 @@ func TestBackwardCompat_MCPMode_UsesMCPTransport(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"mcp mode test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -191,7 +191,7 @@ func TestBackwardCompat_EmptyDefault_DefaultsToMCP(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"default mode test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -263,7 +263,7 @@ func TestBackwardCompat_ProxyMode_All13MiddlewareLayers(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"all layers proxy test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -372,7 +372,7 @@ func TestBackwardCompat_MCPMode_All13MiddlewareLayers(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"tavily_search","params":{"query":"all layers mcp test"},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
@@ -509,7 +509,7 @@ func TestBackwardCompat_BothModes_AuditLogConsistency(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+			req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 			rec := httptest.NewRecorder()
 
 			tc.handler.ServeHTTP(rec, req)
@@ -588,7 +588,7 @@ func TestBackwardCompat_ProxyMode_ErrorUsesWriteGatewayError(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"unregistered_dangerous_tool","params":{},"id":1}`
 	req := httptest.NewRequest("POST", "/", bytes.NewBufferString(body))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/mcp-security-gateway/dev")
+	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/gateways/precinct-gateway/dev")
 	rec := httptest.NewRecorder()
 
 	handler.ServeHTTP(rec, req)
