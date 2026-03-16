@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -367,6 +368,17 @@ func (g *Gateway) executeModelEgress(ctx context.Context, attrs map[string]any, 
 	residency := strings.ToLower(getStringAttr(attrs, "residency_intent", "us"))
 	riskMode := strings.ToLower(getStringAttr(attrs, "risk_mode", "low"))
 
+	// Resolve SPIKE reference tokens in the Authorization header.
+	// If the Bearer token is a spike:ref:<name> reference, redeem it via
+	// SPIKE Nexus to get the real API key. The raw secret exists only in
+	// gateway memory during the proxy call. Fail-closed: if SPIKE is
+	// unavailable, the request is denied (no fallback to env or empty header).
+	resolvedAuthHeader, err := g.resolveSPIKEAuthHeader(ctx, authHeader)
+	if err != nil {
+		return nil, fmt.Errorf("spike_redemption_failed: %w", err)
+	}
+	authHeader = resolvedAuthHeader
+
 	primaryTarget, err := g.resolveProviderTarget(provider, attrs)
 	if err != nil {
 		return nil, err
@@ -634,6 +646,64 @@ func (g *Gateway) invokeProvider(ctx context.Context, target *url.URL, payload m
 		body:       respBody,
 		headers:    resp.Header.Clone(),
 	}, nil
+}
+
+// spikeRefPrefix is the Bearer token prefix that indicates a SPIKE secret
+// reference. Model proxy Authorization headers of the form
+// "Bearer spike:ref:<secret-name>" are intercepted by the gateway and redeemed
+// via SPIKE Nexus before proxying to the upstream LLM provider. This is
+// distinct from the $SPIKE{ref:<hex>} format used in MCP request body token
+// substitution (step 13).
+const spikeRefPrefix = "spike:ref:"
+
+// resolveSPIKEAuthHeader checks if the Authorization header contains a SPIKE
+// reference token (Bearer spike:ref:<name>). If so, it redeems the reference
+// via SPIKE Nexus and returns a new Authorization header with the real API key.
+// If the header is not a SPIKE reference, it is returned unchanged.
+// Fail-closed: returns an error if SPIKE redemption fails (no fallback).
+func (g *Gateway) resolveSPIKEAuthHeader(ctx context.Context, authHeader string) (string, error) {
+	bearerToken := extractBearerToken(authHeader)
+	if bearerToken == "" || !strings.HasPrefix(bearerToken, spikeRefPrefix) {
+		return authHeader, nil
+	}
+
+	secretName := strings.TrimPrefix(bearerToken, spikeRefPrefix)
+	if strings.TrimSpace(secretName) == "" {
+		return "", fmt.Errorf("empty SPIKE reference name in Authorization header")
+	}
+
+	if g.spikeRedeemer == nil {
+		return "", fmt.Errorf("no SPIKE redeemer configured; cannot resolve spike:ref:%s", secretName)
+	}
+
+	token := &middleware.SPIKEToken{Ref: secretName}
+	secret, err := g.spikeRedeemer.RedeemSecret(ctx, token)
+	if err != nil {
+		return "", fmt.Errorf("SPIKE Nexus redemption failed for %q: %w", secretName, err)
+	}
+	if strings.TrimSpace(secret.Value) == "" {
+		return "", fmt.Errorf("SPIKE Nexus returned empty secret for %q", secretName)
+	}
+
+	slog.Info("SPIKE reference redeemed for model proxy",
+		"ref", secretName,
+		"source", "model_proxy_auth_header",
+	)
+
+	return "Bearer " + secret.Value, nil
+}
+
+// extractBearerToken extracts the token value from a "Bearer <token>" header.
+// Returns empty string if the header is not a valid Bearer token.
+func extractBearerToken(authHeader string) string {
+	authHeader = strings.TrimSpace(authHeader)
+	if len(authHeader) <= 7 {
+		return ""
+	}
+	if !strings.EqualFold(authHeader[:7], "bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(authHeader[7:])
 }
 
 func writeProviderResponse(w http.ResponseWriter, result *modelEgressResult, decisionID, traceID string, reason ReasonCode, projectionEnabled, projectionApplied bool) {
