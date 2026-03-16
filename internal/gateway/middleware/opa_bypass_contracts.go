@@ -88,6 +88,14 @@ func defaultOPABypassContracts() []OPABypassContract {
 			ProbeMethod:       http.MethodPost,
 		},
 		{
+			ID:                "anthropic_model_egress",
+			ExactPaths:        []string{"/v1/messages"},
+			RequiredChecks:    []string{BypassCheckSPIFFEIdentity},
+			PassthroughReason: "anthropic model egress passthrough (contracted)",
+			ProbePath:         "/v1/messages",
+			ProbeMethod:       http.MethodPost,
+		},
+		{
 			ID:                "admin_control_plane",
 			ExactPaths:        []string{"/admin"},
 			PathPrefixes:      []string{"/admin/"},
