@@ -1,0 +1,48 @@
+# docker-compose overlay for sidecar identity demo.
+#
+# Usage:
+#   docker compose \
+#     -f deploy/compose/docker-compose.yml \
+#     -f deploy/sidecar/docker-compose.sidecar-demo.yml \
+#     up -d envoy-sidecar sidecar-client
+#
+# The overlay adds two services:
+#   envoy-sidecar  -- Envoy proxy that injects X-SPIFFE-ID via Lua filter
+#   sidecar-client -- curl container on the same network for testing
+#
+# Both join agentic-net so envoy-sidecar can reach precinct-gateway by hostname.
+
+services:
+  envoy-sidecar:
+    image: envoyproxy/envoy:v1.31-latest
+    container_name: envoy-sidecar
+    hostname: envoy-sidecar
+    volumes:
+      - ../../deploy/sidecar/envoy-sidecar-demo.yaml:/etc/envoy/envoy.yaml:ro
+    environment:
+      - SPIFFE_ID=spiffe://poc.local/agents/mcp-client/mcp2cli/dev
+    networks:
+      - agentic-net
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo -e \"GET /ready HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n\" > /dev/tcp/127.0.0.1/9901'"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  sidecar-client:
+    image: curlimages/curl:latest
+    container_name: sidecar-client
+    hostname: sidecar-client
+    depends_on:
+      envoy-sidecar:
+        condition: service_healthy
+    # Keep the container running so tests can docker exec into it
+    entrypoint: ["sh", "-c", "while true; do sleep 3600; done"]
+    networks:
+      - agentic-net
+
+networks:
+  agentic-net:
+    external: true
+    name: agentic-security-network

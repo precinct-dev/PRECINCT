@@ -644,7 +644,7 @@ production-reality-closure-local-artifacts-validate:
 # ---------------------------------------------------------------------------
 
 .PHONY: precinct-demo precinct-operate-demo compliance-demo repave-demo upgrade-demo
-.PHONY: demo-compose-strict-observability demo-extensions
+.PHONY: demo-compose-strict-observability demo-extensions demo-sidecar
 
 precinct-demo:
 	@bash scripts/ensure-stack.sh
@@ -684,6 +684,10 @@ demo-compose-strict-observability:
 demo-extensions:
 	@docker build -f examples/content-scanner/Dockerfile -t poc-content-scanner:latest examples/content-scanner/
 	@bash tests/e2e/scenario_h_extensions.sh
+
+demo-sidecar: ## Run sidecar identity E2E demo (Envoy + curl client through gateway)
+	@echo "Running sidecar identity E2E demo..."
+	@bash tests/e2e/scenario_sidecar_identity.sh
 
 # ---------------------------------------------------------------------------
 # 10. CI components (conformance, benchmark, build-images, build-tools)
