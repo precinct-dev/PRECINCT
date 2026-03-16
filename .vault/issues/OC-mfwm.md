@@ -6,8 +6,8 @@ priority: 1
 type: epic
 created_at: 2026-03-08T02:33:46Z
 created_by: ramirosalas
-updated_at: 2026-03-08T17:35:04Z
-content_hash: "sha256:a7abbceafa9c544d5eee94aa434640535543dc0f9727536f747195fa089f8959"
+updated_at: 2026-03-14T22:20:36Z
+content_hash: "sha256:47c4406db1f5a1295ffc1d9d72b9c304c3208c75e3c1b9034acbe04951350f76"
 labels: [agents-of-chaos, documentation]
 closed_at: 2026-03-08T17:35:04Z
 close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."

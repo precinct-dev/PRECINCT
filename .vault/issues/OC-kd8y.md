@@ -6,8 +6,8 @@ priority: 1
 type: epic
 created_at: 2026-03-08T02:32:36Z
 created_by: ramirosalas
-updated_at: 2026-03-09T01:32:12Z
-content_hash: "sha256:9ce88eff176df0f64dba582d590ed875d655292755a28b348e7b3e2f3a5f10fc"
+updated_at: 2026-03-14T22:20:36Z
+content_hash: "sha256:0c02ca15186c8bbfec148ecf84b74c00a49516cc58db1eb0ab901697d9b01366"
 labels: [agents-of-chaos, escalation-detection]
 closed_at: 2026-03-09T01:32:12Z
 close_reason: "All stories accepted"

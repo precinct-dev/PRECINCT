@@ -6,8 +6,8 @@ priority: 2
 type: epic
 created_at: 2026-03-08T02:33:25Z
 created_by: ramirosalas
-updated_at: 2026-03-08T17:35:05Z
-content_hash: "sha256:c92c3c677e33cd35ec469cdbf840b2e8031f7896e98147b40f863efa3336c6b5"
+updated_at: 2026-03-14T22:20:36Z
+content_hash: "sha256:5550fcdfceb2ca3f1d7876c566ea726732e635f84524cc5c29944ea6c2502788"
 labels: [agents-of-chaos, irreversibility]
 closed_at: 2026-03-08T17:35:05Z
 close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."

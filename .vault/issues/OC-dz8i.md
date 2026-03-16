@@ -8,8 +8,8 @@ labels: [agents-of-chaos, irreversibility]
 parent: OC-xbmj
 created_at: 2026-03-08T02:44:58Z
 created_by: ramirosalas
-updated_at: 2026-03-08T17:35:04Z
-content_hash: "sha256:8bbcfdf7fa7bdcd18dff04b0b5a4f02ad52b786244b2ecbc933959f5b07e030e"
+updated_at: 2026-03-14T22:20:36Z
+content_hash: "sha256:08ac1881ae0ce864e47c760b9c2af650c66fe571be6f0caada9b5abb53ae5250"
 was_blocked_by: [OC-12ng, OC-70gv, OC-h4m7, OC-lmzm, OC-ytph]
 closed_at: 2026-03-08T17:35:04Z
 close_reason: "Implemented and merged to main. nd not updated at delivery time -- closed retroactively."

@@ -167,20 +167,6 @@
             Your processes stay. Your auditors already understand the components.
           </p>
 
-          <div class="hero-feature-callout">
-            <div class="hero-feature-eyebrow">Featured capability</div>
-            <h2 class="hero-feature-title">Mission-bound model mediation</h2>
-            <p class="hero-feature-text">
-              Keep narrow-purpose agents on mission even when the prompt is harmless but off-topic.
-              PRECINCT can deny or safely rewrite requests like "help me reverse a linked list" for
-              a restaurant support agent before any upstream model egress happens.
-            </p>
-            <p class="hero-feature-proof">
-              Proven in the standard demo flow: <code>make demo-compose</code> now includes an
-              off-mission containment scenario in both the Go and Python demos.
-            </p>
-          </div>
-
           <div class="hero-ctas">
             <a href="pages/getting-started.html" class="btn btn-primary btn-lg">Get Started</a>
             <a href="https://github.com/precinct-dev/PRECINCT" class="btn btn-outline btn-lg" target="_blank" rel="noopener noreferrer">
@@ -226,22 +212,6 @@
     <section class="section section-problem" id="problem">
       <div class="container">
         <div class="reveal">
-          <div class="card feature-spotlight-card">
-            <div class="feature-spotlight-label">Now shipping</div>
-            <h2 class="feature-spotlight-title">Scope control for narrow-purpose agents</h2>
-            <p>
-              Prompt-injection defense is not enough when the user is simply asking the wrong thing.
-              Mission-bound mediation gives builders a first-class way to declare allowed intents,
-              allowed topics, blocked topics, and out-of-scope behavior, with the gateway remaining
-              the enforcement authority.
-            </p>
-            <ul class="feature-spotlight-list">
-              <li>Gateway-enforced `deny` and synthetic safe `rewrite` / `handoff` outcomes</li>
-              <li>Additive Go and Python SDK support plus pack metadata for builders</li>
-              <li>Live demo coverage for a restaurant support bot rejecting coding-help prompts</li>
-            </ul>
-          </div>
-
           <h2 class="section-title">The Authorization Crisis in Agentic AI</h2>
           <div class="callout-box callout-box-dramatic">
             <p class="callout-stat">50 : 1</p>
@@ -355,7 +325,7 @@
     <section class="section section-innovations" id="innovations">
       <div class="container">
         <div class="reveal">
-          <h2 class="section-title">Nine Key Innovations</h2>
+          <h2 class="section-title">Ten Key Innovations</h2>
         </div>
         <div class="innovations-grid">
 
@@ -474,6 +444,23 @@
               as the sole identity and policy enforcement point for model egress, enabling
               auditable control over model selection, cost budgets, data residency, and
               per-provider trust policies.
+            </p>
+          </div>
+
+          <div class="innovation-card reveal">
+            <div class="innovation-icon" aria-hidden="true">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                <circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>
+                <path d="M4.93 4.93l2.83 2.83"/><path d="M16.24 16.24l2.83 2.83"/>
+                <path d="M4.93 19.07l2.83-2.83"/><path d="M16.24 7.76l2.83-2.83"/>
+              </svg>
+            </div>
+            <h3>Mission-Bound Model Mediation</h3>
+            <p>
+              Narrow-purpose agents stay on mission even when the prompt is harmless but
+              off-topic. Builders declare allowed intents, topics, and out-of-scope behavior;
+              the gateway denies or safely rewrites off-mission requests before any upstream
+              model egress.
             </p>
           </div>
 
