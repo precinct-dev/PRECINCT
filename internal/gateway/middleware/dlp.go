@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"regexp"
@@ -280,6 +281,75 @@ func contains(slice []string, item string) bool {
 	return false
 }
 
+// TrustedAgentDLPEntry defines a single trusted agent whose system prompt
+// content bypasses DLP scanning. User messages are always scanned.
+// OC-xj4w: Port-scoped trusted agent policy tier.
+type TrustedAgentDLPEntry struct {
+	SPIFFEID       string // e.g., "spiffe://poc.local/openclaw"
+	DLPBypassScope string // "system_prompt" -- only system messages bypass DLP
+}
+
+// TrustedAgentDLPConfig holds all registered trusted agent DLP overrides.
+// Port adapters contribute entries at registration time; the DLP middleware
+// consults this config to decide whether to do role-aware scanning.
+// OC-xj4w.
+type TrustedAgentDLPConfig struct {
+	Agents []TrustedAgentDLPEntry
+}
+
+// IsTrustedAgent returns true if the given SPIFFE ID has a trusted agent
+// entry with dlp_bypass_scope="system_prompt".
+func (c *TrustedAgentDLPConfig) IsTrustedAgent(spiffeID string) bool {
+	if c == nil {
+		return false
+	}
+	for _, a := range c.Agents {
+		if a.SPIFFEID == spiffeID && a.DLPBypassScope == "system_prompt" {
+			return true
+		}
+	}
+	return false
+}
+
+// extractUserMessageContent extracts the concatenated content of all messages
+// with role != "system" from an OpenAI chat completion request body. This
+// enables role-aware DLP scanning: system prompts from trusted agents are
+// excluded, while user/assistant/tool messages are scanned normally.
+//
+// If the body is not a valid chat completion payload (no "messages" array),
+// the full body is returned unchanged so DLP scanning is not bypassed.
+// OC-xj4w.
+func extractUserMessageContent(body []byte) []byte {
+	var payload struct {
+		Messages []struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"messages"`
+	}
+
+	if err := json.Unmarshal(body, &payload); err != nil || len(payload.Messages) == 0 {
+		// Not a chat completion request or malformed -- scan everything.
+		return body
+	}
+
+	var userContent strings.Builder
+	for _, msg := range payload.Messages {
+		if msg.Role != "system" {
+			if userContent.Len() > 0 {
+				userContent.WriteString("\n")
+			}
+			userContent.WriteString(msg.Content)
+		}
+	}
+
+	// If there are no non-system messages, return empty (nothing to scan).
+	if userContent.Len() == 0 {
+		return nil
+	}
+
+	return []byte(userContent.String())
+}
+
 func shouldSkipDLPScan(r *http.Request) bool {
 	if r == nil {
 		return false
@@ -307,6 +377,19 @@ func shouldSkipDLPScan(r *http.Request) bool {
 // is blocked (HTTP 403) or flagged (added to safezone_flags, request continues).
 // Position: After OPA policy, before session context.
 func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) http.Handler {
+	return dlpMiddlewareInternal(next, scanner, nil, policy...)
+}
+
+// DLPMiddlewareWithTrustedAgents creates DLP middleware with trusted agent
+// role-aware scanning. When the caller's SPIFFE ID matches a trusted agent
+// entry, only non-system messages are scanned (system prompts are bypassed).
+// User messages are always scanned regardless of trusted agent status.
+// OC-xj4w: Port-scoped trusted agent DLP bypass.
+func DLPMiddlewareWithTrustedAgents(next http.Handler, scanner DLPScanner, trustedAgents *TrustedAgentDLPConfig, policy ...DLPPolicy) http.Handler {
+	return dlpMiddlewareInternal(next, scanner, trustedAgents, policy...)
+}
+
+func dlpMiddlewareInternal(next http.Handler, scanner DLPScanner, trustedAgents *TrustedAgentDLPConfig, policy ...DLPPolicy) http.Handler {
 	// Accept optional policy for backward compatibility: existing call sites
 	// that pass only (next, scanner) get the default policy (credentials=block,
 	// injection=flag, pii=flag) which matches historical behavior.
@@ -350,8 +433,35 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner, policy ...DLPPolicy) h
 			return
 		}
 
-		// Scan the request body
-		result := scanner.Scan(string(body))
+		// OC-xj4w: Trusted agent role-aware scanning. When the caller is a
+		// trusted agent, scan only user-role messages (system prompts bypass
+		// DLP to avoid false positives on agent instructions).
+		scanContent := body
+		isTrustedAgent := false
+		if trustedAgents != nil {
+			spiffeID := GetSPIFFEID(ctx)
+			if trustedAgents.IsTrustedAgent(spiffeID) {
+				isTrustedAgent = true
+				scanContent = extractUserMessageContent(body)
+				span.SetAttributes(
+					attribute.Bool("mcp.trusted_agent", true),
+					attribute.String("mcp.trusted_agent_spiffe", spiffeID),
+				)
+				if scanContent == nil {
+					// All messages are system prompts -- nothing to scan.
+					span.SetAttributes(
+						attribute.String("mcp.result", "allowed"),
+						attribute.String("mcp.reason", "trusted agent system prompt only"),
+					)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+			}
+		}
+
+		// Scan the request body (or user-only content for trusted agents)
+		result := scanner.Scan(string(scanContent))
+		_ = isTrustedAgent // used for span attributes above
 		dlpRulesetVersion, dlpRulesetDigest := "", ""
 		if provider, ok := scanner.(DLPScannerMetadataProvider); ok {
 			dlpRulesetVersion, dlpRulesetDigest = provider.ActiveRulesetMetadata()
