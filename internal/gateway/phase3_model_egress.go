@@ -19,6 +19,8 @@ import (
 
 const (
 	openAICompatChatCompletionsPath = "/openai/v1/chat/completions"
+	openAICompatResponsesPath       = "/openai/v1/responses"
+	anthropicMessagesPath            = "/v1/messages"
 )
 
 type modelProviderResponse struct {
@@ -37,12 +39,27 @@ type modelEgressResult struct {
 	fallbackAttempted bool
 }
 
+// isModelProxyPath returns true for any API path that should be routed through
+// the model plane middleware (policy evaluation, DLP, guard model, rate limiting)
+// rather than the MCP handler.
+func isModelProxyPath(path string) bool {
+	switch path {
+	case openAICompatChatCompletionsPath,
+		openAICompatResponsesPath,
+		anthropicMessagesPath:
+		return true
+	default:
+		return false
+	}
+}
+
+// isOpenAICompatPath is kept as a backward-compatible alias.
 func isOpenAICompatPath(path string) bool {
-	return path == openAICompatChatCompletionsPath
+	return isModelProxyPath(path)
 }
 
 func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request) bool {
-	if !isOpenAICompatPath(r.URL.Path) {
+	if !isModelProxyPath(r.URL.Path) {
 		return false
 	}
 	if r.Method != http.MethodPost {
@@ -54,7 +71,7 @@ func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request)
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		middleware.WriteGatewayError(w, r, http.StatusBadRequest, middleware.GatewayError{
 			Code:           middleware.ErrContractValidationFailed,
-			Message:        "Invalid OpenAI-compatible JSON payload",
+			Message:        "Invalid model proxy JSON payload",
 			ReasonCode:     string(ReasonContractInvalid),
 			Middleware:     "model_plane",
 			MiddlewareStep: 14,
@@ -66,7 +83,7 @@ func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request)
 	if model == "" {
 		middleware.WriteGatewayError(w, r, http.StatusBadRequest, middleware.GatewayError{
 			Code:           middleware.ErrContractValidationFailed,
-			Message:        "OpenAI payload must include model",
+			Message:        "Model proxy payload must include model field",
 			ReasonCode:     string(ReasonContractInvalid),
 			Middleware:     "model_plane",
 			MiddlewareStep: 14,
@@ -198,7 +215,7 @@ func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request)
 			"policy_reason_code":               reason,
 			"policy_decision":                  decision,
 			"policy_http_status":               status,
-			"openai_compat_route":              openAICompatChatCompletionsPath,
+			"model_proxy_route":                r.URL.Path,
 			"policy_intent_projection_enabled": projectionEnabled,
 			"policy_intent_projection_applied": projectionApplied,
 			"policy_intent_projection_format":  projectionFormat,
