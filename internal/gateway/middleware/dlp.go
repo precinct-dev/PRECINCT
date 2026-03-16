@@ -449,7 +449,19 @@ func dlpMiddlewareInternal(next http.Handler, scanner DLPScanner, trustedAgents 
 				)
 				if scanContent == nil {
 					// All messages are system prompts -- nothing to scan.
+					// Set the same DLP context values that the normal scan path
+					// writes (ruleset metadata + empty security flags) so that
+					// downstream middleware (SessionContext, StepUpGating, DeepScan)
+					// sees consistent DLP state and does not misinterpret the
+					// absence of scan results as a reason to block.
+					if provider, ok := scanner.(DLPScannerMetadataProvider); ok {
+						ver, dig := provider.ActiveRulesetMetadata()
+						ctx = WithDLPRulesetMetadata(ctx, ver, dig)
+					}
+					ctx = WithSecurityFlags(ctx, []string{})
 					span.SetAttributes(
+						attribute.Bool("has_credentials", false),
+						attribute.Bool("has_pii", false),
 						attribute.String("mcp.result", "allowed"),
 						attribute.String("mcp.reason", "trusted agent system prompt only"),
 					)
