@@ -1,0 +1,120 @@
+# ------------------------------------------------------------------------------
+# Kubernetes Strategic Merge Patch: Envoy SPIFFE Identity Sidecar
+# Story: OC-ofhi
+#
+# Adds an Envoy sidecar container to any Deployment for transparent SPIFFE
+# identity injection. The sidecar listens on 127.0.0.1:9090 and injects the
+# X-SPIFFE-ID header before forwarding requests to the PRECINCT Gateway.
+#
+# Usage:
+#   # Apply to a specific deployment:
+#   kubectl patch deployment <name> -n <namespace> \
+#     --type strategic \
+#     --patch-file deploy/sidecar/k8s-sidecar-patch.yaml
+#
+#   # Or use kustomize:
+#   # In kustomization.yaml:
+#   #   patchesStrategicMerge:
+#   #     - deploy/sidecar/k8s-sidecar-patch.yaml
+#
+# Prerequisites:
+#   1. SPIRE Agent DaemonSet running (provides /run/spire/sockets/agent.sock)
+#   2. SPIRE registration entry for the tool's service account
+#   3. Set SPIFFE_ID env var to match the registered SPIFFE ID
+#
+# Customization:
+#   - Replace SPIFFE_ID value with the tool's registered SPIFFE ID
+#   - Replace GATEWAY_ADDRESS with the gateway's K8s service address if different
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: placeholder
+spec:
+  template:
+    metadata:
+      annotations:
+        # Signal that this pod has the Envoy SPIFFE sidecar injected.
+        precinct.io/sidecar-injected: "true"
+    spec:
+      containers:
+        # Envoy sidecar for SPIFFE identity injection
+        - name: envoy-sidecar
+          image: envoyproxy/envoy:v1.31-latest
+          args:
+            - "envoy"
+            - "-c"
+            - "/etc/envoy/envoy.yaml"
+            - "--log-level"
+            - "info"
+          ports:
+            - name: sidecar
+              containerPort: 9090
+              protocol: TCP
+            - name: envoy-admin
+              containerPort: 9901
+              protocol: TCP
+          env:
+            # SPIFFE identity for the tool. Must match the SPIRE registration entry.
+            # Override this per-deployment to match the tool's registered SPIFFE ID.
+            - name: SPIFFE_ID
+              value: "spiffe://poc.local/agents/mcp-client/TOOL_NAME/dev"
+            # Gateway address in K8s. Override if the gateway is in a different namespace.
+            - name: GATEWAY_ADDRESS
+              value: "precinct-gateway.gateway.svc.cluster.local"
+          volumeMounts:
+            # Envoy configuration from ConfigMap
+            - name: envoy-sidecar-config
+              mountPath: /etc/envoy
+              readOnly: true
+            # SPIRE Agent socket for future mTLS/SDS support
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: envoy-admin
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: envoy-admin
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            timeoutSeconds: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 101
+            runAsGroup: 101
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        # Envoy sidecar configuration.
+        # Create a ConfigMap from the envoy-sidecar.yaml with K8s gateway address:
+        #   kubectl create configmap envoy-sidecar-config \
+        #     --from-file=envoy.yaml=deploy/sidecar/envoy-sidecar.yaml \
+        #     -n <namespace>
+        - name: envoy-sidecar-config
+          configMap:
+            name: envoy-sidecar-config
+        # SPIRE Agent socket (exposed by DaemonSet via hostPath on each node).
+        # Matches the path in deploy/terraform/spire/agent-daemonset.yaml.
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
