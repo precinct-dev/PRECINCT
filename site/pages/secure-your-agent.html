@@ -133,6 +133,7 @@
                 <li><a href="#prerequisites">Prerequisites</a></li>
                 <li><a href="#track-a">Track A: Docker Compose</a></li>
                 <li><a href="#track-b">Track B: Kubernetes</a></li>
+                <li><a href="#sidecar-identity">Sidecar Identity</a></li>
                 <li><a href="#under-the-hood">Under the Hood</a></li>
                 <li><a href="#troubleshooting">Troubleshooting</a></li>
                 <li><a href="#next-steps">Next Steps</a></li>
@@ -170,6 +171,7 @@
                 <li><a href="#prerequisites">Prerequisites</a></li>
                 <li><a href="#track-a">Track A: Docker Compose</a></li>
                 <li><a href="#track-b">Track B: Kubernetes</a></li>
+                <li><a href="#sidecar-identity">Sidecar Identity</a></li>
                 <li><a href="#under-the-hood">Under the Hood</a></li>
                 <li><a href="#troubleshooting">Troubleshooting</a></li>
                 <li><a href="#next-steps">Next Steps</a></li>
@@ -653,6 +655,52 @@ make demo-k8s</code></pre>
                 logging.
               </p>
             </div>
+          </section>
+
+          <!-- ========== Sidecar Identity ========== -->
+          <section id="sidecar-identity">
+            <h2>Third-Party Tools: Automatic Identity via Envoy Sidecar</h2>
+            <p>
+              Not every tool has native SPIFFE support. Tools like mcp2cli, DSPy agents,
+              LangGraph orchestrators, and other MCP clients can run inside PRECINCT
+              <strong>without any code changes</strong> using the Envoy identity sidecar.
+            </p>
+
+            <h3>How It Works</h3>
+            <p>
+              The Envoy sidecar runs alongside your tool in the same network namespace
+              (shared container network in Compose, or the same pod in Kubernetes). It
+              listens on <code>127.0.0.1:9090</code>, injects the tool's
+              <code>X-SPIFFE-ID</code> header, and forwards every request to the
+              PRECINCT Gateway. Your tool simply points at localhost -- it never needs
+              to know about SPIFFE, certificates, or identity headers.
+            </p>
+
+            <pre data-lang="text"><code>Third-party tool  -->  Envoy sidecar (127.0.0.1:9090)  -->  PRECINCT Gateway
+                       [injects X-SPIFFE-ID header]         [13-layer enforcement]</code></pre>
+
+            <h3>Network Enforcement</h3>
+            <p>
+              The sidecar pattern is paired with network-level controls to prevent
+              bypass. In Docker Compose, the tool shares the sidecar's network namespace
+              and can only reach the gateway through Envoy. In Kubernetes,
+              <code>NetworkPolicy</code> restricts pod egress to the gateway service
+              only. Direct calls to upstream tool servers or model providers are blocked
+              at the network layer.
+            </p>
+
+            <h3>Quick Setup</h3>
+            <ol>
+              <li>Register the tool with SPIRE using the provided template script
+                (<code>deploy/sidecar/spire-registration-template.sh</code>)</li>
+              <li>Deploy with the sidecar overlay (Compose) or patch the Deployment (K8s)</li>
+              <li>Point the tool at <code>http://127.0.0.1:9090</code> as its gateway endpoint</li>
+            </ol>
+            <p>
+              Full instructions for both Docker Compose and Kubernetes are in the
+              <a href="https://github.com/precinct-dev/PRECINCT/blob/main/docs/sidecar-identity.md">Sidecar Identity Guide</a>.
+              Configuration files live in <code>deploy/sidecar/</code>.
+            </p>
           </section>
 
           <!-- ========== Under the Hood ========== -->

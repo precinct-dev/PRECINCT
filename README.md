@@ -91,6 +91,25 @@ Supporting infrastructure:
 - **OpenSearch + Dashboards (optional)** -- Indexed audit evidence search for compliance operations and forensics
 
 
+## Third-Party Tool Compatibility
+
+Third-party tools -- mcp2cli, DSPy agents, LangGraph orchestrators, CrewAI, or any
+MCP client -- work inside PRECINCT **without modification**. An Envoy sidecar
+(`deploy/sidecar/`) runs alongside the tool and automatically injects SPIFFE identity
+headers into every request. The tool points at `127.0.0.1:9090`; the sidecar forwards
+to the gateway with the correct `X-SPIFFE-ID` header attached.
+
+- Tools do not need SPIFFE-aware code; the sidecar handles identity injection
+- Network-level controls (Docker network isolation or Kubernetes NetworkPolicy) ensure
+  tools can only reach the gateway -- direct calls to upstream tool servers or model
+  providers are blocked
+- Full 13-layer security enforcement applies to sidecar-proxied traffic identically
+  to SDK-integrated traffic
+
+See [docs/sidecar-identity.md](docs/sidecar-identity.md) for deployment instructions
+(Docker Compose and Kubernetes) and SPIRE registration templates.
+
+
 ## Quick Start
 
 Prerequisites: Docker, Docker Compose, Go 1.24.6+, make.
@@ -161,6 +180,7 @@ sdk/python/               Python SDK
 deploy/compose/           Docker Compose files and Dockerfiles
 deploy/k8s/               Cloud-agnostic Kubernetes manifests (base + overlays)
 deploy/terraform/         EKS-specific Terraform and Kustomize overlays
+deploy/sidecar/           Envoy sidecar for automatic SPIFFE identity on third-party tools
 deploy/helm/              Helm chart for PRECINCT
 tools/compliance/         GDPR/SOC2/ISO27001/NIST compliance automation
 docs/                     All documentation
