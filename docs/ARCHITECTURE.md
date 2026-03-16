@@ -288,14 +288,14 @@ func DLPMiddleware(next http.Handler, scanner DLPScanner) http.Handler {
 A package-level tracer is initialized in `internal/gateway/middleware/otel.go`:
 
 ```go
-var tracer = otel.Tracer("mcp-security-gateway",
+var tracer = otel.Tracer("precinct-gateway",
     trace.WithInstrumentationVersion("2.0.0"),
 )
 ```
 
 The OTLP exporter is configured in `cmd/gateway/main.go` (or gateway `New()`) using environment variables:
 - `OTEL_EXPORTER_OTLP_ENDPOINT` (default: `http://otel-collector:4317`)
-- `OTEL_SERVICE_NAME` (default: `mcp-security-gateway`)
+- `OTEL_SERVICE_NAME` (default: `precinct-gateway`)
 
 **Cross-service context propagation:**
 
@@ -322,7 +322,7 @@ All gateway spans include these attributes:
 | `mcp.reason` | string | Reason for decision |
 
 **Docker Compose changes:**
-- Gateway adds `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317` and `OTEL_SERVICE_NAME=mcp-security-gateway` to its environment.
+- Gateway adds `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317` and `OTEL_SERVICE_NAME=precinct-gateway` to its environment.
 - No collector config changes needed -- it already receives OTLP gRPC on 4317 and exports to Phoenix.
 - Optional OpenSearch profile adds a Fluent Bit audit forwarder and dashboard/object seeding scripts without changing gateway span emission semantics.
 
@@ -615,7 +615,7 @@ The gateway remains a single Go binary. Phase 2 adds:
 | `SESSION_TTL` | `3600` | Session data TTL in seconds |
 | `DEEP_SCAN_FALLBACK` | `fail_closed` | Deep scan fallback policy |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://otel-collector:4317` | OTel collector endpoint |
-| `OTEL_SERVICE_NAME` | `mcp-security-gateway` | Service name for traces |
+| `OTEL_SERVICE_NAME` | `precinct-gateway` | Service name for traces |
 | `TOOL_REGISTRY_PUBLIC_KEY` | (empty -- no attestation) | Public key for registry signature verification |
 | `SPIFFE_TRUST_DOMAIN` | `poc.local` | SPIFFE trust domain |
 
@@ -892,7 +892,7 @@ Services in Phase 2:
 | keydb | eqalpha/keydb:latest | 6379 | Session + rate limiting |
 | otel-collector | otel/opentelemetry-collector-contrib:latest | 4317-4318 | Telemetry pipeline |
 | phoenix | arizephoenix/phoenix:latest | 6006 | Trace visualization |
-| mcp-security-gateway | mcp-security-gateway:latest (built) | 9090 | Security enforcement |
+| precinct-gateway | precinct-gateway:latest (built) | 9090 | Security enforcement |
 
 ### 5.2 Local K8s (Docker Desktop kubeadm)
 

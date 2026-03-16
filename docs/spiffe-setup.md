@@ -32,7 +32,7 @@ The system includes these workload identities:
 
 | SPIFFE ID | Component | Purpose |
 |-----------|-----------|---------|
-| `spiffe://poc.local/gateways/mcp-security-gateway/dev` | PRECINCT Gateway | Enforces all security controls (auth, authz, content inspection) |
+| `spiffe://poc.local/gateways/precinct-gateway/dev` | PRECINCT Gateway | Enforces all security controls (auth, authz, content inspection) |
 | `spiffe://poc.local/agents/mcp-client/dspy-researcher/dev` | DSPy Agent | Research agent using DSPy framework |
 | `spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev` | PydanticAI Agent | Research agent using PydanticAI framework |
 | `spiffe://poc.local/tools/docker-mcp-server/dev` | Docker MCP Server | Containerized tool execution service |
@@ -75,7 +75,7 @@ Check a specific SPIFFE ID:
 
 ```bash
 docker compose exec spire-server spire-server entry show \
-    -spiffeID "spiffe://poc.local/gateways/mcp-security-gateway/dev"
+    -spiffeID "spiffe://poc.local/gateways/precinct-gateway/dev"
 ```
 
 ### Run Integration Tests
@@ -101,7 +101,7 @@ Example for the gateway service:
 services:
   mcp-gateway:
     labels:
-      spiffe-id: mcp-security-gateway
+      spiffe-id: precinct-gateway
       component: gateway
 ```
 

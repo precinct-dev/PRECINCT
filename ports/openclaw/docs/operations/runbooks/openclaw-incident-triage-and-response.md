@@ -1,7 +1,7 @@
 # OpenClaw Incident Triage and Response Runbook
 
 Last Updated: 2026-02-16  
-Scope: OpenClaw secure-port wrapper lanes (`/v1/responses`, `/tools/invoke`, `/openclaw/ws`) mediated by `mcp-security-gateway`.
+Scope: OpenClaw secure-port wrapper lanes (`/v1/responses`, `/tools/invoke`, `/openclaw/ws`) mediated by `precinct-gateway`.
 
 ## 1. Trigger Conditions
 
@@ -16,7 +16,7 @@ Scope: OpenClaw secure-port wrapper lanes (`/v1/responses`, `/tools/invoke`, `/o
 make phoenix-up
 make up
 curl -sf http://localhost:9090/health | jq .
-docker compose logs --tail 200 mcp-security-gateway
+docker compose logs --tail 200 precinct-gateway
 curl -sS -X POST http://localhost:9090/tools/invoke \
   -H 'Content-Type: application/json' \
   -H 'X-SPIFFE-ID: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev' \
@@ -33,12 +33,12 @@ go test ./tests/integration/... -run 'TestGatewayAuthz_OpenClawWSDenyMatrix_Inte
 
 ```bash
 # Isolate and restart wrapper ingress if behavior is inconsistent.
-docker compose stop mcp-security-gateway
-docker compose restart mcp-security-gateway
+docker compose stop precinct-gateway
+docker compose restart precinct-gateway
 
 # Capture bounded incident evidence window.
 mkdir -p docs/operations/artifacts
-docker compose logs --timestamps --tail 400 mcp-security-gateway \
+docker compose logs --timestamps --tail 400 precinct-gateway \
   > docs/operations/artifacts/openclaw-incident-gateway-$(date -u +%Y%m%dT%H%M%SZ).log
 ```
 

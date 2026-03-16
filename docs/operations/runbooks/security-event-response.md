@@ -20,7 +20,7 @@ make strict-runtime-validate
 
 ```bash
 # Isolate external ingress path if needed
-docker compose stop mcp-security-gateway
+docker compose stop precinct-gateway
 
 # Preserve current logs before restarting components
 docker compose logs --timestamps > build/security-event/compose.log
@@ -31,7 +31,7 @@ docker compose logs --timestamps > build/security-event/compose.log
 ```bash
 make production-readiness-validate
 make readiness-state-validate
-docker compose logs --timestamps mcp-security-gateway spike-nexus keydb > build/security-event/core-services.log
+docker compose logs --timestamps precinct-gateway spike-nexus keydb > build/security-event/core-services.log
 ```
 
 ## 5. Recovery + Hardening Validation

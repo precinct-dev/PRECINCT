@@ -315,12 +315,12 @@ services:
     container_name: my-agent
     hostname: my-agent
     depends_on:
-      mcp-security-gateway:
+      precinct-gateway:
         condition: service_healthy
     volumes:
       - spire-agent-socket:/tmp/spire-agent/public:ro
     environment:
-      - MCP_GATEWAY_URL=http://mcp-security-gateway:9090
+      - MCP_GATEWAY_URL=http://precinct-gateway:9090
       - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
     networks:
       - agentic-net
@@ -387,14 +387,14 @@ allow if {
             <p>
               Configure your agent to send all MCP requests to the PRECINCT gateway
               instead of directly to tool servers. The gateway URL is
-              <code>http://mcp-security-gateway:9090</code> from within the Docker
+              <code>http://precinct-gateway:9090</code> from within the Docker
               network.
             </p>
             <pre data-lang="python"><code># Example: Python agent using the PRECINCT SDK
 from mcp_gateway_sdk import GatewayClient
 
 client = GatewayClient(
-    gateway_url="http://mcp-security-gateway:9090",
+    gateway_url="http://precinct-gateway:9090",
     spiffe_id="spiffe://poc.local/agents/mcp-client/my-agent/dev"
 )
 
@@ -423,7 +423,7 @@ curl -s http://localhost:9090/ \
 # Expected: "authz_policy_denied"
 
 # Check audit logs for your agent's requests
-docker exec mcp-security-gateway cat /tmp/audit.jsonl | jq 'select(.caller_id | contains("my-agent"))'</code></pre>
+docker exec precinct-gateway cat /tmp/audit.jsonl | jq 'select(.caller_id | contains("my-agent"))'</code></pre>
 
             <div class="callout callout-success">
               <div class="callout-title">
@@ -477,7 +477,7 @@ spec:
           image: your-registry/my-agent:latest
           env:
             - name: MCP_GATEWAY_URL
-              value: "http://mcp-security-gateway.gateway.svc.cluster.local:9090"
+              value: "http://precinct-gateway.gateway.svc.cluster.local:9090"
             - name: SPIFFE_ENDPOINT_SOCKET
               value: "unix:///run/spire/sockets/agent.sock"
           volumeMounts:
@@ -586,7 +586,7 @@ spec:
               kubernetes.io/metadata.name: gateway
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: mcp-security-gateway
+              app.kubernetes.io/name: precinct-gateway
       ports:
         - protocol: TCP
           port: 9090
@@ -613,7 +613,7 @@ spec:
 kubectl apply -f deploy/terraform/my-agent/
 
 # Port-forward the gateway
-kubectl port-forward -n gateway svc/mcp-security-gateway 9090:9090 &
+kubectl port-forward -n gateway svc/precinct-gateway 9090:9090 &
 
 # Test your agent's SPIFFE ID
 curl -s http://localhost:9090/ \
@@ -783,7 +783,7 @@ make demo-k8s</code></pre>
               <li>
                 <strong>K8s:</strong> Check that the gateway Service is accessible
                 from your agent's namespace. Use
-                <code>kubectl exec -n tools my-agent-pod -- wget -qO- http://mcp-security-gateway.gateway.svc.cluster.local:9090/health</code>
+                <code>kubectl exec -n tools my-agent-pod -- wget -qO- http://precinct-gateway.gateway.svc.cluster.local:9090/health</code>
                 to test.
               </li>
               <li>

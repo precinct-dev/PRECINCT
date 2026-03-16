@@ -16,14 +16,14 @@ Scope: rollback of gateway/runtime posture to last accepted release candidate.
 make compose-production-intent-preflight
 
 # Stop affected workload
-docker compose stop mcp-security-gateway
+docker compose stop precinct-gateway
 
 # Re-apply known-good digest lock (config/compose-production-intent.env)
 docker compose --profile strict \
   --env-file config/compose-production-intent.env \
   -f docker-compose.yml \
   -f docker-compose.strict.yml \
-  -f docker-compose.prod-intent.yml up -d mcp-security-gateway
+  -f docker-compose.prod-intent.yml up -d precinct-gateway
 ```
 
 ## 3. K8s Rollback

@@ -458,7 +458,7 @@ spiffe://<trust-domain>/<class>/<purpose>/<env>
 |----------------|----------------------|-------------------------------------------|
 | `trust-domain` | Organization ID      | `poc.local`                               |
 | `class`        | Identity class       | `agents`, `gateways`, `services`, `spike` |
-| `purpose`      | Functional name      | `mcp-client/dspy-researcher`, `mcp-security-gateway` |
+| `purpose`      | Functional name      | `mcp-client/dspy-researcher`, `precinct-gateway` |
 | `env`          | Deployment env       | `dev`, `staging`, `prod`                  |
 
 ### Concrete Examples
@@ -468,7 +468,7 @@ spiffe://<trust-domain>/<class>/<purpose>/<env>
 | `spiffe://poc.local/agents/example/dev` | Development agent |
 | `spiffe://poc.local/agents/mcp-client/dspy-researcher/dev` | DSPy research agent |
 | `spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev` | PydanticAI research agent |
-| `spiffe://poc.local/gateways/mcp-security-gateway/dev` | Gateway service |
+| `spiffe://poc.local/gateways/precinct-gateway/dev` | Gateway service |
 | `spiffe://poc.local/spike/nexus` | SPIKE Nexus |
 
 ### OPA Wildcard Patterns
@@ -697,7 +697,7 @@ DLP policy per category:
 | Variable                        | Default                | Description              |
 |---------------------------------|------------------------|--------------------------|
 | `OTEL_EXPORTER_OTLP_ENDPOINT`  | _(empty -- disabled)_  | OTLP gRPC endpoint       |
-| `OTEL_SERVICE_NAME`            | `mcp-security-gateway` | Service name in traces   |
+| `OTEL_SERVICE_NAME`            | `precinct-gateway` | Service name in traces   |
 
 ### Configuration Files
 

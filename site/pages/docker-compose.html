@@ -290,7 +290,7 @@ make opensearch-validate
                       <td>Prompt injection detection</td>
                     </tr>
                     <tr>
-                      <td><code>mcp-security-gateway</code></td>
+                      <td><code>precinct-gateway</code></td>
                       <td>custom</td>
                       <td>The 13-layer enforcement gateway</td>
                     </tr>
@@ -329,7 +329,7 @@ graph TB
   end
 
   subgraph gateway-net["Gateway Network"]
-    gateway["mcp-security-gateway<br/>13-Layer Enforcement"]
+    gateway["precinct-gateway<br/>13-Layer Enforcement"]
     mock-mcp["mock-mcp-server<br/>Upstream Tools"]
     mock-guard["mock-guard-model<br/>Injection Detection"]
   end
@@ -368,7 +368,7 @@ graph TB
                 <li><strong>control-plane:</strong> SPIRE Server, SPIRE Agent, token generator</li>
                 <li><strong>secrets:</strong> SPIKE Nexus, SPIKE Keeper, bootstrap, secret seeder</li>
                 <li><strong>data:</strong> KeyDB for session state and rate limiting</li>
-                <li><strong>gateway:</strong> MCP Security Gateway, mock MCP server, mock guard model</li>
+                <li><strong>gateway:</strong> PRECINCT Gateway, mock MCP server, mock guard model</li>
               </ul>
               <p>
                 An external network, <code>phoenix-observability-network</code>, connects the
