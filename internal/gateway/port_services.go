@@ -129,6 +129,14 @@ func (g *Gateway) ScanContent(content string) middleware.ScanResult {
 	return g.dlpScanner.Scan(content)
 }
 
+// TrustedAgentDLPProvider is an optional interface that port adapters can
+// implement to register SPIFFE IDs whose system prompt content should bypass
+// DLP scanning. User messages are always scanned.
+// OC-xj4w: Port-scoped trusted agent DLP bypass.
+type TrustedAgentDLPProvider interface {
+	TrustedAgentDLPEntries() []middleware.TrustedAgentDLPEntry
+}
+
 // RegisterPort adds a PortAdapter to the gateway's dispatch chain and injects
 // the adapter's route authorizations into the OPA engine's data store.
 func (g *Gateway) RegisterPort(adapter PortAdapter) {
@@ -149,6 +157,21 @@ func (g *Gateway) RegisterPort(adapter PortAdapter) {
 		if err := g.opa.RegisterPortRouteAuthorizations(opaRoutes); err != nil {
 			slog.Warn("failed to register port route authorizations",
 				"port", adapter.Name(), "error", err)
+		}
+	}
+
+	// OC-xj4w: Collect trusted agent DLP entries from port adapters that
+	// implement the TrustedAgentDLPProvider interface. These entries allow
+	// system prompt content to bypass DLP scanning for trusted SPIFFE IDs.
+	if provider, ok := adapter.(TrustedAgentDLPProvider); ok {
+		entries := provider.TrustedAgentDLPEntries()
+		if len(entries) > 0 {
+			if g.trustedAgentDLP == nil {
+				g.trustedAgentDLP = &middleware.TrustedAgentDLPConfig{}
+			}
+			g.trustedAgentDLP.Agents = append(g.trustedAgentDLP.Agents, entries...)
+			slog.Info("registered trusted agent DLP entries",
+				"port", adapter.Name(), "count", len(entries))
 		}
 	}
 }
