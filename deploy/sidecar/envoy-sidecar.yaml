@@ -1,0 +1,119 @@
+# ------------------------------------------------------------------------------
+# Envoy Sidecar Configuration for Third-Party Tool SPIFFE Identity
+# Story: OC-ofhi
+#
+# Provides transparent SPIFFE identity injection for non-SPIFFE-aware tools
+# (mcp2cli, DSPy agents, LangGraph orchestrators) running inside PRECINCT.
+#
+# Architecture:
+#   [Third-party tool] --> 127.0.0.1:9090 --> [Envoy sidecar] --> precinct-gateway:8080
+#
+# The sidecar:
+#   1. Listens on loopback 127.0.0.1:9090 (where third-party tools send requests)
+#   2. Injects X-SPIFFE-ID header from the tool's SPIFFE identity
+#   3. Forwards to the PRECINCT Gateway for authenticated processing
+#
+# SPIFFE identity source:
+#   The SPIRE Agent exposes X.509 SVIDs via the Workload API (Unix socket).
+#   Since Envoy's SDS-to-header injection is non-trivial, this config uses a
+#   Lua HTTP filter that reads the SPIFFE ID from an environment variable
+#   (SPIFFE_ID) set by the SPIRE helper or the deployment configuration.
+#   This approach works for dev mode where the gateway reads X-SPIFFE-ID headers.
+#
+# Usage:
+#   Set SPIFFE_ID env var to the tool's SPIFFE identity before starting Envoy:
+#     export SPIFFE_ID="spiffe://poc.local/agents/mcp-client/mcp2cli/dev"
+#     envoy -c envoy-sidecar.yaml
+# ------------------------------------------------------------------------------
+
+# Envoy v3 API
+node:
+  id: sidecar-proxy
+  cluster: precinct-sidecar
+
+static_resources:
+  listeners:
+    - name: local_listener
+      address:
+        socket_address:
+          address: 127.0.0.1
+          port_value: 9090
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: sidecar_http
+                codec_type: AUTO
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: gateway_backend
+                      domains: ["*"]
+                      routes:
+                        - match:
+                            prefix: "/"
+                          route:
+                            cluster: precinct_gateway
+                            timeout: 30s
+                http_filters:
+                  # Lua filter injects SPIFFE identity header from environment.
+                  # In dev mode, the gateway trusts X-SPIFFE-ID headers.
+                  # In prod mode, Envoy would use SDS for mTLS client certs instead.
+                  - name: envoy.filters.http.lua
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
+                      default_source_code:
+                        inline_string: |
+                          function envoy_on_request(request_handle)
+                            local spiffe_id = os.getenv("SPIFFE_ID")
+                            if spiffe_id and spiffe_id ~= "" then
+                              request_handle:headers():add("X-SPIFFE-ID", spiffe_id)
+                            end
+                          end
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+
+  clusters:
+    # Gateway cluster for Docker Compose deployments.
+    # For K8s, override cluster address to precinct-gateway.gateway.svc.cluster.local:9090
+    - name: precinct_gateway
+      type: STRICT_DNS
+      connect_timeout: 5s
+      lb_policy: ROUND_ROBIN
+      load_assignment:
+        cluster_name: precinct_gateway
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    socket_address:
+                      address: precinct-gateway
+                      port_value: 9090
+
+    # SDS cluster for SPIRE Agent Workload API (for future mTLS/prod mode).
+    # Not actively used by the Lua filter path, but included for completeness
+    # and for prod mode where Envoy would fetch SVIDs via SDS for mTLS.
+    - name: spire_agent
+      type: STATIC
+      connect_timeout: 5s
+      typed_extension_protocol_options:
+        envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+          "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+          explicit_http_version:
+            http2_protocol_options: {}
+      load_assignment:
+        cluster_name: spire_agent
+        endpoints:
+          - lb_endpoints:
+              - endpoint:
+                  address:
+                    pipe:
+                      path: /tmp/spire-agent/public/api.sock
+
+admin:
+  address:
+    socket_address:
+      address: 127.0.0.1
+      port_value: 9901
