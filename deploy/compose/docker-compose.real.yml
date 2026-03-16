@@ -2,7 +2,8 @@
 # Used by: make demo-compose (real OpenClaw, real Tavily, real Groq guard model)
 #
 # Prerequisites:
-#   .env must contain: GROQ_API_KEY, TAVILY_API_KEY
+#   .env must contain: TAVILY_API_KEY
+#   GROQ_API_KEY is resolved via SPIKE Nexus at runtime (not needed in .env for OpenClaw)
 #
 # The base docker-compose.yml uses ${VAR:-default} substitution for gateway env vars
 # (UPSTREAM_URL, GUARD_MODEL_ENDPOINT, etc.). The Makefile/run.sh sets these env vars
@@ -56,11 +57,13 @@ services:
       # Access via: docker exec openclaw node openclaw.mjs <command>
     command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured", "--bind", "lan", "--port", "18789"]
     environment:
-      # API keys available to OpenClaw for provider resolution.
-      # Fail closed: agentic-net is internal, so these keys cannot reach external APIs.
-      # All calls route through the PRECINCT gateway's model proxy.
-      - GROQ_API_KEY=${GROQ_API_KEY:?GROQ_API_KEY must be set in .env}
-      - OPENAI_API_KEY=${GROQ_API_KEY}
+      # SPIKE reference tokens -- OpenClaw never sees raw API keys.
+      # The PRECINCT gateway intercepts these Bearer tokens in the model proxy
+      # flow and redeems them via SPIKE Nexus to get the real API key.
+      # Fail closed: agentic-net is internal=true, no internet egress.
+      # All LLM calls route through the PRECINCT gateway's model proxy.
+      - GROQ_API_KEY=spike:ref:groq-api-key
+      - OPENAI_API_KEY=spike:ref:groq-api-key
     volumes:
       - ./data/openclaw-config:/home/node/.openclaw
     healthcheck:

@@ -2,7 +2,9 @@ package gateway
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -1053,5 +1055,311 @@ func TestModelPlane_RegulatedPromptUsesPhase3DecisionEnvelope(t *testing.T) {
 	envelope, _ := resp["envelope"].(map[string]any)
 	if got, _ := envelope["session_id"].(string); got != "phase3-compose-session-1773129666" {
 		t.Fatalf("expected response envelope session_id to round-trip, got %v", envelope["session_id"])
+	}
+}
+
+// --- SPIKE reference token resolution tests (OC-s1o9) ---
+
+// testSPIKERedeemer is a controllable SecretRedeemer for unit tests.
+type testSPIKERedeemer struct {
+	secrets map[string]string // ref -> secret value
+	err     error             // error to return (simulates SPIKE unavailable)
+	called  bool              // whether RedeemSecret was called
+	lastRef string            // last ref that was redeemed
+}
+
+func (r *testSPIKERedeemer) RedeemSecret(_ context.Context, token *middleware.SPIKEToken) (*middleware.SPIKESecret, error) {
+	r.called = true
+	r.lastRef = token.Ref
+	if r.err != nil {
+		return nil, r.err
+	}
+	val, ok := r.secrets[token.Ref]
+	if !ok {
+		return nil, fmt.Errorf("secret not found: %s", token.Ref)
+	}
+	return &middleware.SPIKESecret{Value: val, ExpiresAt: 9999999999}, nil
+}
+
+func TestExtractBearerToken(t *testing.T) {
+	tests := []struct {
+		input    string
+		expected string
+	}{
+		{"Bearer abc123", "abc123"},
+		{"bearer abc123", "abc123"},
+		{"BEARER abc123", "abc123"},
+		{"Bearer spike:ref:groq-api-key", "spike:ref:groq-api-key"},
+		{"Bearer ", ""},
+		{"", ""},
+		{"Basic dXNlcjpwYXNz", ""},
+		{"Bear", ""},
+		{"Bearer  extra-space-token", "extra-space-token"},
+	}
+
+	for _, tt := range tests {
+		got := extractBearerToken(tt.input)
+		if got != tt.expected {
+			t.Errorf("extractBearerToken(%q) = %q, want %q", tt.input, got, tt.expected)
+		}
+	}
+}
+
+func TestResolveSPIKEAuthHeader_RegularBearerPassthrough(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	// Set a redeemer that should NOT be called for regular tokens.
+	redeemer := &testSPIKERedeemer{secrets: map[string]string{}}
+	gw.spikeRedeemer = redeemer
+
+	result, err := gw.resolveSPIKEAuthHeader(context.Background(), "Bearer gsk_real_api_key_abc123")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "Bearer gsk_real_api_key_abc123" {
+		t.Fatalf("expected passthrough of regular Bearer token, got %q", result)
+	}
+	if redeemer.called {
+		t.Fatal("SPIKE redeemer should NOT be called for regular Bearer tokens")
+	}
+}
+
+func TestResolveSPIKEAuthHeader_EmptyHeaderPassthrough(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	redeemer := &testSPIKERedeemer{secrets: map[string]string{}}
+	gw.spikeRedeemer = redeemer
+
+	result, err := gw.resolveSPIKEAuthHeader(context.Background(), "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "" {
+		t.Fatalf("expected empty passthrough, got %q", result)
+	}
+	if redeemer.called {
+		t.Fatal("SPIKE redeemer should NOT be called for empty auth header")
+	}
+}
+
+func TestResolveSPIKEAuthHeader_SPIKERefRedeemed(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	redeemer := &testSPIKERedeemer{
+		secrets: map[string]string{
+			"groq-api-key": "gsk_REAL_SECRET_FROM_SPIKE",
+		},
+	}
+	gw.spikeRedeemer = redeemer
+
+	result, err := gw.resolveSPIKEAuthHeader(context.Background(), "Bearer spike:ref:groq-api-key")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result != "Bearer gsk_REAL_SECRET_FROM_SPIKE" {
+		t.Fatalf("expected redeemed Bearer token, got %q", result)
+	}
+	if !redeemer.called {
+		t.Fatal("SPIKE redeemer should have been called")
+	}
+	if redeemer.lastRef != "groq-api-key" {
+		t.Fatalf("expected ref 'groq-api-key', got %q", redeemer.lastRef)
+	}
+}
+
+func TestResolveSPIKEAuthHeader_SPIKEUnavailable_FailClosed(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	redeemer := &testSPIKERedeemer{
+		err: fmt.Errorf("connection refused: SPIKE Nexus unreachable"),
+	}
+	gw.spikeRedeemer = redeemer
+
+	_, err := gw.resolveSPIKEAuthHeader(context.Background(), "Bearer spike:ref:groq-api-key")
+	if err == nil {
+		t.Fatal("expected error when SPIKE is unavailable, got nil")
+	}
+	if !strings.Contains(err.Error(), "SPIKE Nexus redemption failed") {
+		t.Fatalf("expected SPIKE redemption error, got: %v", err)
+	}
+	if !redeemer.called {
+		t.Fatal("SPIKE redeemer should have been called")
+	}
+}
+
+func TestResolveSPIKEAuthHeader_NoRedeemer_FailClosed(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	gw.spikeRedeemer = nil
+
+	_, err := gw.resolveSPIKEAuthHeader(context.Background(), "Bearer spike:ref:groq-api-key")
+	if err == nil {
+		t.Fatal("expected error when no SPIKE redeemer configured, got nil")
+	}
+	if !strings.Contains(err.Error(), "no SPIKE redeemer configured") {
+		t.Fatalf("expected 'no SPIKE redeemer configured' error, got: %v", err)
+	}
+}
+
+func TestResolveSPIKEAuthHeader_EmptySPIKERef_FailClosed(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	redeemer := &testSPIKERedeemer{secrets: map[string]string{}}
+	gw.spikeRedeemer = redeemer
+
+	_, err := gw.resolveSPIKEAuthHeader(context.Background(), "Bearer spike:ref:")
+	if err == nil {
+		t.Fatal("expected error for empty SPIKE reference name, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty SPIKE reference name") {
+		t.Fatalf("expected 'empty SPIKE reference name' error, got: %v", err)
+	}
+}
+
+func TestResolveSPIKEAuthHeader_SPIKEReturnsEmptySecret_FailClosed(t *testing.T) {
+	gw, _ := newPhase3TestGateway(t)
+	redeemer := &testSPIKERedeemer{
+		secrets: map[string]string{
+			"groq-api-key": "", // empty secret value
+		},
+	}
+	gw.spikeRedeemer = redeemer
+
+	_, err := gw.resolveSPIKEAuthHeader(context.Background(), "Bearer spike:ref:groq-api-key")
+	if err == nil {
+		t.Fatal("expected error when SPIKE returns empty secret, got nil")
+	}
+	if !strings.Contains(err.Error(), "empty secret") {
+		t.Fatalf("expected 'empty secret' error, got: %v", err)
+	}
+}
+
+func TestOpenAICompat_SPIKERefRedeemed_EndToEnd(t *testing.T) {
+	// Upstream provider verifies it receives the REAL API key, not the spike:ref.
+	var receivedAuth string
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-spike","choices":[{"index":0,"message":{"role":"assistant","content":"spike-ok"}}]}`))
+	}))
+	defer provider.Close()
+
+	gw, _ := newPhase3TestGateway(t)
+	gw.spikeRedeemer = &testSPIKERedeemer{
+		secrets: map[string]string{
+			"groq-api-key": "gsk_REAL_GROQ_KEY_FROM_SPIKE",
+		},
+	}
+	handler := gw.Handler()
+
+	rec := postOpenAICompat(t, handler, map[string]string{
+		"Authorization":            "Bearer spike:ref:groq-api-key",
+		"X-Model-Provider":         "groq",
+		"X-Provider-Endpoint-Groq": provider.URL,
+		"X-Residency-Intent":       "us",
+		"X-Budget-Profile":         "standard",
+		"X-Budget-Units":           "1",
+	}, map[string]any{
+		"model": "llama-3.3-70b-versatile",
+		"messages": []map[string]any{
+			{"role": "user", "content": "Hello from SPIKE ref test"},
+		},
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+
+	// The upstream provider must receive the real key, NOT the spike:ref token.
+	if receivedAuth != "Bearer gsk_REAL_GROQ_KEY_FROM_SPIKE" {
+		t.Fatalf("upstream provider received wrong auth header: %q (should be real key, not spike:ref)", receivedAuth)
+	}
+	if rec.Header().Get("X-Precinct-Provider-Used") != "groq" {
+		t.Fatalf("expected provider groq, got %s", rec.Header().Get("X-Precinct-Provider-Used"))
+	}
+}
+
+func TestOpenAICompat_SPIKEUnavailable_FailClosed_NoFallback(t *testing.T) {
+	// When SPIKE is unavailable, the model proxy request MUST fail.
+	// No fallback to raw keys, no fallback to empty Authorization header.
+	providerCalled := false
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		providerCalled = true
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-should-not-reach","choices":[]}`))
+	}))
+	defer provider.Close()
+
+	gw, _ := newPhase3TestGateway(t)
+	gw.spikeRedeemer = &testSPIKERedeemer{
+		err: fmt.Errorf("connection refused: SPIKE Nexus down"),
+	}
+	handler := gw.Handler()
+
+	rec := postOpenAICompat(t, handler, map[string]string{
+		"Authorization":            "Bearer spike:ref:groq-api-key",
+		"X-Model-Provider":         "groq",
+		"X-Provider-Endpoint-Groq": provider.URL,
+		"X-Residency-Intent":       "us",
+		"X-Budget-Profile":         "standard",
+		"X-Budget-Units":           "1",
+	}, map[string]any{
+		"model": "llama-3.3-70b-versatile",
+		"messages": []map[string]any{
+			{"role": "user", "content": "This should fail"},
+		},
+	})
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 when SPIKE unavailable, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if providerCalled {
+		t.Fatal("upstream provider should NOT be called when SPIKE redemption fails")
+	}
+
+	// Verify the error body contains spike_redemption_failed indication.
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode error body: %v", err)
+	}
+	details, _ := body["details"].(map[string]any)
+	errorMsg, _ := details["error"].(string)
+	if !strings.Contains(errorMsg, "spike_redemption_failed") {
+		t.Fatalf("expected spike_redemption_failed in error details, got: %v", details)
+	}
+}
+
+func TestOpenAICompat_RegularBearerToken_NotIntercepted(t *testing.T) {
+	// Regular Bearer tokens (non-spike:ref) should pass through unchanged.
+	var receivedAuth string
+	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"chatcmpl-regular","choices":[{"index":0,"message":{"role":"assistant","content":"regular-ok"}}]}`))
+	}))
+	defer provider.Close()
+
+	gw, _ := newPhase3TestGateway(t)
+	// Set a redeemer that records if it was called.
+	redeemer := &testSPIKERedeemer{secrets: map[string]string{}}
+	gw.spikeRedeemer = redeemer
+	handler := gw.Handler()
+
+	rec := postOpenAICompat(t, handler, map[string]string{
+		"Authorization":            "Bearer gsk_regular_api_key_xyz",
+		"X-Model-Provider":         "groq",
+		"X-Provider-Endpoint-Groq": provider.URL,
+		"X-Residency-Intent":       "us",
+		"X-Budget-Profile":         "standard",
+		"X-Budget-Units":           "1",
+	}, map[string]any{
+		"model": "llama-3.3-70b-versatile",
+		"messages": []map[string]any{
+			{"role": "user", "content": "Regular token test"},
+		},
+	})
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if receivedAuth != "Bearer gsk_regular_api_key_xyz" {
+		t.Fatalf("regular Bearer token should pass through unchanged, got %q", receivedAuth)
+	}
+	if redeemer.called {
+		t.Fatal("SPIKE redeemer should NOT be called for regular Bearer tokens")
 	}
 }
