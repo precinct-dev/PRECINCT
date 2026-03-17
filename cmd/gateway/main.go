@@ -25,27 +25,19 @@ func main() {
 	// RFA-8z8.1: In prod mode the server uses HTTPS, so the health check
 	// must use the correct scheme. We use SPIFFE_MODE to determine this.
 	if len(os.Args) > 1 && os.Args[1] == "health" {
-		spiffeMode := os.Getenv("SPIFFE_MODE")
-		if spiffeMode == "" {
-			spiffeMode = "prod"
+		cfg := gateway.ConfigFromEnv()
+		healthURL := fmt.Sprintf("http://localhost:%d/health", cfg.Port)
+		if strings.EqualFold(cfg.SPIFFEMode, "prod") && cfg.PublicListenPort > 0 {
+			healthURL = fmt.Sprintf("http://localhost:%d/health", cfg.PublicListenPort)
 		}
-		var port string
-		if strings.EqualFold(spiffeMode, "prod") {
-			port = os.Getenv("SPIFFE_LISTEN_PORT")
+
+		// In legacy prod-only mTLS mode with no public listener, fall back to a
+		// TCP probe because the HTTPS listener requires a client certificate.
+		if strings.EqualFold(cfg.SPIFFEMode, "prod") && cfg.PublicListenPort <= 0 {
+			port := os.Getenv("SPIFFE_LISTEN_PORT")
 			if port == "" {
 				port = "9443"
 			}
-		} else {
-			port = os.Getenv("PORT")
-			if port == "" {
-				port = "9090"
-			}
-		}
-
-		if strings.EqualFold(spiffeMode, "prod") {
-			// In prod mode, the listener enforces mTLS client auth. Health checks
-			// from the same container may not have a client cert, so use a TCP
-			// readiness probe against the listen port instead of HTTP.
 			conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%s", port), 2*time.Second)
 			if err != nil {
 				os.Exit(1)
@@ -55,7 +47,7 @@ func main() {
 		}
 
 		client := &http.Client{Timeout: 2 * time.Second}
-		resp, err := client.Get(fmt.Sprintf("http://localhost:%s/health", port))
+		resp, err := client.Get(healthURL)
 		if err != nil {
 			os.Exit(1)
 		}
@@ -108,28 +100,8 @@ func main() {
 		}
 	}
 
-	// Determine listen address and TLS configuration based on SPIFFE mode.
-	var listenAddr string
-	var serverTLS *tls.Config
-
-	if strings.EqualFold(cfg.SPIFFEMode, "prod") {
-		// RFA-8z8.1 AC1: Serve HTTPS with SPIRE-issued SVID on the SPIFFE listen port
-		listenAddr = fmt.Sprintf(":%d", cfg.SPIFFEListenPort)
-		serverTLS = gw.ServerTLSConfig()
-	} else {
-		// Dev mode: bind loopback by default; non-loopback requires explicit override.
-		listenAddr = gateway.ResolveDevListenAddr(cfg)
-	}
-
-	// Create HTTP server
-	srv := &http.Server{
-		Addr:         listenAddr,
-		Handler:      gw.Handler(),
-		TLSConfig:    serverTLS,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout:  120 * time.Second,
-	}
+	internalSrv := newInternalServer(cfg, gw)
+	publicSrv := newPublicServer(cfg, gw)
 
 	// Start server in goroutine
 	go func() {
@@ -139,7 +111,7 @@ func main() {
 			log.Printf("SPIFFE trust domain: %s", cfg.SPIFFETrustDomain)
 			// ListenAndServeTLS with empty cert/key file paths because the TLS
 			// config already has the certificate from go-spiffe.
-			if err := srv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+			if err := internalSrv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
 				log.Fatalf("Server failed: %v", err)
 			}
 		} else {
@@ -147,11 +119,19 @@ func main() {
 			log.Printf("Dev listener bind host: %s", cfg.DevListenHost)
 			log.Printf("Upstream MCP server: %s", cfg.UpstreamURL)
 			log.Printf("OPA policy directory: %s", cfg.OPAPolicyDir)
-			if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := internalSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				log.Fatalf("Server failed: %v", err)
 			}
 		}
 	}()
+	if publicSrv != nil {
+		go func() {
+			log.Printf("Starting PRECINCT Gateway public listener (HTTP) on %s", publicSrv.Addr)
+			if err := publicSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Public server failed: %v", err)
+			}
+		}()
+	}
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
@@ -162,8 +142,13 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := internalSrv.Shutdown(ctx); err != nil {
 		log.Fatalf("Gateway forced to shutdown: %v", err)
+	}
+	if publicSrv != nil {
+		if err := publicSrv.Shutdown(ctx); err != nil {
+			log.Fatalf("Public gateway forced to shutdown: %v", err)
+		}
 	}
 
 	// Close gateway resources (including SPIFFE TLS)
@@ -182,4 +167,34 @@ func main() {
 	}
 
 	log.Println("Gateway stopped")
+}
+
+func newInternalServer(cfg *gateway.Config, gw *gateway.Gateway) *http.Server {
+	listenAddr := gateway.ResolveDevListenAddr(cfg)
+	var serverTLS *tls.Config
+	if strings.EqualFold(cfg.SPIFFEMode, "prod") {
+		listenAddr = fmt.Sprintf(":%d", cfg.SPIFFEListenPort)
+		serverTLS = gw.ServerTLSConfig()
+	}
+	return &http.Server{
+		Addr:         listenAddr,
+		Handler:      gw.Handler(),
+		TLSConfig:    serverTLS,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+}
+
+func newPublicServer(cfg *gateway.Config, gw *gateway.Gateway) *http.Server {
+	if !strings.EqualFold(cfg.SPIFFEMode, "prod") || cfg.PublicListenPort <= 0 {
+		return nil
+	}
+	return &http.Server{
+		Addr:         gateway.ResolvePublicListenAddr(cfg),
+		Handler:      gw.PublicHandler(),
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
 }

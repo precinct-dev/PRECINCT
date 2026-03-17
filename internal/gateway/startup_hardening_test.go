@@ -1,12 +1,43 @@
 package gateway
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func TestValidateDevRuntimeGuardrails(t *testing.T) {
 	t.Run("prod mode allowed without dev flags", func(t *testing.T) {
 		cfg := &Config{
-			SPIFFEMode: "prod",
-			Port:       9443,
+			SPIFFEMode:       "prod",
+			Port:             9443,
+			PublicListenPort: 0,
+		}
+		if err := ValidateDevRuntimeGuardrails(cfg); err != nil {
+			t.Fatalf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("prod public listener requires oauth config", func(t *testing.T) {
+		cfg := &Config{
+			SPIFFEMode:       "prod",
+			PublicListenPort: defaultPublicListenPort,
+		}
+		if err := ValidateDevRuntimeGuardrails(cfg); err == nil {
+			t.Fatal("expected error when prod public listener is enabled without oauth config")
+		}
+	})
+
+	t.Run("prod public listener accepts valid oauth config", func(t *testing.T) {
+		configPath := filepath.Join(t.TempDir(), "oauth-resource-server.yaml")
+		content := []byte("oauth_resource_server:\n  issuer: http://issuer\n  audience: gateway\n  jwks_url: http://issuer/jwks.json\n")
+		if err := os.WriteFile(configPath, content, 0o600); err != nil {
+			t.Fatalf("WriteFile: %v", err)
+		}
+		cfg := &Config{
+			SPIFFEMode:                    "prod",
+			PublicListenPort:              defaultPublicListenPort,
+			OAuthResourceServerConfigPath: configPath,
 		}
 		if err := ValidateDevRuntimeGuardrails(cfg); err != nil {
 			t.Fatalf("expected nil error, got %v", err)
@@ -70,6 +101,16 @@ func TestResolveDevListenAddrDefaults(t *testing.T) {
 	}
 	if got := ResolveDevListenAddr(cfg); got != "127.0.0.1:9090" {
 		t.Fatalf("expected 127.0.0.1:9090, got %s", got)
+	}
+}
+
+func TestResolvePublicListenAddrDefaults(t *testing.T) {
+	cfg := &Config{
+		SPIFFEMode:       "prod",
+		PublicListenPort: defaultPublicListenPort,
+	}
+	if got := ResolvePublicListenAddr(cfg); got != "0.0.0.0:9090" {
+		t.Fatalf("expected 0.0.0.0:9090, got %s", got)
 	}
 }
 

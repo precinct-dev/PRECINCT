@@ -576,6 +576,40 @@ func New(cfg *Config) (*Gateway, error) {
 
 // Handler returns the HTTP handler with middleware chain
 func (g *Gateway) Handler() http.Handler {
+	protected := g.protectedHandler()
+
+	// Add endpoints
+	mux := http.NewServeMux()
+	mux.Handle("/health", http.HandlerFunc(g.healthHandler))
+	// RFA-qq0.16: Handle dereference endpoint
+	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
+	mux.Handle("/", protected)
+
+	return mux
+}
+
+// PublicHandler returns the prod public listener surface with an exact-path allowlist.
+// Only explicitly allowlisted routes are exposed; unknown paths return 404 to reduce
+// surface discovery. The "/" MCP endpoint reuses the full protected middleware chain.
+func (g *Gateway) PublicHandler() http.Handler {
+	protected := g.protectedHandler()
+	allowlist := parsePublicRouteAllowlist(defaultPublicRouteAllowlist)
+	if g != nil && g.config != nil && strings.TrimSpace(g.config.PublicRouteAllowlist) != "" {
+		allowlist = parsePublicRouteAllowlist(g.config.PublicRouteAllowlist)
+	}
+
+	mux := http.NewServeMux()
+	if _, ok := allowlist["/health"]; ok {
+		mux.Handle("/health", exactPathHandler("/health", http.HandlerFunc(g.healthHandler)))
+	}
+	if _, ok := allowlist["/"]; ok {
+		mux.Handle("/", exactPathHandler("/", protected))
+	}
+
+	return mux
+}
+
+func (g *Gateway) protectedHandler() http.Handler {
 	// Build middleware chain in order:
 	// 1. Request size limit
 	// 2. Body capture
@@ -661,14 +695,32 @@ func (g *Gateway) Handler() http.Handler {
 	handler = middleware.RequestMetrics(handler)                                 // 0 - outermost: record request_total with status code
 	handler = middleware.RuntimeProfile(handler, g.config.SPIFFEMode, g.config.EnforcementProfile)
 
-	// Add endpoints
-	mux := http.NewServeMux()
-	mux.Handle("/health", http.HandlerFunc(g.healthHandler))
-	// RFA-qq0.16: Handle dereference endpoint
-	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
-	mux.Handle("/", handler)
+	return handler
+}
 
-	return mux
+func exactPathHandler(path string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != path {
+			http.NotFound(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func parsePublicRouteAllowlist(raw string) map[string]struct{} {
+	out := make(map[string]struct{})
+	for _, entry := range strings.Split(raw, ",") {
+		path := strings.TrimSpace(entry)
+		if path == "" {
+			continue
+		}
+		if !strings.HasPrefix(path, "/") {
+			path = "/" + path
+		}
+		out[path] = struct{}{}
+	}
+	return out
 }
 
 // proxyHandler proxies requests to upstream MCP server with UI response processing.
