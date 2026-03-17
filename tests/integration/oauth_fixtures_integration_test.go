@@ -4,8 +4,10 @@
 package integration
 
 import (
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -34,6 +36,16 @@ type mockOAuthTokenResponse struct {
 type mockOAuthIntrospectResponse struct {
 	Active bool  `json:"active"`
 	Exp    int64 `json:"exp"`
+}
+
+type integrationRPCResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
 }
 
 func TestOAuthExternalMockIssuerContract(t *testing.T) {
@@ -177,4 +189,140 @@ func TestOAuthExternalMockIssuerContract(t *testing.T) {
 	if unknown.Active {
 		t.Fatal("expected active=false for unknown token")
 	}
+}
+
+func TestOAuthExternalGatewayBearerAuth(t *testing.T) {
+	baseURL := getEnvOrDefault("MOCK_OAUTH_ISSUER_URL", "http://localhost:18083")
+	if err := waitForService(baseURL+"/health", 15*time.Second); err != nil {
+		if os.Getenv("MOCK_OAUTH_STRICT") == "" {
+			t.Skipf("mock-oauth-issuer not reachable at %s/health; set MOCK_OAUTH_STRICT=1 to fail when fixture is missing", baseURL)
+		}
+		t.Fatalf("mock-oauth-issuer not reachable: %v", err)
+	}
+	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
+		t.Fatalf("gateway not ready: %v", err)
+	}
+
+	token := mintOAuthAccessToken(t, baseURL, `{"client_id":"acct","subject":"external-compose","scope":"mcp:tools","audience":"gateway","ttl_seconds":180}`)
+
+	initResp := postGatewayOAuthRPC(t, token, "", map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": "2025-03-26",
+			"capabilities":    map[string]any{},
+			"clientInfo": map[string]any{
+				"name":    "oauth-integration",
+				"version": "1.0.0",
+			},
+		},
+		"id": 1,
+	})
+	if initResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(initResp.Body)
+		t.Fatalf("initialize status=%d body=%s", initResp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	if got := initResp.Header.Get("X-Mock-Authorization"); got != "<none>" {
+		t.Fatalf("expected initialize upstream Authorization header sentinel <none>, got %q", got)
+	}
+	if got := initResp.Header.Get("X-Mock-Precinct-Auth-Method"); got != "oauth_jwt" {
+		t.Fatalf("expected initialize upstream auth method oauth_jwt, got %q", got)
+	}
+	sessionID := strings.TrimSpace(initResp.Header.Get("Mcp-Session-Id"))
+	if sessionID == "" {
+		t.Fatal("initialize response missing Mcp-Session-Id")
+	}
+	_ = initResp.Body.Close()
+
+	notifyResp := postGatewayOAuthRPC(t, token, sessionID, map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+		"params":  map[string]any{},
+	})
+	if notifyResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(notifyResp.Body)
+		t.Fatalf("notifications/initialized status=%d body=%s", notifyResp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	_ = notifyResp.Body.Close()
+
+	listResp := postGatewayOAuthRPC(t, token, sessionID, map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "tools/list",
+		"params":  map[string]any{},
+		"id":      2,
+	})
+	defer func() { _ = listResp.Body.Close() }()
+	body, _ := io.ReadAll(listResp.Body)
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("tools/list status=%d body=%s", listResp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	if got := listResp.Header.Get("X-Mock-Authorization"); got != "<none>" {
+		t.Fatalf("expected tools/list upstream Authorization header sentinel <none>, got %q", got)
+	}
+	if got := listResp.Header.Get("X-Mock-Precinct-Auth-Method"); got != "oauth_jwt" {
+		t.Fatalf("expected tools/list upstream auth method oauth_jwt, got %q", got)
+	}
+
+	var rpc integrationRPCResponse
+	if err := json.Unmarshal(body, &rpc); err != nil {
+		t.Fatalf("decode tools/list response: %v", err)
+	}
+	if rpc.Error != nil {
+		t.Fatalf("tools/list returned error: %s", rpc.Error.Message)
+	}
+	if !strings.Contains(string(rpc.Result), "tavily_search") {
+		t.Fatalf("expected tools/list result to include tavily_search, got %s", strings.TrimSpace(string(body)))
+	}
+}
+
+func mintOAuthAccessToken(t *testing.T, baseURL, payload string) string {
+	t.Helper()
+
+	req, err := http.NewRequest(http.MethodPost, baseURL+"/token", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("build token request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("POST /token failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("POST /token status=%d body=%s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	var token mockOAuthTokenResponse
+	if err := json.NewDecoder(resp.Body).Decode(&token); err != nil {
+		t.Fatalf("decode token response: %v", err)
+	}
+	if strings.TrimSpace(token.AccessToken) == "" {
+		t.Fatal("missing access_token in token response")
+	}
+	return token.AccessToken
+}
+
+func postGatewayOAuthRPC(t *testing.T, token, sessionID string, payload map[string]any) *http.Response {
+	t.Helper()
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal rpc request: %v", err)
+	}
+	req, err := http.NewRequest(http.MethodPost, gatewayURL, bytes.NewReader(body))
+	if err != nil {
+		t.Fatalf("build gateway request: %v", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	if strings.TrimSpace(sessionID) != "" {
+		req.Header.Set("Mcp-Session-Id", sessionID)
+	}
+
+	resp, err := (&http.Client{Timeout: 10 * time.Second}).Do(req)
+	if err != nil {
+		t.Fatalf("gateway request failed: %v", err)
+	}
+	return resp
 }

@@ -386,7 +386,8 @@ before upstream proxy forwarding:
 | Header | Required | Applies To | Description | Example |
 |--------|----------|------------|-------------|---------|
 | `Content-Type` | Yes | `POST /`, `POST /data/dereference` | Must be `application/json` | `application/json` |
-| `X-SPIFFE-ID` | Yes | `POST /`, `POST /data/dereference` | SPIFFE identity of the calling agent | `spiffe://poc.local/agents/example/dev` |
+| `Authorization` | Conditional | `POST /` | Bearer token for external OAuth resource-server authentication | `Bearer eyJhbGciOi...` |
+| `X-SPIFFE-ID` | Conditional | `POST /`, `POST /data/dereference` | SPIFFE identity of the calling agent when bearer auth is not used | `spiffe://poc.local/agents/example/dev` |
 | `X-Session-ID` | Yes | `POST /` | Session UUID for cross-request tracking and exfiltration detection | `550e8400-e29b-41d4-a716-446655440000` |
 | `X-Agent-Purpose` | No | `POST /openai/v1/chat/completions` | Declared mission label for mission-bound model mediation | `restaurant_order_support` |
 | `X-Mission-Boundary-Mode` | No | `POST /openai/v1/chat/completions` | Enables per-request mission-bound enforcement | `enforce` |
@@ -397,8 +398,9 @@ before upstream proxy forwarding:
 | `X-Mission-Out-Of-Scope-Message` | No | `POST /openai/v1/chat/completions` | Safe fallback assistant message | `I can help with orders and menu questions only.` |
 
 **Notes:**
-- In `SPIFFE_MODE=dev` (default), `X-SPIFFE-ID` is accepted as a plain header.
-- In `SPIFFE_MODE=prod`, the SPIFFE ID is extracted from the mTLS client certificate and the header is ignored.
+- In `SPIFFE_MODE=dev` (default), callers may authenticate with either `X-SPIFFE-ID` or `Authorization: Bearer <jwt>`.
+- In `SPIFFE_MODE=prod`, callers may authenticate with a client certificate `spiffe://` URI SAN or `Authorization: Bearer <jwt>`. `X-SPIFFE-ID` headers are ignored.
+- Bearer tokens are validated against the configured OAuth resource-server JWKS, mapped to `spiffe://<SPIFFE_TRUST_DOMAIN>/external/<subject>`, and stripped before the upstream MCP server sees the request.
 - The `X-Session-ID` must be a valid UUID. The session context middleware uses it to track data flow across requests for exfiltration detection.
 
 ### Response Headers
@@ -410,7 +412,7 @@ The gateway injects the following headers into proxied responses:
 | `X-Precinct-Principal-Level` | integer | Authority level (0=system, 5=anonymous) |
 | `X-Precinct-Principal-Role` | string | Role name (owner, agent, external_user, etc.) |
 | `X-Precinct-Principal-Capabilities` | string (comma-sep) | Authorized capabilities (e.g., "execute,read,write") |
-| `X-Precinct-Auth-Method` | string | `mtls_svid` (prod) or `header_declared` (dev) |
+| `X-Precinct-Auth-Method` | string | `mtls_svid`, `header_declared`, or `oauth_jwt` |
 | `X-Precinct-Reversibility` | string | reversible, costly_reversible, partially_reversible, irreversible |
 | `X-Precinct-Backup-Recommended` | boolean string | `"true"` if Score >= 2 |
 | `X-Precinct-Escalation-Score` | float | Session escalation score (0.0+) |
@@ -567,8 +569,9 @@ Complete catalog of all 25 error codes defined in `internal/gateway/middleware/e
 | Code | Step | HTTP | Middleware | Description | Remediation |
 |------|------|------|------------|-------------|-------------|
 | `request_too_large` | 1 | 413 | `request_size_limit` | Request payload exceeds `MAX_REQUEST_SIZE_BYTES` (default: 10 MB) | Reduce payload size or increase `MAX_REQUEST_SIZE_BYTES` |
-| `auth_missing_identity` | 3 | 401 | `spiffe_auth` | Caller identity missing for active SPIFFE mode (`X-SPIFFE-ID` in `dev`, mTLS cert URI SAN in `prod`) | In `dev`, send `X-SPIFFE-ID`; in `prod`, present a valid client certificate with `spiffe://` URI SAN |
+| `auth_missing_identity` | 3 | 401 | `spiffe_auth` | Caller identity missing for active auth mode (`X-SPIFFE-ID` in `dev`, mTLS cert URI SAN in `prod`, or bearer token for external callers) | In `dev`, send `X-SPIFFE-ID` or bearer token; in `prod`, present a valid client certificate with `spiffe://` URI SAN or bearer token |
 | `auth_invalid_identity` | 3 | 401 | `spiffe_auth` | SPIFFE ID is not within the configured trust domain | Use a SPIFFE ID under the `SPIFFE_TRUST_DOMAIN` (default: `poc.local`) |
+| `auth_invalid_bearer_token` | 3 | 401 | `spiffe_auth` | OAuth bearer token signature, issuer, audience, expiry, or required scopes failed validation | Mint a fresh token from the configured Authorization Server and ensure it matches the gateway resource-server configuration |
 | `registry_hash_mismatch` | 5 | 403 | `tool_registry_verify` | Tool definition hash does not match the registered hash (possible tool poisoning) | Re-register the tool with the correct hash, or investigate potential tampering |
 | `registry_tool_unknown` | 5 | 403 | `tool_registry_verify` | The requested tool is not registered in the tool registry | Register the tool in `config/tool-registry.yaml` |
 | `authz_policy_denied` | 6 | 403 | `opa_policy` | OPA policy explicitly denied access to this tool | Check OPA policy grants for this agent/tool combination |
@@ -628,7 +631,7 @@ Every request to `POST /` passes through these middleware layers in order:
 |------|-----------|----------|---------|
 | 1 | Request Size Limit | Rejects payloads exceeding `MAX_REQUEST_SIZE_BYTES` (default: 10 MB) | Yes (413) |
 | 2 | Body Capture | Captures request body into context for downstream middleware | No |
-| 3 | SPIFFE Auth | Validates caller identity (`X-SPIFFE-ID` in `dev`; mTLS cert URI SAN in `prod`; header ignored in `prod`) | Yes (401) |
+| 3 | SPIFFE Auth | Validates caller identity (`X-SPIFFE-ID` in `dev`, mTLS cert URI SAN in `prod`, or OAuth bearer JWT in either mode). Successful bearer auth maps to `external/*` and strips `Authorization` before proxying. | Yes (401) |
 | 4 | Audit Log | Creates audit event with decision ID; logs result after request completes | No |
 | 5 | Tool Registry Verify | Verifies tool exists in registry and hash matches (anti-poisoning) | Yes (403) |
 | 6 | OPA Policy | Evaluates authorization policy (agent + tool + path grants) | Yes (403) |

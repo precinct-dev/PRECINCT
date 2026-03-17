@@ -1,0 +1,8 @@
+oauth_resource_server:
+  issuer: "http://mock-oauth-issuer.gateway.svc.cluster.local:8088"
+  audience: "gateway"
+  jwks_url: "http://mock-oauth-issuer.gateway.svc.cluster.local:8088/jwks.json"
+  required_scopes:
+    - "mcp:tools"
+  clock_skew_seconds: 30
+  cache_ttl_seconds: 60

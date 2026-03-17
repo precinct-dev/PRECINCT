@@ -26,12 +26,13 @@ type Config struct {
 	// DEV_LISTEN_HOST controls the bind host in dev mode (default loopback).
 	DevListenHost string
 	// ALLOW_NON_LOOPBACK_DEV_BIND is required to bind dev mode on non-loopback hosts.
-	AllowNonLoopbackDevBind bool
-	LogLevel                string
-	GroqAPIKey              string
-	GuardModelEndpoint      string // base URL for guard model API (default: Groq)
-	GuardModelName          string // model identifier for guard model (default: llama-prompt-guard-2-86m)
-	GuardAPIKey             string // API key for guard model (default: falls back to GroqAPIKey)
+	AllowNonLoopbackDevBind       bool
+	LogLevel                      string
+	OAuthResourceServerConfigPath string // Path to OAuth resource-server JWT validation config
+	GroqAPIKey                    string
+	GuardModelEndpoint            string // base URL for guard model API (default: Groq)
+	GuardModelName                string // model identifier for guard model (default: llama-prompt-guard-2-86m)
+	GuardAPIKey                   string // API key for guard model (default: falls back to GroqAPIKey)
 	// DLP_INJECTION_POLICY env var overrides dlp.injection YAML config (RFA-sd7).
 	// Only injection gets an env var override:
 	//   - credentials=block is a security invariant (must not be easily toggled via env var)
@@ -298,6 +299,7 @@ func ConfigFromEnv() *Config {
 		UpstreamURL:                     getEnvOrDefault("UPSTREAM_URL", "http://host.docker.internal:8081/mcp"),
 		OPAPolicyDir:                    getEnvOrDefault("OPA_POLICY_DIR", "/config/opa"),
 		ToolRegistryConfigPath:          getEnvOrDefault("TOOL_REGISTRY_CONFIG_PATH", "/config/tool-registry.yaml"),
+		OAuthResourceServerConfigPath:   resolveOptionalConfigPath("OAUTH_RESOURCE_SERVER_CONFIG_PATH", "/config/oauth-resource-server.yaml"),
 		CapabilityRegistryV2Path:        getEnvOrDefault("CAPABILITY_REGISTRY_V2_PATH", ""),
 		AuditLogPath:                    getEnvOrDefault("AUDIT_LOG_PATH", "/var/log/gateway/audit.jsonl"),
 		OPAPolicyPath:                   getEnvOrDefault("OPA_POLICY_PATH", "/config/opa/mcp_policy.rego"),
@@ -407,4 +409,17 @@ func parseListEnv(key string) []string {
 		normalized = append(normalized, value)
 	}
 	return normalized
+}
+
+func resolveOptionalConfigPath(envKey, defaultPath string) string {
+	if v := strings.TrimSpace(os.Getenv(envKey)); v != "" {
+		return v
+	}
+	if defaultPath == "" {
+		return ""
+	}
+	if _, err := os.Stat(defaultPath); err == nil {
+		return defaultPath
+	}
+	return ""
 }

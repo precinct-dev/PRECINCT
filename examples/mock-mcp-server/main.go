@@ -22,6 +22,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -275,6 +276,7 @@ func (s *Server) currentTools() []toolDef {
 
 func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[mock-mcp] %s %s (Mcp-Session-Id: %s)", r.Method, r.URL.Path, r.Header.Get("Mcp-Session-Id"))
+	setDebugHeaders(w, r)
 	switch r.Method {
 	case http.MethodPost:
 		s.handlePost(w, r)
@@ -283,6 +285,19 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeJSONRPCError(w, nil, -32600, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+func setDebugHeaders(w http.ResponseWriter, r *http.Request) {
+	authHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	if authHeader == "" {
+		authHeader = "<none>"
+	}
+	authMethod := strings.TrimSpace(r.Header.Get("X-Precinct-Auth-Method"))
+	if authMethod == "" {
+		authMethod = "<none>"
+	}
+	w.Header().Set("X-Mock-Authorization", authHeader)
+	w.Header().Set("X-Mock-Precinct-Auth-Method", authMethod)
 }
 
 func (s *Server) handlePost(w http.ResponseWriter, r *http.Request) {
