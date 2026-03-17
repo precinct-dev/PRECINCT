@@ -311,6 +311,48 @@ func TestResolvePrincipalRole_Integration(t *testing.T) {
 	}
 }
 
+func TestAuthContextHelpers(t *testing.T) {
+	ctx := context.Background()
+
+	ctx = WithAuthMethod(ctx, "oauth_jwt")
+	if got := GetAuthMethod(ctx); got != "oauth_jwt" {
+		t.Fatalf("GetAuthMethod: got %q, want %q", got, "oauth_jwt")
+	}
+
+	ctx = WithOAuthScopes(ctx, []string{"mcp:tools:list", "mcp:tools:call"})
+	gotScopes := GetOAuthScopes(ctx)
+	if len(gotScopes) != 2 {
+		t.Fatalf("GetOAuthScopes length: got %d, want %d", len(gotScopes), 2)
+	}
+	if gotScopes[0] != "mcp:tools:list" || gotScopes[1] != "mcp:tools:call" {
+		t.Fatalf("GetOAuthScopes got %v, want %v", gotScopes, []string{"mcp:tools:list", "mcp:tools:call"})
+	}
+
+	ctx = WithOAuthIssuer(ctx, "https://issuer.example")
+	if got := GetOAuthIssuer(ctx); got != "https://issuer.example" {
+		t.Fatalf("GetOAuthIssuer: got %q, want %q", got, "https://issuer.example")
+	}
+
+	ctx = WithOAuthScopes(ctx, nil)
+	if got := GetOAuthScopes(ctx); got != nil {
+		t.Fatalf("GetOAuthScopes after nil: got %#v, want nil", got)
+	}
+}
+
+func TestAuthContextHelpers_AreIndependentCopies(t *testing.T) {
+	scopes := []string{"mcp:tools:list"}
+	ctx := WithOAuthScopes(context.Background(), scopes)
+	scopes[0] = "mutated"
+
+	got := GetOAuthScopes(ctx)
+	if len(got) != 1 {
+		t.Fatalf("copied scopes length: got %d, want %d", len(got), 1)
+	}
+	if got[0] != "mcp:tools:list" {
+		t.Fatalf("copied scopes value: got %q, want %q", got[0], "mcp:tools:list")
+	}
+}
+
 // --- OC-t7go: PrincipalHeaders middleware tests ---
 
 // TestPrincipalHeaders_Injection verifies that the PrincipalHeaders middleware
@@ -319,12 +361,12 @@ func TestPrincipalHeaders_Injection(t *testing.T) {
 	const trustDomain = "poc.local"
 
 	tests := []struct {
-		name           string
-		spiffeID       string
-		expectedLevel  int
-		expectedRole   string
-		expectedCaps   string
-		expectedAuth   string
+		name          string
+		spiffeID      string
+		expectedLevel int
+		expectedRole  string
+		expectedCaps  string
+		expectedAuth  string
 	}{
 		{
 			name:          "Level0_System",
@@ -449,6 +491,30 @@ func TestPrincipalHeaders_Stripping(t *testing.T) {
 	}
 	if got := capturedHeaders.Get("X-Precinct-Auth-Method"); got != "header_declared" {
 		t.Errorf("Forged auth method not overwritten: got %q, want %q", got, "header_declared")
+	}
+}
+
+// TestPrincipalHeaders_UsesAuthMethodFromContext verifies a prior middleware can
+// explicitly set an authentication method that is preserved in the request header.
+func TestPrincipalHeaders_UsesAuthMethodFromContext(t *testing.T) {
+	var capturedHeaders http.Header
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+	})
+
+	handler := PrincipalHeaders(inner, "poc.local", "dev")
+
+	req := httptest.NewRequest("POST", "/mcp", nil)
+	ctx := WithSPIFFEID(req.Context(), "spiffe://poc.local/owner/alice")
+	ctx = WithAuthMethod(ctx, "token_exchange")
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if got := capturedHeaders.Get("X-Precinct-Auth-Method"); got != "token_exchange" {
+		t.Fatalf("X-Precinct-Auth-Method: got %q, want %q", got, "token_exchange")
 	}
 }
 
