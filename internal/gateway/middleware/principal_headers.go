@@ -47,10 +47,15 @@ func PrincipalHeaders(next http.Handler, trustDomain string, spiffeMode string) 
 			r.Header.Del(h)
 		}
 
-		// Step 2: Determine auth method from SPIFFE mode.
-		authMethod := "header_declared"
-		if spiffeMode == "prod" {
-			authMethod = "mtls_svid"
+		// Step 2: Determine auth method from context when present (for
+		// non-SPIFFE auth sources such as token exchange), falling back to
+		// legacy SPIFFE mode derivation to preserve existing behavior.
+		authMethod := GetAuthMethod(ctx)
+		if authMethod == "" {
+			authMethod = "header_declared"
+			if spiffeMode == "prod" {
+				authMethod = "mtls_svid"
+			}
 		}
 
 		// Step 3: Resolve principal role from SPIFFE ID in context.

@@ -55,6 +55,8 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 				})
 				return
 			}
+
+			ctx = WithAuthMethod(ctx, "header_declared")
 		} else {
 			// Prod mode: extract SPIFFE ID from verified mTLS client certificate.
 			// The TLS handshake already validated the cert chain against SPIRE's
@@ -77,6 +79,8 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 				})
 				return
 			}
+
+			ctx = WithAuthMethod(ctx, "mtls_svid")
 		}
 
 		// Record the SPIFFE ID as a span attribute

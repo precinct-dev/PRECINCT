@@ -11,9 +11,12 @@ const (
 	contextKeySessionID                 contextKey = "session_id"
 	contextKeyDecisionID                contextKey = "decision_id"
 	contextKeyTraceID                   contextKey = "trace_id"
+	contextKeyAuthMethod                contextKey = "auth_method"
 	contextKeySPIFFEID                  contextKey = "spiffe_id"
 	contextKeyRequestBody               contextKey = "request_body"
 	contextKeyToolHashVerified          contextKey = "tool_hash_verified"
+	contextKeyOAuthScopes               contextKey = "oauth_scopes"
+	contextKeyOAuthIssuer               contextKey = "oauth_issuer"
 	contextKeyOPADecisionID             contextKey = "opa_decision_id"
 	contextKeySecurityFlags             contextKey = "security_flags"
 	contextKeyFlagsCollector            contextKey = "flags_collector" // RFA-9i2: mutable collector for upstream propagation
@@ -99,6 +102,19 @@ func WithTraceID(ctx context.Context, traceID string) context.Context {
 	return context.WithValue(ctx, contextKeyTraceID, traceID)
 }
 
+// GetAuthMethod retrieves the authentication method from context.
+func GetAuthMethod(ctx context.Context) string {
+	if v := ctx.Value(contextKeyAuthMethod); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// WithAuthMethod stores the authentication method in context.
+func WithAuthMethod(ctx context.Context, authMethod string) context.Context {
+	return context.WithValue(ctx, contextKeyAuthMethod, authMethod)
+}
+
 // GetSPIFFEID retrieves SPIFFE ID from context
 func GetSPIFFEID(ctx context.Context) string {
 	if v := ctx.Value(contextKeySPIFFEID); v != nil {
@@ -110,6 +126,37 @@ func GetSPIFFEID(ctx context.Context) string {
 // WithSPIFFEID adds SPIFFE ID to context
 func WithSPIFFEID(ctx context.Context, spiffeID string) context.Context {
 	return context.WithValue(ctx, contextKeySPIFFEID, spiffeID)
+}
+
+// GetOAuthScopes retrieves OAuth scopes from context.
+func GetOAuthScopes(ctx context.Context) []string {
+	if v := ctx.Value(contextKeyOAuthScopes); v != nil {
+		return v.([]string)
+	}
+	return nil
+}
+
+// WithOAuthScopes stores OAuth scopes in context.
+func WithOAuthScopes(ctx context.Context, scopes []string) context.Context {
+	if scopes == nil {
+		return context.WithValue(ctx, contextKeyOAuthScopes, nil)
+	}
+	cloned := make([]string, len(scopes))
+	copy(cloned, scopes)
+	return context.WithValue(ctx, contextKeyOAuthScopes, cloned)
+}
+
+// GetOAuthIssuer retrieves the OAuth issuer from context.
+func GetOAuthIssuer(ctx context.Context) string {
+	if v := ctx.Value(contextKeyOAuthIssuer); v != nil {
+		return v.(string)
+	}
+	return ""
+}
+
+// WithOAuthIssuer stores the OAuth issuer in context.
+func WithOAuthIssuer(ctx context.Context, issuer string) context.Context {
+	return context.WithValue(ctx, contextKeyOAuthIssuer, issuer)
 }
 
 // GetRequestBody retrieves captured request body from context
