@@ -5,6 +5,8 @@ import (
 	"net"
 	"strconv"
 	"strings"
+
+	"github.com/precinct-dev/precinct/internal/gateway/middleware"
 )
 
 func normalizedSPIFFEMode(mode string) string {
@@ -34,6 +36,14 @@ func ValidateDevRuntimeGuardrails(cfg *Config) error {
 		return fmt.Errorf("config is required")
 	}
 	if normalizedSPIFFEMode(cfg.SPIFFEMode) == "prod" {
+		if cfg.PublicListenPort > 0 {
+			if strings.TrimSpace(cfg.OAuthResourceServerConfigPath) == "" {
+				return fmt.Errorf("SPIFFE_MODE=prod with public listener enabled requires OAUTH_RESOURCE_SERVER_CONFIG_PATH")
+			}
+			if _, err := middleware.LoadOAuthJWTConfig(cfg.OAuthResourceServerConfigPath); err != nil {
+				return fmt.Errorf("invalid OAuth resource server config for public listener: %w", err)
+			}
+		}
 		return nil
 	}
 	if !cfg.AllowInsecureDevMode {
@@ -56,4 +66,13 @@ func ResolveDevListenAddr(cfg *Config) string {
 		host = "127.0.0.1"
 	}
 	return net.JoinHostPort(host, strconv.Itoa(cfg.Port))
+}
+
+// ResolvePublicListenAddr returns the host:port listen address for the prod public listener.
+func ResolvePublicListenAddr(cfg *Config) string {
+	host := strings.TrimSpace(cfg.PublicListenHost)
+	if host == "" {
+		host = defaultPublicListenHost
+	}
+	return net.JoinHostPort(host, strconv.Itoa(cfg.PublicListenPort))
 }

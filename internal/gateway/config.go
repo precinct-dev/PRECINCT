@@ -59,6 +59,10 @@ type Config struct {
 	SPIKENexusURL                   string    // SPIKE Nexus URL for secret redemption via mTLS (RFA-a2y.1)
 	SPIFFETrustDomain               string    // SPIFFE trust domain (default: poc.local) (RFA-8z8.1)
 	SPIFFEListenPort                int       // Port for HTTPS when SPIFFE_MODE=prod (default: 9443) (RFA-8z8.1)
+	PublicListenPort                int       // Port for the public HTTP listener in SPIFFE_MODE=prod (default: 9090)
+	PublicListenHost                string    // Host/interface for the public HTTP listener in SPIFFE_MODE=prod (default: 0.0.0.0)
+	PublicRouteAllowlist            string    // Comma-separated exact public paths exposed by the prod public listener
+	PublicTrustedProxyCIDRs         string    // Comma-separated CIDRs allowed to supply trusted X-Forwarded-For data on the public listener
 	OTelEndpoint                    string    // OTLP gRPC endpoint for trace export (RFA-m6j.1)
 	OTelServiceName                 string    // OTel service name (RFA-m6j.1)
 	KeyDBURL                        string    // KeyDB/Redis URL for session persistence (RFA-hh5.1)
@@ -108,6 +112,12 @@ type Config struct {
 	// When empty in strict profiles, secure defaults are applied.
 	KeyDBAuthzAllowedSPIFFEIDs []string
 }
+
+const (
+	defaultPublicListenPort     = 9090
+	defaultPublicListenHost     = "0.0.0.0"
+	defaultPublicRouteAllowlist = "/,/health,/.well-known/oauth-protected-resource,/v1/auth/token-exchange"
+)
 
 // ConfigFromEnv loads configuration from environment variables
 func ConfigFromEnv() *Config {
@@ -219,6 +229,12 @@ func ConfigFromEnv() *Config {
 	if sp := os.Getenv("SPIFFE_LISTEN_PORT"); sp != "" {
 		if parsed, err := strconv.Atoi(sp); err == nil {
 			spiffeListenPort = parsed
+		}
+	}
+	publicListenPort := defaultPublicListenPort
+	if sp := os.Getenv("PUBLIC_LISTEN_PORT"); sp != "" {
+		if parsed, err := strconv.Atoi(sp); err == nil {
+			publicListenPort = parsed
 		}
 	}
 	spiffeTrustDomain := getEnvOrDefault("SPIFFE_TRUST_DOMAIN", "poc.local")
@@ -335,6 +351,10 @@ func ConfigFromEnv() *Config {
 		SPIKENexusURL:                   getEnvOrDefault("SPIKE_NEXUS_URL", ""),
 		SPIFFETrustDomain:               spiffeTrustDomain,
 		SPIFFEListenPort:                spiffeListenPort,
+		PublicListenPort:                publicListenPort,
+		PublicListenHost:                getEnvOrDefault("PUBLIC_LISTEN_HOST", defaultPublicListenHost),
+		PublicRouteAllowlist:            getEnvOrDefault("PUBLIC_ROUTE_ALLOWLIST", defaultPublicRouteAllowlist),
+		PublicTrustedProxyCIDRs:         strings.TrimSpace(os.Getenv("PUBLIC_TRUSTED_PROXY_CIDRS")),
 		OTelEndpoint:                    os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"), // empty = no-op (AC6)
 		OTelServiceName:                 getEnvOrDefault("OTEL_SERVICE_NAME", "precinct-gateway"),
 		KeyDBURL:                        getEnvOrDefault("KEYDB_URL", ""),
