@@ -56,8 +56,8 @@ type OPAInput struct {
 	Params      map[string]interface{} `json:"params"`
 	StepUpToken string                 `json:"step_up_token"`
 	Session     SessionInput           `json:"session"`
-	UI          *UIInput               `json:"ui,omitempty"`         // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
-	Principal   *PrincipalInput        `json:"principal,omitempty"`  // OC-3ch6: principal authority for level-based access control
+	UI          *UIInput               `json:"ui,omitempty"`          // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
+	Principal   *PrincipalInput        `json:"principal,omitempty"`   // OC-3ch6: principal authority for level-based access control
 	DataSource  *DataSourceInput       `json:"data_source,omitempty"` // OC-4zrf: data source access control
 }
 
@@ -211,10 +211,11 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 		// denied by tool-grant policy. UI methods are governed by dedicated
 		// MCP-UI controls in the gateway handler (request-side gating + response-side
 		// processors). We bypass OPA for:
+		//   - initialize, ping, and notifications/* (MCP handshake/control plane)
 		//   - tools/list (required MCP protocol method)
 		//   - resources/read ONLY when ui:// (governed by UI capability gating)
 		if parsed != nil {
-			if parsed.IsToolsList() {
+			if parsed.IsInitialize() || parsed.IsPing() || parsed.IsNotification() || parsed.IsToolsList() {
 				span.SetAttributes(
 					attribute.String("mcp.result", "allowed"),
 					attribute.String("mcp.reason", "protocol method passthrough"),

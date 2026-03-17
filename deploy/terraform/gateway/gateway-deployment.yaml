@@ -74,6 +74,9 @@ spec:
             # Tool registry configuration (mounted from ConfigMap)
             - name: TOOL_REGISTRY_CONFIG_PATH
               value: "/config/tool-registry.yaml"
+            # OAuth resource-server JWT validation config for external bearer auth.
+            - name: OAUTH_RESOURCE_SERVER_CONFIG_PATH
+              value: "/config/oauth-resource-server.yaml"
             # Unified capability registry v2 (Phase 3 tool/model governance)
             - name: CAPABILITY_REGISTRY_V2_PATH
               value: "/config/capability-registry-v2.yaml"
@@ -144,6 +147,11 @@ spec:
             - name: config-registry
               mountPath: /config/tool-registry.yaml.sig
               subPath: tool-registry.yaml.sig
+              readOnly: true
+            # OAuth resource-server config (external bearer-token validation)
+            - name: config-registry
+              mountPath: /config/oauth-resource-server.yaml
+              subPath: oauth-resource-server.yaml
               readOnly: true
             # Capability registry v2 (from ConfigMap)
             - name: config-registry
@@ -233,6 +241,8 @@ spec:
                 path: tool-registry.yaml
               - key: tool-registry.yaml.sig
                 path: tool-registry.yaml.sig
+              - key: oauth-resource-server.yaml
+                path: oauth-resource-server.yaml
               - key: capability-registry-v2.yaml
                 path: capability-registry-v2.yaml
               - key: model-provider-catalog.v2.yaml

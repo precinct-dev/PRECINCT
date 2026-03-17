@@ -43,6 +43,7 @@ resources:
   - data-networkpolicies.yaml
   - spire-token-generator.yaml
   - gateway-secrets.yaml
+  - mock-oauth-issuer.yaml
   # Development namespace with policy-controller exemption
   - namespace-dev-exempt.yaml
 
@@ -54,6 +55,7 @@ configMapGenerator:
     files:
       - tool-registry.yaml=gateway-config/tool-registry.yaml
       - tool-registry.yaml.sig=gateway-config/tool-registry.yaml.sig
+      - oauth-resource-server.yaml=gateway-config/oauth-resource-server.yaml
       - destinations.yaml=gateway-config/destinations.yaml
       - capability-registry-v2.yaml=gateway-config/capability-registry-v2.yaml
       - model-provider-catalog.v2.yaml=gateway-config/model-provider-catalog.v2.yaml

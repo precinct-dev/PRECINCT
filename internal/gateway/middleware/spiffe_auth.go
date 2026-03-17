@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/url"
 	"strings"
@@ -8,6 +9,20 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
+
+type SPIFFEAuthOption func(*spiffeAuthConfig)
+
+type spiffeAuthConfig struct {
+	oauthJWT    *OAuthJWTConfig
+	trustDomain string
+}
+
+func WithOAuthJWTConfig(cfg *OAuthJWTConfig, trustDomain string) SPIFFEAuthOption {
+	return func(runtime *spiffeAuthConfig) {
+		runtime.oauthJWT = cfg
+		runtime.trustDomain = trustDomain
+	}
+}
 
 // SPIFFEAuth validates SPIFFE identity.
 // In dev mode: reads from X-SPIFFE-ID header (Phase 1 behavior).
@@ -17,7 +32,12 @@ import (
 // certificate presented during the mTLS handshake. The TLS stack (configured
 // by SPIFFETLSConfig) already validated the cert against the SPIRE trust bundle;
 // this middleware extracts the identity for downstream authorization.
-func SPIFFEAuth(next http.Handler, mode string) http.Handler {
+func SPIFFEAuth(next http.Handler, mode string, opts ...SPIFFEAuthOption) http.Handler {
+	runtime := spiffeAuthConfig{}
+	for _, opt := range opts {
+		opt(&runtime)
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// RFA-m6j.1: Create OTel span for step 3
 		ctx, span := tracer.Start(r.Context(), "gateway.spiffe_auth",
@@ -28,11 +48,24 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 		)
 		defer span.End()
 
-		var spiffeID string
+		spiffeID, bearerUsed, bearerErr := resolveOAuthBearerIdentity(ctx, r, &runtime)
+		if bearerErr != nil {
+			WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
+				Code:           ErrAuthInvalidBearerToken,
+				Message:        "Invalid OAuth bearer token",
+				Middleware:     "spiffe_auth",
+				MiddlewareStep: 3,
+				Remediation:    "Present a valid bearer token issued by the configured OAuth authorization server.",
+			})
+			return
+		}
+		ctx = r.Context()
 
 		if mode == "dev" {
 			// Dev mode: read from header (Phase 1 behavior preserved)
-			spiffeID = r.Header.Get("X-SPIFFE-ID")
+			if spiffeID == "" {
+				spiffeID = r.Header.Get("X-SPIFFE-ID")
+			}
 			if spiffeID == "" {
 				WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
 					Code:           ErrAuthMissingIdentity,
@@ -56,13 +89,17 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 				return
 			}
 
-			ctx = WithAuthMethod(ctx, "header_declared")
+			if GetAuthMethod(ctx) == "" {
+				ctx = WithAuthMethod(ctx, "header_declared")
+			}
 		} else {
 			// Prod mode: extract SPIFFE ID from verified mTLS client certificate.
 			// The TLS handshake already validated the cert chain against SPIRE's
 			// trust bundle (via go-spiffe tlsconfig). We extract the SPIFFE ID
 			// from the URI SAN (Subject Alternative Name) of the peer certificate.
-			spiffeID = ExtractSPIFFEIDFromTLS(r)
+			if spiffeID == "" {
+				spiffeID = ExtractSPIFFEIDFromTLS(r)
+			}
 			if spiffeID == "" {
 				message := "No valid SPIFFE ID in client certificate"
 				remediation := "Present a valid client certificate with a spiffe:// URI SAN."
@@ -80,7 +117,9 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 				return
 			}
 
-			ctx = WithAuthMethod(ctx, "mtls_svid")
+			if GetAuthMethod(ctx) == "" {
+				ctx = WithAuthMethod(ctx, "mtls_svid")
+			}
 		}
 
 		// Record the SPIFFE ID as a span attribute
@@ -88,9 +127,56 @@ func SPIFFEAuth(next http.Handler, mode string) http.Handler {
 
 		// Add SPIFFE ID to context
 		ctx = WithSPIFFEID(ctx, spiffeID)
+		if bearerUsed {
+			r.Header.Del("Authorization")
+		}
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func resolveOAuthBearerIdentity(ctx context.Context, r *http.Request, runtime *spiffeAuthConfig) (string, bool, error) {
+	if runtime == nil || runtime.oauthJWT == nil {
+		return "", false, nil
+	}
+
+	bearerToken, ok := extractBearerToken(r.Header.Get("Authorization"))
+	if !ok {
+		return "", false, nil
+	}
+
+	claims, err := ValidateOAuthJWT(ctx, bearerToken, *runtime.oauthJWT)
+	if err != nil {
+		return "", true, err
+	}
+
+	ctxWithClaims := WithAuthMethod(ctx, "oauth_jwt")
+	ctxWithClaims = WithOAuthIssuer(ctxWithClaims, claims.Issuer)
+	ctxWithClaims = WithOAuthScopes(ctxWithClaims, claims.Scopes)
+	*r = *r.WithContext(ctxWithClaims)
+
+	return mapOAuthSubjectToSPIFFEID(runtime.trustDomain, claims.Subject), true, nil
+}
+
+func extractBearerToken(headerValue string) (string, bool) {
+	trimmed := strings.TrimSpace(headerValue)
+	if !strings.HasPrefix(trimmed, "Bearer ") {
+		return "", false
+	}
+
+	token := strings.TrimSpace(strings.TrimPrefix(trimmed, "Bearer "))
+	if token == "" {
+		return "", false
+	}
+	return token, true
+}
+
+func mapOAuthSubjectToSPIFFEID(trustDomain, subject string) string {
+	subject = strings.Trim(strings.TrimSpace(subject), "/")
+	if subject == "" {
+		subject = "anonymous"
+	}
+	return "spiffe://" + trustDomain + "/external/" + url.PathEscape(subject)
 }
 
 // ExtractSPIFFEIDFromTLS extracts the SPIFFE ID from the verified TLS client

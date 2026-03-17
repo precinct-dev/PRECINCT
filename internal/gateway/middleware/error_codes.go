@@ -11,6 +11,7 @@ const (
 	// SPIFFE Auth (step 3) -- 401 Unauthorized
 	ErrAuthMissingIdentity = "auth_missing_identity"
 	ErrAuthInvalidIdentity = "auth_invalid_identity"
+	ErrAuthInvalidBearerToken = "auth_invalid_bearer_token"
 
 	// OPA Policy (step 6) -- 403 Forbidden
 	ErrAuthzPolicyDenied    = "authz_policy_denied"

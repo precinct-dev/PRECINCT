@@ -33,6 +33,7 @@ import (
 type Gateway struct {
 	config                     *Config
 	proxy                      *httputil.ReverseProxy
+	oauthJWTConfig             *middleware.OAuthJWTConfig
 	auditor                    *middleware.Auditor
 	opa                        *middleware.OPAEngine
 	registry                   *middleware.ToolRegistry
@@ -70,7 +71,7 @@ type Gateway struct {
 	extensionRegistryStop      func()                            // stop function for extension registry fsnotify watcher
 	adminAuthzAllowedSPIFFEIDs map[string]struct{}               // explicit SPIFFE allowlist for /admin/* authorization
 	portAdapters               []PortAdapter                     // registered port adapters for third-party integrations
-	trustedAgentDLP            *middleware.TrustedAgentDLPConfig  // OC-xj4w: port-scoped trusted agent DLP overrides
+	trustedAgentDLP            *middleware.TrustedAgentDLPConfig // OC-xj4w: port-scoped trusted agent DLP overrides
 	rlmEngine                  *rlmGovernanceEngine              // OC-tjtj: RLM multi-agent lineage governance engine
 }
 
@@ -105,6 +106,14 @@ func New(cfg *Config) (*Gateway, error) {
 
 	// Create reverse proxy
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
+
+	var oauthJWTConfig *middleware.OAuthJWTConfig
+	if strings.TrimSpace(cfg.OAuthResourceServerConfigPath) != "" {
+		oauthJWTConfig, err = middleware.LoadOAuthJWTConfig(cfg.OAuthResourceServerConfigPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to load oauth resource server config: %w", err)
+		}
+	}
 
 	// Create components
 	auditor, err := middleware.NewAuditor(cfg.AuditLogPath, cfg.OPAPolicyPath, cfg.ToolRegistryConfigPath)
@@ -528,6 +537,7 @@ func New(cfg *Config) (*Gateway, error) {
 	return &Gateway{
 		config:                     cfg,
 		proxy:                      proxy,
+		oauthJWTConfig:             oauthJWTConfig,
 		auditor:                    auditor,
 		opa:                        opa,
 		registry:                   registry,
@@ -616,7 +626,7 @@ func (g *Gateway) Handler() http.Handler {
 	} else {
 		handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy()) // 7
 	}
-	handler = middleware.OPAPolicy(handler, g.opa)                           // 6
+	handler = middleware.OPAPolicy(handler, g.opa) // 6
 	if g.extensionRegistry != nil {
 		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostAuthz, g.auditor) // post_authz: after OPA, before DLP
 	}
@@ -641,10 +651,14 @@ func (g *Gateway) Handler() http.Handler {
 	) // 5
 	handler = middleware.AuditLog(handler, g.auditor)                                               // 4
 	handler = middleware.PrincipalHeaders(handler, g.config.SPIFFETrustDomain, g.config.SPIFFEMode) // 3b: OC-t7go
-	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode)                                   // 3
-	handler = middleware.BodyCapture(handler)                                                       // 2
-	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes)                    // 1
-	handler = middleware.RequestMetrics(handler)                                                    // 0 - outermost: record request_total with status code
+	if g.oauthJWTConfig != nil {
+		handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode, middleware.WithOAuthJWTConfig(g.oauthJWTConfig, g.config.SPIFFETrustDomain)) // 3
+	} else {
+		handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode) // 3
+	}
+	handler = middleware.BodyCapture(handler)                                    // 2
+	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
+	handler = middleware.RequestMetrics(handler)                                 // 0 - outermost: record request_total with status code
 	handler = middleware.RuntimeProfile(handler, g.config.SPIFFEMode, g.config.EnforcementProfile)
 
 	// Add endpoints
@@ -1670,6 +1684,9 @@ func (g *Gateway) dataHandleDereferenceHandler() http.Handler {
 	})
 
 	// Apply SPIFFE auth middleware to the dereference endpoint
+	if g.oauthJWTConfig != nil {
+		return middleware.SPIFFEAuth(inner, g.config.SPIFFEMode, middleware.WithOAuthJWTConfig(g.oauthJWTConfig, g.config.SPIFFETrustDomain))
+	}
 	return middleware.SPIFFEAuth(inner, g.config.SPIFFEMode)
 }
 

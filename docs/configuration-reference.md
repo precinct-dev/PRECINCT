@@ -229,6 +229,7 @@ export KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS="spiffe://precinct.poc/ns/data/sa/keydb,sp
 | `OPA_POLICY_DIR` | `/config/opa` | Directory containing OPA Rego policies and data files |
 | `OPA_POLICY_PATH` | `/config/opa/mcp_policy.rego` | Path to the main OPA authorization policy file |
 | `TOOL_REGISTRY_CONFIG_PATH` | `/config/tool-registry.yaml` | Path to the tool registry YAML with SHA-256 hashes |
+| `OAUTH_RESOURCE_SERVER_CONFIG_PATH` | `/config/oauth-resource-server.yaml` when present | Path to the OAuth resource-server YAML used for bearer JWT validation (`issuer`, `audience`, `jwks_url`, optional `required_scopes`, `clock_skew_seconds`, `cache_ttl_seconds`) |
 | `TOOL_REGISTRY_PUBLIC_KEY` | _(empty)_ | Path to PEM public key for tool registry attestation. Empty is allowed only in `dev`; strict profiles require this value and reject unsigned reload/startup artifacts |
 | `OPA_POLICY_PUBLIC_KEY` | _(empty)_ | Path to PEM public key for OPA policy reload attestation. Empty is allowed only in `dev`; strict profiles require this value and reject unsigned or tampered OPA reloads |
 | `DESTINATIONS_CONFIG_PATH` | `/config/destinations.yaml` | Path to the destination allowlist for step-up gating |

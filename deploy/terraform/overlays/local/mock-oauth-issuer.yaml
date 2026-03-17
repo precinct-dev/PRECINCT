@@ -1,0 +1,85 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-oauth-issuer
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: mock-oauth-issuer
+    app.kubernetes.io/component: oauth-fixture
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-oauth-issuer
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-oauth-issuer
+        app.kubernetes.io/component: oauth-fixture
+    spec:
+      containers:
+        - name: mock-oauth-issuer
+          image: mock-oauth-issuer:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8088
+              name: http
+          env:
+            - name: MOCK_OAUTH_ISSUER
+              value: "http://mock-oauth-issuer.gateway.svc.cluster.local:8088"
+            - name: MOCK_OAUTH_ISSUER_PORT
+              value: "8088"
+            - name: MOCK_OAUTH_KEY_ID
+              value: "mock-oauth-issuer-key"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-oauth-issuer
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: mock-oauth-issuer
+    app.kubernetes.io/component: oauth-fixture
+spec:
+  selector:
+    app.kubernetes.io/name: mock-oauth-issuer
+  ports:
+    - name: http
+      port: 8088
+      targetPort: http

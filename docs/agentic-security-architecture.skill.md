@@ -24,7 +24,7 @@ upstream MCP server.
 Agent (Go/Python SDK)
   |
   | POST / (JSON-RPC 2.0)
-  | Headers: X-SPIFFE-ID, X-Session-ID, Content-Type
+  | Headers: X-SPIFFE-ID or Authorization: Bearer <jwt>, X-Session-ID, Content-Type
   v
 Gateway Middleware Chain (steps 1-13)
   |
@@ -81,12 +81,14 @@ Agent receives JSON-RPC result
 
 | Mode | SPIFFE_MODE | Auth Mechanism | SPIKE | Use Case |
 |------|-------------|----------------|-------|----------|
-| Development | `dev` | `X-SPIFFE-ID` header | Dev redeemer (deterministic mock secrets) | Local development |
-| Production | `prod` | mTLS client certificate | SPIKE Nexus (real) | Production deployment |
+| Development | `dev` | `X-SPIFFE-ID` header or OAuth bearer JWT | Dev redeemer (deterministic mock secrets) | Local development |
+| Production | `prod` | mTLS client certificate or OAuth bearer JWT | SPIKE Nexus (real) | Production deployment |
 
-In `dev` mode, the `X-SPIFFE-ID` header is trusted directly. In `prod` mode,
-the SPIFFE ID is extracted from the mTLS client certificate and the header
-is ignored.
+In `dev` mode, the `X-SPIFFE-ID` header is trusted directly unless the caller
+authenticates with `Authorization: Bearer <jwt>`. In `prod` mode, the SPIFFE ID
+is extracted from the mTLS client certificate unless bearer auth is used.
+Validated bearer tokens are mapped to `spiffe://<trust-domain>/external/<subject>`
+and stripped before the upstream MCP server sees the request.
 
 ---
 
@@ -378,6 +380,7 @@ Span name: `gateway.tool_call.<tool_name>`. Attributes set:
 |----------------|----------------------|--------------------------------------|
 | `Content-Type` | `application/json`   | JSON-RPC payload encoding            |
 | `X-SPIFFE-ID`  | SPIFFE identity URI  | Authentication and authorization     |
+| `Authorization` | Bearer access token | External OAuth resource-server auth  |
 | `X-Session-ID` | UUID                 | Session tracking, exfiltration detection |
 
 ### JSON-RPC 2.0 Wire Format
@@ -1076,6 +1079,7 @@ plus 3 SDK-only codes.
 | `request_too_large` | 1 | 413 | Reduce payload or increase `MAX_REQUEST_SIZE_BYTES` |
 | `auth_missing_identity` | 3 | 401 | Add `X-SPIFFE-ID` header with valid SPIFFE identity |
 | `auth_invalid_identity` | 3 | 401 | Use a SPIFFE ID under the configured trust domain |
+| `auth_invalid_bearer_token` | 3 | 401 | Refresh the OAuth bearer token and verify issuer/audience/scope/JWKS config |
 | `registry_tool_unknown` | 5 | 403 | Register the tool in `config/tool-registry.yaml` |
 | `registry_hash_mismatch` | 5 | 403 | Re-register tool with correct hash; investigate tampering |
 | `authz_policy_denied` | 6 | 403 | Check OPA policy grants for this agent/tool combination |
@@ -1143,7 +1147,7 @@ Is HTTP status 503?
 |------|---------------------|-----------|-----------|---------|
 | 1    | Request Size Limit  | Yes       | 413       | Reject oversized payloads |
 | 2    | Body Capture        | No        | --        | Capture body for downstream |
-| 3    | SPIFFE Auth         | Yes       | 401       | Validate caller identity |
+| 3    | SPIFFE Auth         | Yes       | 401       | Validate caller identity from SPIFFE or OAuth bearer JWT |
 | 4    | Audit Log           | No        | --        | Record attempt with decision_id |
 | 5    | Tool Registry Verify| Yes       | 403       | Anti-poisoning hash check |
 | 6    | OPA Policy          | Yes       | 403       | Authorization evaluation |
