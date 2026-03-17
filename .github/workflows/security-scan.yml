@@ -175,19 +175,19 @@ jobs:
     if: always()
     steps:
       - name: Download gosec results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: gosec-results
           path: gosec-results
 
       - name: Download Trivy fs results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: trivy-fs-results
           path: trivy-fs-results
 
       - name: Download Trivy image results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: trivy-image-results
           path: trivy-image-results
