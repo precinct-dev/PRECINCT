@@ -1,0 +1,40 @@
+# ------------------------------------------------------------------------------
+# NetworkPolicy: Allow Ingress Controller --> Gateway
+# Story: OC-e3d3 (Public Edge Hardening)
+#
+# The base policies enforce default-deny in the gateway namespace.
+# This additional NetworkPolicy allows traffic from the ingress controller
+# namespace to reach gateway pods labeled with precinct.io/public-edge=true
+# on the public HTTP port (9090).
+#
+# The ingress controller namespace must be labeled:
+#   networking.agentic.io/ingress-controller: "true"
+#
+# This is a minimal opening: only the ingress controller can reach the gateway
+# over the public port, and only pods explicitly labeled for public edge
+# exposure are selected.
+# ------------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller-to-gateway
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: precinct-gateway
+    app.kubernetes.io/part-of: precinct-gateway
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: precinct-gateway
+      precinct.io/public-edge: "true"
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              networking.agentic.io/ingress-controller: "true"
+      ports:
+        - protocol: TCP
+          port: 9090

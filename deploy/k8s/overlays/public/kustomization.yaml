@@ -1,0 +1,98 @@
+# ------------------------------------------------------------------------------
+# Kustomize Public Overlay
+# Story: OC-e3d3 (Public Edge Hardening)
+#
+# Exposes the PRECINCT gateway publicly with:
+#   - Ingress restricting routes to POST /, GET /health,
+#     GET /.well-known/oauth-protected-resource
+#   - TLS termination via cert-manager (placeholder annotations)
+#   - NetworkPolicy allowing ingress-controller --> gateway traffic
+#   - Additional labels on the gateway namespace for ingress-controller selection
+#
+# NOT publicly exposed (by design):
+#   - /admin/*               -- internal administration
+#   - /openai/v1/chat/completions -- internal model plane
+#   - /data/dereference      -- internal data operations
+#
+# Usage:
+#   kubectl apply --dry-run=client -k deploy/k8s/overlays/public
+#   kubectl apply -k deploy/k8s/overlays/public
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+  - ingress.yaml
+  - network-policy-ingress-controller.yaml
+
+commonAnnotations:
+  app.kubernetes.io/environment: public
+
+patches:
+  # Enable the public listener on the gateway deployment and configure the
+  # explicit route allowlist so that only the three approved paths are served.
+  - target:
+      kind: Deployment
+      name: precinct-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: precinct-gateway
+        namespace: gateway
+      spec:
+        template:
+          metadata:
+            labels:
+              # Label for NetworkPolicy selection by the ingress controller rule
+              precinct.io/public-edge: "true"
+          spec:
+            containers:
+              - name: precinct-gateway
+                env:
+                  # Separate internal mTLS listener from public HTTP listener
+                  - name: SPIFFE_LISTEN_PORT
+                    value: "9443"
+                  - name: PUBLIC_LISTEN_HOST
+                    value: "0.0.0.0"
+                  - name: PUBLIC_LISTEN_PORT
+                    value: "9090"
+                  # Restrict the public listener to only the approved routes
+                  - name: PUBLIC_ROUTE_ALLOWLIST
+                    value: "/,/health,/.well-known/oauth-protected-resource"
+                  - name: ENFORCEMENT_PROFILE
+                    value: "prod_standard"
+                  - name: LOG_LEVEL
+                    value: "info"
+                ports:
+                  - name: http
+                    containerPort: 9090
+                    protocol: TCP
+                  - name: mtls
+                    containerPort: 9443
+                    protocol: TCP
+
+  # Patch the Service to expose both the public HTTP port and the internal mTLS
+  # port, each with a named port for the Ingress to reference.
+  - target:
+      kind: Service
+      name: precinct-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: precinct-gateway
+        namespace: gateway
+      spec:
+        ports:
+          - name: http
+            port: 9090
+            targetPort: http
+            protocol: TCP
+          - name: mtls
+            port: 9443
+            targetPort: mtls
+            protocol: TCP
