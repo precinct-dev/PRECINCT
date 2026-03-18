@@ -35,6 +35,19 @@ tool_grants:
       - database_write
       - email_send
 
+  # OpenClaw gateway agent -- external service routed through PRECINCT.
+  - spiffe_pattern: "spiffe://poc.local/openclaw"
+    description: "OpenClaw AI gateway - fail-closed, all egress through PRECINCT"
+    allowed_tools:
+      - tavily_search
+      - web_search
+      - search
+      - llm_query
+    max_data_classification: internal
+    requires_approval_for:
+      - bash
+      - file_write
+
   # DSPy-specific agent (more granular control if needed)
   - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
     description: "DSPy Research Agent - specialized for structured research workflows"
@@ -155,10 +168,13 @@ tool_grants:
     max_data_classification: internal
 
   - spiffe_pattern: "spiffe://poc.local/external/*"
-    description: "External users -- read-only access; principal level gates destructive/messaging actions"
+    description: "External OAuth users -- minimal tools, deny-by-default; requires mcp:tools:call scope and per-tool scopes"
     allowed_tools:
       - tavily_search
     max_data_classification: public
+    required_scopes:
+      tavily_search:
+        - "mcp:tool:tavily_search"
 
 # Data classification levels (from least to most sensitive)
 data_classifications:
