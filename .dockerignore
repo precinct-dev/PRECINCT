@@ -142,14 +142,10 @@ credentials/
 *.crt
 *.csr
 
-# Specific secret patterns
+# Specific secret patterns (scoped to avoid matching Go source files)
 **/secrets.yaml
 **/secrets.yml
-**/*secret*
-**/*credential*
-**/*password*
 **/api_key*
-**/token*
 
 # ============================================================================
 # CI/CD
