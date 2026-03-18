@@ -2,7 +2,11 @@ package mcpserver
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/otel/trace"
@@ -162,4 +166,140 @@ func WithSPIRE(socketPath string) Option {
 	return func(s *Server) {
 		s.spireSocketPath = socketPath
 	}
+}
+
+// applyEnvOverrides reads well-known environment variables and applies them
+// to the server configuration. Environment variables take precedence over
+// functional options. Invalid values produce errors with the standard
+// "mcpserver: <message>" format.
+//
+// Supported variables:
+//
+//	PORT                -> s.port
+//	SPIRE_AGENT_SOCKET  -> s.spireSocketPath (already handled by resolveSpireSocketPath)
+//	LOG_LEVEL           -> s.logger level (debug, info, warn, error)
+//	CACHE_ENABLED       -> s.cachingDisabled (false disables)
+//	CACHE_TTL           -> s.cacheTTL
+//	RATE_LIMIT_ENABLED  -> s.rateLimitDisabled (false disables)
+//	RATE_LIMIT_RPS      -> s.rateRPS
+//	RATE_LIMIT_BURST    -> s.rateBurst
+//	SHUTDOWN_TIMEOUT    -> s.shutdownTimeout
+func applyEnvOverrides(s *Server) error {
+	var errs []error
+
+	// PORT
+	if v, ok := os.LookupEnv("PORT"); ok {
+		port, err := strconv.Atoi(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("mcpserver: invalid PORT %q: %w", v, err))
+		} else {
+			s.port = port
+		}
+	}
+
+	// SPIRE_AGENT_SOCKET -- resolved at validation/run time via
+	// resolveSpireSocketPath, but we also set it directly so that
+	// validate() picks it up.
+	if v, ok := os.LookupEnv("SPIRE_AGENT_SOCKET"); ok && v != "" {
+		s.spireSocketPath = v
+	}
+
+	// LOG_LEVEL
+	if v, ok := os.LookupEnv("LOG_LEVEL"); ok {
+		lower := strings.ToLower(v)
+		if !validLogLevels[lower] {
+			errs = append(errs, fmt.Errorf("mcpserver: invalid LOG_LEVEL %q: must be one of debug, info, warn, error", v))
+		} else {
+			var level slog.Level
+			switch lower {
+			case "debug":
+				level = slog.LevelDebug
+			case "info":
+				level = slog.LevelInfo
+			case "warn":
+				level = slog.LevelWarn
+			case "error":
+				level = slog.LevelError
+			}
+			s.logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level}))
+		}
+	}
+
+	// CACHE_ENABLED
+	if v, ok := os.LookupEnv("CACHE_ENABLED"); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("mcpserver: invalid CACHE_ENABLED %q: %w", v, err))
+		} else {
+			s.cachingDisabled = !b
+		}
+	}
+
+	// CACHE_TTL
+	if v, ok := os.LookupEnv("CACHE_TTL"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("mcpserver: invalid CACHE_TTL %q: %w", v, err))
+		} else {
+			s.cacheTTL = d
+		}
+	}
+
+	// RATE_LIMIT_ENABLED
+	if v, ok := os.LookupEnv("RATE_LIMIT_ENABLED"); ok {
+		b, err := strconv.ParseBool(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("mcpserver: invalid RATE_LIMIT_ENABLED %q: %w", v, err))
+		} else {
+			s.rateLimitDisabled = !b
+		}
+	}
+
+	// RATE_LIMIT_RPS
+	if v, ok := os.LookupEnv("RATE_LIMIT_RPS"); ok {
+		rps, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("mcpserver: invalid RATE_LIMIT_RPS %q: %w", v, err))
+		} else {
+			s.rateRPS = rps
+		}
+	}
+
+	// RATE_LIMIT_BURST
+	if v, ok := os.LookupEnv("RATE_LIMIT_BURST"); ok {
+		burst, err := strconv.Atoi(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("mcpserver: invalid RATE_LIMIT_BURST %q: %w", v, err))
+		} else {
+			s.rateBurst = burst
+		}
+	}
+
+	// SHUTDOWN_TIMEOUT
+	if v, ok := os.LookupEnv("SHUTDOWN_TIMEOUT"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("mcpserver: invalid SHUTDOWN_TIMEOUT %q: %w", v, err))
+		} else {
+			s.shutdownTimeout = d
+		}
+	}
+
+	if len(errs) == 0 {
+		return nil
+	}
+	return fmt.Errorf("%w", joinErrors(errs))
+}
+
+// joinErrors combines multiple errors into a single error using errors.Join.
+func joinErrors(errs []error) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	// Use a simple newline-separated format for batch errors.
+	var msgs []string
+	for _, e := range errs {
+		msgs = append(msgs, e.Error())
+	}
+	return fmt.Errorf("%s", strings.Join(msgs, "\n"))
 }
