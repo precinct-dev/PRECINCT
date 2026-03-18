@@ -16,6 +16,9 @@ import (
 	"crypto/tls"
 	"os"
 	"strings"
+
+	"github.com/spiffe/go-spiffe/v2/spiffetls/tlsconfig"
+	"github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 
 // x509Closer is the interface that x509Source must satisfy for lifecycle
@@ -34,12 +37,24 @@ func resolveSpireSocketPath(s *Server) string {
 }
 
 // buildSPIRETLSConfig returns a tls.Config with the required SPIRE mTLS
-// properties. When a real x509Source is provided, it configures
-// GetCertificate and GetConfigForClient from the source. In all cases it
-// sets:
+// properties. When a real *workloadapi.X509Source is provided, it uses
+// the go-spiffe tlsconfig package to configure certificate callbacks and
+// client CA verification from the SPIRE trust bundle. When nil is passed
+// (unit tests), it returns a basic config with the required properties.
+//
+// In all cases it guarantees:
 //   - ClientAuth = tls.RequireAndVerifyClientCert
 //   - MinVersion = tls.VersionTLS12
-func buildSPIRETLSConfig(_ x509Closer) *tls.Config {
+func buildSPIRETLSConfig(source x509Closer) *tls.Config {
+	// When a real X509Source is provided, delegate to the go-spiffe
+	// tlsconfig package for proper SVID-backed mTLS.
+	if src, ok := source.(*workloadapi.X509Source); ok {
+		cfg := tlsconfig.MTLSServerConfig(src, src, tlsconfig.AuthorizeAny())
+		cfg.MinVersion = tls.VersionTLS12
+		return cfg
+	}
+
+	// Fallback: basic config for unit tests (nil source).
 	return &tls.Config{
 		ClientAuth: tls.RequireAndVerifyClientCert,
 		MinVersion: tls.VersionTLS12,

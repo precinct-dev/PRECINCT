@@ -214,7 +214,7 @@ observability-reset: ## Destroy all observability backend data (Phoenix + OpenSe
 # 5. CI / Quality (ci, lint, test, production-readiness-validate)
 # ===========================================================================
 
-.PHONY: ci lint test test-unit test-integration test-opa test-cli test-e2e production-readiness-validate story-evidence-validate tracker-surface-validate
+.PHONY: ci lint test test-unit test-integration test-mcpserver-integration test-opa test-cli test-e2e production-readiness-validate story-evidence-validate tracker-surface-validate
 
 ci: lint test conformance build-images ## Full CI pipeline (lint + test + conformance + build)
 	@echo "CI pipeline complete"
@@ -244,6 +244,28 @@ test-integration: ## Run tagged integration tests against an ensured local stack
 	@keydb_url="$$(bash scripts/resolve-keydb-url.sh)"; \
 	echo "Using PRECINCT_KEYDB_URL=$$keydb_url"; \
 	PRECINCT_KEYDB_URL="$$keydb_url" go test -tags=integration ./tests/integration/... -v -timeout 30m
+
+DC_MCPTEST := docker compose -f $(COMPOSE_DIR)/docker-compose.yml -f $(COMPOSE_DIR)/docker-compose.mcpserver-test.yml
+
+test-mcpserver-integration: ## Run mcpserver SPIRE mTLS integration tests (AC 10-11)
+	@echo "Starting SPIRE stack for mcpserver integration tests..."
+	@rm -rf $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket
+	@mkdir -p $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
+	@chmod 777 $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
+	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
+		docker network create phoenix-observability-network 2>/dev/null || true; \
+	fi
+	@$(DC_MCPTEST) up -d --build --wait spire-server spire-token-generator spire-agent spire-entry-registrar-test 2>&1 || \
+		{ echo "ERROR: Failed to start SPIRE stack"; $(DC_MCPTEST) logs; $(DC_MCPTEST) down -v --remove-orphans; exit 1; }
+	@echo ""
+	@echo "Running mcpserver integration tests..."
+	@SPIRE_AGENT_SOCKET=$(COMPOSE_DIR)/data/spire-agent-socket/api.sock \
+		go test ./pkg/mcpserver/... -tags=integration -v -timeout 5m; \
+		test_exit=$$?; \
+		echo ""; \
+		echo "Tearing down SPIRE stack..."; \
+		$(DC_MCPTEST) down -v --remove-orphans; \
+		exit $$test_exit
 
 test-opa: ## Run OPA policy tests
 	@echo "Running OPA policy tests..."
