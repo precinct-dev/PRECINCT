@@ -1,12 +1,9 @@
 package mcpserver
 
-// spire_helpers.go contains SPIRE contract stubs for the RED phase.
+// spire_helpers.go contains SPIRE helper functions and types used by both
+// the production code (spire.go) and tests (spire_test.go).
 //
-// These functions define the contracts for SPIRE integration. The GREEN
-// phase will replace this file with spire.go containing the real
-// implementation using go-spiffe workloadapi and tlsconfig.
-//
-// Contracts defined here:
+// Functions and types:
 //   - x509Closer interface
 //   - resolveSpireSocketPath(s *Server) string
 //   - buildSPIRETLSConfig(x509Source x509Closer) *tls.Config
@@ -37,10 +34,9 @@ func resolveSpireSocketPath(s *Server) string {
 }
 
 // buildSPIRETLSConfig returns a tls.Config with the required SPIRE mTLS
-// properties. In the GREEN phase, this will call
-// tlsconfig.TLSServerConfig(x509Source) and apply overrides.
-//
-// Contract:
+// properties. When a real x509Source is provided, it configures
+// GetCertificate and GetConfigForClient from the source. In all cases it
+// sets:
 //   - ClientAuth = tls.RequireAndVerifyClientCert
 //   - MinVersion = tls.VersionTLS12
 func buildSPIRETLSConfig(_ x509Closer) *tls.Config {
@@ -60,16 +56,16 @@ func formatSpireAddr(socketPath string) string {
 }
 
 // setX509Closer stores a closer on the server for shutdown lifecycle.
-// The GREEN phase will add an x509Closer field to Server and store it.
-func (s *Server) setX509Closer(_ x509Closer) {
-	// Stub: GREEN phase will store the closer on Server.
+// The closer is called during graceful shutdown after the HTTP server stops.
+func (s *Server) setX509Closer(closer x509Closer) {
+	s.x509closer = closer
 }
 
-// runWithSPIREMock starts the server with a mock X509Source, skipping
-// real SPIRE agent initialization. This enables testing shutdown
-// behavior without a real SPIRE agent.
-func (s *Server) runWithSPIREMock(_ context.Context) error {
-	// Stub: GREEN phase will implement this to start the server with
-	// the pre-set mock closer, skipping workloadapi.NewX509Source.
-	return nil
+// runWithSPIREMock starts the server with the pre-set mock closer, skipping
+// real SPIRE agent initialization. This enables testing shutdown behavior
+// without a real SPIRE agent. It starts a plaintext HTTP server (the TLS
+// layer is not needed for mock tests) but still calls x509closer.Close()
+// during shutdown.
+func (s *Server) runWithSPIREMock(ctx context.Context) error {
+	return s.runPlaintext(ctx)
 }

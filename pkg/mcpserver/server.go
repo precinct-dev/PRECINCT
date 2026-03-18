@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -55,6 +56,7 @@ type Server struct {
 
 	// SPIRE mTLS configuration.
 	spireSocketPath string
+	x509closer      x509Closer // closed during graceful shutdown (after HTTP server)
 
 	mu       sync.RWMutex
 	tools    []toolEntry
@@ -257,6 +259,22 @@ const defaultSessionTimeout = 30 * time.Minute
 // for in-flight requests to complete. The actual listener address is stored
 // and can be retrieved via Addr after the server has started.
 func (s *Server) RunContext(ctx context.Context) error {
+	// SPIRE mTLS: if configured, initialise X509Source before listening.
+	socketPath := resolveSpireSocketPath(s)
+	if socketPath != "" {
+		src, err := newX509Source(ctx, socketPath)
+		if err != nil {
+			return fmt.Errorf("SPIRE: failed to create X509Source at %s: %w", socketPath, err)
+		}
+		s.setX509Closer(src)
+		return s.runWithTLS(ctx, buildSPIRETLSConfig(src))
+	}
+
+	return s.runPlaintext(ctx)
+}
+
+// runPlaintext starts a plaintext HTTP server (dev mode).
+func (s *Server) runPlaintext(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", s.address, s.port)
 	srv := &http.Server{
 		Addr:         addr,
@@ -274,6 +292,35 @@ func (s *Server) RunContext(ctx context.Context) error {
 	s.ln = ln
 	s.mu.Unlock()
 
+	return s.serve(ctx, srv, ln)
+}
+
+// runWithTLS starts the HTTP server with the given TLS config (SPIRE mTLS).
+func (s *Server) runWithTLS(ctx context.Context, tlsCfg *tls.Config) error {
+	addr := fmt.Sprintf("%s:%d", s.address, s.port)
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      s,
+		ReadTimeout:  s.readTimeout,
+		WriteTimeout: s.writeTimeout,
+		TLSConfig:    tlsCfg,
+	}
+
+	ln, err := tls.Listen("tcp", addr, tlsCfg)
+	if err != nil {
+		return fmt.Errorf("mcpserver: listen tls: %w", err)
+	}
+
+	s.mu.Lock()
+	s.ln = ln
+	s.mu.Unlock()
+
+	return s.serve(ctx, srv, ln)
+}
+
+// serve runs the HTTP server lifecycle: session cleanup, serving, graceful
+// shutdown, and closing the X509Source (if any).
+func (s *Server) serve(ctx context.Context, srv *http.Server, ln net.Listener) error {
 	// Start the session cleanup goroutine. It stops when cleanupCtx is
 	// cancelled during shutdown.
 	cleanupCtx, cleanupCancel := context.WithCancel(ctx)
@@ -308,6 +355,12 @@ func (s *Server) RunContext(ctx context.Context) error {
 	defer cancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("mcpserver: shutdown: %w", err)
+	}
+
+	// Close the X509Source AFTER the HTTP server has stopped, so that
+	// in-flight requests can still use the SVID during drain.
+	if s.x509closer != nil {
+		_ = s.x509closer.Close()
 	}
 
 	s.logger.Info("server stopped")
