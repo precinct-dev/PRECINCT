@@ -12,26 +12,26 @@ const (
 	keySessionID
 )
 
-// ServerName extracts the server name from the context. Returns an empty
-// string if the context was not enriched by the context injection
+// ServerNameFromContext extracts the server name from the context. Returns
+// an empty string if the context was not enriched by the context injection
 // middleware.
-func ServerName(ctx context.Context) string {
+func ServerNameFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(keyServerName).(string)
 	return v
 }
 
-// ToolName extracts the tool name from the context. Returns an empty
-// string if the context was not enriched by the context injection
+// ToolNameFromContext extracts the tool name from the context. Returns an
+// empty string if the context was not enriched by the context injection
 // middleware.
-func ToolName(ctx context.Context) string {
+func ToolNameFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(keyToolName).(string)
 	return v
 }
 
-// SessionID extracts the session ID from the context. Returns an empty
-// string if the context was not enriched by the context injection
+// SessionIDFromContext extracts the session ID from the context. Returns
+// an empty string if the context was not enriched by the context injection
 // middleware.
-func SessionID(ctx context.Context) string {
+func SessionIDFromContext(ctx context.Context) string {
 	v, _ := ctx.Value(keySessionID).(string)
 	return v
 }

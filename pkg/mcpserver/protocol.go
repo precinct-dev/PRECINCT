@@ -201,7 +201,7 @@ func (s *Server) handleToolsCall(ctx context.Context, req *jsonrpcRequest) *json
 	// Enrich context with per-call metadata (tool name, session ID) before
 	// entering the middleware pipeline. The session ID is extracted from the
 	// context set by handleJSONRPC.
-	sessionID := SessionID(ctx)
+	sessionID := SessionIDFromContext(ctx)
 	ctx = withToolCallContext(ctx, params.Name, sessionID)
 
 	// Wrap the handler through the middleware pipeline.

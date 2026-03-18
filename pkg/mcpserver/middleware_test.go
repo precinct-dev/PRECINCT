@@ -311,7 +311,7 @@ func TestContextMiddleware_InjectsServerName(t *testing.T) {
 
 	var gotName string
 	handler := mw(func(ctx context.Context, _ map[string]any) (any, error) {
-		gotName = ServerName(ctx)
+		gotName = ServerNameFromContext(ctx)
 		return nil, nil
 	})
 
@@ -323,23 +323,23 @@ func TestContextMiddleware_InjectsServerName(t *testing.T) {
 
 func TestWithToolCallContext_InjectsToolAndSession(t *testing.T) {
 	ctx := withToolCallContext(context.Background(), "my-tool", "session-abc")
-	if ToolName(ctx) != "my-tool" {
-		t.Errorf("ToolName = %q, want %q", ToolName(ctx), "my-tool")
+	if ToolNameFromContext(ctx) != "my-tool" {
+		t.Errorf("ToolName = %q, want %q", ToolNameFromContext(ctx), "my-tool")
 	}
-	if SessionID(ctx) != "session-abc" {
-		t.Errorf("SessionID = %q, want %q", SessionID(ctx), "session-abc")
+	if SessionIDFromContext(ctx) != "session-abc" {
+		t.Errorf("SessionID = %q, want %q", SessionIDFromContext(ctx), "session-abc")
 	}
 }
 
 func TestContextAccessors_EmptyOnPlainContext(t *testing.T) {
 	ctx := context.Background()
-	if v := ServerName(ctx); v != "" {
+	if v := ServerNameFromContext(ctx); v != "" {
 		t.Errorf("ServerName = %q, want empty", v)
 	}
-	if v := ToolName(ctx); v != "" {
+	if v := ToolNameFromContext(ctx); v != "" {
 		t.Errorf("ToolName = %q, want empty", v)
 	}
-	if v := SessionID(ctx); v != "" {
+	if v := SessionIDFromContext(ctx); v != "" {
 		t.Errorf("SessionID = %q, want empty", v)
 	}
 }
@@ -429,7 +429,7 @@ func TestRedactArgs_Empty(t *testing.T) {
 // --- Unit Tests: Role Visibility ---
 
 func TestRoleVisibilityMiddleware_AllowsWhenNoRole(t *testing.T) {
-	mw := newRoleVisibilityMiddleware(func(toolName, role string) bool {
+	mw := newRoleVisibilityMiddleware(func(ctx context.Context, toolName string) bool {
 		return false // deny everything
 	})
 
@@ -448,7 +448,7 @@ func TestRoleVisibilityMiddleware_AllowsWhenNoRole(t *testing.T) {
 }
 
 func TestRoleVisibilityMiddleware_DeniesWhenFilterReturnsFalse(t *testing.T) {
-	mw := newRoleVisibilityMiddleware(func(toolName, role string) bool {
+	mw := newRoleVisibilityMiddleware(func(ctx context.Context, toolName string) bool {
 		return false
 	})
 
@@ -469,8 +469,8 @@ func TestRoleVisibilityMiddleware_DeniesWhenFilterReturnsFalse(t *testing.T) {
 }
 
 func TestRoleVisibilityMiddleware_AllowsWhenFilterReturnsTrue(t *testing.T) {
-	mw := newRoleVisibilityMiddleware(func(toolName, role string) bool {
-		return role == "admin"
+	mw := newRoleVisibilityMiddleware(func(ctx context.Context, toolName string) bool {
+		return Role(ctx) == "admin"
 	})
 
 	ctx := withToolCallContext(context.Background(), "admin-tool", "s1")
@@ -546,7 +546,7 @@ func TestWithMiddleware_AppendsCustom(t *testing.T) {
 }
 
 func TestWithRoleVisibility_SetsFilter(t *testing.T) {
-	filter := func(toolName, role string) bool { return true }
+	filter := func(ctx context.Context, toolName string) bool { return true }
 	s := New("test",
 		WithLogger(slog.New(slog.NewTextHandler(io.Discard, nil))),
 		WithRoleVisibility(filter),
@@ -576,9 +576,9 @@ func TestPipeline_FullStack(t *testing.T) {
 		},
 	}, func(ctx context.Context, args map[string]any) (any, error) {
 		// Verify context injection works.
-		sn := ServerName(ctx)
-		tn := ToolName(ctx)
-		sid := SessionID(ctx)
+		sn := ServerNameFromContext(ctx)
+		tn := ToolNameFromContext(ctx)
+		sid := SessionIDFromContext(ctx)
 		if sn != "pipeline-test" {
 			t.Errorf("ServerName = %q, want %q", sn, "pipeline-test")
 		}
@@ -833,9 +833,9 @@ func TestPipeline_ContextAccessorsInHandler(t *testing.T) {
 	var gotServer, gotTool, gotSession string
 
 	s.Tool("probe", "probes context", Schema{Type: "object"}, func(ctx context.Context, _ map[string]any) (any, error) {
-		gotServer = ServerName(ctx)
-		gotTool = ToolName(ctx)
-		gotSession = SessionID(ctx)
+		gotServer = ServerNameFromContext(ctx)
+		gotTool = ToolNameFromContext(ctx)
+		gotSession = SessionIDFromContext(ctx)
 		return "ok", nil
 	})
 

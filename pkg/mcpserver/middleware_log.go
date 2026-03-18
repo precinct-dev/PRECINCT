@@ -15,7 +15,7 @@ func newLoggingMiddleware(logger *slog.Logger) Middleware {
 	return func(next ToolHandler) ToolHandler {
 		return func(ctx context.Context, args map[string]any) (any, error) {
 			start := time.Now()
-			toolName := ToolName(ctx)
+			toolName := ToolNameFromContext(ctx)
 
 			result, err := next(ctx, args)
 			duration := time.Since(start)

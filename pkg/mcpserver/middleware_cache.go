@@ -71,7 +71,7 @@ func newCacheMiddleware(ttl time.Duration) Middleware {
 	cache := newResponseCache(ttl)
 	return func(next ToolHandler) ToolHandler {
 		return func(ctx context.Context, args map[string]any) (any, error) {
-			toolName := ToolName(ctx)
+			toolName := ToolNameFromContext(ctx)
 			key := cacheKey(toolName, args)
 
 			if cached, ok := cache.get(key); ok {
