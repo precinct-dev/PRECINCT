@@ -600,8 +600,12 @@ func (g *Gateway) Handler() http.Handler {
 	// OC-owta: Protected Resource Metadata (unauthenticated discovery)
 	mux.Handle("/.well-known/oauth-protected-resource", oauthProtectedResourceHandler(g.oauthJWTConfig))
 	// OC-xkkc: Token exchange endpoint (unauthenticated -- caller has no SPIFFE identity yet)
+	// OC-uli2: Wrapped with public endpoint hardening (rate limit + size limit + audit)
 	if g.tokenExchangeConfig != nil {
-		mux.Handle("/v1/auth/token-exchange", tokenExchangeHandler(g.tokenExchangeConfig))
+		mux.Handle("/v1/auth/token-exchange",
+			publicEndpointWrapper(
+				tokenExchangeHandler(g.tokenExchangeConfig),
+				DefaultPublicEndpointConfig()))
 	}
 	mux.Handle("/", protected)
 
@@ -629,11 +633,14 @@ func (g *Gateway) PublicHandler() http.Handler {
 				oauthProtectedResourceHandler(g.oauthJWTConfig)))
 	}
 	// OC-xkkc: Token exchange endpoint on the public listener
+	// OC-uli2: Wrapped with public endpoint hardening (rate limit + size limit + audit)
 	if _, ok := allowlist["/v1/auth/token-exchange"]; ok {
 		if g.tokenExchangeConfig != nil {
 			mux.Handle("/v1/auth/token-exchange",
 				exactPathHandler("/v1/auth/token-exchange",
-					tokenExchangeHandler(g.tokenExchangeConfig)))
+					publicEndpointWrapper(
+						tokenExchangeHandler(g.tokenExchangeConfig),
+						DefaultPublicEndpointConfig())))
 		}
 	}
 	if _, ok := allowlist["/"]; ok {
