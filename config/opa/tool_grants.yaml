@@ -168,10 +168,13 @@ tool_grants:
     max_data_classification: internal
 
   - spiffe_pattern: "spiffe://poc.local/external/*"
-    description: "External users -- read-only access; principal level gates destructive/messaging actions"
+    description: "External OAuth users -- minimal tools, deny-by-default; requires mcp:tools:call scope and per-tool scopes"
     allowed_tools:
       - tavily_search
     max_data_classification: public
+    required_scopes:
+      tavily_search:
+        - "mcp:tool:tavily_search"
 
 # Data classification levels (from least to most sensitive)
 data_classifications:

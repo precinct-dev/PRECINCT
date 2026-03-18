@@ -403,6 +403,31 @@ before upstream proxy forwarding:
 - Bearer tokens are validated against the configured OAuth resource-server JWKS, mapped to `spiffe://<SPIFFE_TRUST_DOMAIN>/external/<subject>`, and stripped before the upstream MCP server sees the request.
 - The `X-Session-ID` must be a valid UUID. The session context middleware uses it to track data flow across requests for exfiltration detection.
 
+### Bearer Authentication (External OAuth Clients)
+
+External clients that do not have a SPIFFE identity can authenticate using an OAuth
+2.0 bearer token. The gateway acts as an RFC 6750 Resource Server:
+
+1. The client obtains a JWT from an external Authorization Server.
+2. The client sends `Authorization: Bearer <jwt>` on `POST /`.
+3. The gateway validates the token (signature, issuer, audience, expiry, required scopes)
+   against the JWKS endpoint configured in `config/oauth-resource-server.yaml`.
+4. On success, the gateway maps the JWT `sub` claim to
+   `spiffe://<SPIFFE_TRUST_DOMAIN>/external/<subject>` and applies the full middleware chain.
+5. The `Authorization` header is **stripped** before proxying to the upstream MCP server.
+   The upstream never sees the bearer token.
+
+**Required scopes by operation:**
+
+| Operation | Scopes |
+|-----------|--------|
+| `tools/list` | `mcp:tools` |
+| `tools/call` | `mcp:tools` + `mcp:tools:call` + per-tool scopes (e.g., `mcp:tool:tavily_search`) |
+
+For the complete integration guide with copy-pastable examples, discovery flow, and
+security considerations, see
+[External OAuth MCP Client Integration Guide](oauth-external-clients.md).
+
 ### Response Headers
 
 The gateway injects the following headers into proxied responses:
