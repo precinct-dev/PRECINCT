@@ -69,13 +69,22 @@ log "Generating agent certificate (EC P-256, 365 days)..."
 openssl ecparam -genkey -name prime256v1 -noout -out "${AGENT_KEY}" 2>/dev/null
 
 AGENT_CSR=$(mktemp)
-trap 'rm -f "${AGENT_CSR}"' EXIT
+AGENT_EXT=$(mktemp)
+trap 'rm -f "${AGENT_CSR}" "${AGENT_EXT}"' EXIT
 
 openssl req -new \
     -key "${AGENT_KEY}" \
     -out "${AGENT_CSR}" \
     -subj "/CN=spire-agent/O=PRECINCT/OU=Dev" \
     -sha256
+
+# x509pop attestor requires digitalSignature key usage for the challenge-response
+# handshake. Without it the SPIRE server rejects the agent with:
+#   "certificate not intended for digital signature use"
+cat > "${AGENT_EXT}" <<EXTEOF
+keyUsage = critical, digitalSignature
+extendedKeyUsage = clientAuth
+EXTEOF
 
 openssl x509 -req \
     -in "${AGENT_CSR}" \
@@ -84,7 +93,8 @@ openssl x509 -req \
     -CAcreateserial \
     -out "${AGENT_CERT}" \
     -days 365 \
-    -sha256 2>/dev/null
+    -sha256 \
+    -extfile "${AGENT_EXT}" 2>/dev/null
 
 # Clean up the serial file that openssl x509 -CAcreateserial produces.
 rm -f "${OUTPUT_DIR}/ca.srl"
