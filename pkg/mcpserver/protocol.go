@@ -198,7 +198,16 @@ func (s *Server) handleToolsCall(ctx context.Context, req *jsonrpcRequest) *json
 		}
 	}
 
-	result, err := handler(ctx, params.Arguments)
+	// Enrich context with per-call metadata (tool name, session ID) before
+	// entering the middleware pipeline. The session ID is extracted from the
+	// context set by handleJSONRPC.
+	sessionID := SessionIDFromContext(ctx)
+	ctx = withToolCallContext(ctx, params.Name, sessionID)
+
+	// Wrap the handler through the middleware pipeline.
+	wrapped := s.wrappedHandler(handler)
+
+	result, err := wrapped(ctx, params.Arguments)
 	if err != nil {
 		return &jsonrpcResponse{
 			JSONRPC: jsonrpcVersion,

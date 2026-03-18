@@ -29,6 +29,20 @@ type Server struct {
 	readTimeout     time.Duration
 	writeTimeout    time.Duration
 
+	// Middleware configuration.
+	cachingDisabled      bool
+	cacheTTL             time.Duration
+	rateLimitDisabled    bool
+	rateRPS              float64
+	rateBurst            int
+	customMiddleware     []Middleware
+	roleVisibilityFilter func(ctx context.Context, toolName string) bool
+
+	// pipeline is the composed middleware chain, built lazily on the first
+	// tools/call request. It wraps ToolHandler, not http.Handler.
+	pipelineOnce sync.Once
+	pipeline     Middleware
+
 	mu       sync.RWMutex
 	tools    []toolEntry
 	sessions sync.Map // sessionID (string) -> struct{}
@@ -126,7 +140,9 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := s.dispatch(r.Context(), &req)
+	// Inject session ID into context so the middleware pipeline can access it.
+	ctx := withToolCallContext(r.Context(), "", sessionID)
+	resp := s.dispatch(ctx, &req)
 	if resp == nil {
 		// Notification -- return 200 with empty body.
 		w.WriteHeader(http.StatusOK)
@@ -219,4 +235,70 @@ func (s *Server) Addr() net.Addr {
 		return nil
 	}
 	return s.ln.Addr()
+}
+
+// initPipeline builds the middleware pipeline according to the fixed
+// ordering defined in ADR-003:
+//
+//  1. Rate Limiting
+//  2. Context Injection
+//  3. Role Visibility (if enabled)
+//  4. (OTel -- separate story, slot reserved)
+//  5. Caching
+//  6. Custom Middleware
+//  7. Logging
+//
+// The pipeline is built once and reused for all subsequent tool calls.
+func (s *Server) initPipeline() {
+	s.pipelineOnce.Do(func() {
+		var mws []Middleware
+
+		// 1. Rate Limiting (outermost -- rejects before any work).
+		if !s.rateLimitDisabled {
+			rps := s.rateRPS
+			burst := s.rateBurst
+			if rps == 0 {
+				rps = defaultRateLimit
+			}
+			if burst == 0 {
+				burst = defaultRateBurst
+			}
+			mws = append(mws, newRateLimitMiddleware(rps, burst))
+		}
+
+		// 2. Context Injection (always on).
+		mws = append(mws, newContextMiddleware(s.name))
+
+		// 3. Role Visibility (off by default).
+		if s.roleVisibilityFilter != nil {
+			filter := s.roleVisibilityFilter
+			mws = append(mws, newRoleVisibilityMiddleware(filter))
+		}
+
+		// 4. OTel -- reserved for a future story.
+
+		// 5. Caching.
+		if !s.cachingDisabled {
+			ttl := s.cacheTTL
+			if ttl == 0 {
+				ttl = defaultCacheTTL
+			}
+			mws = append(mws, newCacheMiddleware(ttl))
+		}
+
+		// 6. Custom Middleware.
+		mws = append(mws, s.customMiddleware...)
+
+		// 7. Logging (innermost -- captures duration of everything above).
+		mws = append(mws, newLoggingMiddleware(s.logger))
+
+		s.pipeline = buildPipeline(mws)
+	})
+}
+
+// wrappedHandler returns the raw ToolHandler wrapped by the middleware
+// pipeline. This is called for every tools/call dispatch.
+func (s *Server) wrappedHandler(handler ToolHandler) ToolHandler {
+	s.initPipeline()
+	return s.pipeline(handler)
 }
