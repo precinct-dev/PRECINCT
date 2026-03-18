@@ -1106,7 +1106,16 @@ attestation-resign: ## Re-sign attestation artifacts (generates keypair if missi
 	@echo "attestation-resign: DONE"
 
 # ---------------------------------------------------------------------------
-# 15. Aliases (backwards compatibility)
+# 15. SPIRE x509pop certificate generation
+# ---------------------------------------------------------------------------
+
+.PHONY: generate-spire-certs
+
+generate-spire-certs: ## Generate x509pop CA + agent cert for compose SPIRE attestation
+	@bash scripts/generate-x509pop-certs.sh
+
+# ---------------------------------------------------------------------------
+# 16. Aliases (backwards compatibility)
 # ---------------------------------------------------------------------------
 
 k8s-local-up: k8s-up
