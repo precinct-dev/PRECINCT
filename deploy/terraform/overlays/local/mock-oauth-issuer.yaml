@@ -19,8 +19,8 @@ spec:
     spec:
       containers:
         - name: mock-oauth-issuer
-          image: mock-oauth-issuer:latest
-          imagePullPolicy: IfNotPresent
+          image: registry:5000/mock-oauth-issuer:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8088
               name: http

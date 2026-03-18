@@ -1023,6 +1023,14 @@ run_demo_cycle() {
         fi
         k8s_probe_direct_external_egress "https://api.groq.com/openai/v1/chat/completions" || exit 1
 
+        # Clear rate-limit keys and verify gateway health to reset circuit breaker
+        # from any previous run. Without this, accumulated 502s keep the
+        # circuit breaker open and subsequent demo runs fail with 503.
+        # (Mirror of the compose-mode reset at cycle start.)
+        log "Clearing rate-limit keys before K8s demo"
+        kubectl -n data exec deploy/keydb -- keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
+        wait_for_health_k8s "$url" "$network" || exit 1
+
         # Determinism: ensure upstream rugpull state is OFF before running tests.
         # Fail-fast rather than letting the demo fail later with a confusing
         # registry_hash_mismatch cascade.

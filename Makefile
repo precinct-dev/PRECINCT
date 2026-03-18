@@ -396,6 +396,9 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	docker build -f examples/content-scanner/Dockerfile -t poc-content-scanner:latest examples/content-scanner/
 	docker tag poc-content-scanner:latest $(LOCAL_REGISTRY)/poc-content-scanner:latest
 	docker push $(LOCAL_REGISTRY)/poc-content-scanner:latest
+	docker build -f examples/mock-oauth-issuer/Dockerfile -t mock-oauth-issuer:latest examples/mock-oauth-issuer/
+	docker tag mock-oauth-issuer:latest $(LOCAL_REGISTRY)/mock-oauth-issuer:latest
+	docker push $(LOCAL_REGISTRY)/mock-oauth-issuer:latest
 	$(MAKE) k8s-prereqs
 	@echo "Cleaning up completed SPIKE jobs for re-apply..."
 	-kubectl -n spike-system delete job spike-bootstrap --ignore-not-found 2>/dev/null
