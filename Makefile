@@ -120,7 +120,7 @@ clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
 	-docker compose -f $(COMPOSE_DIR)/docker-compose.opensearch.yml down -v >/dev/null 2>&1 || true
 	rm -rf build/sbom/ build/bin/
 	@echo "Clearing SPIRE data directories (stale SVIDs prevent clean restart)..."
-	rm -rf data/spire-server/ data/spire-agent/
+	rm -rf $(COMPOSE_DIR)/data/spire-server/ $(COMPOSE_DIR)/data/spire-agent/
 	@echo "Clearing x509pop certificates..."
 	rm -rf $(COMPOSE_DIR)/data/x509pop/
 	@if [ -d build/logs ]; then rm -rf build/logs/*; fi
