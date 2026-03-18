@@ -39,5 +39,6 @@ func newPhase3TestGateway(t *testing.T) (*Gateway, *Config) {
 	if err != nil {
 		t.Fatalf("New gateway: %v", err)
 	}
+	t.Cleanup(func() { _ = gw.Close() })
 	return gw, cfg
 }

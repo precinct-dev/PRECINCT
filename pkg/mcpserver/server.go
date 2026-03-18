@@ -180,7 +180,7 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// tools/list and tools/call require session in "active" state.
-	if sess.state != stateActive {
+	if sess.getState() != stateActive {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
@@ -188,7 +188,8 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 	// Refresh lastAccess on every successful request.
 	sess.touch()
 
-	// If serial execution is enabled, acquire the per-session mutex.
+	// If serial execution is enabled, acquire the per-session mutex
+	// to serialize tool execution (not just field access).
 	if s.serialExecution {
 		sess.mu.Lock()
 		defer sess.mu.Unlock()

@@ -71,8 +71,10 @@ func (ss *sessionStore) markActive(id string) {
 	if !ok {
 		return
 	}
+	s.mu.Lock()
 	s.state = stateActive
 	s.lastAccess = time.Now()
+	s.mu.Unlock()
 }
 
 // delete removes a session from the store immediately.
@@ -88,12 +90,25 @@ func (s *session) isExpired(idleTimeout time.Duration) bool {
 	if idleTimeout == 0 {
 		return false
 	}
-	return time.Since(s.lastAccess) > idleTimeout
+	s.mu.Lock()
+	expired := time.Since(s.lastAccess) > idleTimeout
+	s.mu.Unlock()
+	return expired
 }
 
 // touch updates the session's lastAccess timestamp.
 func (s *session) touch() {
+	s.mu.Lock()
 	s.lastAccess = time.Now()
+	s.mu.Unlock()
+}
+
+// getState returns the session state under the mutex.
+func (s *session) getState() sessionState {
+	s.mu.Lock()
+	st := s.state
+	s.mu.Unlock()
+	return st
 }
 
 // cleanup removes sessions whose lastAccess exceeds the idle timeout.
