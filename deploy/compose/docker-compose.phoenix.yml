@@ -14,7 +14,7 @@
 services:
   # Phoenix - Trace visualization and analysis (persistent)
   phoenix:
-    image: arizephoenix/phoenix:latest
+    image: arizephoenix/phoenix:version-10.10.0@sha256:cb0007fbf0ca239dc4926dbfd6721e4601719fdc77206c545271b6181e7438de
     container_name: phoenix
     hostname: phoenix
     ports:
@@ -42,7 +42,7 @@ services:
   # The OTel Collector receives telemetry data (spans, metrics) over plain gRPC/HTTP.
   # It does NOT require mTLS because telemetry data is not sensitive.
   otel-collector:
-    image: otel/opentelemetry-collector-contrib:latest
+    image: otel/opentelemetry-collector-contrib:0.123.0@sha256:e39311df1f3d941923c00da79ac7ba6269124a870ee87e3c3ad24d60f8aee4d2
     container_name: otel-collector
     hostname: otel-collector
     volumes:
