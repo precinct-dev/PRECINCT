@@ -9,9 +9,10 @@ package middleware
 // a 403 in normal flow vs a 503 when the service backing the check is down).
 const (
 	// SPIFFE Auth (step 3) -- 401 Unauthorized
-	ErrAuthMissingIdentity = "auth_missing_identity"
-	ErrAuthInvalidIdentity = "auth_invalid_identity"
-	ErrAuthInvalidBearerToken = "auth_invalid_bearer_token"
+	ErrAuthMissingIdentity        = "auth_missing_identity"
+	ErrAuthInvalidIdentity        = "auth_invalid_identity"
+	ErrAuthInvalidBearerToken     = "auth_invalid_bearer_token"
+	ErrAuthIntrospectionFailed    = "auth_introspection_failed"
 
 	// OPA Policy (step 6) -- 403 Forbidden
 	ErrAuthzPolicyDenied    = "authz_policy_denied"
