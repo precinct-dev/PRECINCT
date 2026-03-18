@@ -9,7 +9,7 @@ import (
 type Option func(*Server)
 
 // WithVersion sets the server version reported in initialize responses and
-// health checks. Defaults to "0.0.0".
+// health checks. Defaults to "0.0.0-dev".
 func WithVersion(v string) Option {
 	return func(s *Server) {
 		s.version = v
@@ -37,21 +37,21 @@ func WithLogger(l *slog.Logger) Option {
 	}
 }
 
-// WithShutdownTimeout sets the graceful shutdown deadline. Defaults to 5s.
+// WithShutdownTimeout sets the graceful shutdown deadline. Defaults to 10s.
 func WithShutdownTimeout(d time.Duration) Option {
 	return func(s *Server) {
 		s.shutdownTimeout = d
 	}
 }
 
-// WithReadTimeout sets the HTTP server read timeout. Defaults to 10s.
+// WithReadTimeout sets the HTTP server read timeout. Defaults to 30s.
 func WithReadTimeout(d time.Duration) Option {
 	return func(s *Server) {
 		s.readTimeout = d
 	}
 }
 
-// WithWriteTimeout sets the HTTP server write timeout. Defaults to 10s.
+// WithWriteTimeout sets the HTTP server write timeout. Defaults to 30s.
 func WithWriteTimeout(d time.Duration) Option {
 	return func(s *Server) {
 		s.writeTimeout = d

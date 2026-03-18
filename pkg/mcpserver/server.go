@@ -1,26 +1,3 @@
-// Package mcpserver provides a minimal MCP (Model Context Protocol) server
-// framework. It exposes a JSON-RPC 2.0 interface over HTTP, implementing the
-// core MCP handshake (initialize / notifications/initialized) and tool
-// dispatch (tools/list, tools/call).
-//
-// Usage:
-//
-//	server := mcpserver.New("my-server",
-//	    mcpserver.WithPort(8082),
-//	    mcpserver.WithVersion("1.0.0"),
-//	)
-//
-//	server.Tool("echo", "Echoes input", mcpserver.Schema{
-//	    Type:     "object",
-//	    Required: []string{"message"},
-//	    Properties: map[string]mcpserver.Property{
-//	        "message": {Type: "string", Description: "Message to echo"},
-//	    },
-//	}, func(ctx context.Context, args map[string]any) (any, error) {
-//	    return args["message"], nil
-//	})
-//
-//	server.Run() // blocks until SIGINT/SIGTERM
 package mcpserver
 
 import (
@@ -31,7 +8,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"os/signal"
 	"sync"
 	"syscall"
@@ -56,6 +32,7 @@ type Server struct {
 	mu       sync.RWMutex
 	tools    []toolEntry
 	sessions sync.Map // sessionID (string) -> struct{}
+	ln       net.Listener
 }
 
 // New creates a new MCP server with the given name. The name is required and
@@ -67,12 +44,12 @@ func New(name string, opts ...Option) *Server {
 	}
 	s := &Server{
 		name:            name,
-		version:         "0.0.0",
+		version:         "0.0.0-dev",
 		port:            8080,
 		logger:          slog.Default(),
-		shutdownTimeout: 5 * time.Second,
-		readTimeout:     10 * time.Second,
-		writeTimeout:    10 * time.Second,
+		shutdownTimeout: 10 * time.Second,
+		readTimeout:     30 * time.Second,
+		writeTimeout:    30 * time.Second,
 	}
 	for _, o := range opts {
 		o(s)
@@ -181,6 +158,16 @@ func (s *Server) writeError(w http.ResponseWriter, id json.RawMessage, code int,
 // It performs a graceful shutdown, waiting up to ShutdownTimeout for
 // in-flight requests to complete.
 func (s *Server) Run() error {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	return s.RunContext(ctx)
+}
+
+// RunContext starts the HTTP server and blocks until the provided context is
+// cancelled. It performs a graceful shutdown, waiting up to ShutdownTimeout
+// for in-flight requests to complete. The actual listener address is stored
+// and can be retrieved via Addr after the server has started.
+func (s *Server) RunContext(ctx context.Context) error {
 	addr := fmt.Sprintf("%s:%d", s.address, s.port)
 	srv := &http.Server{
 		Addr:         addr,
@@ -194,30 +181,42 @@ func (s *Server) Run() error {
 		return fmt.Errorf("mcpserver: listen: %w", err)
 	}
 
+	s.mu.Lock()
+	s.ln = ln
+	s.mu.Unlock()
+
 	errCh := make(chan error, 1)
 	go func() {
-		s.logger.Info("server started", "name", s.name, "address", addr)
+		s.logger.Info("server started", "name", s.name, "address", ln.Addr().String())
 		errCh <- srv.Serve(ln)
 	}()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
 	select {
-	case sig := <-sigCh:
-		s.logger.Info("received signal, shutting down", "signal", sig)
+	case <-ctx.Done():
+		s.logger.Info("context cancelled, shutting down")
 	case err := <-errCh:
 		if err != nil && err != http.ErrServerClosed {
 			return fmt.Errorf("mcpserver: serve: %w", err)
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
 	defer cancel()
-	if err := srv.Shutdown(ctx); err != nil {
+	if err := srv.Shutdown(shutdownCtx); err != nil {
 		return fmt.Errorf("mcpserver: shutdown: %w", err)
 	}
 
 	s.logger.Info("server stopped")
 	return nil
+}
+
+// Addr returns the listener's network address once the server has started
+// via Run or RunContext. It returns nil if the server has not started.
+func (s *Server) Addr() net.Addr {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.ln == nil {
+		return nil
+	}
+	return s.ln.Addr()
 }

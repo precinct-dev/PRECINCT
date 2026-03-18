@@ -111,8 +111,8 @@ func TestNew_Defaults(t *testing.T) {
 	if s.name != "test-server" {
 		t.Errorf("name = %q, want %q", s.name, "test-server")
 	}
-	if s.version != "0.0.0" {
-		t.Errorf("version = %q, want %q", s.version, "0.0.0")
+	if s.version != "0.0.0-dev" {
+		t.Errorf("version = %q, want %q", s.version, "0.0.0-dev")
 	}
 	if s.port != 8080 {
 		t.Errorf("port = %d, want %d", s.port, 8080)
@@ -752,5 +752,122 @@ func TestToolsCall_NoParams(t *testing.T) {
 	code := int(errObj["code"].(float64))
 	if code != codeInvalidParams {
 		t.Errorf("error code = %d, want %d", code, codeInvalidParams)
+	}
+}
+
+// --- Run / RunContext Integration Test ---
+
+func TestRunContext_ListenAndServe(t *testing.T) {
+	s := newTestServer("run-test",
+		WithVersion("1.0.0"),
+		WithPort(0), // random port
+		WithShutdownTimeout(2*time.Second),
+	)
+	s.Tool("ping", "returns pong", Schema{Type: "object"}, func(_ context.Context, _ map[string]any) (any, error) {
+		return "pong", nil
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- s.RunContext(ctx)
+	}()
+
+	// Wait for the server to be listening (poll Addr()).
+	var addr string
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if a := s.Addr(); a != nil {
+			addr = a.String()
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if addr == "" {
+		t.Fatal("server did not start within deadline")
+	}
+
+	baseURL := "http://" + addr
+
+	// Verify health endpoint over real HTTP.
+	healthResp, err := http.Get(baseURL + "/health")
+	if err != nil {
+		t.Fatalf("GET /health: %v", err)
+	}
+	defer healthResp.Body.Close()
+	if healthResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /health: status %d, want 200", healthResp.StatusCode)
+	}
+	var hr healthResponse
+	if err := json.NewDecoder(healthResp.Body).Decode(&hr); err != nil {
+		t.Fatalf("decode health: %v", err)
+	}
+	if hr.Status != "ok" {
+		t.Errorf("health status = %q, want %q", hr.Status, "ok")
+	}
+	if hr.Server != "run-test" {
+		t.Errorf("health server = %q, want %q", hr.Server, "run-test")
+	}
+
+	// Perform an MCP initialize + tools/call over real HTTP.
+	initBody, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "initialize",
+	})
+	initResp, err := http.Post(baseURL+"/", "application/json", bytes.NewReader(initBody))
+	if err != nil {
+		t.Fatalf("POST / (initialize): %v", err)
+	}
+	if initResp.StatusCode != http.StatusOK {
+		t.Fatalf("initialize: status %d", initResp.StatusCode)
+	}
+	sid := initResp.Header.Get("Mcp-Session-Id")
+	if sid == "" {
+		t.Fatal("initialize: missing Mcp-Session-Id")
+	}
+	initResp.Body.Close()
+
+	// tools/call with the session
+	callBody, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      2,
+		"method":  "tools/call",
+		"params":  map[string]any{"name": "ping"},
+	})
+	callReq, _ := http.NewRequest(http.MethodPost, baseURL+"/", bytes.NewReader(callBody))
+	callReq.Header.Set("Content-Type", "application/json")
+	callReq.Header.Set("Mcp-Session-Id", sid)
+	callResp, err := http.DefaultClient.Do(callReq)
+	if err != nil {
+		t.Fatalf("POST / (tools/call): %v", err)
+	}
+	callResult := readJSON(t, callResp)
+	result, ok := callResult["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("tools/call result missing: %v", callResult)
+	}
+	content, ok := result["content"].([]any)
+	if !ok || len(content) == 0 {
+		t.Fatalf("tools/call content missing: %v", result)
+	}
+	item := content[0].(map[string]any)
+	if item["text"] != "pong" {
+		t.Errorf("tools/call text = %v, want %q", item["text"], "pong")
+	}
+
+	// Signal shutdown via context cancellation.
+	cancel()
+
+	// Run should return nil.
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Errorf("RunContext returned error: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("RunContext did not return within 5s after cancellation")
 	}
 }
