@@ -31,6 +31,14 @@ type OAuthJWTConfig struct {
 	HTTPClient       *http.Client     `yaml:"-"`
 	Now              func() time.Time `yaml:"-"`
 	cache            *oauthJWKCache   `yaml:"-"`
+
+	// Optional RFC 7662 introspection fields. When IntrospectionURL is set,
+	// opaque (non-JWT) bearer tokens are validated via introspection instead
+	// of being rejected outright.
+	IntrospectionURL          string `yaml:"introspection_url"`
+	IntrospectionClientIDEnv  string `yaml:"introspection_client_id_env"`
+	IntrospectionClientSecEnv string `yaml:"introspection_client_secret_env"`
+	IntrospectionRequiredAud  string `yaml:"introspection_required_audience"`
 }
 
 type OAuthJWTClaims struct {
@@ -136,6 +144,23 @@ func (cfg OAuthJWTConfig) cacheTTL() time.Duration {
 		return defaultOAuthCacheTTL
 	}
 	return time.Duration(cfg.CacheTTLSeconds) * time.Second
+}
+
+// IntrospectionConfig returns a configured OAuthIntrospectionConfig when
+// introspection is enabled (i.e., IntrospectionURL is set). Returns nil
+// when introspection is not configured.
+func (cfg OAuthJWTConfig) IntrospectionConfig() *OAuthIntrospectionConfig {
+	if strings.TrimSpace(cfg.IntrospectionURL) == "" {
+		return nil
+	}
+	return &OAuthIntrospectionConfig{
+		IntrospectionURL:          cfg.IntrospectionURL,
+		IntrospectionClientIDEnv:  cfg.IntrospectionClientIDEnv,
+		IntrospectionClientSecEnv: cfg.IntrospectionClientSecEnv,
+		RequiredAudience:          cfg.IntrospectionRequiredAud,
+		HTTPClient:                cfg.HTTPClient,
+		Now:                       cfg.Now,
+	}
 }
 
 func ValidateOAuthJWT(ctx context.Context, rawToken string, cfg OAuthJWTConfig) (OAuthJWTClaims, error) {

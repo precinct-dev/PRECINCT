@@ -155,6 +155,23 @@ func resolveOAuthBearerIdentity(ctx context.Context, r *http.Request, runtime *s
 
 	claims, err := ValidateOAuthJWT(ctx, bearerToken, *runtime.oauthJWT)
 	if err != nil {
+		// Distinguish "not a JWT at all" from "JWT but invalid".
+		// Only fall back to introspection when the token structurally
+		// cannot be parsed as a JWT (opaque token). If it IS a JWT but
+		// fails validation (wrong issuer, expired, bad signature), fail
+		// immediately without trying introspection.
+		introCfg := runtime.oauthJWT.IntrospectionConfig()
+		if isNotJWTError(err) && introCfg != nil && introCfg.IsConfigured() {
+			introClaims, introErr := IntrospectToken(ctx, bearerToken, *introCfg)
+			if introErr != nil {
+				return "", true, introErr
+			}
+			ctxWithClaims := WithAuthMethod(ctx, "oauth_introspection")
+			ctxWithClaims = WithOAuthIssuer(ctxWithClaims, introClaims.Issuer)
+			ctxWithClaims = WithOAuthScopes(ctxWithClaims, introClaims.Scopes)
+			*r = *r.WithContext(ctxWithClaims)
+			return mapOAuthSubjectToSPIFFEID(runtime.trustDomain, introClaims.Subject), true, nil
+		}
 		return "", true, err
 	}
 
