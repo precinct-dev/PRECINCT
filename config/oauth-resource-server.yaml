@@ -6,3 +6,10 @@ oauth_resource_server:
     - "mcp:tools"
   clock_skew_seconds: 30
   cache_ttl_seconds: 60
+  # Optional: RFC 7662 token introspection for opaque (non-JWT) tokens.
+  # When introspection_url is set, the gateway will attempt introspection
+  # for bearer tokens that cannot be parsed as JWTs.
+  introspection_url: "http://mock-oauth-issuer:8088/introspect"
+  introspection_client_id_env: "OAUTH_INTROSPECTION_CLIENT_ID"
+  introspection_client_secret_env: "OAUTH_INTROSPECTION_CLIENT_SECRET"
+  introspection_required_audience: "gateway"

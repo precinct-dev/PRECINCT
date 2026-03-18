@@ -12,15 +12,35 @@ import (
 
 type SPIFFEAuthOption func(*spiffeAuthConfig)
 
+// ExchangeTokenClaims holds the validated claims from a gateway-issued exchange token.
+type ExchangeTokenClaims struct {
+	Sub        string
+	AuthMethod string
+}
+
+// ExchangeTokenValidator validates a gateway-issued exchange token and returns
+// the embedded claims. The gateway package provides the concrete implementation.
+type ExchangeTokenValidator func(token string) (*ExchangeTokenClaims, error)
+
 type spiffeAuthConfig struct {
-	oauthJWT    *OAuthJWTConfig
-	trustDomain string
+	oauthJWT               *OAuthJWTConfig
+	trustDomain            string
+	exchangeTokenValidator ExchangeTokenValidator
 }
 
 func WithOAuthJWTConfig(cfg *OAuthJWTConfig, trustDomain string) SPIFFEAuthOption {
 	return func(runtime *spiffeAuthConfig) {
 		runtime.oauthJWT = cfg
 		runtime.trustDomain = trustDomain
+	}
+}
+
+// WithExchangeTokenValidator configures the SPIFFEAuth middleware to accept
+// gateway-issued exchange tokens via Authorization: Bearer headers.
+// OC-xkkc: Exchange tokens are checked before OAuth JWT validation.
+func WithExchangeTokenValidator(v ExchangeTokenValidator) SPIFFEAuthOption {
+	return func(runtime *spiffeAuthConfig) {
+		runtime.exchangeTokenValidator = v
 	}
 }
 
@@ -136,7 +156,7 @@ func SPIFFEAuth(next http.Handler, mode string, opts ...SPIFFEAuthOption) http.H
 }
 
 func resolveOAuthBearerIdentity(ctx context.Context, r *http.Request, runtime *spiffeAuthConfig) (string, bool, error) {
-	if runtime == nil || runtime.oauthJWT == nil {
+	if runtime == nil {
 		return "", false, nil
 	}
 
@@ -153,8 +173,42 @@ func resolveOAuthBearerIdentity(ctx context.Context, r *http.Request, runtime *s
 		return "", false, nil
 	}
 
+	// OC-xkkc: Check if this is a gateway-issued exchange token BEFORE trying
+	// OAuth JWT validation. Exchange tokens use HMAC-SHA256 and would fail
+	// asymmetric JWT validation, so we check them first.
+	if runtime.exchangeTokenValidator != nil {
+		if exchangeClaims, err := runtime.exchangeTokenValidator(bearerToken); err == nil {
+			ctxWithAuth := WithAuthMethod(ctx, exchangeClaims.AuthMethod)
+			*r = *r.WithContext(ctxWithAuth)
+			return exchangeClaims.Sub, true, nil
+		}
+		// If exchange token validation fails, fall through to OAuth JWT.
+		// The token might be an OAuth JWT or opaque token.
+	}
+
+	if runtime.oauthJWT == nil {
+		return "", false, nil
+	}
+
 	claims, err := ValidateOAuthJWT(ctx, bearerToken, *runtime.oauthJWT)
 	if err != nil {
+		// Distinguish "not a JWT at all" from "JWT but invalid".
+		// Only fall back to introspection when the token structurally
+		// cannot be parsed as a JWT (opaque token). If it IS a JWT but
+		// fails validation (wrong issuer, expired, bad signature), fail
+		// immediately without trying introspection.
+		introCfg := runtime.oauthJWT.IntrospectionConfig()
+		if isNotJWTError(err) && introCfg != nil && introCfg.IsConfigured() {
+			introClaims, introErr := IntrospectToken(ctx, bearerToken, *introCfg)
+			if introErr != nil {
+				return "", true, introErr
+			}
+			ctxWithClaims := WithAuthMethod(ctx, "oauth_introspection")
+			ctxWithClaims = WithOAuthIssuer(ctxWithClaims, introClaims.Issuer)
+			ctxWithClaims = WithOAuthScopes(ctxWithClaims, introClaims.Scopes)
+			*r = *r.WithContext(ctxWithClaims)
+			return mapOAuthSubjectToSPIFFEID(runtime.trustDomain, introClaims.Subject), true, nil
+		}
 		return "", true, err
 	}
 
