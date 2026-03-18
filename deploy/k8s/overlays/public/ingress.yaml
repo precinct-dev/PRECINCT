@@ -1,0 +1,92 @@
+# ------------------------------------------------------------------------------
+# Public Edge Ingress
+# Story: OC-e3d3 (Public Edge Hardening)
+#
+# Exposes the PRECINCT gateway to the internet with path-based routing.
+# Only the following routes are publicly accessible:
+#   - POST /                                      (MCP JSON-RPC)
+#   - GET  /health                                (health check)
+#   - GET  /.well-known/oauth-protected-resource   (OAuth discovery)
+#
+# NOT exposed (blocked by absence from the Ingress path list):
+#   - /admin/*
+#   - /openai/v1/chat/completions
+#   - /data/dereference
+#   - Any other path
+#
+# TLS termination:
+#   Configured via cert-manager annotations. Replace the placeholder values
+#   with your actual ClusterIssuer name and desired secret name before
+#   deploying to a real cluster.
+#
+# Rate limiting:
+#   The nginx.ingress.kubernetes.io/limit-* annotations are placeholders.
+#   See docs/operations/public-edge.md for rate-limiting guidance.
+# ------------------------------------------------------------------------------
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: precinct-gateway-public
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: precinct-gateway
+    app.kubernetes.io/part-of: precinct-gateway
+    app.kubernetes.io/component: ingress
+  annotations:
+    # -- TLS termination via cert-manager --
+    # Replace "letsencrypt-prod" with your ClusterIssuer name.
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+
+    # -- NGINX ingress controller annotations --
+    # Force HTTPS redirect for all public traffic
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    # Proxy body size limit (matches gateway MAX_REQUEST_SIZE_BYTES)
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    # Connection and read timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "10"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "30"
+    # Pass real client IP to the gateway
+    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+
+    # -- Rate limiting (recommended, adjust to your traffic profile) --
+    # These are disabled by default (set to high values). Enable by lowering
+    # the limits. See docs/operations/public-edge.md for guidance.
+    # nginx.ingress.kubernetes.io/limit-rps: "50"
+    # nginx.ingress.kubernetes.io/limit-connections: "20"
+    # nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        # Replace with your actual public hostname
+        - gateway.example.com
+      # cert-manager will populate this Secret with the TLS certificate
+      secretName: precinct-gateway-tls
+  rules:
+    - host: gateway.example.com
+      http:
+        paths:
+          # MCP JSON-RPC endpoint (POST only enforced at the gateway layer)
+          - path: /
+            pathType: Exact
+            backend:
+              service:
+                name: precinct-gateway
+                port:
+                  name: http
+          # Health check endpoint
+          - path: /health
+            pathType: Exact
+            backend:
+              service:
+                name: precinct-gateway
+                port:
+                  name: http
+          # OAuth Protected Resource discovery
+          - path: /.well-known/oauth-protected-resource
+            pathType: Exact
+            backend:
+              service:
+                name: precinct-gateway
+                port:
+                  name: http
