@@ -8,8 +8,10 @@ package gateway
 
 import (
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -18,6 +20,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/precinct-dev/precinct/internal/gateway/middleware"
+	"golang.org/x/crypto/bcrypt"
 	"gopkg.in/yaml.v3"
 )
 
@@ -42,10 +46,6 @@ type TokenExchangeConfig struct {
 	defaultTTL time.Duration
 	maxTTL     time.Duration
 
-	// credentialMap is built from Credentials for O(1) lookup.
-	// Key: "type:credential", Value: SPIFFE ID.
-	credentialMap map[string]string
-
 	// signingKey is loaded from TOKEN_EXCHANGE_SIGNING_KEY env var.
 	signingKey []byte
 }
@@ -53,7 +53,7 @@ type TokenExchangeConfig struct {
 // TokenExchangeCredential maps an external credential to a SPIFFE identity.
 type TokenExchangeCredential struct {
 	CredentialType string `yaml:"credential_type"`
-	Credential     string `yaml:"credential"`
+	CredentialHash string `yaml:"credential_hash"`
 	SPIFFEID       string `yaml:"spiffe_id"`
 }
 
@@ -73,6 +73,7 @@ type TokenExchangeResponse struct {
 
 // TokenExchangeClaims are the JWT claims embedded in exchange tokens.
 type TokenExchangeClaims struct {
+	Jti                string `json:"jti"`
 	Sub                string `json:"sub"`
 	Iss                string `json:"iss"`
 	Aud                string `json:"aud"`
@@ -113,11 +114,17 @@ func LoadTokenExchangeConfig(path string) (*TokenExchangeConfig, error) {
 		cfg.maxTTL = maxTokenExchangeTTL
 	}
 
-	// Build credential lookup map.
-	cfg.credentialMap = make(map[string]string, len(cfg.Credentials))
-	for _, c := range cfg.Credentials {
-		key := credentialKey(c.CredentialType, c.Credential)
-		cfg.credentialMap[key] = c.SPIFFEID
+	// Validate that all credentials have bcrypt hashes.
+	for i, c := range cfg.Credentials {
+		if c.CredentialHash == "" {
+			return nil, fmt.Errorf("credential[%d]: credential_hash is required", i)
+		}
+		if c.CredentialType == "" {
+			return nil, fmt.Errorf("credential[%d]: credential_type is required", i)
+		}
+		if c.SPIFFEID == "" {
+			return nil, fmt.Errorf("credential[%d]: spiffe_id is required", i)
+		}
 	}
 
 	// Load signing key from environment.
@@ -133,29 +140,27 @@ func LoadTokenExchangeConfig(path string) (*TokenExchangeConfig, error) {
 // LoadTokenExchangeConfigForTest creates a config from values without file or env.
 // Used only by tests.
 func LoadTokenExchangeConfigForTest(credentials []TokenExchangeCredential, signingKey string, defaultTTL, maxTTL time.Duration) *TokenExchangeConfig {
-	cfg := &TokenExchangeConfig{
-		Credentials:   credentials,
-		defaultTTL:    defaultTTL,
-		maxTTL:        maxTTL,
-		signingKey:    []byte(signingKey),
-		credentialMap: make(map[string]string, len(credentials)),
+	return &TokenExchangeConfig{
+		Credentials: credentials,
+		defaultTTL:  defaultTTL,
+		maxTTL:      maxTTL,
+		signingKey:  []byte(signingKey),
 	}
-	for _, c := range credentials {
-		key := credentialKey(c.CredentialType, c.Credential)
-		cfg.credentialMap[key] = c.SPIFFEID
-	}
-	return cfg
 }
 
-func credentialKey(credType, cred string) string {
-	return credType + ":" + cred
-}
-
-// LookupCredential resolves a credential to a SPIFFE ID.
+// LookupCredential resolves a credential to a SPIFFE ID by comparing the
+// plaintext credential against bcrypt hashes in the configuration.
 // Returns the SPIFFE ID and true if found, empty string and false otherwise.
 func (c *TokenExchangeConfig) LookupCredential(credType, credential string) (string, bool) {
-	spiffeID, ok := c.credentialMap[credentialKey(credType, credential)]
-	return spiffeID, ok
+	for _, entry := range c.Credentials {
+		if entry.CredentialType != credType {
+			continue
+		}
+		if bcrypt.CompareHashAndPassword([]byte(entry.CredentialHash), []byte(credential)) == nil {
+			return entry.SPIFFEID, true
+		}
+	}
+	return "", false
 }
 
 // ResolveTTL resolves the requested TTL against defaults and maximums.
@@ -187,8 +192,14 @@ func (c *TokenExchangeConfig) MintToken(spiffeID string, ttl time.Duration) (str
 
 // mintExchangeToken is the internal minting function with injectable time.
 func mintExchangeToken(spiffeID string, ttl time.Duration, signingKey []byte, now func() time.Time) (string, error) {
+	jti, err := generateJTI()
+	if err != nil {
+		return "", fmt.Errorf("generate jti: %w", err)
+	}
+
 	t := now()
 	claims := TokenExchangeClaims{
+		Jti:                jti,
 		Sub:                spiffeID,
 		Iss:                tokenExchangeIssuer,
 		Aud:                tokenExchangeAudience,
@@ -198,6 +209,15 @@ func mintExchangeToken(spiffeID string, ttl time.Duration, signingKey []byte, no
 	}
 
 	return signJWTHS256(claims, signingKey)
+}
+
+// generateJTI produces a cryptographically random 16-byte hex token ID.
+func generateJTI() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // ValidateExchangeToken validates a JWT that was issued by the token exchange
@@ -340,7 +360,7 @@ func tokenExchangeHandler(cfg *TokenExchangeConfig) http.Handler {
 			slog.Warn("token exchange: unknown credential",
 				"credential_type", req.CredentialType,
 			)
-			writeTokenExchangeError(w, http.StatusUnauthorized, "invalid_credential", "Unknown or invalid credential")
+			writeTokenExchangeError(w, http.StatusUnauthorized, middleware.ErrAuthCredentialRejected, "Unknown or invalid credential")
 			return
 		}
 
