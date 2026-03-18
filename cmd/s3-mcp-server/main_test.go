@@ -1,19 +1,15 @@
-// S3 MCP Tool Server Tests - RFA-9fv.5
-//
-// Unit tests for:
-//   - Allowlist enforcement (positive and negative)
-//   - Tool schema hashing (verifies registry hashes match)
-//   - JSON-RPC protocol handling (tools/list, tools/call, errors)
-//   - Allowlist parsing from environment variable format
+// S3 MCP server integration tests -- verify that the s3adapter tools work
+// correctly when wired through the mcpserver framework. These tests exercise
+// the full HTTP JSON-RPC path: session init -> tools/list -> tools/call.
 package main
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -21,10 +17,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/precinct-dev/precinct/internal/gateway/middleware"
+
+	"github.com/precinct-dev/precinct/cmd/s3-mcp-server/s3adapter"
+	"github.com/precinct-dev/precinct/pkg/mcpserver"
 )
 
-// mockS3Client implements S3Client for testing without real AWS calls.
+// mockS3Client implements s3adapter.S3Client for testing.
 type mockS3Client struct {
 	listResult *s3.ListObjectsV2Output
 	listErr    error
@@ -40,437 +38,164 @@ func (m *mockS3Client) GetObject(_ context.Context, _ *s3.GetObjectInput, _ ...f
 	return m.getResult, m.getErr
 }
 
-// --- Allowlist enforcement tests ---
-
-func TestIsAllowed_ExactMatch(t *testing.T) {
-	srv := NewMCPServer(nil, []AllowlistEntry{
-		{Bucket: "my-bucket", Prefix: "data/"},
-	})
-
-	if !srv.IsAllowed("my-bucket", "data/file.txt") {
-		t.Error("expected allowed for matching bucket and prefix")
-	}
-	if !srv.IsAllowed("my-bucket", "data/") {
-		t.Error("expected allowed for exact prefix match")
-	}
+// jsonrpcRequest mirrors the wire format for JSON-RPC requests.
+type jsonrpcRequest struct {
+	JSONRPC string          `json:"jsonrpc"`
+	Method  string          `json:"method"`
+	Params  json.RawMessage `json:"params,omitempty"`
+	ID      json.RawMessage `json:"id"`
 }
 
-func TestIsAllowed_Denied_WrongBucket(t *testing.T) {
-	srv := NewMCPServer(nil, []AllowlistEntry{
-		{Bucket: "my-bucket", Prefix: "data/"},
-	})
-
-	if srv.IsAllowed("other-bucket", "data/file.txt") {
-		t.Error("expected denied for wrong bucket")
-	}
+// jsonrpcResponse mirrors the wire format for JSON-RPC responses.
+type jsonrpcResponse struct {
+	JSONRPC string          `json:"jsonrpc"`
+	ID      json.RawMessage `json:"id,omitempty"`
+	Result  json.RawMessage `json:"result,omitempty"`
+	Error   *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error,omitempty"`
 }
 
-func TestIsAllowed_Denied_WrongPrefix(t *testing.T) {
-	srv := NewMCPServer(nil, []AllowlistEntry{
-		{Bucket: "my-bucket", Prefix: "data/"},
-	})
-
-	if srv.IsAllowed("my-bucket", "secret/file.txt") {
-		t.Error("expected denied for wrong prefix")
-	}
+// toolCallResult mirrors the MCP tool call result wire format.
+type toolCallResult struct {
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+	IsError bool `json:"isError,omitempty"`
 }
 
-func TestIsAllowed_Denied_PrefixTraversal(t *testing.T) {
-	srv := NewMCPServer(nil, []AllowlistEntry{
-		{Bucket: "my-bucket", Prefix: "data/public/"},
+// startTestServer creates a framework server with the given mock and allowlist,
+// starts it on an ephemeral port, and returns the base URL and a cancel function.
+func startTestServer(t *testing.T, mock s3adapter.S3Client, allowlist []s3adapter.AllowlistEntry) (string, context.CancelFunc) {
+	t.Helper()
+
+	adapter := s3adapter.New(mock, allowlist)
+	srv := mcpserver.New("s3-mcp-server-test",
+		mcpserver.WithPort(0),
+		mcpserver.WithoutOTel(),
+		mcpserver.WithoutCaching(),
+		mcpserver.WithoutRateLimiting(),
+	)
+	srv.Tool("s3_list_objects", s3adapter.ListObjectsDescription, s3adapter.ListObjectsSchema(), adapter.ListObjects)
+	srv.Tool("s3_get_object", s3adapter.GetObjectDescription, s3adapter.GetObjectSchema(), adapter.GetObject)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- srv.RunContext(ctx)
+	}()
+
+	// Wait for the server to start listening.
+	var baseURL string
+	for i := 0; i < 50; i++ {
+		if addr := srv.Addr(); addr != nil {
+			baseURL = fmt.Sprintf("http://%s", addr.String())
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if baseURL == "" {
+		cancel()
+		t.Fatal("server did not start in time")
+	}
+
+	t.Cleanup(func() {
+		cancel()
+		// Drain the error channel.
+		<-errCh
 	})
 
-	// Attempting path traversal should be blocked since it doesn't start with prefix
-	if srv.IsAllowed("my-bucket", "../secret/file.txt") {
-		t.Error("expected denied for path traversal attempt")
-	}
-	if srv.IsAllowed("my-bucket", "data/../secret/file.txt") {
-		t.Error("expected denied for embedded traversal (does not start with data/public/)")
-	}
+	return baseURL, cancel
 }
 
-func TestIsAllowed_MultipleEntries(t *testing.T) {
-	srv := NewMCPServer(nil, []AllowlistEntry{
-		{Bucket: "bucket-a", Prefix: "logs/"},
-		{Bucket: "bucket-b", Prefix: "reports/"},
+// initSession performs the MCP initialize + notifications/initialized handshake
+// and returns the session ID.
+func initSession(t *testing.T, baseURL string) string {
+	t.Helper()
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	// Step 1: initialize
+	initReq, _ := json.Marshal(jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  "initialize",
+		ID:      json.RawMessage(`1`),
 	})
-
-	if !srv.IsAllowed("bucket-a", "logs/2024/jan.log") {
-		t.Error("expected allowed for bucket-a logs/")
+	resp, err := client.Post(baseURL+"/", "application/json", bytes.NewReader(initReq))
+	if err != nil {
+		t.Fatalf("initialize request failed: %v", err)
 	}
-	if !srv.IsAllowed("bucket-b", "reports/q1.pdf") {
-		t.Error("expected allowed for bucket-b reports/")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("initialize: expected 200, got %d", resp.StatusCode)
 	}
-	if srv.IsAllowed("bucket-a", "reports/q1.pdf") {
-		t.Error("expected denied for bucket-a reports/ (wrong prefix)")
+	sessionID := resp.Header.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		t.Fatal("initialize: no Mcp-Session-Id header")
 	}
-}
 
-func TestIsAllowed_EmptyAllowlist(t *testing.T) {
-	srv := NewMCPServer(nil, nil)
-
-	if srv.IsAllowed("any-bucket", "any-key") {
-		t.Error("expected denied with empty allowlist")
-	}
-}
-
-func TestIsAllowed_EmptyPrefix(t *testing.T) {
-	srv := NewMCPServer(nil, []AllowlistEntry{
-		{Bucket: "my-bucket", Prefix: ""},
+	// Step 2: notifications/initialized
+	notifReq, _ := json.Marshal(jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  "notifications/initialized",
 	})
-
-	// Empty prefix means entire bucket is allowed
-	if !srv.IsAllowed("my-bucket", "anything/goes/here.txt") {
-		t.Error("expected allowed with empty prefix (entire bucket)")
+	req, _ := http.NewRequest(http.MethodPost, baseURL+"/", bytes.NewReader(notifReq))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Mcp-Session-Id", sessionID)
+	resp2, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("notifications/initialized failed: %v", err)
 	}
+	defer resp2.Body.Close()
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("notifications/initialized: expected 200, got %d", resp2.StatusCode)
+	}
+
+	return sessionID
 }
 
-// --- Allowlist parsing tests ---
+// doRPC sends a JSON-RPC request with session header and returns the parsed response.
+func doRPC(t *testing.T, baseURL, sessionID string, req jsonrpcRequest) jsonrpcResponse {
+	t.Helper()
+	client := &http.Client{Timeout: 5 * time.Second}
 
-func TestParseAllowlist(t *testing.T) {
-	tests := []struct {
-		name     string
-		input    string
-		expected []AllowlistEntry
-	}{
-		{
-			name:     "single entry",
-			input:    "my-bucket:data/",
-			expected: []AllowlistEntry{{Bucket: "my-bucket", Prefix: "data/"}},
-		},
-		{
-			name:  "multiple entries",
-			input: "bucket-a:logs/,bucket-b:reports/",
-			expected: []AllowlistEntry{
-				{Bucket: "bucket-a", Prefix: "logs/"},
-				{Bucket: "bucket-b", Prefix: "reports/"},
-			},
-		},
-		{
-			name:     "bucket only (no prefix)",
-			input:    "my-bucket",
-			expected: []AllowlistEntry{{Bucket: "my-bucket", Prefix: ""}},
-		},
-		{
-			name:     "empty string",
-			input:    "",
-			expected: nil,
-		},
-		{
-			name:  "whitespace trimming",
-			input: " bucket-a:data/ , bucket-b:logs/ ",
-			expected: []AllowlistEntry{
-				{Bucket: "bucket-a", Prefix: "data/"},
-				{Bucket: "bucket-b", Prefix: "logs/"},
-			},
-		},
-		{
-			name:     "prefix with colon",
-			input:    "my-bucket:path:with:colons/",
-			expected: []AllowlistEntry{{Bucket: "my-bucket", Prefix: "path:with:colons/"}},
-		},
-	}
+	body, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequest(http.MethodPost, baseURL+"/", bytes.NewReader(body))
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Mcp-Session-Id", sessionID)
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			result := parseAllowlist(tc.input)
-			if len(result) != len(tc.expected) {
-				t.Fatalf("expected %d entries, got %d", len(tc.expected), len(result))
-			}
-			for i, r := range result {
-				if r.Bucket != tc.expected[i].Bucket || r.Prefix != tc.expected[i].Prefix {
-					t.Errorf("entry %d: expected {%q, %q}, got {%q, %q}",
-						i, tc.expected[i].Bucket, tc.expected[i].Prefix, r.Bucket, r.Prefix)
-				}
-			}
-		})
+	resp, err := client.Do(httpReq)
+	if err != nil {
+		t.Fatalf("RPC request failed: %v", err)
 	}
+	defer resp.Body.Close()
+
+	var rpcResp jsonrpcResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	return rpcResp
 }
 
-// --- Tool schema hash verification tests ---
+// --- Integration tests ---
 
-func TestToolSchemaHash_S3ListObjects(t *testing.T) {
-	hash := middleware.ComputeHash(S3ListObjectsDescription, S3ListObjectsSchema())
-	if hash == "" {
-		t.Fatal("hash should not be empty")
-	}
-	// Verify the hash is a valid hex string of 64 chars (SHA-256)
-	if len(hash) != 64 {
-		t.Errorf("expected 64-char hex hash, got %d chars: %s", len(hash), hash)
-	}
-	// Verify the hash matches what is registered in tool-registry.yaml
-	const expectedHash = "8e007a4ef7ffb625b72e43f04febb0f7409435f9551018b6dbb3d3858fcef0ea"
-	if hash != expectedHash {
-		t.Errorf("hash mismatch with tool-registry.yaml:\n  computed: %s\n  expected: %s", hash, expectedHash)
-	}
-	t.Logf("s3_list_objects hash: %s", hash)
-}
+func TestIntegration_HealthCheck(t *testing.T) {
+	baseURL, _ := startTestServer(t, nil, nil)
+	client := &http.Client{Timeout: 5 * time.Second}
 
-func TestToolSchemaHash_S3GetObject(t *testing.T) {
-	hash := middleware.ComputeHash(S3GetObjectDescription, S3GetObjectSchema())
-	if hash == "" {
-		t.Fatal("hash should not be empty")
+	resp, err := client.Get(baseURL + "/health")
+	if err != nil {
+		t.Fatalf("health check failed: %v", err)
 	}
-	if len(hash) != 64 {
-		t.Errorf("expected 64-char hex hash, got %d chars: %s", len(hash), hash)
-	}
-	// Verify the hash matches what is registered in tool-registry.yaml
-	const expectedHash = "c2fd4dfceb57d856cdf0bdf9d50d64798dae998d5e107b28220f2fea76c7f7f4"
-	if hash != expectedHash {
-		t.Errorf("hash mismatch with tool-registry.yaml:\n  computed: %s\n  expected: %s", hash, expectedHash)
-	}
-	t.Logf("s3_get_object hash: %s", hash)
-}
+	defer resp.Body.Close()
 
-func TestToolSchemaHash_Deterministic(t *testing.T) {
-	hash1 := middleware.ComputeHash(S3ListObjectsDescription, S3ListObjectsSchema())
-	hash2 := middleware.ComputeHash(S3ListObjectsDescription, S3ListObjectsSchema())
-	if hash1 != hash2 {
-		t.Errorf("hash is not deterministic: %s != %s", hash1, hash2)
-	}
-}
-
-// --- JSON-RPC protocol tests ---
-
-func TestHandleToolsList(t *testing.T) {
-	srv := NewMCPServer(nil, nil)
-	resp := srv.HandleToolsList(1)
-
-	if resp.Jsonrpc != "2.0" {
-		t.Errorf("expected jsonrpc 2.0, got %s", resp.Jsonrpc)
-	}
-	if resp.ID != 1 {
-		t.Errorf("expected id 1, got %v", resp.ID)
-	}
-	if resp.Error != nil {
-		t.Errorf("unexpected error: %v", resp.Error)
-	}
-
-	result, ok := resp.Result.(map[string]interface{})
-	if !ok {
-		t.Fatal("result should be a map")
-	}
-	tools, ok := result["tools"].([]ToolDefinition)
-	if !ok {
-		t.Fatal("tools should be []ToolDefinition")
-	}
-	if len(tools) != 2 {
-		t.Fatalf("expected 2 tools, got %d", len(tools))
-	}
-	if tools[0].Name != "s3_list_objects" {
-		t.Errorf("expected first tool name s3_list_objects, got %s", tools[0].Name)
-	}
-	if tools[1].Name != "s3_get_object" {
-		t.Errorf("expected second tool name s3_get_object, got %s", tools[1].Name)
-	}
-}
-
-func TestHandleToolsCall_ListObjects_Success(t *testing.T) {
-	now := time.Now()
-	mock := &mockS3Client{
-		listResult: &s3.ListObjectsV2Output{
-			Contents: []s3types.Object{
-				{Key: aws.String("data/file1.txt"), Size: aws.Int64(100), LastModified: &now},
-				{Key: aws.String("data/file2.txt"), Size: aws.Int64(200), LastModified: &now},
-			},
-		},
-	}
-	srv := NewMCPServer(mock, []AllowlistEntry{
-		{Bucket: "test-bucket", Prefix: "data/"},
-	})
-
-	resp := srv.HandleToolsCall(context.Background(), 1, ToolCallParams{
-		Name: "s3_list_objects",
-		Arguments: map[string]interface{}{
-			"bucket": "test-bucket",
-			"prefix": "data/",
-		},
-	})
-
-	if resp.Error != nil {
-		t.Fatalf("unexpected error: %v", resp.Error)
-	}
-	result, ok := resp.Result.(*ToolResult)
-	if !ok {
-		t.Fatal("result should be *ToolResult")
-	}
-	if result.IsError {
-		t.Error("result should not be an error")
-	}
-	if len(result.Content) != 1 {
-		t.Fatalf("expected 1 content item, got %d", len(result.Content))
-	}
-	if !strings.Contains(result.Content[0].Text, "data/file1.txt") {
-		t.Error("result should contain file1.txt")
-	}
-	if !strings.Contains(result.Content[0].Text, "data/file2.txt") {
-		t.Error("result should contain file2.txt")
-	}
-	if !strings.Contains(result.Content[0].Text, "count: 2") {
-		t.Error("result should contain count: 2")
-	}
-}
-
-func TestHandleToolsCall_ListObjects_Denied(t *testing.T) {
-	srv := NewMCPServer(nil, []AllowlistEntry{
-		{Bucket: "test-bucket", Prefix: "data/"},
-	})
-
-	resp := srv.HandleToolsCall(context.Background(), 1, ToolCallParams{
-		Name: "s3_list_objects",
-		Arguments: map[string]interface{}{
-			"bucket": "test-bucket",
-			"prefix": "secret/",
-		},
-	})
-
-	if resp.Error != nil {
-		t.Fatalf("unexpected JSON-RPC error: %v", resp.Error)
-	}
-	result, ok := resp.Result.(*ToolResult)
-	if !ok {
-		t.Fatal("result should be *ToolResult")
-	}
-	if !result.IsError {
-		t.Error("result should be an error (access denied)")
-	}
-	if !strings.Contains(result.Content[0].Text, "access denied") {
-		t.Errorf("expected access denied message, got: %s", result.Content[0].Text)
-	}
-}
-
-func TestHandleToolsCall_GetObject_Success(t *testing.T) {
-	mock := &mockS3Client{
-		getResult: &s3.GetObjectOutput{
-			Body: io.NopCloser(strings.NewReader("hello world")),
-		},
-	}
-	srv := NewMCPServer(mock, []AllowlistEntry{
-		{Bucket: "test-bucket", Prefix: "data/"},
-	})
-
-	resp := srv.HandleToolsCall(context.Background(), 2, ToolCallParams{
-		Name: "s3_get_object",
-		Arguments: map[string]interface{}{
-			"bucket": "test-bucket",
-			"key":    "data/file.txt",
-		},
-	})
-
-	if resp.Error != nil {
-		t.Fatalf("unexpected error: %v", resp.Error)
-	}
-	result, ok := resp.Result.(*ToolResult)
-	if !ok {
-		t.Fatal("result should be *ToolResult")
-	}
-	if result.IsError {
-		t.Error("result should not be an error")
-	}
-	if result.Content[0].Text != "hello world" {
-		t.Errorf("expected 'hello world', got %q", result.Content[0].Text)
-	}
-}
-
-func TestHandleToolsCall_GetObject_Denied(t *testing.T) {
-	srv := NewMCPServer(nil, []AllowlistEntry{
-		{Bucket: "test-bucket", Prefix: "data/"},
-	})
-
-	resp := srv.HandleToolsCall(context.Background(), 2, ToolCallParams{
-		Name: "s3_get_object",
-		Arguments: map[string]interface{}{
-			"bucket": "test-bucket",
-			"key":    "secret/passwords.txt",
-		},
-	})
-
-	result, ok := resp.Result.(*ToolResult)
-	if !ok {
-		t.Fatal("result should be *ToolResult")
-	}
-	if !result.IsError {
-		t.Error("result should be an error (access denied)")
-	}
-	if !strings.Contains(result.Content[0].Text, "access denied") {
-		t.Error("expected access denied message")
-	}
-}
-
-func TestHandleToolsCall_UnknownTool(t *testing.T) {
-	srv := NewMCPServer(nil, nil)
-
-	resp := srv.HandleToolsCall(context.Background(), 3, ToolCallParams{
-		Name:      "unknown_tool",
-		Arguments: nil,
-	})
-
-	if resp.Error == nil {
-		t.Fatal("expected error for unknown tool")
-	}
-	if resp.Error.Code != -32601 {
-		t.Errorf("expected error code -32601, got %d", resp.Error.Code)
-	}
-}
-
-func TestHandleToolsCall_MissingRequiredParams(t *testing.T) {
-	srv := NewMCPServer(nil, []AllowlistEntry{
-		{Bucket: "test-bucket", Prefix: "data/"},
-	})
-
-	// s3_list_objects with empty bucket
-	resp := srv.HandleToolsCall(context.Background(), 1, ToolCallParams{
-		Name: "s3_list_objects",
-		Arguments: map[string]interface{}{
-			"bucket": "",
-			"prefix": "data/",
-		},
-	})
-
-	result, ok := resp.Result.(*ToolResult)
-	if !ok {
-		t.Fatal("result should be *ToolResult")
-	}
-	if !result.IsError {
-		t.Error("expected error for empty bucket")
-	}
-	if !strings.Contains(result.Content[0].Text, "required") {
-		t.Error("expected 'required' in error message")
-	}
-
-	// s3_get_object with empty key
-	resp = srv.HandleToolsCall(context.Background(), 2, ToolCallParams{
-		Name: "s3_get_object",
-		Arguments: map[string]interface{}{
-			"bucket": "test-bucket",
-			"key":    "",
-		},
-	})
-
-	result, ok = resp.Result.(*ToolResult)
-	if !ok {
-		t.Fatal("result should be *ToolResult")
-	}
-	if !result.IsError {
-		t.Error("expected error for empty key")
-	}
-}
-
-// --- HTTP handler tests ---
-
-func TestHTTP_HealthCheck(t *testing.T) {
-	srv := NewMCPServer(nil, nil)
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
-	w := httptest.NewRecorder()
-
-	srv.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected 200, got %d", resp.StatusCode)
 	}
 
 	var body map[string]string
-	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
 	if body["status"] != "ok" {
@@ -478,46 +203,41 @@ func TestHTTP_HealthCheck(t *testing.T) {
 	}
 }
 
-func TestHTTP_MethodNotAllowed(t *testing.T) {
-	srv := NewMCPServer(nil, nil)
-	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
-	w := httptest.NewRecorder()
+func TestIntegration_ToolsList(t *testing.T) {
+	baseURL, _ := startTestServer(t, nil, nil)
+	sessionID := initSession(t, baseURL)
 
-	srv.ServeHTTP(w, req)
-
-	if w.Code != http.StatusMethodNotAllowed {
-		t.Errorf("expected 405, got %d", w.Code)
-	}
-}
-
-func TestHTTP_ToolsList(t *testing.T) {
-	srv := NewMCPServer(nil, nil)
-
-	body, _ := json.Marshal(JSONRPCRequest{
-		Jsonrpc: "2.0",
+	resp := doRPC(t, baseURL, sessionID, jsonrpcRequest{
+		JSONRPC: "2.0",
 		Method:  "tools/list",
-		ID:      1,
+		ID:      json.RawMessage(`2`),
 	})
-	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
 
-	srv.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
-
-	var resp JSONRPCResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
 	if resp.Error != nil {
-		t.Errorf("unexpected error: %v", resp.Error)
+		t.Fatalf("unexpected error: %v", resp.Error)
+	}
+
+	// Parse the tools list result.
+	var result struct {
+		Tools []struct {
+			Name string `json:"name"`
+		} `json:"tools"`
+	}
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("failed to parse tools list: %v", err)
+	}
+	if len(result.Tools) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(result.Tools))
+	}
+	if result.Tools[0].Name != "s3_list_objects" {
+		t.Errorf("expected first tool s3_list_objects, got %s", result.Tools[0].Name)
+	}
+	if result.Tools[1].Name != "s3_get_object" {
+		t.Errorf("expected second tool s3_get_object, got %s", result.Tools[1].Name)
 	}
 }
 
-func TestHTTP_ToolsCall_WithAllowedRequest(t *testing.T) {
+func TestIntegration_ListObjects_Success(t *testing.T) {
 	now := time.Now()
 	mock := &mockS3Client{
 		listResult: &s3.ListObjectsV2Output{
@@ -526,140 +246,289 @@ func TestHTTP_ToolsCall_WithAllowedRequest(t *testing.T) {
 			},
 		},
 	}
-	srv := NewMCPServer(mock, []AllowlistEntry{
+	baseURL, _ := startTestServer(t, mock, []s3adapter.AllowlistEntry{
 		{Bucket: "allowed-bucket", Prefix: "data/"},
 	})
+	sessionID := initSession(t, baseURL)
 
-	params, _ := json.Marshal(ToolCallParams{
-		Name: "s3_list_objects",
-		Arguments: map[string]interface{}{
+	params, _ := json.Marshal(map[string]any{
+		"name": "s3_list_objects",
+		"arguments": map[string]any{
 			"bucket": "allowed-bucket",
 			"prefix": "data/",
 		},
 	})
-	body, _ := json.Marshal(JSONRPCRequest{
-		Jsonrpc: "2.0",
+
+	resp := doRPC(t, baseURL, sessionID, jsonrpcRequest{
+		JSONRPC: "2.0",
 		Method:  "tools/call",
 		Params:  params,
-		ID:      1,
+		ID:      json.RawMessage(`3`),
 	})
 
-	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	w := httptest.NewRecorder()
-
-	srv.ServeHTTP(w, req)
-
-	if w.Code != http.StatusOK {
-		t.Errorf("expected 200, got %d", w.Code)
-	}
-
-	var resp JSONRPCResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatal(err)
-	}
 	if resp.Error != nil {
-		t.Errorf("unexpected JSON-RPC error: %v", resp.Error)
+		t.Fatalf("unexpected JSON-RPC error: %+v", resp.Error)
+	}
+
+	var result toolCallResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("failed to parse tool result: %v", err)
+	}
+	if result.IsError {
+		t.Errorf("expected success, got error: %s", result.Content[0].Text)
+	}
+	if len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, "data/test.txt") {
+		t.Error("result should contain data/test.txt")
 	}
 }
 
-func TestHTTP_UnknownMethod(t *testing.T) {
-	srv := NewMCPServer(nil, nil)
-
-	body, _ := json.Marshal(JSONRPCRequest{
-		Jsonrpc: "2.0",
-		Method:  "unknown/method",
-		ID:      1,
-	})
-	req := httptest.NewRequest(http.MethodPost, "/mcp", bytes.NewReader(body))
-	w := httptest.NewRecorder()
-
-	srv.ServeHTTP(w, req)
-
-	var resp JSONRPCResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if resp.Error == nil {
-		t.Error("expected error for unknown method")
-	}
-	if resp.Error.Code != -32601 {
-		t.Errorf("expected -32601, got %d", resp.Error.Code)
-	}
-}
-
-func TestHTTP_InvalidJSON(t *testing.T) {
-	srv := NewMCPServer(nil, nil)
-
-	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader("not json"))
-	w := httptest.NewRecorder()
-
-	srv.ServeHTTP(w, req)
-
-	var resp JSONRPCResponse
-	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if resp.Error == nil {
-		t.Error("expected parse error")
-	}
-	if resp.Error.Code != -32700 {
-		t.Errorf("expected -32700, got %d", resp.Error.Code)
-	}
-}
-
-func TestHandleToolsCall_ListObjects_S3Error(t *testing.T) {
-	mock := &mockS3Client{
-		listErr: io.ErrUnexpectedEOF,
-	}
-	srv := NewMCPServer(mock, []AllowlistEntry{
+func TestIntegration_ListObjects_Denied(t *testing.T) {
+	baseURL, _ := startTestServer(t, nil, []s3adapter.AllowlistEntry{
 		{Bucket: "test-bucket", Prefix: "data/"},
 	})
+	sessionID := initSession(t, baseURL)
 
-	resp := srv.HandleToolsCall(context.Background(), 1, ToolCallParams{
-		Name: "s3_list_objects",
-		Arguments: map[string]interface{}{
+	params, _ := json.Marshal(map[string]any{
+		"name": "s3_list_objects",
+		"arguments": map[string]any{
 			"bucket": "test-bucket",
-			"prefix": "data/",
+			"prefix": "secret/",
 		},
 	})
 
-	result, ok := resp.Result.(*ToolResult)
-	if !ok {
-		t.Fatal("result should be *ToolResult")
+	resp := doRPC(t, baseURL, sessionID, jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  "tools/call",
+		Params:  params,
+		ID:      json.RawMessage(`4`),
+	})
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected JSON-RPC error: %+v", resp.Error)
+	}
+
+	var result toolCallResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("failed to parse tool result: %v", err)
 	}
 	if !result.IsError {
-		t.Error("expected error on S3 failure")
+		t.Error("expected isError for access denied")
 	}
-	if !strings.Contains(result.Content[0].Text, "ListObjectsV2 failed") {
-		t.Error("expected S3 error message")
+	if len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, "access denied") {
+		t.Error("expected access denied message")
 	}
 }
 
-func TestHandleToolsCall_GetObject_S3Error(t *testing.T) {
+func TestIntegration_GetObject_Success(t *testing.T) {
 	mock := &mockS3Client{
-		getErr: io.ErrUnexpectedEOF,
+		getResult: &s3.GetObjectOutput{
+			Body: io.NopCloser(strings.NewReader("hello world")),
+		},
 	}
-	srv := NewMCPServer(mock, []AllowlistEntry{
+	baseURL, _ := startTestServer(t, mock, []s3adapter.AllowlistEntry{
 		{Bucket: "test-bucket", Prefix: "data/"},
 	})
+	sessionID := initSession(t, baseURL)
 
-	resp := srv.HandleToolsCall(context.Background(), 2, ToolCallParams{
-		Name: "s3_get_object",
-		Arguments: map[string]interface{}{
+	params, _ := json.Marshal(map[string]any{
+		"name": "s3_get_object",
+		"arguments": map[string]any{
 			"bucket": "test-bucket",
 			"key":    "data/file.txt",
 		},
 	})
 
-	result, ok := resp.Result.(*ToolResult)
-	if !ok {
-		t.Fatal("result should be *ToolResult")
+	resp := doRPC(t, baseURL, sessionID, jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  "tools/call",
+		Params:  params,
+		ID:      json.RawMessage(`5`),
+	})
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected JSON-RPC error: %+v", resp.Error)
+	}
+
+	var result toolCallResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("failed to parse tool result: %v", err)
+	}
+	if result.IsError {
+		t.Error("expected success result")
+	}
+	if len(result.Content) == 0 || result.Content[0].Text != "hello world" {
+		t.Errorf("expected 'hello world', got %q", result.Content[0].Text)
+	}
+}
+
+func TestIntegration_GetObject_Denied(t *testing.T) {
+	baseURL, _ := startTestServer(t, nil, []s3adapter.AllowlistEntry{
+		{Bucket: "test-bucket", Prefix: "data/"},
+	})
+	sessionID := initSession(t, baseURL)
+
+	params, _ := json.Marshal(map[string]any{
+		"name": "s3_get_object",
+		"arguments": map[string]any{
+			"bucket": "test-bucket",
+			"key":    "secret/passwords.txt",
+		},
+	})
+
+	resp := doRPC(t, baseURL, sessionID, jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  "tools/call",
+		Params:  params,
+		ID:      json.RawMessage(`6`),
+	})
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected JSON-RPC error: %+v", resp.Error)
+	}
+
+	var result toolCallResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("failed to parse tool result: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected isError for access denied")
+	}
+	if len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, "access denied") {
+		t.Error("expected access denied message")
+	}
+}
+
+func TestIntegration_UnknownMethod(t *testing.T) {
+	baseURL, _ := startTestServer(t, nil, nil)
+	sessionID := initSession(t, baseURL)
+
+	resp := doRPC(t, baseURL, sessionID, jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  "unknown/method",
+		ID:      json.RawMessage(`7`),
+	})
+
+	if resp.Error == nil {
+		t.Error("expected error for unknown method")
+	}
+	if resp.Error != nil && resp.Error.Code != -32601 {
+		t.Errorf("expected -32601, got %d", resp.Error.Code)
+	}
+}
+
+func TestIntegration_InvalidJSON(t *testing.T) {
+	baseURL, _ := startTestServer(t, nil, nil)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Post(baseURL+"/", "application/json", strings.NewReader("not json"))
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var rpcResp jsonrpcResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if rpcResp.Error == nil {
+		t.Error("expected parse error")
+	}
+	if rpcResp.Error != nil && rpcResp.Error.Code != -32700 {
+		t.Errorf("expected -32700, got %d", rpcResp.Error.Code)
+	}
+}
+
+func TestIntegration_MethodNotAllowed(t *testing.T) {
+	baseURL, _ := startTestServer(t, nil, nil)
+	client := &http.Client{Timeout: 5 * time.Second}
+
+	resp, err := client.Get(baseURL + "/")
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405, got %d", resp.StatusCode)
+	}
+}
+
+func TestIntegration_ListObjects_S3Error(t *testing.T) {
+	mock := &mockS3Client{
+		listErr: io.ErrUnexpectedEOF,
+	}
+	baseURL, _ := startTestServer(t, mock, []s3adapter.AllowlistEntry{
+		{Bucket: "test-bucket", Prefix: "data/"},
+	})
+	sessionID := initSession(t, baseURL)
+
+	params, _ := json.Marshal(map[string]any{
+		"name": "s3_list_objects",
+		"arguments": map[string]any{
+			"bucket": "test-bucket",
+			"prefix": "data/",
+		},
+	})
+
+	resp := doRPC(t, baseURL, sessionID, jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  "tools/call",
+		Params:  params,
+		ID:      json.RawMessage(`8`),
+	})
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected JSON-RPC error: %+v", resp.Error)
+	}
+
+	var result toolCallResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("failed to parse tool result: %v", err)
 	}
 	if !result.IsError {
 		t.Error("expected error on S3 failure")
 	}
-	if !strings.Contains(result.Content[0].Text, "GetObject failed") {
+	if len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, "ListObjectsV2 failed") {
+		t.Error("expected S3 error message")
+	}
+}
+
+func TestIntegration_GetObject_S3Error(t *testing.T) {
+	mock := &mockS3Client{
+		getErr: io.ErrUnexpectedEOF,
+	}
+	baseURL, _ := startTestServer(t, mock, []s3adapter.AllowlistEntry{
+		{Bucket: "test-bucket", Prefix: "data/"},
+	})
+	sessionID := initSession(t, baseURL)
+
+	params, _ := json.Marshal(map[string]any{
+		"name": "s3_get_object",
+		"arguments": map[string]any{
+			"bucket": "test-bucket",
+			"key":    "data/file.txt",
+		},
+	})
+
+	resp := doRPC(t, baseURL, sessionID, jsonrpcRequest{
+		JSONRPC: "2.0",
+		Method:  "tools/call",
+		Params:  params,
+		ID:      json.RawMessage(`9`),
+	})
+
+	if resp.Error != nil {
+		t.Fatalf("unexpected JSON-RPC error: %+v", resp.Error)
+	}
+
+	var result toolCallResult
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		t.Fatalf("failed to parse tool result: %v", err)
+	}
+	if !result.IsError {
+		t.Error("expected error on S3 failure")
+	}
+	if len(result.Content) == 0 || !strings.Contains(result.Content[0].Text, "GetObject failed") {
 		t.Error("expected S3 error message")
 	}
 }
