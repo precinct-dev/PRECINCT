@@ -41,7 +41,7 @@ K8S_TORN_DOWN=false
 if [ "$DEMO_SERVICE_MODE" = "real" ]; then
     COMPOSE_DEMO_CONTAINER_NAMES=(
         precinct-gateway
-        spire-server spire-agent spire-token-generator spire-entry-registrar
+        spire-server spire-agent spire-entry-registrar
         spike-nexus spike-keeper-1 spike-bootstrap spike-secret-seeder
         keydb content-scanner
         tavily-mcp-server openclaw
@@ -55,7 +55,6 @@ else
         spike-keeper-1
         spire-entry-registrar
         spire-agent
-        spire-token-generator
         spire-server
         keydb
         mock-mcp-server
@@ -192,7 +191,7 @@ start_compose() {
     # Tear down all profiles to clean up containers from any previous mode.
     make -C "$POC_DIR" down >/dev/null 2>&1 || true
     # Clean ephemeral bind-mount dirs (recreated by make up with correct ownership).
-    rm -rf "$POC_DIR/deploy/compose/data/spire-join-token" "$POC_DIR/deploy/compose/data/spire-agent-socket"
+    rm -rf "$POC_DIR/deploy/compose/data/spire-agent-socket"
     cleanup_compose_demo_containers
     log "Starting Docker Compose stack"
     export DEMO_SERVICE_MODE
