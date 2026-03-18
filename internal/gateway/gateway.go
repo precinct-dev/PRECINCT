@@ -237,7 +237,7 @@ func New(cfg *Config) (*Gateway, error) {
 			}
 		}
 
-		if guardAPIKey == cfg.GuardAPIKey {
+		if !guardAPIKeyLoadedFromSPIKE {
 			slog.Warn("failed to load guard model API key from SPIKE after all attempts, falling back to env", "attempts", maxAttempts)
 		}
 	} else if _, ok := spikeRedeemer.(*middleware.SPIKENexusRedeemer); ok {

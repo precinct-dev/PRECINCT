@@ -579,6 +579,7 @@ services:
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
       - TOOL_REGISTRY_PUBLIC_KEY=/config/attestation-ed25519.pub
       - OPA_POLICY_PUBLIC_KEY=/config/attestation-ed25519.pub
+      - TOKEN_EXCHANGE_SIGNING_KEY=${TOKEN_EXCHANGE_SIGNING_KEY:-}
       - CAPABILITY_REGISTRY_V2_PATH=/config/capability-registry-v2.yaml
       - MODEL_PROVIDER_CATALOG_PATH=/config/model-provider-catalog.v2.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760
@@ -595,7 +596,7 @@ services:
       - SPIRE_AGENT_SOCKET=/tmp/spire-agent/public/api.sock
       - AUDIT_LOG_PATH=/tmp/audit.jsonl
       - SPIKE_NEXUS_URL=https://spike-nexus:8443
-      - OTEL_EXPORTER_OTLP_ENDPOINT=otel-collector:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
       - OTEL_SERVICE_NAME=precinct-gateway
       - KEYDB_URL=redis://keydb:6379  # RFA-hh5.1: KeyDB session persistence (auto-converts to rediss://keydb:6380 in prod mode per RFA-8z8.2)
       - MCP_TRANSPORT_MODE=${MCP_TRANSPORT_MODE:-mcp}  # RFA-5u9: "mcp" (default) or "proxy" (backward compat reverse proxy)
