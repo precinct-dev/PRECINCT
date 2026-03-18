@@ -73,6 +73,7 @@ type Gateway struct {
 	portAdapters               []PortAdapter                     // registered port adapters for third-party integrations
 	trustedAgentDLP            *middleware.TrustedAgentDLPConfig // OC-xj4w: port-scoped trusted agent DLP overrides
 	rlmEngine                  *rlmGovernanceEngine              // OC-tjtj: RLM multi-agent lineage governance engine
+	tokenExchangeConfig        *TokenExchangeConfig              // OC-xkkc: token exchange credential mapping
 }
 
 // New creates a new gateway instance
@@ -534,6 +535,18 @@ func New(cfg *Config) (*Gateway, error) {
 	}
 	emitStartupConformanceReport(enforcementProfile, startupControlResults)
 
+	// OC-xkkc: Load token exchange config (optional -- endpoint is disabled if missing).
+	var tokenExchangeCfg *TokenExchangeConfig
+	tokenExchangeConfigPath := getEnvOrDefault("TOKEN_EXCHANGE_CONFIG_PATH", "/config/token-exchange.yaml")
+	if tokenExchangeConfigPath != "" {
+		if txCfg, err := LoadTokenExchangeConfig(tokenExchangeConfigPath); err != nil {
+			slog.Warn("token exchange config not loaded (endpoint disabled)", "path", tokenExchangeConfigPath, "error", err)
+		} else {
+			tokenExchangeCfg = txCfg
+			slog.Info("token exchange endpoint enabled", "credentials", len(txCfg.Credentials))
+		}
+	}
+
 	return &Gateway{
 		config:                     cfg,
 		proxy:                      proxy,
@@ -571,6 +584,7 @@ func New(cfg *Config) (*Gateway, error) {
 		ingressPolicy:              newIngressPlanePolicyEngine(),
 		adminAuthzAllowedSPIFFEIDs: normalizeAdminAuthzAllowlist(cfg.AdminAuthzAllowedSPIFFEIDs),
 		rlmEngine:                  newRLMGovernanceEngine(),
+		tokenExchangeConfig:        tokenExchangeCfg,
 	}, nil
 }
 
@@ -585,6 +599,10 @@ func (g *Gateway) Handler() http.Handler {
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
 	// OC-owta: Protected Resource Metadata (unauthenticated discovery)
 	mux.Handle("/.well-known/oauth-protected-resource", oauthProtectedResourceHandler(g.oauthJWTConfig))
+	// OC-xkkc: Token exchange endpoint (unauthenticated -- caller has no SPIFFE identity yet)
+	if g.tokenExchangeConfig != nil {
+		mux.Handle("/v1/auth/token-exchange", tokenExchangeHandler(g.tokenExchangeConfig))
+	}
 	mux.Handle("/", protected)
 
 	return mux
@@ -609,6 +627,14 @@ func (g *Gateway) PublicHandler() http.Handler {
 		mux.Handle("/.well-known/oauth-protected-resource",
 			exactPathHandler("/.well-known/oauth-protected-resource",
 				oauthProtectedResourceHandler(g.oauthJWTConfig)))
+	}
+	// OC-xkkc: Token exchange endpoint on the public listener
+	if _, ok := allowlist["/v1/auth/token-exchange"]; ok {
+		if g.tokenExchangeConfig != nil {
+			mux.Handle("/v1/auth/token-exchange",
+				exactPathHandler("/v1/auth/token-exchange",
+					tokenExchangeHandler(g.tokenExchangeConfig)))
+		}
 	}
 	if _, ok := allowlist["/"]; ok {
 		mux.Handle("/", exactPathHandler("/", protected))
@@ -693,11 +719,28 @@ func (g *Gateway) protectedHandler() http.Handler {
 	) // 5
 	handler = middleware.AuditLog(handler, g.auditor)                                               // 4
 	handler = middleware.PrincipalHeaders(handler, g.config.SPIFFETrustDomain, g.config.SPIFFEMode) // 3b: OC-t7go
+	// Build SPIFFEAuth options: OAuth JWT and/or token exchange validator.
+	var spiffeAuthOpts []middleware.SPIFFEAuthOption
 	if g.oauthJWTConfig != nil {
-		handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode, middleware.WithOAuthJWTConfig(g.oauthJWTConfig, g.config.SPIFFETrustDomain)) // 3
-	} else {
-		handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode) // 3
+		spiffeAuthOpts = append(spiffeAuthOpts, middleware.WithOAuthJWTConfig(g.oauthJWTConfig, g.config.SPIFFETrustDomain))
 	}
+	// OC-xkkc: Wire exchange token validator into SPIFFEAuth middleware.
+	if g.tokenExchangeConfig != nil {
+		signingKey := g.tokenExchangeConfig.signingKey
+		spiffeAuthOpts = append(spiffeAuthOpts, middleware.WithExchangeTokenValidator(
+			func(token string) (*middleware.ExchangeTokenClaims, error) {
+				claims, err := ValidateExchangeToken(token, signingKey)
+				if err != nil {
+					return nil, err
+				}
+				return &middleware.ExchangeTokenClaims{
+					Sub:        claims.Sub,
+					AuthMethod: claims.PrecinctAuthMethod,
+				}, nil
+			},
+		))
+	}
+	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode, spiffeAuthOpts...) // 3
 	handler = middleware.BodyCapture(handler)                                    // 2
 	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
 	handler = middleware.RequestMetrics(handler)                                 // 0 - outermost: record request_total with status code
