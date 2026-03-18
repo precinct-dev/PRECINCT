@@ -53,6 +53,9 @@ type Server struct {
 	sessionTimeout  time.Duration
 	serialExecution bool
 
+	// SPIRE mTLS configuration.
+	spireSocketPath string
+
 	mu       sync.RWMutex
 	tools    []toolEntry
 	store    *sessionStore
