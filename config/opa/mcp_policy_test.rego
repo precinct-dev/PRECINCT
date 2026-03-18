@@ -428,3 +428,258 @@ test_poisoning_send_external if {
 test_no_poisoning_clean_description if {
   not mcp.contains_poisoning_indicators("Search for files matching a pattern in the workspace")
 }
+
+# --------------------------------------------------------------------------
+# OC-k6y0: OAuth Scope Enforcement for External Principals
+# --------------------------------------------------------------------------
+
+# Test data: grants including external OAuth grant with per-tool scopes
+mock_tool_grants_with_external := [
+  {
+    "spiffe_pattern": "spiffe://poc.local/gateways/precinct-gateway/dev",
+    "allowed_tools": ["*"],
+  },
+  {
+    "spiffe_pattern": "spiffe://poc.local/agents/mcp-client/*-researcher/dev",
+    "allowed_tools": ["read", "grep", "tavily_search"],
+  },
+  {
+    "spiffe_pattern": "spiffe://poc.local/external/*",
+    "allowed_tools": ["tavily_search"],
+    "required_scopes": {
+      "tavily_search": ["mcp:tool:tavily_search"],
+    },
+  },
+]
+
+# --- Unit tests for oauth_scope_satisfied ---
+
+test_oauth_scope_satisfied_non_oauth_auth if {
+  # Non-OAuth auth methods skip scope checks entirely
+  mcp.oauth_scope_satisfied with input as {
+    "auth_method": "mtls_svid",
+    "method": "tools/call",
+  }
+}
+
+test_oauth_scope_satisfied_header_declared if {
+  # header_declared is not OAuth, should pass
+  mcp.oauth_scope_satisfied with input as {
+    "auth_method": "header_declared",
+    "method": "tools/call",
+  }
+}
+
+test_oauth_scope_denied_missing_call_scope if {
+  # OAuth JWT without mcp:tools:call scope when calling a tool
+  not mcp.oauth_scope_satisfied with input as {
+    "auth_method": "oauth_jwt",
+    "oauth_scopes": ["openid", "profile"],
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "tavily_search",
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+}
+
+test_oauth_scope_denied_introspection_no_scopes if {
+  # OAuth introspection with no scopes at all
+  not mcp.oauth_scope_satisfied with input as {
+    "auth_method": "oauth_introspection",
+    "oauth_scopes": [],
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "tavily_search",
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+}
+
+test_oauth_scope_allowed_tools_call if {
+  # OAuth JWT with correct mcp:tools:call scope and per-tool scope
+  mcp.oauth_scope_satisfied with input as {
+    "auth_method": "oauth_jwt",
+    "oauth_scopes": ["mcp:tools:call", "mcp:tool:tavily_search"],
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "tavily_search",
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+}
+
+test_oauth_scope_allowed_empty_tool if {
+  # OAuth JWT with empty tool (protocol/health check) -- no scope required
+  mcp.oauth_scope_satisfied with input as {
+    "auth_method": "oauth_jwt",
+    "oauth_scopes": [],
+    "tool": "",
+  }
+}
+
+test_oauth_scope_allowed_introspection_empty_tool if {
+  # OAuth introspection with empty tool -- no scope required
+  mcp.oauth_scope_satisfied with input as {
+    "auth_method": "oauth_introspection",
+    "oauth_scopes": [],
+    "tool": "",
+  }
+}
+
+test_oauth_scope_denied_missing_per_tool_scope if {
+  # Has mcp:tools:call but missing per-tool scope mcp:tool:tavily_search
+  not mcp.oauth_scope_satisfied with input as {
+    "auth_method": "oauth_jwt",
+    "oauth_scopes": ["mcp:tools:call"],
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "tavily_search",
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+}
+
+# --- Full allow/deny decision tests for OAuth scope enforcement ---
+
+test_allow_external_oauth_with_all_scopes if {
+  # External OAuth principal with all required scopes: allowed
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "tavily_search",
+    "action": "execute",
+    "method": "POST",
+    "path": "/mcp",
+    "params": {},
+    "step_up_token": "",
+    "session": {"risk_score": 0.1},
+    "auth_method": "oauth_jwt",
+    "oauth_scopes": ["mcp:tools:call", "mcp:tool:tavily_search"],
+    "principal": {"level": 4, "role": "external_user", "capabilities": []},
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+    with data.tool_registry as mock_tool_registry
+
+  result.allow == true
+}
+
+test_deny_external_oauth_missing_call_scope if {
+  # External OAuth principal missing mcp:tools:call: denied
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "tavily_search",
+    "action": "execute",
+    "method": "POST",
+    "path": "/mcp",
+    "params": {},
+    "step_up_token": "",
+    "session": {"risk_score": 0.1},
+    "auth_method": "oauth_jwt",
+    "oauth_scopes": ["openid", "profile"],
+    "principal": {"level": 4, "role": "external_user", "capabilities": []},
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+    with data.tool_registry as mock_tool_registry
+
+  result.allow == false
+  result.reason == "oauth_scope_missing"
+}
+
+test_deny_external_oauth_missing_per_tool_scope if {
+  # External OAuth principal has mcp:tools:call but missing mcp:tool:tavily_search
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "tavily_search",
+    "action": "execute",
+    "method": "POST",
+    "path": "/mcp",
+    "params": {},
+    "step_up_token": "",
+    "session": {"risk_score": 0.1},
+    "auth_method": "oauth_jwt",
+    "oauth_scopes": ["mcp:tools:call"],
+    "principal": {"level": 4, "role": "external_user", "capabilities": []},
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+    with data.tool_registry as mock_tool_registry
+
+  result.allow == false
+  result.reason == "oauth_scope_missing"
+}
+
+test_deny_external_oauth_no_scopes_at_all if {
+  # External OAuth principal with empty scopes: denied
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "tavily_search",
+    "action": "execute",
+    "method": "POST",
+    "path": "/mcp",
+    "params": {},
+    "step_up_token": "",
+    "session": {"risk_score": 0.1},
+    "auth_method": "oauth_jwt",
+    "oauth_scopes": [],
+    "principal": {"level": 4, "role": "external_user", "capabilities": []},
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+    with data.tool_registry as mock_tool_registry
+
+  result.allow == false
+  result.reason == "oauth_scope_missing"
+}
+
+test_allow_internal_agent_no_oauth_scopes_needed if {
+  # Internal agent (non-OAuth auth) should NOT be subject to scope checks
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+    "tool": "read",
+    "action": "execute",
+    "method": "POST",
+    "path": "/mcp",
+    "params": {"file_path": "/workspace/POC/file.go"},
+    "step_up_token": "",
+    "session": {"risk_score": 0.1},
+    "auth_method": "mtls_svid",
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+    with data.tool_registry as mock_tool_registry
+    with data.config.allowed_base_path as "/workspace/POC"
+
+  result.allow == true
+}
+
+test_deny_external_oauth_unauthorized_tool if {
+  # External OAuth principal trying to use a tool not in their grant
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "bash",
+    "action": "execute",
+    "method": "POST",
+    "path": "/mcp",
+    "params": {"command": "ls"},
+    "step_up_token": "",
+    "session": {"risk_score": 0.1},
+    "auth_method": "oauth_jwt",
+    "oauth_scopes": ["mcp:tools:call"],
+    "principal": {"level": 4, "role": "external_user", "capabilities": []},
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+    with data.tool_registry as mock_tool_registry
+
+  result.allow == false
+  result.reason == "tool_not_authorized"
+}
+
+test_allow_external_oauth_introspection_with_scopes if {
+  # OAuth introspection auth method also works with correct scopes
+  result := mcp.allow with input as {
+    "spiffe_id": "spiffe://poc.local/external/user1",
+    "tool": "tavily_search",
+    "action": "execute",
+    "method": "POST",
+    "path": "/mcp",
+    "params": {},
+    "step_up_token": "",
+    "session": {"risk_score": 0.1},
+    "auth_method": "oauth_introspection",
+    "oauth_scopes": ["mcp:tools:call", "mcp:tool:tavily_search"],
+    "principal": {"level": 4, "role": "external_user", "capabilities": []},
+  }
+    with data.tool_grants as mock_tool_grants_with_external
+    with data.tool_registry as mock_tool_registry
+
+  result.allow == true
+}
