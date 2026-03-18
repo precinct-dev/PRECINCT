@@ -1,8 +1,8 @@
 # docker-compose.mcpserver-test.yml -- Minimal SPIRE stack for mcpserver
 # integration tests (AC 10-11).
 #
-# Reuses the base SPIRE services (spire-server, spire-token-generator,
-# spire-agent) from docker-compose.yml. This overlay:
+# Reuses the base SPIRE services (spire-server, spire-agent) from
+# docker-compose.yml. This overlay:
 #   1. Adds a spire-entry-registrar-test init that registers a workload
 #      entry for the host-side Go test binary.
 #   2. Bind-mounts the agent socket to a host-accessible path so the
@@ -16,13 +16,10 @@
 #   SPIRE_AGENT_SOCKET=<socket-path> go test ./pkg/mcpserver/... -tags integration -v
 
 services:
-  # Override: only start SPIRE core (server + token-gen + agent).
+  # Override: only start SPIRE core (server + agent).
   # No spike-nexus, gateway, keydb, etc.
   spire-server:
     profiles: []  # Always start (no profile restriction)
-
-  spire-token-generator:
-    profiles: []
 
   spire-agent:
     profiles: []
@@ -31,7 +28,7 @@ services:
   # for the Go test binary running on the host. The Unix workload attestor
   # matches any UID, so the test process can obtain an SVID.
   spire-entry-registrar-test:
-    image: spire-token-generator:latest
+    image: spire-tools:latest
     container_name: spire-entry-registrar-test
     depends_on:
       spire-agent:
