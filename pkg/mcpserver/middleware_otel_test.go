@@ -344,7 +344,7 @@ func TestOTelIntegration_SpanCreatedViaHTTP(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{
 		"name":      "echo",
 		"arguments": map[string]any{"msg": "hello"},
@@ -386,7 +386,7 @@ func TestOTelIntegration_ErrorSpanViaHTTP(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{
 		"name": "fail",
 	}), sid)
@@ -426,7 +426,7 @@ func TestOTelIntegration_WithoutOTelDisablesSpans(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{
 		"name": "echo",
 	}), sid)
@@ -468,7 +468,7 @@ func TestOTelIntegration_TraceparentPropagation(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// Build a tools/call request with a traceparent header.
 	reqBody := rpcBody(t, 1, "tools/call", map[string]any{
@@ -532,7 +532,7 @@ func TestOTelIntegration_MultipleToolCallsCreateMultipleSpans(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "tool-a"}), sid)
 	resp.Body.Close()
@@ -585,7 +585,7 @@ func TestOTelIntegration_ExistingPipelineStillWorks(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{
 		"name":      "echo",
 		"arguments": map[string]any{"msg": "test"},
@@ -637,7 +637,7 @@ func TestOTelIntegration_NoTraceparentStillCreatesSpan(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "echo"}), sid)
 	body := readJSON(t, resp)
 	r := body["result"].(map[string]any)
@@ -836,7 +836,7 @@ func TestOTelIntegration_RateLimitSpanViaHTTP(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "echo"}), sid)
 	body := readJSON(t, resp)
 	r := body["result"].(map[string]any)
@@ -875,7 +875,7 @@ func TestOTelIntegration_CacheSpanViaHTTP(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// First call: cache miss.
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "echo"}), sid)
@@ -933,7 +933,7 @@ func TestOTelIntegration_ServerNameAndSessionIDViaHTTP(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "echo"}), sid)
 	body := readJSON(t, resp)
 	r := body["result"].(map[string]any)
@@ -977,7 +977,7 @@ func TestOTelIntegration_AllSpansPresent(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "echo"}), sid)
 	body := readJSON(t, resp)
 	r := body["result"].(map[string]any)
