@@ -14,6 +14,11 @@ const (
 	ErrAuthInvalidBearerToken     = "auth_invalid_bearer_token"
 	ErrAuthIntrospectionFailed    = "auth_introspection_failed"
 
+	// Token Exchange -- 401 Unauthorized (OC-xkkc)
+	ErrAuthTokenExpired        = "auth_token_expired"
+	ErrAuthTokenInvalid        = "auth_token_invalid"
+	ErrAuthCredentialRejected  = "auth_credential_rejected"
+
 	// OPA Policy (step 6) -- 403 Forbidden
 	ErrAuthzPolicyDenied    = "authz_policy_denied"
 	ErrAuthzNoMatchingGrant = "authz_no_matching_grant"

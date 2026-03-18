@@ -12,21 +12,33 @@ import (
 	"time"
 
 	"github.com/precinct-dev/precinct/internal/gateway/middleware"
+	"golang.org/x/crypto/bcrypt"
 )
 
 const testSigningKey = "test-signing-key-for-token-exchange-32b"
 
-func testTokenExchangeConfig() *TokenExchangeConfig {
+// hashCredential is a test helper that bcrypt-hashes a plaintext credential.
+func hashCredential(t *testing.T, plaintext string) string {
+	t.Helper()
+	hash, err := bcrypt.GenerateFromPassword([]byte(plaintext), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("bcrypt hash: %v", err)
+	}
+	return string(hash)
+}
+
+func testTokenExchangeConfig(t *testing.T) *TokenExchangeConfig {
+	t.Helper()
 	return LoadTokenExchangeConfigForTest(
 		[]TokenExchangeCredential{
 			{
 				CredentialType: "api_key",
-				Credential:     "test-tool-key-001",
+				CredentialHash: hashCredential(t, "test-tool-key-001"),
 				SPIFFEID:       "spiffe://poc.local/external/test-tool",
 			},
 			{
 				CredentialType: "api_key",
-				Credential:     "monitoring-key-001",
+				CredentialHash: hashCredential(t, "monitoring-key-001"),
 				SPIFFEID:       "spiffe://poc.local/external/monitoring-agent",
 			},
 		},
@@ -42,10 +54,11 @@ func TestLoadTokenExchangeConfig(t *testing.T) {
 	t.Run("loads valid config from file", func(t *testing.T) {
 		dir := t.TempDir()
 		configPath := filepath.Join(dir, "token-exchange.yaml")
+		hash := hashCredential(t, "key-abc")
 		configYAML := `
 credentials:
   - credential_type: "api_key"
-    credential: "key-abc"
+    credential_hash: "` + hash + `"
     spiffe_id: "spiffe://test.local/external/abc"
 default_ttl: "10m"
 max_ttl: "30m"
@@ -74,10 +87,11 @@ max_ttl: "30m"
 	t.Run("fails without signing key env", func(t *testing.T) {
 		dir := t.TempDir()
 		configPath := filepath.Join(dir, "token-exchange.yaml")
+		hash := hashCredential(t, "key-abc")
 		configYAML := `
 credentials:
   - credential_type: "api_key"
-    credential: "key-abc"
+    credential_hash: "` + hash + `"
     spiffe_id: "spiffe://test.local/external/abc"
 `
 		if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
@@ -103,7 +117,7 @@ credentials:
 }
 
 func TestCredentialLookup(t *testing.T) {
-	cfg := testTokenExchangeConfig()
+	cfg := testTokenExchangeConfig(t)
 
 	t.Run("known credential returns SPIFFE ID", func(t *testing.T) {
 		spiffeID, ok := cfg.LookupCredential("api_key", "test-tool-key-001")
@@ -131,7 +145,7 @@ func TestCredentialLookup(t *testing.T) {
 }
 
 func TestResolveTTL(t *testing.T) {
-	cfg := testTokenExchangeConfig()
+	cfg := testTokenExchangeConfig(t)
 
 	t.Run("empty requested uses default", func(t *testing.T) {
 		ttl, err := cfg.ResolveTTL("")
@@ -179,7 +193,7 @@ func TestResolveTTL(t *testing.T) {
 }
 
 func TestMintAndValidateToken(t *testing.T) {
-	cfg := testTokenExchangeConfig()
+	cfg := testTokenExchangeConfig(t)
 	spiffeID := "spiffe://poc.local/external/test-tool"
 
 	t.Run("mint and validate round-trip", func(t *testing.T) {
@@ -200,6 +214,12 @@ func TestMintAndValidateToken(t *testing.T) {
 			t.Fatalf("ValidateExchangeToken failed: %v", err)
 		}
 
+		if claims.Jti == "" {
+			t.Error("jti must be non-empty")
+		}
+		if len(claims.Jti) != 32 {
+			t.Errorf("jti length = %d, want 32 hex chars", len(claims.Jti))
+		}
 		if claims.Sub != spiffeID {
 			t.Errorf("sub = %q, want %q", claims.Sub, spiffeID)
 		}
@@ -211,6 +231,22 @@ func TestMintAndValidateToken(t *testing.T) {
 		}
 		if claims.PrecinctAuthMethod != "token_exchange" {
 			t.Errorf("precinct_auth_method = %q, want token_exchange", claims.PrecinctAuthMethod)
+		}
+	})
+
+	t.Run("jti is unique across mints", func(t *testing.T) {
+		token1, err := cfg.MintToken(spiffeID, 15*time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		token2, err := cfg.MintToken(spiffeID, 15*time.Minute)
+		if err != nil {
+			t.Fatal(err)
+		}
+		claims1, _ := ValidateExchangeToken(token1, []byte(testSigningKey))
+		claims2, _ := ValidateExchangeToken(token2, []byte(testSigningKey))
+		if claims1.Jti == claims2.Jti {
+			t.Errorf("jti values must be unique, both are %q", claims1.Jti)
 		}
 	})
 
@@ -289,7 +325,7 @@ func TestMintAndValidateToken(t *testing.T) {
 // --- HTTP Handler Tests ---
 
 func TestTokenExchangeHandler(t *testing.T) {
-	cfg := testTokenExchangeConfig()
+	cfg := testTokenExchangeConfig(t)
 	handler := tokenExchangeHandler(cfg)
 
 	t.Run("valid credential returns token", func(t *testing.T) {
@@ -372,8 +408,8 @@ func TestTokenExchangeHandler(t *testing.T) {
 
 		var errResp tokenExchangeErrorResponse
 		json.Unmarshal(rec.Body.Bytes(), &errResp)
-		if errResp.Error != "invalid_credential" {
-			t.Errorf("error = %q, want invalid_credential", errResp.Error)
+		if errResp.Error != middleware.ErrAuthCredentialRejected {
+			t.Errorf("error = %q, want %q", errResp.Error, middleware.ErrAuthCredentialRejected)
 		}
 	})
 
@@ -457,7 +493,7 @@ func TestTokenExchangeHandler(t *testing.T) {
 // --- Integration Test: Exchange -> Use Token -> Middleware Chain ---
 
 func TestTokenExchangeIntegration(t *testing.T) {
-	cfg := testTokenExchangeConfig()
+	cfg := testTokenExchangeConfig(t)
 
 	t.Run("exchanged token is accepted by SPIFFEAuth middleware", func(t *testing.T) {
 		// Step 1: Exchange credential for token.
