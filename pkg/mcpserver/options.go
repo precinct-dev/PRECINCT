@@ -151,3 +151,15 @@ func WithoutOTel() Option {
 		s.otelDisabled = true
 	}
 }
+
+// WithSPIRE enables SPIRE-based mTLS. The server will connect to the SPIRE
+// Agent via the Workload API at the given Unix socket path, obtain an X.509
+// SVID, and serve TLS with RequireAndVerifyClientCert. Without this option,
+// the server runs in dev mode (plaintext HTTP).
+//
+// The SPIRE_AGENT_SOCKET environment variable, if set, overrides socketPath.
+func WithSPIRE(socketPath string) Option {
+	return func(s *Server) {
+		s.spireSocketPath = socketPath
+	}
+}
