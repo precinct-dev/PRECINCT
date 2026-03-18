@@ -145,6 +145,14 @@ func resolveOAuthBearerIdentity(ctx context.Context, r *http.Request, runtime *s
 		return "", false, nil
 	}
 
+	// SPIKE reference tokens are handled downstream (TokenSubstitution at
+	// step 13 or model proxy SPIKE resolution), not by OAuth JWT validation.
+	// Skip them here so the token reaches the correct handler intact.
+	// Formats: $SPIKE{ref:...,exp:...} and spike:ref:<name>
+	if len(FindSPIKETokens(bearerToken)) > 0 || strings.HasPrefix(bearerToken, "spike:ref:") {
+		return "", false, nil
+	}
+
 	claims, err := ValidateOAuthJWT(ctx, bearerToken, *runtime.oauthJWT)
 	if err != nil {
 		return "", true, err

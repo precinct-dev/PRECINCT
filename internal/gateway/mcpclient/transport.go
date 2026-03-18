@@ -95,10 +95,12 @@ func (t *StreamableHTTPTransport) Initialize(ctx context.Context) error {
 		t.sessionID = sid
 	}
 
-	// Parse the initialize response to verify it is valid JSON-RPC
-	// and extract server capabilities.
-	var initResp JSONRPCResponse
-	if err := json.NewDecoder(resp.Body).Decode(&initResp); err != nil {
+	// Parse the initialize response. The MCP spec allows servers to respond
+	// with either application/json or text/event-stream for POST requests.
+	// Use parseResponse for content-type negotiation (same as Send).
+	contentType := resp.Header.Get("Content-Type")
+	initResp, err := t.parseResponse(resp.Body, contentType)
+	if err != nil {
 		return fmt.Errorf("failed to parse initialize response: %w", err)
 	}
 	if initResp.Error != nil {
@@ -128,8 +130,8 @@ func (t *StreamableHTTPTransport) Initialize(ctx context.Context) error {
 	defer func() {
 		_ = notifResp.Body.Close()
 	}()
-	// Notifications may return 200 or 204; we accept both.
-	if notifResp.StatusCode != http.StatusOK && notifResp.StatusCode != http.StatusNoContent {
+	// Notifications may return 200, 202, or 204; accept all.
+	if notifResp.StatusCode != http.StatusOK && notifResp.StatusCode != http.StatusAccepted && notifResp.StatusCode != http.StatusNoContent {
 		body, _ := io.ReadAll(notifResp.Body)
 		return fmt.Errorf("notifications/initialized returned status %d: %s", notifResp.StatusCode, string(body))
 	}

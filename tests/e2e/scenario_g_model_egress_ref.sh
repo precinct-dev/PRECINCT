@@ -24,7 +24,7 @@ MODEL_BODY='{
 FULL_RESP=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}/openai/v1/chat/completions" \
   -H "Content-Type: application/json" \
   -H "X-SPIFFE-ID: ${DEFAULT_SPIFFE_ID}" \
-  -H 'Authorization: Bearer $SPIKE{ref:deadbeef,exp:3600}' \
+  -H 'Authorization: Bearer spike:ref:groq-api-key' \
   -d "${MODEL_BODY}" 2>&1) || true
 
 RESP_CODE="$(echo "$FULL_RESP" | tail -n1)"

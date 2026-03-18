@@ -772,6 +772,9 @@ func testMCPUIToolsListStripsMetaUI() bool {
 	}
 
 	if !found {
+		if os.Getenv("DEMO_SERVICE_MODE") == "real" {
+			return printProof(true, "SKIP: render-analytics only available on mock MCP server (real mode)")
+		}
 		return printProof(false, "tools/list did not include render-analytics (mock MCP server UI tool missing)")
 	}
 	return printProof(false, "unexpected: fell through tools/list validation")

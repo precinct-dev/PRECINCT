@@ -11,10 +11,11 @@
 # loader. When the POC is deployed, set ALLOWED_BASE_PATH to the repository root.
 
 tools:
-  # Tavily - Web search API
+  # Tavily MCP tools (tavily-mcp@0.2.18 via supergateway@3.4.3)
+  # Hashes computed from live tools/list response, matching Go json.Marshal key ordering.
   - name: "tavily_search"
-    description: "Search the web using Tavily API"
-    hash: "76c6b3d8a7ddbc387ca87aa784e99354feeda1ff438768cd99232a6772cceac0"  # SHA-256 (RFA-qq0.6)
+    description: "Search the web for current information on any topic. Use for news, facts, or data beyond your knowledge cutoff. Returns snippets and source URLs."
+    hash: "e1979929179ef60c6b4c93efcd4cc65e413487dd4e6fccb35f2743968f148ff0"  # SHA-256 (RFA-qq0.6)
     input_schema:
       type: "object"
       required: ["query"]
@@ -22,9 +23,12 @@ tools:
         query:
           type: "string"
           description: "Search query"
+        search_depth:
+          type: "string"
+          enum: ["basic", "advanced", "fast", "ultra-fast"]
         max_results:
-          type: "integer"
-          description: "Maximum results to return"
+          type: "number"
+          description: "The maximum number of search results to return"
           default: 5
     allowed_destinations:
       - "api.tavily.com"
@@ -32,6 +36,76 @@ tools:
     risk_level: "medium"
     requires_step_up: false
     required_scope: "tools.tavily.search"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  - name: "tavily_extract"
+    description: "Extract content from URLs. Returns raw page content in markdown or text format."
+    hash: "2724df08758ed4f2df828c45bddb69e914b11d14956656b4e77df308314f81a3"  # SHA-256
+    input_schema:
+      type: "object"
+      required: ["urls"]
+      properties:
+        urls:
+          type: "array"
+          items:
+            type: "string"
+          description: "List of URLs to extract content from"
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "medium"
+    requires_step_up: false
+    required_scope: "tools.tavily.extract"
+
+  - name: "tavily_crawl"
+    description: "Crawl a website starting from a URL. Extracts content from pages with configurable depth and breadth."
+    hash: "90ff64313cddd3f03aa0097446e1ae28457406a8a44e7493ff01b7285df9c896"  # SHA-256
+    input_schema:
+      type: "object"
+      required: ["url"]
+      properties:
+        url:
+          type: "string"
+          description: "The root URL to begin the crawl"
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "medium"
+    requires_step_up: false
+    required_scope: "tools.tavily.crawl"
+
+  - name: "tavily_map"
+    description: "Map a website's structure. Returns a list of URLs found starting from the base URL."
+    hash: "621ff149cd338592e60adf8da1c1a0f73eea0dfccb23b7d928e33ec2b0b944e1"  # SHA-256
+    input_schema:
+      type: "object"
+      required: ["url"]
+      properties:
+        url:
+          type: "string"
+          description: "The root URL to begin the mapping"
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.tavily.map"
+
+  - name: "tavily_research"
+    description: "Perform comprehensive research on a given topic or question. Use this tool when you need to gather information from multiple sources to answer a question or complete a task. Returns a detailed response based on the research findings. Rate limit: 20 requests per minute."
+    hash: "6ccf37f1e14f62fc1d76874611be8d4b2a431bc5e6b76c525269edf62f67b6dd"  # SHA-256
+    input_schema:
+      type: "object"
+      required: ["input"]
+      properties:
+        input:
+          type: "string"
+          description: "A comprehensive description of the research task"
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "high"
+    requires_step_up: false
+    required_scope: "tools.tavily.research"
 
   # Read - File system read operations
   - name: "read"
