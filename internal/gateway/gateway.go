@@ -583,6 +583,8 @@ func (g *Gateway) Handler() http.Handler {
 	mux.Handle("/health", http.HandlerFunc(g.healthHandler))
 	// RFA-qq0.16: Handle dereference endpoint
 	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
+	// OC-owta: Protected Resource Metadata (unauthenticated discovery)
+	mux.Handle("/.well-known/oauth-protected-resource", oauthProtectedResourceHandler(g.oauthJWTConfig))
 	mux.Handle("/", protected)
 
 	return mux
@@ -601,6 +603,12 @@ func (g *Gateway) PublicHandler() http.Handler {
 	mux := http.NewServeMux()
 	if _, ok := allowlist["/health"]; ok {
 		mux.Handle("/health", exactPathHandler("/health", http.HandlerFunc(g.healthHandler)))
+	}
+	// OC-owta: Protected Resource Metadata on the public listener (unauthenticated)
+	if _, ok := allowlist["/.well-known/oauth-protected-resource"]; ok {
+		mux.Handle("/.well-known/oauth-protected-resource",
+			exactPathHandler("/.well-known/oauth-protected-resource",
+				oauthProtectedResourceHandler(g.oauthJWTConfig)))
 	}
 	if _, ok := allowlist["/"]; ok {
 		mux.Handle("/", exactPathHandler("/", protected))
