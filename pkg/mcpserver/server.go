@@ -338,6 +338,12 @@ func (s *Server) initPipeline() {
 	s.pipelineOnce.Do(func() {
 		var mws []Middleware
 
+		// Resolve tracer once for middleware that optionally emit spans.
+		var tracer trace.Tracer
+		if !s.otelDisabled {
+			tracer = s.tracer()
+		}
+
 		// 1. Rate Limiting (outermost -- rejects before any work).
 		if !s.rateLimitDisabled {
 			rps := s.rateRPS
@@ -348,7 +354,11 @@ func (s *Server) initPipeline() {
 			if burst == 0 {
 				burst = defaultRateBurst
 			}
-			mws = append(mws, newRateLimitMiddleware(rps, burst))
+			var rlOpts []rateLimitOption
+			if tracer != nil {
+				rlOpts = append(rlOpts, withRateLimitTracer(tracer))
+			}
+			mws = append(mws, newRateLimitMiddleware(rps, burst, rlOpts...))
 		}
 
 		// 2. Context Injection (always on).
@@ -371,7 +381,11 @@ func (s *Server) initPipeline() {
 			if ttl == 0 {
 				ttl = defaultCacheTTL
 			}
-			mws = append(mws, newCacheMiddleware(ttl))
+			var cOpts []cacheOption
+			if tracer != nil {
+				cOpts = append(cOpts, withCacheTracer(tracer))
+			}
+			mws = append(mws, newCacheMiddleware(ttl, cOpts...))
 		}
 
 		// 6. Custom Middleware.
