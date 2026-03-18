@@ -228,6 +228,9 @@ func TestStartupFailure_NonExistentSocket(t *testing.T) {
 		WithPort(0),
 		WithShutdownTimeout(2*time.Second),
 	)
+	s.Tool("ping", "pong", Schema{Type: "object"}, func(_ context.Context, _ map[string]any) (any, error) {
+		return "pong", nil
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -237,9 +240,9 @@ func TestStartupFailure_NonExistentSocket(t *testing.T) {
 		t.Fatal("RunContext should fail when SPIRE socket does not exist")
 	}
 
-	// Error message should mention SPIRE, the socket path, and X509Source.
+	// Error message should mention SPIRE and the socket path.
 	errMsg := err.Error()
-	wantFragments := []string{"SPIRE", badPath, "X509Source"}
+	wantFragments := []string{"SPIRE", badPath}
 	for _, frag := range wantFragments {
 		if !containsStr(errMsg, frag) {
 			t.Errorf("error message %q should contain %q", errMsg, frag)
@@ -248,14 +251,17 @@ func TestStartupFailure_NonExistentSocket(t *testing.T) {
 }
 
 func TestStartupFailure_ErrorFormat(t *testing.T) {
-	// AC 6: Error message must follow:
-	// "SPIRE: failed to create X509Source at <path>: <error>"
+	// Validation catches non-existent SPIRE socket with the
+	// "mcpserver: SPIRE socket not found at <path>" format.
 	const badPath = "/tmp/no-such-socket.sock"
 	s := newTestServer("error-format",
 		WithSPIRE(badPath),
 		WithPort(0),
 		WithShutdownTimeout(2*time.Second),
 	)
+	s.Tool("ping", "pong", Schema{Type: "object"}, func(_ context.Context, _ map[string]any) (any, error) {
+		return "pong", nil
+	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -265,7 +271,7 @@ func TestStartupFailure_ErrorFormat(t *testing.T) {
 		t.Fatal("RunContext should fail for non-existent socket")
 	}
 
-	expectedPrefix := fmt.Sprintf("SPIRE: failed to create X509Source at %s:", badPath)
+	expectedPrefix := fmt.Sprintf("mcpserver: SPIRE socket not found at %s", badPath)
 	if !containsStr(err.Error(), expectedPrefix) {
 		t.Errorf("error = %q, want prefix %q", err.Error(), expectedPrefix)
 	}
@@ -400,6 +406,9 @@ func TestShutdown_DevMode_NoCloserCalled(t *testing.T) {
 		WithPort(0),
 		WithShutdownTimeout(2*time.Second),
 	)
+	s.Tool("ping", "pong", Schema{Type: "object"}, func(_ context.Context, _ map[string]any) (any, error) {
+		return "pong", nil
+	})
 
 	ctx, cancel := context.WithCancel(context.Background())
 

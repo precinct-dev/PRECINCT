@@ -258,8 +258,23 @@ const defaultSessionTimeout = 30 * time.Minute
 // cancelled. It performs a graceful shutdown, waiting up to ShutdownTimeout
 // for in-flight requests to complete. The actual listener address is stored
 // and can be retrieved via Addr after the server has started.
+//
+// Startup sequence: applyEnvOverrides -> validate -> build pipeline -> SPIRE init -> start server.
 func (s *Server) RunContext(ctx context.Context) error {
-	// SPIRE mTLS: if configured, initialise X509Source before listening.
+	// Step 1: Apply environment variable overrides (env > option > default).
+	if err := applyEnvOverrides(s); err != nil {
+		return err
+	}
+
+	// Step 2: Validate the full configuration (batch errors).
+	if err := s.validate(); err != nil {
+		return err
+	}
+
+	// Step 3: Build the middleware pipeline.
+	s.initPipeline()
+
+	// Step 4: SPIRE mTLS: if configured, initialise X509Source before listening.
 	socketPath := resolveSpireSocketPath(s)
 	if socketPath != "" {
 		src, err := newX509Source(ctx, socketPath)
@@ -270,6 +285,7 @@ func (s *Server) RunContext(ctx context.Context) error {
 		return s.runWithTLS(ctx, buildSPIRETLSConfig(src))
 	}
 
+	// Step 5: Start plaintext server.
 	return s.runPlaintext(ctx)
 }
 
