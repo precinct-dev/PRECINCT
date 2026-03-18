@@ -31,14 +31,19 @@ import (
 )
 
 // artifacts lists the config files that require Ed25519 signatures.
+// Includes both top-level configs and OPA policy files.
 var artifacts = []string{
 	"config/tool-registry.yaml",
 	"config/model-provider-catalog.v2.yaml",
 	"config/guard-artifact.bin",
 }
 
+// opaPolicyDir contains .rego and .yaml files that need signing for
+// OPA hot-reload attestation.
+const opaPolicyDir = "config/opa"
+
 // k8sOverlayDir is the relative path to the K8s local overlay gateway-config.
-const k8sOverlayDir = "infra/eks/overlays/local/gateway-config"
+const k8sOverlayDir = "deploy/terraform/overlays/local/gateway-config"
 
 func main() {
 	projectRoot, err := findProjectRoot()
@@ -70,6 +75,31 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("  [SIGNED] %s -> %s.sig\n", relPath, relPath)
+	}
+
+	// Sign OPA policy files (.rego and .yaml in config/opa/)
+	fmt.Println()
+	fmt.Println("Signing OPA policy files:")
+	opaDir := filepath.Join(projectRoot, opaPolicyDir)
+	entries, err := os.ReadDir(opaDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ERROR reading OPA policy dir: %v\n", err)
+		os.Exit(1)
+	}
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		ext := filepath.Ext(entry.Name())
+		if ext != ".rego" && ext != ".yaml" && ext != ".yml" {
+			continue
+		}
+		absPath := filepath.Join(opaDir, entry.Name())
+		if err := signArtifact(absPath, privKey); err != nil {
+			fmt.Fprintf(os.Stderr, "ERROR signing %s: %v\n", entry.Name(), err)
+			os.Exit(1)
+		}
+		fmt.Printf("  [SIGNED] %s/%s -> %s/%s.sig\n", opaPolicyDir, entry.Name(), opaPolicyDir, entry.Name())
 	}
 
 	// Copy .pub and .sig files to K8s overlay
