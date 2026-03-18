@@ -160,6 +160,7 @@ check_phoenix() {
 
     ok "Phoenix stack is running (traces will be collected)"
     PHOENIX_AVAILABLE=true
+    export OTEL_EXPORTER_OTLP_ENDPOINT="otel-collector:4317"
 }
 
 # --------------------------------------------------------------------------
