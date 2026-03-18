@@ -43,6 +43,10 @@ type Server struct {
 	pipelineOnce sync.Once
 	pipeline     Middleware
 
+	// Session configuration.
+	sessionTimeout  time.Duration
+	serialExecution bool
+
 	mu       sync.RWMutex
 	tools    []toolEntry
 	sessions sync.Map // sessionID (string) -> struct{}
