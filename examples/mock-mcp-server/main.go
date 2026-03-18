@@ -62,21 +62,88 @@ var availableTools = []toolDef{
 		Name: "tavily_search",
 		// NOTE: This tool's description + schema must match `config/tool-registry.yaml`
 		// so the gateway's tool registry hash verification succeeds in demo-compose.
-		Description: "Search the web using Tavily API",
+		// Schema mirrors tavily-mcp@0.2.18 live tools/list response exactly.
+		Description: "Search the web for current information on any topic. Use for news, facts, or data beyond your knowledge cutoff. Returns snippets and source URLs.",
 		InputSchema: map[string]any{
-			"type": "object",
+			"type":     "object",
+			"required": []string{"query"},
 			"properties": map[string]any{
 				"query": map[string]any{
 					"type":        "string",
 					"description": "Search query",
 				},
+				"search_depth": map[string]any{
+					"type":        "string",
+					"enum":        []any{"basic", "advanced", "fast", "ultra-fast"},
+					"description": "The depth of the search. 'basic' for generic results, 'advanced' for more thorough search, 'fast' for optimized low latency with high relevance, 'ultra-fast' for prioritizing latency above all else",
+					"default":     "basic",
+				},
+				"topic": map[string]any{
+					"type":        "string",
+					"enum":        []any{"general"},
+					"description": "The category of the search. This will determine which of our agents will be used for the search",
+					"default":     "general",
+				},
+				"time_range": map[string]any{
+					"type":        "string",
+					"description": "The time range back from the current date to include in the search results",
+					"enum":        []any{"day", "week", "month", "year"},
+				},
+				"start_date": map[string]any{
+					"type":        "string",
+					"description": "Will return all results after the specified start date. Required to be written in the format YYYY-MM-DD.",
+					"default":     "",
+				},
+				"end_date": map[string]any{
+					"type":        "string",
+					"description": "Will return all results before the specified end date. Required to be written in the format YYYY-MM-DD",
+					"default":     "",
+				},
 				"max_results": map[string]any{
-					"type":        "integer",
-					"description": "Maximum results to return",
-					"default":     5,
+					"type":        "number",
+					"description": "The maximum number of search results to return",
+					"default":     float64(5),
+					"minimum":     float64(5),
+					"maximum":     float64(20),
+				},
+				"include_images": map[string]any{
+					"type":        "boolean",
+					"description": "Include a list of query-related images in the response",
+					"default":     false,
+				},
+				"include_image_descriptions": map[string]any{
+					"type":        "boolean",
+					"description": "Include a list of query-related images and their descriptions in the response",
+					"default":     false,
+				},
+				"include_raw_content": map[string]any{
+					"type":        "boolean",
+					"description": "Include the cleaned and parsed HTML content of each search result",
+					"default":     false,
+				},
+				"include_domains": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "A list of domains to specifically include in the search results, if the user asks to search on specific sites set this to the domain of the site",
+					"default":     []any{},
+				},
+				"exclude_domains": map[string]any{
+					"type":        "array",
+					"items":       map[string]any{"type": "string"},
+					"description": "List of domains to specifically exclude, if the user asks to exclude a domain set this to the domain of the site",
+					"default":     []any{},
+				},
+				"country": map[string]any{
+					"type":        "string",
+					"description": "Boost search results from a specific country. Must be a full country name (e.g., 'United States', 'Japan', 'Germany'). ISO country codes (e.g., 'us', 'jp') are not supported. Available only if topic is general. See https://docs.tavily.com/documentation/api-reference/search for the full list of supported countries.",
+					"default":     "",
+				},
+				"include_favicon": map[string]any{
+					"type":        "boolean",
+					"description": "Whether to include the favicon URL for each result",
+					"default":     false,
 				},
 			},
-			"required": []string{"query"},
 		},
 	},
 	{
