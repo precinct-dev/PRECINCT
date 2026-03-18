@@ -4,6 +4,8 @@ import (
 	"context"
 	"log/slog"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Option configures a Server via functional options passed to New.
@@ -129,5 +131,23 @@ func WithSessionTimeout(d time.Duration) Option {
 func WithSerialExecution() Option {
 	return func(s *Server) {
 		s.serialExecution = true
+	}
+}
+
+// WithTracerProvider sets a custom OpenTelemetry TracerProvider for span
+// creation. When not set, the server uses otel.GetTracerProvider() (the
+// global provider). The framework creates spans but never creates
+// exporters -- the caller owns the TracerProvider lifecycle.
+func WithTracerProvider(tp trace.TracerProvider) Option {
+	return func(s *Server) {
+		s.tracerProvider = tp
+	}
+}
+
+// WithoutOTel disables OpenTelemetry span creation. By default, the OTel
+// middleware is enabled and creates spans per tools/call invocation.
+func WithoutOTel() Option {
+	return func(s *Server) {
+		s.otelDisabled = true
 	}
 }

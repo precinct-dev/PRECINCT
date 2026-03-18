@@ -12,6 +12,10 @@ import (
 	"sync"
 	"syscall"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Server is an MCP server that exposes registered tools over HTTP using
@@ -35,6 +39,10 @@ type Server struct {
 	rateBurst            int
 	customMiddleware     []Middleware
 	roleVisibilityFilter func(ctx context.Context, toolName string) bool
+
+	// OTel configuration.
+	otelDisabled   bool
+	tracerProvider trace.TracerProvider
 
 	// pipeline is the composed middleware chain, built lazily on the first
 	// tools/call request. It wraps ToolHandler, not http.Handler.
@@ -124,11 +132,16 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Extract W3C trace context (traceparent header) from the incoming
+	// HTTP request so that downstream spans are linked to the caller's
+	// trace. Uses the global propagator by default.
+	ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+
 	// Session validation: initialize creates a session; all other methods
 	// require a valid Mcp-Session-Id header.
 	if req.Method == "initialize" {
 		sess := s.store.create()
-		resp := s.dispatch(r.Context(), &req)
+		resp := s.dispatch(ctx, &req)
 		w.Header().Set("Mcp-Session-Id", sess.id)
 		s.writeResponse(w, resp)
 		return
@@ -177,7 +190,7 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Inject session ID into context so the middleware pipeline can access it.
-	ctx := withToolCallContext(r.Context(), "", sessionID)
+	ctx = withToolCallContext(ctx, "", sessionID)
 	resp := s.dispatch(ctx, &req)
 	if resp == nil {
 		// Notification -- return 200 with empty body.
@@ -315,7 +328,7 @@ func (s *Server) Addr() net.Addr {
 //  1. Rate Limiting
 //  2. Context Injection
 //  3. Role Visibility (if enabled)
-//  4. (OTel -- separate story, slot reserved)
+//  4. OTel (creates per-call spans; disable with WithoutOTel)
 //  5. Caching
 //  6. Custom Middleware
 //  7. Logging
@@ -324,6 +337,12 @@ func (s *Server) Addr() net.Addr {
 func (s *Server) initPipeline() {
 	s.pipelineOnce.Do(func() {
 		var mws []Middleware
+
+		// Resolve tracer once for middleware that optionally emit spans.
+		var tracer trace.Tracer
+		if !s.otelDisabled {
+			tracer = s.tracer()
+		}
 
 		// 1. Rate Limiting (outermost -- rejects before any work).
 		if !s.rateLimitDisabled {
@@ -335,7 +354,11 @@ func (s *Server) initPipeline() {
 			if burst == 0 {
 				burst = defaultRateBurst
 			}
-			mws = append(mws, newRateLimitMiddleware(rps, burst))
+			var rlOpts []rateLimitOption
+			if tracer != nil {
+				rlOpts = append(rlOpts, withRateLimitTracer(tracer))
+			}
+			mws = append(mws, newRateLimitMiddleware(rps, burst, rlOpts...))
 		}
 
 		// 2. Context Injection (always on).
@@ -347,7 +370,10 @@ func (s *Server) initPipeline() {
 			mws = append(mws, newRoleVisibilityMiddleware(filter))
 		}
 
-		// 4. OTel -- reserved for a future story.
+		// 4. OTel (on by default -- creates spans per tools/call).
+		if !s.otelDisabled {
+			mws = append(mws, newOTelMiddleware(s.tracer()))
+		}
 
 		// 5. Caching.
 		if !s.cachingDisabled {
@@ -355,7 +381,11 @@ func (s *Server) initPipeline() {
 			if ttl == 0 {
 				ttl = defaultCacheTTL
 			}
-			mws = append(mws, newCacheMiddleware(ttl))
+			var cOpts []cacheOption
+			if tracer != nil {
+				cOpts = append(cOpts, withCacheTracer(tracer))
+			}
+			mws = append(mws, newCacheMiddleware(ttl, cOpts...))
 		}
 
 		// 6. Custom Middleware.
