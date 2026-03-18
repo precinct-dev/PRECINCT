@@ -577,6 +577,8 @@ services:
       - DEMO_RUGPULL_ADMIN_ENABLED=1  # Demo-only: gateway mediates upstream rugpull toggles (RFA-1r0x)
       - OPA_POLICY_DIR=/config/opa
       - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
+      - TOOL_REGISTRY_PUBLIC_KEY=/config/attestation-ed25519.pub
+      - OPA_POLICY_PUBLIC_KEY=/config/attestation-ed25519.pub
       - CAPABILITY_REGISTRY_V2_PATH=/config/capability-registry-v2.yaml
       - MODEL_PROVIDER_CATALOG_PATH=/config/model-provider-catalog.v2.yaml
       - MAX_REQUEST_SIZE_BYTES=10485760

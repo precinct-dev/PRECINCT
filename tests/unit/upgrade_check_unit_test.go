@@ -56,10 +56,10 @@ func TestUpgradeCheck_ExtractImages(t *testing.T) {
 
 	phoenixCompose := filepath.Join(poc, "deploy", "compose", "docker-compose.phoenix.yml")
 	out2 := runScript(t, "--_test_extract_images", phoenixCompose)
-	if !strings.Contains(out2, "arizephoenix/phoenix:latest") {
+	if !strings.Contains(out2, "arizephoenix/phoenix:version-10.10.0") {
 		t.Fatalf("expected phoenix image in phoenix compose extraction; got:\n%s", out2)
 	}
-	if !strings.Contains(out2, "otel/opentelemetry-collector-contrib:latest") {
+	if !strings.Contains(out2, "otel/opentelemetry-collector-contrib:0.123.0") {
 		t.Fatalf("expected otel-collector image in phoenix compose extraction; got:\n%s", out2)
 	}
 }

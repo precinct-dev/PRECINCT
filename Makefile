@@ -872,7 +872,7 @@ gdpr-delete:
 .PHONY: readiness-state-validate validate-setup-time
 .PHONY: test-spike-seeder-groq test-gateway-spike-key test-guard-model-e2e
 
-GATEKEEPER_VERSION ?= v3.16.0
+GATEKEEPER_VERSION ?= v3.22.0
 GATEKEEPER_URL := https://raw.githubusercontent.com/open-policy-agent/gatekeeper/$(GATEKEEPER_VERSION)/deploy/gatekeeper.yaml
 
 k8s-registry:
