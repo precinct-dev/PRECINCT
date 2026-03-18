@@ -257,7 +257,7 @@ func TestToolsList(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 2, "tools/list", nil), sid)
 	body := readJSON(t, resp)
 
@@ -303,7 +303,7 @@ func TestToolsCall_Success(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 3, "tools/call", map[string]any{
 		"name":      "echo",
 		"arguments": map[string]any{"message": "hello"},
@@ -342,7 +342,7 @@ func TestToolsCall_HandlerError(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 4, "tools/call", map[string]any{
 		"name": "fail",
 	}), sid)
@@ -364,7 +364,7 @@ func TestToolsCall_UnknownTool(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 5, "tools/call", map[string]any{
 		"name": "nonexistent",
 	}), sid)
@@ -446,7 +446,7 @@ func TestUnknownMethod(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 6, "resources/list", nil), sid)
 	body := readJSON(t, resp)
 	errObj := body["error"].(map[string]any)
@@ -649,7 +649,7 @@ func TestMultipleTools(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// List should show both tools.
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/list", nil), sid)
@@ -708,8 +708,8 @@ func TestMultipleSessions(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid1 := initSession(t, ts)
-	sid2 := initSession(t, ts)
+	sid1 := initAndActivate(t, ts)
+	sid2 := initAndActivate(t, ts)
 	if sid1 == sid2 {
 		t.Error("two initialize calls produced the same session ID")
 	}
@@ -736,7 +736,7 @@ func TestToolsCall_NoParams(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// tools/call with no params should return invalid params error.
 	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call"}`
@@ -829,6 +829,23 @@ func TestRunContext_ListenAndServe(t *testing.T) {
 		t.Fatal("initialize: missing Mcp-Session-Id")
 	}
 	initResp.Body.Close()
+
+	// Activate the session via notifications/initialized.
+	activateBody, _ := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	})
+	activateReq, _ := http.NewRequest(http.MethodPost, baseURL+"/", bytes.NewReader(activateBody))
+	activateReq.Header.Set("Content-Type", "application/json")
+	activateReq.Header.Set("Mcp-Session-Id", sid)
+	activateResp, err := http.DefaultClient.Do(activateReq)
+	if err != nil {
+		t.Fatalf("POST / (notifications/initialized): %v", err)
+	}
+	if activateResp.StatusCode != http.StatusOK {
+		t.Fatalf("notifications/initialized: status %d", activateResp.StatusCode)
+	}
+	activateResp.Body.Close()
 
 	// tools/call with the session
 	callBody, _ := json.Marshal(map[string]any{

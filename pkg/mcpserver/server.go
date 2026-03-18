@@ -12,8 +12,6 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 // Server is an MCP server that exposes registered tools over HTTP using
@@ -43,9 +41,13 @@ type Server struct {
 	pipelineOnce sync.Once
 	pipeline     Middleware
 
+	// Session configuration.
+	sessionTimeout  time.Duration
+	serialExecution bool
+
 	mu       sync.RWMutex
 	tools    []toolEntry
-	sessions sync.Map // sessionID (string) -> struct{}
+	store    *sessionStore
 	ln       net.Listener
 }
 
@@ -64,6 +66,7 @@ func New(name string, opts ...Option) *Server {
 		shutdownTimeout: 10 * time.Second,
 		readTimeout:     30 * time.Second,
 		writeTimeout:    30 * time.Second,
+		store:           newSessionStore(),
 	}
 	for _, o := range opts {
 		o(s)
@@ -77,11 +80,14 @@ func New(name string, opts ...Option) *Server {
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case "/":
-		if r.Method != http.MethodPost {
+		switch r.Method {
+		case http.MethodPost:
+			s.handleJSONRPC(w, r)
+		case http.MethodDelete:
+			s.handleDelete(w, r)
+		default:
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-			return
 		}
-		s.handleJSONRPC(w, r)
 	case "/health":
 		if r.Method != http.MethodGet {
 			http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -121,10 +127,9 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 	// Session validation: initialize creates a session; all other methods
 	// require a valid Mcp-Session-Id header.
 	if req.Method == "initialize" {
-		sessionID := uuid.New().String()
-		s.sessions.Store(sessionID, struct{}{})
+		sess := s.store.create()
 		resp := s.dispatch(r.Context(), &req)
-		w.Header().Set("Mcp-Session-Id", sessionID)
+		w.Header().Set("Mcp-Session-Id", sess.id)
 		s.writeResponse(w, resp)
 		return
 	}
@@ -135,9 +140,40 @@ func (s *Server) handleJSONRPC(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
 	}
-	if _, ok := s.sessions.Load(sessionID); !ok {
+	sess, ok := s.store.get(sessionID)
+	if !ok {
 		http.Error(w, "Not Found", http.StatusNotFound)
 		return
+	}
+
+	// Check for idle expiry.
+	if sess.isExpired(s.sessionTimeout) {
+		s.store.delete(sessionID)
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+
+	// Handle notifications/initialized: transition to active state.
+	if req.Method == "notifications/initialized" {
+		s.store.markActive(sessionID)
+		sess.touch()
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// tools/list and tools/call require session in "active" state.
+	if sess.state != stateActive {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+
+	// Refresh lastAccess on every successful request.
+	sess.touch()
+
+	// If serial execution is enabled, acquire the per-session mutex.
+	if s.serialExecution {
+		sess.mu.Lock()
+		defer sess.mu.Unlock()
 	}
 
 	// Inject session ID into context so the middleware pipeline can access it.
@@ -170,6 +206,21 @@ func (s *Server) writeError(w http.ResponseWriter, id json.RawMessage, code int,
 	s.writeResponse(w, resp)
 }
 
+// handleDelete handles DELETE / requests for session termination.
+func (s *Server) handleDelete(w http.ResponseWriter, r *http.Request) {
+	sessionID := r.Header.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	if _, ok := s.store.get(sessionID); !ok {
+		http.Error(w, "Not Found", http.StatusNotFound)
+		return
+	}
+	s.store.delete(sessionID)
+	w.WriteHeader(http.StatusOK)
+}
+
 // Run starts the HTTP server and blocks until SIGINT or SIGTERM is received.
 // It performs a graceful shutdown, waiting up to ShutdownTimeout for
 // in-flight requests to complete.
@@ -178,6 +229,12 @@ func (s *Server) Run() error {
 	defer stop()
 	return s.RunContext(ctx)
 }
+
+// defaultCleanupInterval is the interval between session cleanup sweeps.
+const defaultCleanupInterval = 60 * time.Second
+
+// defaultSessionTimeout is the default idle timeout for sessions.
+const defaultSessionTimeout = 30 * time.Minute
 
 // RunContext starts the HTTP server and blocks until the provided context is
 // cancelled. It performs a graceful shutdown, waiting up to ShutdownTimeout
@@ -201,6 +258,17 @@ func (s *Server) RunContext(ctx context.Context) error {
 	s.ln = ln
 	s.mu.Unlock()
 
+	// Start the session cleanup goroutine. It stops when cleanupCtx is
+	// cancelled during shutdown.
+	cleanupCtx, cleanupCancel := context.WithCancel(ctx)
+	defer cleanupCancel()
+
+	timeout := s.sessionTimeout
+	if timeout == 0 {
+		timeout = defaultSessionTimeout
+	}
+	s.store.startCleanup(cleanupCtx, defaultCleanupInterval, timeout)
+
 	errCh := make(chan error, 1)
 	go func() {
 		s.logger.Info("server started", "name", s.name, "address", ln.Addr().String())
@@ -212,9 +280,13 @@ func (s *Server) RunContext(ctx context.Context) error {
 		s.logger.Info("context cancelled, shutting down")
 	case err := <-errCh:
 		if err != nil && err != http.ErrServerClosed {
+			cleanupCancel()
 			return fmt.Errorf("mcpserver: serve: %w", err)
 		}
 	}
+
+	// Stop the cleanup goroutine before shutting down the HTTP server.
+	cleanupCancel()
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), s.shutdownTimeout)
 	defer cancel()

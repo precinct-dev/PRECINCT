@@ -112,3 +112,22 @@ func WithRoleVisibility(filter func(ctx context.Context, toolName string) bool) 
 		s.roleVisibilityFilter = filter
 	}
 }
+
+// WithSessionTimeout sets the idle timeout for sessions. Sessions that
+// have not received a request within this duration are considered expired
+// and will be cleaned up. Defaults to 30 minutes.
+func WithSessionTimeout(d time.Duration) Option {
+	return func(s *Server) {
+		s.sessionTimeout = d
+	}
+}
+
+// WithSerialExecution enables per-session serial execution for tools/call
+// requests. When enabled, concurrent tools/call requests on the same
+// session are serialized via a per-session mutex. Different sessions
+// still execute concurrently.
+func WithSerialExecution() Option {
+	return func(s *Server) {
+		s.serialExecution = true
+	}
+}
