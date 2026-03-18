@@ -219,7 +219,6 @@ repository are test fixtures in `*_test.go` files.
 | Dockerfile.spike-keeper | Yes | Yes (upstream) | Yes | Yes (upstream distroless) |
 | Dockerfile.spike-nexus | Yes | Yes (UID 1000) | Yes | Yes (upstream distroless) |
 | Dockerfile.spire-agent | Yes | No (requires root) | Yes | Yes (busybox) |
-| Dockerfile.token-generator | Yes | No (requires root) | Yes | Yes (busybox) |
 | examples/content-scanner | Yes | Yes (UID 10001) | Yes | Yes (alpine) |
 | examples/go | Yes | Yes (FIXED) | No | Yes (alpine) |
 | examples/mock-guard-model | Yes | Yes (UID 10001) | Yes | Yes (alpine) |
@@ -231,8 +230,6 @@ repository are test fixtures in `*_test.go` files.
 - **Dockerfile.spire-agent** runs as root: Required for SPIRE agent node attestation
   and Docker workload attestor (needs host PID namespace + Docker socket access).
   Documented in docker-compose.yml with explicit `privileged: true` justification.
-- **Dockerfile.token-generator** runs as root: One-shot init container that creates
-  SPIRE join tokens. Exits after completion; does not run persistently.
 - **examples/go and examples/python** lack digest-pinned base images: These are
   example/demo Dockerfiles, not production. Accepted risk for developer convenience.
 

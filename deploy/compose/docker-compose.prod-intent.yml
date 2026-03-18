@@ -12,13 +12,8 @@ services:
     image: ${PROD_GATEWAY_IMAGE:?PROD_GATEWAY_IMAGE must be set (digest-pinned)}
     pull_policy: always
 
-  spire-token-generator:
-    build: null
-    image: ${PROD_SPIRE_TOKEN_GENERATOR_IMAGE:?PROD_SPIRE_TOKEN_GENERATOR_IMAGE must be set (digest-pinned)}
-    pull_policy: always
-
   spire-entry-registrar:
-    image: ${PROD_SPIRE_TOKEN_GENERATOR_IMAGE:?PROD_SPIRE_TOKEN_GENERATOR_IMAGE must be set (digest-pinned)}
+    image: ${PROD_SPIRE_ENTRY_REGISTRAR_IMAGE:?PROD_SPIRE_ENTRY_REGISTRAR_IMAGE must be set (digest-pinned)}
     pull_policy: always
 
   spire-agent:

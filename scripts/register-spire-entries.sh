@@ -21,7 +21,7 @@ PARENT_ID=""
 while [ $ELAPSED -lt $MAX_WAIT ]; do
     # IMPORTANT: We must attach entries to the *currently running* agent node ID.
     # The SPIRE server data directory persists across compose runs, so multiple
-    # join_token agents can remain attested. We prefer the newest non-expired
+    # x509pop agents can remain attested. We prefer the newest non-expired
     # agent based on Expiration time to avoid binding entries to stale IDs.
     AGENT_LIST="$($SPIRE agent list -socketPath "$SOCK" 2>/dev/null || true)"
     if [ -n "$AGENT_LIST" ]; then
