@@ -594,7 +594,7 @@ func TestPipeline_FullStack(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{
 		"name":      "echo",
 		"arguments": map[string]any{"message": "hello"},
@@ -636,7 +636,7 @@ func TestPipeline_CacheIntegration(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// First call: cache miss.
 	resp1 := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{
@@ -684,7 +684,7 @@ func TestPipeline_RateLimitIntegration(t *testing.T) {
 	ts := httptest.NewServer(s)
 	defer ts.Close()
 
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// First call: allowed (within burst).
 	resp1 := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "ping"}), sid)
@@ -724,7 +724,7 @@ func TestPipeline_WithoutCaching(t *testing.T) {
 
 	ts := httptest.NewServer(s)
 	defer ts.Close()
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	args := map[string]any{"name": "counter", "arguments": map[string]any{"x": "y"}}
 
@@ -749,7 +749,7 @@ func TestPipeline_WithoutRateLimiting(t *testing.T) {
 
 	ts := httptest.NewServer(s)
 	defer ts.Close()
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// Many rapid calls should all succeed (no rate limiter).
 	for i := range 20 {
@@ -791,7 +791,7 @@ func TestPipeline_CustomMiddlewareInsertion(t *testing.T) {
 
 	ts := httptest.NewServer(s)
 	defer ts.Close()
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "echo"}), sid)
 	body := readJSON(t, resp)
@@ -841,7 +841,7 @@ func TestPipeline_ContextAccessorsInHandler(t *testing.T) {
 
 	ts := httptest.NewServer(s)
 	defer ts.Close()
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "probe"}), sid)
 	body := readJSON(t, resp)
@@ -875,7 +875,7 @@ func TestPipeline_LoggingIncludesDuration(t *testing.T) {
 
 	ts := httptest.NewServer(s)
 	defer ts.Close()
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "slow"}), sid)
 	resp.Body.Close()
@@ -948,7 +948,7 @@ func TestPipeline_Ordering(t *testing.T) {
 
 	ts := httptest.NewServer(s)
 	defer ts.Close()
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{
 		"name":      "echo",
@@ -1008,7 +1008,7 @@ func TestPipeline_CacheNotSharedAcrossTools(t *testing.T) {
 
 	ts := httptest.NewServer(s)
 	defer ts.Close()
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// Call tool1
 	resp1 := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{
@@ -1057,7 +1057,7 @@ func TestPipeline_ErrorsAreNotCachedViaHTTP(t *testing.T) {
 
 	ts := httptest.NewServer(s)
 	defer ts.Close()
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// First call: error (should NOT be cached).
 	resp1 := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "flaky"}), sid)
@@ -1094,7 +1094,7 @@ func TestPipeline_RateLimitConcurrent(t *testing.T) {
 
 	ts := httptest.NewServer(s)
 	defer ts.Close()
-	sid := initSession(t, ts)
+	sid := initAndActivate(t, ts)
 
 	// Fire 10 concurrent requests; only 3 should succeed.
 	var wg sync.WaitGroup
@@ -1148,6 +1148,13 @@ func TestPipeline_ExistingEndToEndStillWorks(t *testing.T) {
 		t.Fatalf("initialize: status %d", resp.StatusCode)
 	}
 	sid := resp.Header.Get("Mcp-Session-Id")
+	resp.Body.Close()
+
+	// Step 1b: activate session
+	resp = doPost(t, ts, rpcBody(t, nil, "notifications/initialized", nil), sid)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("notifications/initialized: status %d", resp.StatusCode)
+	}
 	resp.Body.Close()
 
 	// Step 2: tools/list
