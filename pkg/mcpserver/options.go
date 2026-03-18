@@ -57,3 +57,56 @@ func WithWriteTimeout(d time.Duration) Option {
 		s.writeTimeout = d
 	}
 }
+
+// WithoutCaching disables the response cache middleware. By default,
+// caching is enabled with a 5-minute TTL.
+func WithoutCaching() Option {
+	return func(s *Server) {
+		s.cachingDisabled = true
+	}
+}
+
+// WithCacheTTL sets the TTL for the response cache. Implies caching is
+// enabled. Defaults to 5 minutes.
+func WithCacheTTL(d time.Duration) Option {
+	return func(s *Server) {
+		s.cacheTTL = d
+	}
+}
+
+// WithoutRateLimiting disables the rate-limiting middleware. By default,
+// rate limiting is enabled at 100 requests per second with a burst of 10.
+func WithoutRateLimiting() Option {
+	return func(s *Server) {
+		s.rateLimitDisabled = true
+	}
+}
+
+// WithRateLimit configures the rate limiter with a custom sustained rate
+// (requests per second) and burst size. Implies rate limiting is enabled.
+func WithRateLimit(rps float64, burst int) Option {
+	return func(s *Server) {
+		s.rateRPS = rps
+		s.rateBurst = burst
+	}
+}
+
+// WithMiddleware appends custom middleware to the pipeline. Custom
+// middleware runs after caching and before logging, allowing it to
+// observe cache-resolved results while still being logged.
+func WithMiddleware(mw ...Middleware) Option {
+	return func(s *Server) {
+		s.customMiddleware = append(s.customMiddleware, mw...)
+	}
+}
+
+// WithRoleVisibility enables role-visibility filtering for tool calls.
+// When enabled, the role visibility middleware is inserted into the
+// pipeline at its designated position (after context injection, before
+// caching). The filter function receives the context and tool name, and
+// should return true if the tool is visible to the current caller.
+func WithRoleVisibility(filter func(toolName string, role string) bool) Option {
+	return func(s *Server) {
+		s.roleVisibilityFilter = filter
+	}
+}
