@@ -1,0 +1,23 @@
+# OC-xkkc: Token exchange credential mapping.
+# Maps external credentials to SPIFFE identities for third-party tools
+# that lack SPIFFE sidecars.
+#
+# Each entry maps a credential_type + credential_hash pair to a SPIFFE ID.
+# credential_hash is a bcrypt hash of the actual credential value.
+# The gateway issues a short-lived JWT bound to that SPIFFE identity.
+#
+# To generate a bcrypt hash:
+#   htpasswd -nbBC 10 "" 'your-secret' | cut -d: -f2
+#   or: echo -n 'your-secret' | python3 -c "import bcrypt,sys; print(bcrypt.hashpw(sys.stdin.buffer.read(), bcrypt.gensalt()).decode())"
+
+credentials:
+  - credential_type: "api_key"
+    credential_hash: "$2a$10$QYxEE4kvQ.jxoq.BevqLfO3asIpyeyEsAdpYTgAlrQGeEpWjKH6fC"
+    spiffe_id: "spiffe://poc.local/external/test-tool"
+  - credential_type: "api_key"
+    credential_hash: "$2a$10$7J55PMVHSsMI295XB9FAA.Y2IkPpJnZUCpbvlpETHow.GI.ESO/ji"
+    spiffe_id: "spiffe://poc.local/external/monitoring-agent"
+
+# TTL settings for issued tokens.
+default_ttl: "15m"
+max_ttl: "1h"

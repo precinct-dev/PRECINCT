@@ -264,6 +264,9 @@ func TestErrorCodes_Constants(t *testing.T) {
 		ErrMCPTransportFailed,
 		ErrMCPRequestFailed,
 		ErrMCPInvalidResponse,
+		ErrAuthTokenExpired,
+		ErrAuthTokenInvalid,
+		ErrAuthCredentialRejected,
 	}
 
 	seen := make(map[string]bool)
@@ -277,8 +280,8 @@ func TestErrorCodes_Constants(t *testing.T) {
 		seen[code] = true
 	}
 
-	if len(codes) != 25 {
-		t.Errorf("Expected 25 error codes, got %d", len(codes))
+	if len(codes) != 28 {
+		t.Errorf("Expected 28 error codes, got %d", len(codes))
 	}
 }
 
