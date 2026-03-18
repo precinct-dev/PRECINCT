@@ -36,7 +36,7 @@ type Server struct {
 	rateRPS              float64
 	rateBurst            int
 	customMiddleware     []Middleware
-	roleVisibilityFilter func(toolName string, role string) bool
+	roleVisibilityFilter func(ctx context.Context, toolName string) bool
 
 	// pipeline is the composed middleware chain, built lazily on the first
 	// tools/call request. It wraps ToolHandler, not http.Handler.

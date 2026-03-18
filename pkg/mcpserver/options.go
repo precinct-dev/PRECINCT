@@ -1,6 +1,7 @@
 package mcpserver
 
 import (
+	"context"
 	"log/slog"
 	"time"
 )
@@ -104,8 +105,9 @@ func WithMiddleware(mw ...Middleware) Option {
 // When enabled, the role visibility middleware is inserted into the
 // pipeline at its designated position (after context injection, before
 // caching). The filter function receives the context and tool name, and
-// should return true if the tool is visible to the current caller.
-func WithRoleVisibility(filter func(toolName string, role string) bool) Option {
+// should return true if the tool is visible to the current caller. The
+// caller's role can be extracted from the context via Role(ctx).
+func WithRoleVisibility(filter func(ctx context.Context, toolName string) bool) Option {
 	return func(s *Server) {
 		s.roleVisibilityFilter = filter
 	}
