@@ -1125,6 +1125,11 @@ attestation-resign: ## Re-sign attestation artifacts (generates keypair if missi
 generate-spire-certs: ## Generate x509pop CA + agent cert for compose SPIRE attestation
 	@bash scripts/generate-x509pop-certs.sh
 
+.PHONY: test-x509pop-restart
+
+test-x509pop-restart: ## Integration test: x509pop compose restart resilience
+	@bash tests/e2e/test_x509pop_restart.sh
+
 # ---------------------------------------------------------------------------
 # 16. Aliases (backwards compatibility)
 # ---------------------------------------------------------------------------
