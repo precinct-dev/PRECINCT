@@ -30,7 +30,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: token-generator
-          image: bitnami/kubectl:latest
+          image: bitnami/kubectl@sha256:d80c09afa570a14cf6d32ca09ca610b5701eb0a08c655b5bb820194b218078eb
           command:
             - /bin/sh
             - -c

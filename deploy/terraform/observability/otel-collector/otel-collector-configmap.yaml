@@ -71,15 +71,17 @@ data:
           processors: [batch, resource]
           exporters: [otlp_grpc/phoenix, debug]
 
+        # Phoenix supports OTLP traces only (not metrics/logs via gRPC).
+        # Route metrics and logs to debug exporter until a dedicated backend is added.
         metrics:
           receivers: [otlp]
           processors: [batch, resource]
-          exporters: [otlp_grpc/phoenix, debug]
+          exporters: [debug]
 
         logs:
           receivers: [otlp]
           processors: [batch, resource]
-          exporters: [otlp_grpc/phoenix, debug]
+          exporters: [debug]
 
       telemetry:
         logs:

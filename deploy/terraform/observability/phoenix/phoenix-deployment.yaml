@@ -42,7 +42,7 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
         - name: phoenix
-          image: arizephoenix/phoenix:latest
+          image: arizephoenix/phoenix:version-10.10.0@sha256:cb0007fbf0ca239dc4926dbfd6721e4601719fdc77206c545271b6181e7438de
           ports:
             - name: http-ui
               containerPort: 6006
