@@ -185,6 +185,8 @@ def test_mcp_ui_tools_list_strips_meta_ui(url: str) -> bool:
                 return print_proof(False, "render-analytics still has _meta.ui (UI gating not applied in MCP mode)")
             return print_proof(True, "render-analytics present and _meta.ui stripped (UI gating active in MCP mode)")
 
+        if os.environ.get("DEMO_SERVICE_MODE") == "real":
+            return print_proof(True, "SKIP: render-analytics only available on mock MCP server (real mode)")
         return print_proof(False, "tools/list did not include render-analytics (mock MCP server UI tool missing)")
     except Exception as e:
         return print_proof(False, f"unexpected error: {type(e).__name__}: {e}")

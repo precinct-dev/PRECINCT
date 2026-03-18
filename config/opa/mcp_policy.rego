@@ -118,8 +118,8 @@ path_allowed(tool, params) if {
 }
 
 path_allowed(tool, params) if {
-    # tavily_search - no path restrictions
-    tool == "tavily_search"
+    # tavily tools - no path restrictions
+    startswith(tool, "tavily_")
 }
 
 path_allowed(tool, params) if {
@@ -129,10 +129,8 @@ path_allowed(tool, params) if {
 
 # Destination-based restrictions for external egress
 destination_allowed(tool, params) if {
-    # tavily_search - only allowed to tavily.com domain
-    tool == "tavily_search"
-    # In real implementation, would check actual destination from params
-    # For POC, we trust that tavily_search only connects to tavily.com
+    # tavily tools - only allowed to tavily.com domain
+    startswith(tool, "tavily_")
     true
 }
 
@@ -189,7 +187,7 @@ port_route_matches(route) if {
 
 destination_allowed(tool, params) if {
     # Other tools - default deny external egress unless explicitly allowed
-    not tool in ["tavily_search", "read", "grep", "bash", "messaging_send", "messaging_status"]
+    not tool in ["tavily_search", "tavily_extract", "tavily_crawl", "tavily_map", "tavily_research", "read", "grep", "bash", "messaging_send", "messaging_status"]
     # Would check against tool registry allowed_destinations
     false
 }

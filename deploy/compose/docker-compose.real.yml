@@ -32,10 +32,10 @@ services:
       - sh
       - -c
       - |
-        npm install -g supergateway@latest 2>&1
-        npx supergateway --stdio "npx -y tavily-mcp@latest" --outputTransport streamableHttp --port 8082 --host 0.0.0.0
+        npm install -g supergateway@3.4.3 2>&1
+        npx supergateway --stdio "npx -y tavily-mcp@0.2.18" --outputTransport streamableHttp --port 8082 --host 0.0.0.0
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"ping\",\"id\":1}' --header='Content-Type: application/json' http://127.0.0.1:8082/mcp || exit 0"]
+      test: ["CMD-SHELL", "wget -qO- --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"ping\",\"id\":1}' --header='Content-Type: application/json' --header='Accept: application/json, text/event-stream' http://127.0.0.1:8082/mcp || exit 0"]
       interval: 10s
       timeout: 5s
       retries: 10

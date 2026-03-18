@@ -429,6 +429,7 @@ run_go_demo() {
         ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
         ${DEMO_K8S_EGRESS_PROBE_RESULT:+-e DEMO_K8S_EGRESS_PROBE_RESULT=$DEMO_K8S_EGRESS_PROBE_RESULT} \
         ${DEMO_RUGPULL_ADMIN_URL:+-e DEMO_RUGPULL_ADMIN_URL=$DEMO_RUGPULL_ADMIN_URL} \
+        -e DEMO_SERVICE_MODE="${DEMO_SERVICE_MODE:-mock}" \
         ${dlp_pii_env} \
         "$GO_IMAGE" --gateway-url="$url"
     return $?
@@ -447,6 +448,7 @@ run_python_demo() {
         ${DEMO_STRICT_DEEPSCAN:+-e DEMO_STRICT_DEEPSCAN=$DEMO_STRICT_DEEPSCAN} \
         ${DEMO_K8S_EGRESS_PROBE_RESULT:+-e DEMO_K8S_EGRESS_PROBE_RESULT=$DEMO_K8S_EGRESS_PROBE_RESULT} \
         ${DEMO_RUGPULL_ADMIN_URL:+-e DEMO_RUGPULL_ADMIN_URL=$DEMO_RUGPULL_ADMIN_URL} \
+        -e DEMO_SERVICE_MODE="${DEMO_SERVICE_MODE:-mock}" \
         ${dlp_pii_env} \
         "$PY_IMAGE" --gateway-url="$url"
     return $?
@@ -909,7 +911,10 @@ run_demo_cycle() {
         export RATE_LIMIT_BURST="100"
         # Demo containers should never need to talk to tool servers directly.
         # Use gateway-mediated demo admin endpoints for rugpull toggles.
-        DEMO_RUGPULL_ADMIN_URL="$url"
+        # Only set in mock mode -- real upstream (e.g., tavily) has no /__demo__ endpoints.
+        if [ "$DEMO_SERVICE_MODE" != "real" ]; then
+            DEMO_RUGPULL_ADMIN_URL="$url"
+        fi
 
         if [ "$SKIP_SETUP" = false ]; then
             # Compose determinism: stale SPIKE Nexus state can cause bootstrap

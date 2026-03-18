@@ -24,6 +24,90 @@ import (
 	"github.com/precinct-dev/precinct/internal/testutil"
 )
 
+// --- Test helpers: canonical tavily_search mock definition ---
+//
+// All mock MCP servers in gateway tests return a tavily_search tool with this
+// description and inputSchema. The testToolRegistryConfigPath() helper writes
+// a temporary tool-registry.yaml whose tavily_search hash is computed from
+// these values using middleware.ComputeHash, ensuring self-consistency between
+// mock responses and registry verification.
+
+const testTavilyDescription = "Search the web using Tavily API"
+
+// testTavilyInputSchema returns the canonical tavily_search inputSchema used
+// by all mock MCP servers in this package.
+func testTavilyInputSchema() map[string]interface{} {
+	return map[string]interface{}{
+		"type":     "object",
+		"required": []interface{}{"query"},
+		"properties": map[string]interface{}{
+			"query": map[string]interface{}{
+				"type":        "string",
+				"description": "Search query",
+			},
+			"max_results": map[string]interface{}{
+				"type":        "integer",
+				"description": "Maximum results to return",
+				"default":     5,
+			},
+		},
+	}
+}
+
+// testTavilyToolsListJSON returns the JSON string for a tools/list response
+// containing a single tavily_search tool matching the canonical test definition.
+// Used by inline mock servers that respond with w.Write([]byte(...)).
+func testTavilyToolsListJSON() string {
+	return `{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`
+}
+
+// testToolRegistryConfigPath writes a temporary tool-registry.yaml where the
+// tavily_search hash matches the canonical test mock definition. All other
+// tools are copied from the production registry. This ensures tests are
+// self-consistent: mock tool definitions hash-match the loaded registry.
+func testToolRegistryConfigPath(t *testing.T) string {
+	t.Helper()
+	prodPath := testutil.ToolRegistryConfigPath()
+	data, err := os.ReadFile(prodPath)
+	if err != nil {
+		t.Fatalf("read production tool registry: %v", err)
+	}
+
+	testHash := middleware.ComputeHash(testTavilyDescription, testTavilyInputSchema())
+
+	// Replace the production tavily_search hash with the test mock hash.
+	// The production hash is on a line like:
+	//   hash: "e1979929..."
+	// We find the tavily_search tool block and replace its hash.
+	content := string(data)
+	// Find the tavily_search section and replace its hash
+	lines := strings.Split(content, "\n")
+	inTavilySearch := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == `- name: "tavily_search"` {
+			inTavilySearch = true
+			continue
+		}
+		if inTavilySearch && strings.HasPrefix(trimmed, "- name:") {
+			break // moved to next tool
+		}
+		if inTavilySearch && strings.HasPrefix(trimmed, "hash:") {
+			// Replace this hash line, preserving indentation
+			indent := line[:len(line)-len(strings.TrimLeft(line, " "))]
+			lines[i] = indent + `hash: "` + testHash + `"`
+			break
+		}
+	}
+
+	tmpDir := t.TempDir()
+	tmpPath := filepath.Join(tmpDir, "tool-registry.yaml")
+	if err := os.WriteFile(tmpPath, []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		t.Fatalf("write temp tool registry: %v", err)
+	}
+	return tmpPath
+}
+
 // TestNewGateway verifies gateway initialization
 func TestNewGateway(t *testing.T) {
 	cfg := &Config{
@@ -1510,7 +1594,7 @@ func TestMCPTransport_ToolsCall_ThroughAll13Layers(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -1847,7 +1931,7 @@ func TestMCPTransport_MCPMode_UpstreamError(t *testing.T) {
 			// Tool registry verification uses tools/list to compute observed hashes.
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
+			_, _ = w.Write([]byte(testTavilyToolsListJSON()))
 		default:
 			requestCount++
 			// Return JSON-RPC error
@@ -1861,7 +1945,7 @@ func TestMCPTransport_MCPMode_UpstreamError(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -2164,10 +2248,10 @@ func TestMCPTransport_LazyInit_NotAtStartup(t *testing.T) {
 		if method == "tools/list" {
 			// RFA-6fse.4: ToolRegistryVerify may perform a gateway-owned tools/list refresh
 			// before allowing the first tool invocation. Provide a baseline tool definition
-			// matching config/tool-registry.yaml so the hash verification succeeds.
+			// matching the test tool registry so the hash verification succeeds.
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
+			_, _ = w.Write([]byte(testTavilyToolsListJSON()))
 			return
 		}
 
@@ -2180,7 +2264,7 @@ func TestMCPTransport_LazyInit_NotAtStartup(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -2418,7 +2502,7 @@ func TestMCPTransport_SSEResponse_ThroughAll13Layers(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -2527,7 +2611,7 @@ func TestMCPTransport_404_SessionExpiry_ThroughGateway(t *testing.T) {
 			// Tool registry verification uses tools/list to compute observed hashes.
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
+			_, _ = w.Write([]byte(testTavilyToolsListJSON()))
 		default:
 			requestCount++
 			if requestCount == 1 {
@@ -2547,7 +2631,7 @@ func TestMCPTransport_404_SessionExpiry_ThroughGateway(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -2938,7 +3022,7 @@ func TestMCPTransport_LegacySSE_ThroughAll13Layers(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -3017,7 +3101,7 @@ func TestMCPTransport_AutoDetect_StreamableHTTP(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -3068,7 +3152,7 @@ func TestMCPTransport_AutoDetect_SSEFallback(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -3259,7 +3343,7 @@ func TestMCPTransport_UpstreamDropsMidStream(t *testing.T) {
 		case "tools/list":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
+			_, _ = w.Write([]byte(testTavilyToolsListJSON()))
 		default:
 			// Write partial JSON then drop connection
 			w.Header().Set("Content-Type", "application/json")
@@ -3278,7 +3362,7 @@ func TestMCPTransport_UpstreamDropsMidStream(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            server.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -3348,7 +3432,7 @@ func TestMCPTransport_OversizedResponse(t *testing.T) {
 		case "tools/list":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
+			_, _ = w.Write([]byte(testTavilyToolsListJSON()))
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
@@ -3361,7 +3445,7 @@ func TestMCPTransport_OversizedResponse(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            server.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024, // 1MB limit
@@ -3435,7 +3519,7 @@ func TestMCPTransport_404MidConversation(t *testing.T) {
 		case "tools/list":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
+			_, _ = w.Write([]byte(testTavilyToolsListJSON()))
 		default:
 			n := atomic.AddInt32(&requestCount, 1)
 			if n <= 2 {
@@ -3455,7 +3539,7 @@ func TestMCPTransport_404MidConversation(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            server.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -3528,7 +3612,7 @@ func TestMCPTransport_SessionIsolation(t *testing.T) {
 		case "tools/list":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
+			_, _ = w.Write([]byte(testTavilyToolsListJSON()))
 		default:
 			// Record the session ID for each request
 			sid := r.Header.Get("Mcp-Session-Id")
@@ -3546,7 +3630,7 @@ func TestMCPTransport_SessionIsolation(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            server.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -3812,7 +3896,7 @@ func TestMCPTransport_AllErrorsUseWriteGatewayError(t *testing.T) {
 		case "tools/list":
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"tools":[{"name":"tavily_search","description":"Search the web using Tavily API","inputSchema":{"type":"object","required":["query"],"properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Maximum results to return","default":5}}}}]}}`))
+			_, _ = w.Write([]byte(testTavilyToolsListJSON()))
 		default:
 			w.WriteHeader(http.StatusServiceUnavailable)
 			_, _ = w.Write([]byte("service unavailable"))
@@ -3823,7 +3907,7 @@ func TestMCPTransport_AllErrorsUseWriteGatewayError(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            server.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,

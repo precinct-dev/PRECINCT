@@ -96,7 +96,7 @@ func TestBackwardCompat_MCPMode_UsesMCPTransport(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           "",
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -352,7 +352,7 @@ func TestBackwardCompat_MCPMode_All13MiddlewareLayers(t *testing.T) {
 	cfg := &Config{
 		UpstreamURL:            mcpServer.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testToolRegistryConfigPath(t),
 		AuditLogPath:           auditPath,
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -458,10 +458,11 @@ func TestBackwardCompat_BothModes_AuditLogConsistency(t *testing.T) {
 
 	// Test proxy mode
 	proxyAuditPath := filepath.Join(tmpDir, "proxy_consistency.jsonl")
+	testRegPath := testToolRegistryConfigPath(t)
 	proxyCfg := &Config{
 		UpstreamURL:            proxyUpstream.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testRegPath,
 		AuditLogPath:           proxyAuditPath,
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
@@ -480,7 +481,7 @@ func TestBackwardCompat_BothModes_AuditLogConsistency(t *testing.T) {
 	mcpCfg := &Config{
 		UpstreamURL:            mcpUpstream.URL,
 		OPAPolicyDir:           testutil.OPAPolicyDir(),
-		ToolRegistryConfigPath: testutil.ToolRegistryConfigPath(),
+		ToolRegistryConfigPath: testRegPath,
 		AuditLogPath:           mcpAuditPath,
 		OPAPolicyPath:          testutil.OPAPolicyPath(),
 		MaxRequestSizeBytes:    1024 * 1024,
