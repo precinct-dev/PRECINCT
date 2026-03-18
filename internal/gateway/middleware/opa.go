@@ -59,6 +59,9 @@ type OPAInput struct {
 	UI          *UIInput               `json:"ui,omitempty"`          // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
 	Principal   *PrincipalInput        `json:"principal,omitempty"`   // OC-3ch6: principal authority for level-based access control
 	DataSource  *DataSourceInput       `json:"data_source,omitempty"` // OC-4zrf: data source access control
+	AuthMethod  string                 `json:"auth_method"`                     // OC-qfxx: authentication method (header_declared, mtls_svid, oauth_jwt, oauth_introspection, token_exchange)
+	OAuthScopes []string               `json:"oauth_scopes,omitempty"`          // OC-qfxx: OAuth scopes from bearer token
+	OAuthIssuer string                 `json:"oauth_issuer,omitempty"`          // OC-qfxx: OAuth token issuer
 }
 
 // SessionInput represents session data for OPA evaluation
@@ -264,6 +267,16 @@ func OPAPolicy(next http.Handler, opa OPAEvaluator) http.Handler {
 			Params:      params,
 			StepUpToken: stepUpToken,
 			Session:     sessionInput,
+			AuthMethod:  GetAuthMethod(ctx),
+		}
+
+		// OC-qfxx: Populate OAuth claims from context for bearer-authenticated requests.
+		// These fields are set by upstream JWT/introspection middleware (OC-t23y, OC-qgu8).
+		if scopes := GetOAuthScopes(ctx); len(scopes) > 0 {
+			input.OAuthScopes = scopes
+		}
+		if issuer := GetOAuthIssuer(ctx); issuer != "" {
+			input.OAuthIssuer = issuer
 		}
 
 		// OC-3ch6: Populate principal from request context for level-based access control
