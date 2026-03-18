@@ -1,0 +1,18 @@
+# OC-xkkc: Token exchange credential mapping.
+# Maps external credentials to SPIFFE identities for third-party tools
+# that lack SPIFFE sidecars.
+#
+# Each entry maps a credential_type + credential pair to a SPIFFE ID.
+# The gateway issues a short-lived JWT bound to that SPIFFE identity.
+
+credentials:
+  - credential_type: "api_key"
+    credential: "test-tool-key-001"
+    spiffe_id: "spiffe://poc.local/external/test-tool"
+  - credential_type: "api_key"
+    credential: "monitoring-key-001"
+    spiffe_id: "spiffe://poc.local/external/monitoring-agent"
+
+# TTL settings for issued tokens.
+default_ttl: "15m"
+max_ttl: "1h"
