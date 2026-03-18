@@ -141,7 +141,6 @@ The Docker Compose stack runs 11 services plus 3 one-shot init containers. Servi
 |---------|------|-------|
 | `spire-server` | SPIFFE identity provider | Issues X.509 SVIDs to all workloads. Trust domain: `poc.local` |
 | `spire-agent` | SVID attestor | Runs with `pid: host` for Docker workload attestation. Uses `use_new_container_locator = true` for cgroupv2 |
-| `spire-token-generator` | One-shot init | Generates a fresh join token for SPIRE agent attestation |
 | `spire-entry-registrar` | One-shot init | Registers SPIFFE IDs for all workloads. Must complete before SPIKE or gateway start |
 
 ### Secret Management (SPIKE)
@@ -169,9 +168,8 @@ The startup sequence is enforced by Docker Compose `depends_on` conditions:
 
 ```
 spire-server (healthy)
-  -> spire-token-generator (completed)
-    -> spire-agent (healthy)
-      -> spire-entry-registrar (completed)
+  -> spire-agent (healthy)
+    -> spire-entry-registrar (completed)
         -> spike-keeper-1 (healthy)
           -> spike-nexus (healthy)
             -> spike-bootstrap (completed)

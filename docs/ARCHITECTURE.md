@@ -116,7 +116,7 @@ Agent                     Gateway                    SPIKE Nexus
 
 **Key initialization (Docker Compose, Tier 1):**
 1. SPIKE Nexus starts with SPIRE agent socket mounted (same as other services).
-2. SPIKE Bootstrap runs as a one-shot init container (like `spire-token-generator`) to generate and deliver the root key.
+2. SPIKE Bootstrap runs as a one-shot init container (like `spire-entry-registrar`) to generate and deliver the root key.
 3. SPIKE Pilot (CLI) is used by the setup script to seed initial secrets: `spike secret put external-apis/groq-key value=$GROQ_API_KEY`.
 4. The gateway's `SecretRedeemer` implementation makes mTLS calls to `https://spike-nexus:8443/v1/store/secrets?action=get` to redeem tokens.
 
@@ -567,7 +567,7 @@ controls:
 | SPIRE k8s node attestor | SPIRE join token attestor | No cloud metadata service |
 
 **SPIRE attestation locally:**
-The EKS manifests use the `k8s_psat` (Projected Service Account Token) node attestor. Local K8s uses `join_token` attestor (same as Docker Compose). A `spire-token-generator` Job creates fresh join tokens at deploy time.
+The EKS manifests use the `k8s_psat` (Projected Service Account Token) node attestor. Local K8s uses `join_token` attestor with a `spire-token-generator` Job that creates fresh join tokens at deploy time. Docker Compose uses `x509pop` attestation for reboot resilience.
 
 **Resource limits:**
 The local overlay reduces resource requests/limits to fit on a laptop:
@@ -886,7 +886,6 @@ Services in Phase 2:
 |---------|-------|------|---------|
 | spire-server | ghcr.io/spiffe/spire-server:1.10.0 | 8080-8081 | Identity control plane |
 | spire-agent | spire-agent-wrapper:latest (built) | -- | Workload attestation |
-| spire-token-generator | spire-token-generator:latest (built) | -- | One-shot join token |
 | spike-nexus | spike-nexus:latest (built from SPIKE) | 8443 | Secrets management |
 | spike-bootstrap | spike-bootstrap:latest (built) | -- | One-shot root key init |
 | keydb | eqalpha/keydb:latest | 6379 | Session + rate limiting |
