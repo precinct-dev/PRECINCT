@@ -81,6 +81,7 @@ type Auditor struct {
 	writeCh   chan []byte        // buffered channel for async file/stdout writes
 	flushCh   chan chan struct{} // flush synchronization: caller sends done channel, writer closes it after draining
 	done      chan struct{}      // signals the writer goroutine has finished draining
+	quit      chan struct{}      // signals asyncWriter to stop accepting new events
 	closeOnce sync.Once          // ensures Close() is idempotent
 }
 
@@ -113,6 +114,7 @@ func NewAuditor(jsonlPath, bundlePath, registryPath string) (*Auditor, error) {
 		writeCh:        make(chan []byte, 4096), // RFA-lz1: buffer up to 4096 events
 		flushCh:        make(chan chan struct{}, 1),
 		done:           make(chan struct{}),
+		quit:           make(chan struct{}),
 	}
 
 	// If jsonlPath provided, open file for appending
@@ -152,8 +154,9 @@ func NewAuditor(jsonlPath, bundlePath, registryPath string) (*Auditor, error) {
 func (a *Auditor) Close() error {
 	var err error
 	a.closeOnce.Do(func() {
-		// Signal the writer goroutine to drain and exit
-		close(a.writeCh)
+		// Signal the writer goroutine to stop. The writer drains remaining
+		// events from writeCh after seeing quit, then signals done.
+		close(a.quit)
 		// Wait for the writer goroutine to finish processing all queued events
 		<-a.done
 		// Now close the file
@@ -220,12 +223,16 @@ func (a *Auditor) Log(event AuditEvent) {
 	writeData := make([]byte, len(jsonBytes))
 	copy(writeData, jsonBytes)
 
+	// Use quit channel to detect if Close has been called, avoiding
+	// a race between Log sending on writeCh and Close closing it.
 	select {
+	case <-a.quit:
+		// Auditor is shutting down -- write synchronously
+		a.syncWrite(writeData)
 	case a.writeCh <- writeData:
 		// Queued for async write
 	default:
 		// Channel full -- fall back to synchronous write to avoid data loss.
-		// This should be rare with a 4096-event buffer.
 		a.syncWrite(writeData)
 	}
 }
@@ -250,36 +257,34 @@ func (a *Auditor) syncWrite(jsonBytes []byte) {
 }
 
 // asyncWriter is the background goroutine that processes queued audit events.
-// It reads from writeCh until the channel is closed, then drains remaining
-// events and signals completion via the done channel. It also handles
-// flush requests from the flushCh channel.
+// It reads from writeCh until quit is closed, drains remaining events from
+// writeCh, then signals completion via the done channel.
 func (a *Auditor) asyncWriter() {
 	defer close(a.done)
 	for {
 		select {
-		case jsonBytes, ok := <-a.writeCh:
-			if !ok {
-				// Channel closed -- drain any pending flush requests
-				select {
-				case flushDone := <-a.flushCh:
-					close(flushDone)
-				default:
-				}
-				return
-			}
+		case jsonBytes := <-a.writeCh:
 			a.syncWrite(jsonBytes)
 		case flushDone := <-a.flushCh:
 			// Drain all pending writes before signaling flush complete
-			for {
-				select {
-				case jsonBytes := <-a.writeCh:
-					a.syncWrite(jsonBytes)
-				default:
-					close(flushDone)
-					goto doneFlush
-				}
-			}
-		doneFlush:
+			a.drainWriteCh()
+			close(flushDone)
+		case <-a.quit:
+			// Drain remaining events from writeCh before exiting
+			a.drainWriteCh()
+			return
+		}
+	}
+}
+
+// drainWriteCh processes all currently buffered events in writeCh.
+func (a *Auditor) drainWriteCh() {
+	for {
+		select {
+		case jsonBytes := <-a.writeCh:
+			a.syncWrite(jsonBytes)
+		default:
+			return
 		}
 	}
 }
