@@ -250,11 +250,6 @@ make opensearch-validate
                       <td>Per-node workload attestation</td>
                     </tr>
                     <tr>
-                      <td><code>spire-token-generator</code></td>
-                      <td>custom</td>
-                      <td>One-shot join token generation</td>
-                    </tr>
-                    <tr>
                       <td><code>spike-nexus</code></td>
                       <td>SPIKE Nexus</td>
                       <td>Secret vault (SQLite + AES-256-GCM)</td>
@@ -314,7 +309,6 @@ graph TB
   subgraph control-plane["Control Plane Network"]
     spire-server["spire-server<br/>Identity Control Plane"]
     spire-agent["spire-agent<br/>Workload Attestation"]
-    spire-token-gen["spire-token-generator<br/>Join Token Init"]
   end
 
   subgraph secrets["Secrets Network"]
@@ -340,7 +334,6 @@ graph TB
   end
 
   spire-agent --> spire-server
-  spire-token-gen --> spire-server
   spike-nexus --> spire-agent
   spike-keeper --> spire-agent
   spike-bootstrap --> spike-nexus
