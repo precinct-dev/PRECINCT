@@ -63,7 +63,7 @@ jobs:
           kustomize build "deploy/terraform/overlays/${TARGET_ENV}" | kubeconform -summary -strict -ignore-missing-schemas
 
       - name: Create promotion PR
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v8
         with:
           title: "promote: ${{ inputs.target_env }} <- ${{ inputs.image_digest }}"
           branch: promote/${{ inputs.target_env }}/${{ github.run_id }}
