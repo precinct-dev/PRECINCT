@@ -36,10 +36,11 @@ func (e *UIResourceCacheEntry) Expired() bool {
 // Entries are keyed by (server, resourceURI) and include the content hash
 // for integrity verification.
 type UIResourceCache struct {
-	mu      sync.RWMutex
-	entries map[string]*UIResourceCacheEntry // cacheKey -> entry
-	ttl     time.Duration
-	stopCh  chan struct{}
+	mu        sync.RWMutex
+	entries   map[string]*UIResourceCacheEntry // cacheKey -> entry
+	ttl       time.Duration
+	stopCh    chan struct{}
+	closeOnce sync.Once
 }
 
 // NewUIResourceCache creates a new cache with the given TTL.
@@ -128,9 +129,13 @@ func (c *UIResourceCache) Count() int {
 	return len(c.entries)
 }
 
-// Close stops the background cleanup goroutine.
+// Close stops the background cleanup goroutine. Safe to call multiple times.
 func (c *UIResourceCache) Close() {
-	close(c.stopCh)
+	c.closeOnce.Do(func() {
+		if c.stopCh != nil {
+			close(c.stopCh)
+		}
+	})
 }
 
 // cleanupLoop periodically removes expired entries.

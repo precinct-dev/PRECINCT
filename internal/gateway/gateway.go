@@ -2229,6 +2229,10 @@ func (g *Gateway) Close() error {
 	if g.spiffeTLS != nil {
 		_ = g.spiffeTLS.Close()
 	}
+	// Close auditor to drain async writer goroutine and flush pending events
+	if g.auditor != nil {
+		_ = g.auditor.Close()
+	}
 	if g.opa != nil {
 		return g.opa.Close()
 	}

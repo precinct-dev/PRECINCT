@@ -63,10 +63,14 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 		echo "phoenix-observability-network not found; starting Phoenix stack..."; \
 		$(MAKE) phoenix-up; \
 	fi
-	@# Clean and recreate ephemeral bind-mount dirs writable by non-root (UID 1000).
-	@rm -rf $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket
-	@mkdir -p $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
-	@chmod 777 $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
+	@# Ensure x509pop certs exist (generate on first run, reuse on subsequent runs)
+	@if [ ! -f $(COMPOSE_DIR)/data/x509pop/agent.crt ]; then \
+		echo "x509pop certs not found; generating..."; \
+		bash scripts/generate-x509pop-certs.sh; \
+	fi
+	@rm -rf $(COMPOSE_DIR)/data/spire-agent-socket
+	@mkdir -p $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
+	@chmod 777 $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
 	@# Real mode: ensure OpenClaw config dir exists with gateway bind config.
 	@if [ "$(DEMO_SERVICE_MODE)" = "real" ]; then \
 		mkdir -p $(COMPOSE_DIR)/data/openclaw-config && \
@@ -116,7 +120,9 @@ clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
 	-docker compose -f $(COMPOSE_DIR)/docker-compose.opensearch.yml down -v >/dev/null 2>&1 || true
 	rm -rf build/sbom/ build/bin/
 	@echo "Clearing SPIRE data directories (stale SVIDs prevent clean restart)..."
-	rm -rf data/spire-server/ data/spire-agent/
+	rm -rf $(COMPOSE_DIR)/data/spire-server/ $(COMPOSE_DIR)/data/spire-agent/
+	@echo "Clearing x509pop certificates..."
+	rm -rf $(COMPOSE_DIR)/data/x509pop/
 	@if [ -d build/logs ]; then rm -rf build/logs/*; fi
 	$(MAKE) -C cli clean
 
@@ -249,13 +255,18 @@ DC_MCPTEST := docker compose -f $(COMPOSE_DIR)/docker-compose.yml -f $(COMPOSE_D
 
 test-mcpserver-integration: ## Run mcpserver SPIRE mTLS integration tests (AC 10-11)
 	@echo "Starting SPIRE stack for mcpserver integration tests..."
-	@rm -rf $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket
-	@mkdir -p $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
-	@chmod 777 $(COMPOSE_DIR)/data/spire-join-token $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
+	@# Ensure x509pop certs exist (generate on first run, reuse on subsequent runs)
+	@if [ ! -f $(COMPOSE_DIR)/data/x509pop/agent.crt ]; then \
+		echo "x509pop certs not found; generating..."; \
+		bash scripts/generate-x509pop-certs.sh; \
+	fi
+	@rm -rf $(COMPOSE_DIR)/data/spire-agent-socket
+	@mkdir -p $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
+	@chmod 777 $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
 	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
 		docker network create phoenix-observability-network 2>/dev/null || true; \
 	fi
-	@$(DC_MCPTEST) up -d --build --wait spire-server spire-token-generator spire-agent spire-entry-registrar-test 2>&1 || \
+	@$(DC_MCPTEST) up -d --build --wait spire-server spire-agent spire-entry-registrar-test 2>&1 || \
 		{ echo "ERROR: Failed to start SPIRE stack"; $(DC_MCPTEST) logs; $(DC_MCPTEST) down -v --remove-orphans; exit 1; }
 	@echo ""
 	@echo "Running mcpserver integration tests..."
@@ -920,7 +931,7 @@ setup:
 COMPOSE_SPIRE_EXEC := $(DC) exec -T spire-server /opt/spire/bin/spire-server
 COMPOSE_SPIRE_SOCK := /tmp/spire-server/private/api.sock
 COMPOSE_TRUST_DOMAIN := poc.local
-COMPOSE_PARENT_ID := spiffe://$(COMPOSE_TRUST_DOMAIN)/spire/agent/join_token
+COMPOSE_PARENT_ID := spiffe://$(COMPOSE_TRUST_DOMAIN)/spire/agent/x509pop
 
 register-spire:
 	@echo "Registering SPIRE workload entries..."
@@ -1106,7 +1117,21 @@ attestation-resign: ## Re-sign attestation artifacts (generates keypair if missi
 	@echo "attestation-resign: DONE"
 
 # ---------------------------------------------------------------------------
-# 15. Aliases (backwards compatibility)
+# 15. SPIRE x509pop certificate generation
+# ---------------------------------------------------------------------------
+
+.PHONY: generate-spire-certs
+
+generate-spire-certs: ## Generate x509pop CA + agent cert for compose SPIRE attestation
+	@bash scripts/generate-x509pop-certs.sh
+
+.PHONY: test-x509pop-restart
+
+test-x509pop-restart: ## Integration test: x509pop compose restart resilience
+	@bash tests/e2e/test_x509pop_restart.sh
+
+# ---------------------------------------------------------------------------
+# 16. Aliases (backwards compatibility)
 # ---------------------------------------------------------------------------
 
 k8s-local-up: k8s-up

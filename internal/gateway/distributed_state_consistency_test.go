@@ -44,6 +44,8 @@ func newDistributedStateGateway(t *testing.T, keydbURL string, handleTTLSeconds 
 	if err != nil {
 		t.Fatalf("new distributed gateway: %v", err)
 	}
+	t.Cleanup(func() { _ = gw.Close() })
+
 	return gw
 }
 
@@ -56,9 +58,7 @@ func TestDistributedState_MultiInstanceConsistency(t *testing.T) {
 
 	keydbURL := "redis://" + mr.Addr()
 	gwA := newDistributedStateGateway(t, keydbURL, 2)
-	defer func() { _ = gwA.Close() }()
 	gwB := newDistributedStateGateway(t, keydbURL, 2)
-	defer func() { _ = gwB.Close() }()
 
 	scope := middleware.ApprovalScope{
 		Action:        "model.call",
@@ -153,9 +153,7 @@ func TestDistributedState_ConcurrencyAndTTL(t *testing.T) {
 
 	keydbURL := "redis://" + mr.Addr()
 	gwA := newDistributedStateGateway(t, keydbURL, 1)
-	defer func() { _ = gwA.Close() }()
 	gwB := newDistributedStateGateway(t, keydbURL, 1)
-	defer func() { _ = gwB.Close() }()
 
 	scope := middleware.ApprovalScope{
 		Action:        "model.call",

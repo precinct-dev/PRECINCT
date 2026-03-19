@@ -207,21 +207,25 @@ tied to the Kubernetes control plane.
 **Manifests**: `deploy/terraform/spire/agent-configmap.yaml` (k8s_psat configuration)
 
 **Why not in Docker Compose**: Docker Desktop's kubeadm-provisioned clusters lack an OIDC
-provider, so `k8s_psat` attestation does not work. The Docker Compose deployment uses
-`join_token` attestation instead, where the SPIRE server issues a one-time token that the
-agent uses to bootstrap trust. This is an intentional design choice documented in the
-RFA-7bh retrospective, not a security gap.
+provider, so `k8s_psat` attestation does not work. Docker Compose local development uses
+`x509pop` attestation for reboot resilience. The agent presents a pre-provisioned X.509
+certificate to the server, avoiding the need for one-time bootstrap tokens. This is an
+intentional design choice for development environments.
 
-**Evaluator guidance**: `join_token` attestation is appropriate for development and
+**Evaluator guidance**: `x509pop` attestation is appropriate for development and
 evaluation environments. It establishes the same trust relationship (agent proves identity
-to server), but via a shared secret rather than Kubernetes-native identity federation.
+to server) via an X.509 certificate rather than Kubernetes-native identity federation.
 The SVID certificates issued to workloads are identical in both modes -- only the node
 attestation mechanism differs.
 
 **Production recommendation**: Use `k8s_psat` attestation in managed Kubernetes clusters
-(EKS, GKE, AKS) that have OIDC providers configured. Reserve `join_token` for Docker
-Desktop local development. For bare-metal Kubernetes, evaluate `k8s_sat` or
-`x509pop` attestation based on your cluster's identity capabilities.
+(EKS, GKE, AKS) that have OIDC providers configured. For bare-metal Kubernetes, evaluate
+`k8s_sat` or `x509pop` attestation based on your cluster's identity capabilities.
+
+**Historical note**: Docker Compose originally used `join_token` attestation (RFA-7bh retrospective),
+migrated to `x509pop` for reboot resilience since `join_token` required regenerating a one-time
+token on every restart. The local K8s overlay still uses `join_token` attestation because Docker
+Desktop kubeadm clusters lack the OIDC provider needed for `k8s_psat`.
 
 ---
 
@@ -235,7 +239,7 @@ different underlying mechanisms.
 | Aspect | Docker Compose | Kubernetes |
 |--------|---------------|------------|
 | **SVID issuance** | SPIRE Server issues X.509 SVIDs | SPIRE Server issues X.509 SVIDs |
-| **Node attestation** | `join_token` (one-time bootstrap) | `k8s_psat` (OIDC-backed, see 2.6) |
+| **Node attestation** | `x509pop` (certificate-based, reboot-resilient) | `k8s_psat` (OIDC-backed, see 2.6) |
 | **Workload attestation** | `docker` attestor (container labels) | `k8s` attestor (namespace, service account, pod labels) |
 | **Trust domain** | `poc.local` | `precinct.poc` |
 | **SVID rotation** | Automatic via go-spiffe v2 X509Source | Automatic via go-spiffe v2 X509Source |
@@ -286,8 +290,8 @@ The Redis client shares the connection pool with the session store.
    read-only filesystem, capability drops) at the orchestration layer.
 4. **Encrypted storage (by architecture)**: Storage encryption depends on the host OS,
    not on the architecture's configuration.
-5. **Strong node identity**: `join_token` attestation is a shared-secret model, not
-   an OIDC-backed cryptographic identity like `k8s_psat`.
+5. **OIDC-backed node identity**: `x509pop` attestation uses certificate-based proof
+   of possession, not OIDC-backed identity federation like `k8s_psat`.
 
 ### Why These Limitations Are Acceptable
 
@@ -308,7 +312,7 @@ layer controls, which are the primary security boundary.
 |----------|---------------|------------|-------|
 | Application-layer controls (middleware chain) | All | All | None |
 | Response firewall | Yes | Yes | None |
-| mTLS (SPIFFE) | Yes (join_token) | Yes (k8s_psat) | Attestation path only |
+| mTLS (SPIFFE) | Yes (x509pop) | Yes (k8s_psat) | Attestation path only |
 | Session persistence | Yes (KeyDB) | Yes (KeyDB) | Storage encryption |
 | Rate limiting | Yes (KeyDB) | Yes (KeyDB) | None |
 | Network segmentation | No | Yes (NetworkPolicies) | K8s-only |
@@ -328,4 +332,4 @@ layer controls, which are the primary security boundary.
 - SPIRE configuration (Docker): `config/spire/agent.conf`
 - SPIRE configuration (K8s base): `deploy/terraform/spire/agent-configmap.yaml`
 - SPIRE configuration (K8s local): `deploy/terraform/overlays/local/patch-spire-agent-config.yaml`
-- RFA-7bh retrospective: Docker Desktop uses join_token (not k8s_psat) -- intentional
+- RFA-7bh retrospective: Docker Desktop uses x509pop (not k8s_psat) -- intentional

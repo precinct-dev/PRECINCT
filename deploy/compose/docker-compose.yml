@@ -19,6 +19,7 @@ services:
       - ../../config/spire/server.conf:/opt/spire/conf/server/server.conf:ro
       - ./data/spire-server:/opt/spire/data
       - spire-server-socket:/tmp/spire-server
+      - ./data/x509pop/ca-bundle.crt:/opt/spire/conf/server/x509pop-ca-bundle.crt:ro
     ports:
       - "18081:8081"  # gRPC API for agent registration (host 18081 -> container 8081)
       - "18080:8080"  # Health check endpoint (host 18080 -> container 8080)
@@ -32,23 +33,6 @@ services:
     networks:
       - control-plane
 
-  # SPIRE Token Generator - One-shot init service to generate fresh join tokens
-  spire-token-generator:
-    build:
-      context: ../..
-      dockerfile: deploy/compose/Dockerfile.token-generator
-    image: spire-token-generator:latest
-    container_name: spire-token-generator
-    depends_on:
-      spire-server:
-        condition: service_healthy
-    volumes:
-      - spire-server-socket:/tmp/spire-server:ro
-      - ./data/spire-join-token:/token
-    networks:
-      - control-plane
-    restart: "no"  # Run once and exit
-
   # SPIRE Agent - Workload attestation agent with Docker attestor
   spire-agent:
     build:
@@ -60,13 +44,12 @@ services:
     depends_on:
       spire-server:
         condition: service_healthy
-      spire-token-generator:
-        condition: service_completed_successfully
     volumes:
       - ../../config/spire/agent.conf:/opt/spire/conf/agent/agent.conf:ro
       - ./data/spire-agent:/opt/spire/data/agent
       - ./data/spire-agent-socket:/tmp/spire-agent/public
-      - ./data/spire-join-token:/token:ro
+      - ./data/x509pop/agent.crt:/opt/spire/conf/agent/x509pop-agent.crt:ro
+      - ./data/x509pop/agent.key:/opt/spire/conf/agent/x509pop-agent.key:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro  # Required for Docker workload attestor
     healthcheck:
       test: ["CMD", "/opt/spire/bin/spire-agent", "healthcheck"]
@@ -91,7 +74,10 @@ services:
   # SPIRE Entry Registrar - One-shot init to register workload SPIFFE IDs
   # Must complete BEFORE spike-nexus / gateway start so they can obtain SVIDs.
   spire-entry-registrar:
-    image: spire-token-generator:latest   # Reuse image that has spire-server binary + shell
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.spire-tools
+    image: spire-tools:latest   # Shell + spire-server binary for entry registration commands
     container_name: spire-entry-registrar
     depends_on:
       spire-agent:

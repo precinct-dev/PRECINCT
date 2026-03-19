@@ -30,7 +30,6 @@ fi
 
 # Required one-shot services. We only enforce the ones that exist in this compose file.
 required=(
-  "spire-token-generator"
   "spire-entry-registrar"
   "spike-bootstrap"
   "spike-secret-seeder"
