@@ -172,8 +172,12 @@ run_cmd() {
 }
 
 ensure_compose_stack() {
-  if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
-    log_info "phoenix-observability-network missing; running make phoenix-up"
+  local phoenix_ps
+  phoenix_ps="$(docker compose -f deploy/compose/docker-compose.phoenix.yml ps --format '{{.Service}} {{.State}} {{.Health}}' 2>/dev/null || true)"
+  if ! docker network inspect phoenix-observability-network >/dev/null 2>&1 \
+    || ! printf '%s\n' "$phoenix_ps" | awk '$1=="phoenix" && $2=="running" && $3=="healthy" {found=1} END {exit found ? 0 : 1}' \
+    || ! printf '%s\n' "$phoenix_ps" | awk '$1=="otel-collector" && $2=="running" {found=1} END {exit found ? 0 : 1}'; then
+    log_info "Phoenix observability stack not fully running; running make phoenix-up"
     make phoenix-up
   fi
 

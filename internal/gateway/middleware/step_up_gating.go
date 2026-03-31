@@ -1124,15 +1124,6 @@ func requiresModelApproval(r *http.Request, body []byte) bool {
 	return false
 }
 
-func parseBoolHeader(raw string) bool {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
-	case "1", "true", "yes", "y", "on":
-		return true
-	default:
-		return false
-	}
-}
-
 func extractModelName(body []byte) string {
 	if len(body) == 0 {
 		return ""

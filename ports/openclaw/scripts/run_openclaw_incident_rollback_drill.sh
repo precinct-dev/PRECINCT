@@ -2,8 +2,9 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-POC_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
-ARTIFACT_DIR="${POC_DIR}/docs/operations/artifacts"
+PORT_DIR="${POC_DIR:-$(cd "${SCRIPT_DIR}/.." && pwd)}"
+REPO_ROOT="${REPO_ROOT:-$(cd "${SCRIPT_DIR}/../../.." && pwd)}"
+ARTIFACT_DIR="${PORT_DIR}/docs/operations/artifacts"
 NOW_UTC="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 DATE_UTC="$(date -u +"%Y-%m-%d")"
 TS_UTC="$(date -u +"%Y%m%dT%H%M%SZ")"
@@ -44,7 +45,7 @@ run_ws_smoke_probe() {
   local phase="$1"
   local output_file="$2"
 
-  if ! go run ./cmd/openclaw-ws-smoke \
+  if ! go run ./ports/openclaw/cmd/openclaw-ws-smoke \
     --url "ws://localhost:9090/openclaw/ws" \
     --spiffe-id "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev" \
     --phase "${phase}" \
@@ -67,10 +68,10 @@ require_cmd curl
 require_cmd make
 require_cmd go
 
-DC="docker compose -f ${POC_DIR}/deploy/compose/docker-compose.yml"
+DC="docker compose -f ${REPO_ROOT}/deploy/compose/docker-compose.yml"
 
 mkdir -p "${ARTIFACT_DIR}"
-cd "${POC_DIR}"
+cd "${REPO_ROOT}"
 
 if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
   make phoenix-up >/dev/null

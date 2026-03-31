@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 )
@@ -57,7 +56,7 @@ func TestResolveMessagingTarget_EnvOverrideSlack(t *testing.T) {
 
 func TestResolveMessagingTarget_ProductionDefault(t *testing.T) {
 	// Ensure no env var is set.
-	os.Unsetenv("MESSAGING_PLATFORM_ENDPOINT_WHATSAPP")
+	t.Setenv("MESSAGING_PLATFORM_ENDPOINT_WHATSAPP", "")
 
 	g := &Gateway{}
 	target, err := g.resolveMessagingTarget("whatsapp", nil)
@@ -70,7 +69,7 @@ func TestResolveMessagingTarget_ProductionDefault(t *testing.T) {
 }
 
 func TestResolveMessagingTarget_ProductionDefaultTelegram(t *testing.T) {
-	os.Unsetenv("MESSAGING_PLATFORM_ENDPOINT_TELEGRAM")
+	t.Setenv("MESSAGING_PLATFORM_ENDPOINT_TELEGRAM", "")
 
 	g := &Gateway{}
 	target, err := g.resolveMessagingTarget("telegram", map[string]string{"bot_token": "123456:ABC-DEF"})
@@ -84,7 +83,7 @@ func TestResolveMessagingTarget_ProductionDefaultTelegram(t *testing.T) {
 }
 
 func TestResolveMessagingTarget_ProductionDefaultSlack(t *testing.T) {
-	os.Unsetenv("MESSAGING_PLATFORM_ENDPOINT_SLACK")
+	t.Setenv("MESSAGING_PLATFORM_ENDPOINT_SLACK", "")
 
 	g := &Gateway{}
 	target, err := g.resolveMessagingTarget("slack", nil)
@@ -98,7 +97,7 @@ func TestResolveMessagingTarget_ProductionDefaultSlack(t *testing.T) {
 }
 
 func TestResolveMessagingTarget_TelegramMissingBotToken(t *testing.T) {
-	os.Unsetenv("MESSAGING_PLATFORM_ENDPOINT_TELEGRAM")
+	t.Setenv("MESSAGING_PLATFORM_ENDPOINT_TELEGRAM", "")
 
 	g := &Gateway{}
 	_, err := g.resolveMessagingTarget("telegram", map[string]string{})
@@ -111,7 +110,7 @@ func TestResolveMessagingTarget_TelegramMissingBotToken(t *testing.T) {
 }
 
 func TestResolveMessagingTarget_UnsupportedPlatform(t *testing.T) {
-	os.Unsetenv("MESSAGING_PLATFORM_ENDPOINT_SIGNAL")
+	t.Setenv("MESSAGING_PLATFORM_ENDPOINT_SIGNAL", "")
 
 	g := &Gateway{}
 	_, err := g.resolveMessagingTarget("signal", nil)

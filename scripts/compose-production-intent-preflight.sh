@@ -72,6 +72,7 @@ source "${ENV_FILE}"
 set +a
 
 compose_cfg_json="$(docker compose \
+  --profile mock \
   --profile strict \
   --env-file "${ENV_FILE}" \
   -f "${BASE_COMPOSE_FILE}" \

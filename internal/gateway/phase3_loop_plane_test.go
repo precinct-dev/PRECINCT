@@ -1011,7 +1011,9 @@ func TestIntegration_LoopCheck_MultiStepLifecycle(t *testing.T) {
 		t.Fatalf("step 1: expected HTTP 200, got %d; body: %s", rr.Code, rr.Body.String())
 	}
 	var resp1 PlaneDecisionV2
-	json.Unmarshal(rr.Body.Bytes(), &resp1)
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp1); err != nil {
+		t.Fatalf("step 1: failed to decode response: %v", err)
+	}
 	if resp1.Decision != DecisionAllow {
 		t.Fatalf("step 1: expected allow, got %s", resp1.Decision)
 	}
@@ -1034,7 +1036,9 @@ func TestIntegration_LoopCheck_MultiStepLifecycle(t *testing.T) {
 		t.Fatalf("step 3: expected HTTP 409, got %d; body: %s", rr3.Code, rr3.Body.String())
 	}
 	var resp3 PlaneDecisionV2
-	json.Unmarshal(rr3.Body.Bytes(), &resp3)
+	if err := json.Unmarshal(rr3.Body.Bytes(), &resp3); err != nil {
+		t.Fatalf("step 3: failed to decode response: %v", err)
+	}
 	if resp3.Decision != DecisionDeny {
 		t.Fatalf("step 3: expected deny, got %s", resp3.Decision)
 	}
@@ -1049,7 +1053,9 @@ func TestIntegration_LoopCheck_MultiStepLifecycle(t *testing.T) {
 		t.Fatal("step 4: expected non-200 for halted run, got 200")
 	}
 	var resp4 PlaneDecisionV2
-	json.Unmarshal(rr4.Body.Bytes(), &resp4)
+	if err := json.Unmarshal(rr4.Body.Bytes(), &resp4); err != nil {
+		t.Fatalf("step 4: failed to decode response: %v", err)
+	}
 	if resp4.Decision != DecisionDeny {
 		t.Fatalf("step 4: expected deny for halted run, got %s", resp4.Decision)
 	}

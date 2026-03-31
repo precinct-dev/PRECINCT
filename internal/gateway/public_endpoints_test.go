@@ -390,7 +390,7 @@ func TestIntegration_PublicEndpoint_RateLimitTriggersAfterN(t *testing.T) {
 	innerHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprint(w, `{"status":"ok"}`)
+		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 	})
 
 	cfg := PublicEndpointConfig{
@@ -413,9 +413,10 @@ func TestIntegration_PublicEndpoint_RateLimitTriggersAfterN(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request %d failed: %v", i+1, err)
 		}
-		if resp.StatusCode == http.StatusOK {
+		switch resp.StatusCode {
+		case http.StatusOK:
 			allowed++
-		} else if resp.StatusCode == http.StatusTooManyRequests {
+		case http.StatusTooManyRequests:
 			denied++
 			// Verify the response body is a valid JSON error.
 			var errResp publicEndpointErrorResponse
@@ -425,10 +426,10 @@ func TestIntegration_PublicEndpoint_RateLimitTriggersAfterN(t *testing.T) {
 			if errResp.Error != "ratelimit_exceeded" {
 				t.Errorf("request %d: expected error code 'ratelimit_exceeded', got %q", i+1, errResp.Error)
 			}
-		} else {
+		default:
 			t.Errorf("request %d: unexpected status %d", i+1, resp.StatusCode)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 
 	if allowed != 5 {
@@ -474,7 +475,7 @@ func TestIntegration_PublicEndpoint_MalformedBodyRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("oversized request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized body: expected 413, got %d", resp.StatusCode)
@@ -486,7 +487,7 @@ func TestIntegration_PublicEndpoint_MalformedBodyRejected(t *testing.T) {
 	if err != nil {
 		t.Fatalf("malformed request failed: %v", err)
 	}
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 
 	if resp2.StatusCode != http.StatusBadRequest {
 		t.Fatalf("malformed body: expected 400, got %d", resp2.StatusCode)
@@ -517,7 +518,7 @@ func TestIntegration_PublicEndpoint_ExactSizeBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("exact-size request failed: %v", err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("exact-size body (50 bytes): expected 200, got %d", resp.StatusCode)
 	}
@@ -528,7 +529,7 @@ func TestIntegration_PublicEndpoint_ExactSizeBoundary(t *testing.T) {
 	if err != nil {
 		t.Fatalf("over-size request failed: %v", err)
 	}
-	resp2.Body.Close()
+	_ = resp2.Body.Close()
 	if resp2.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("over-size body (51 bytes): expected 413, got %d", resp2.StatusCode)
 	}
@@ -539,6 +540,6 @@ func readBody(r *http.Request) ([]byte, error) {
 	if r.Body == nil {
 		return nil, nil
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	return io.ReadAll(r.Body)
 }

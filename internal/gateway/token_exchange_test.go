@@ -409,7 +409,9 @@ func TestTokenExchangeHandler(t *testing.T) {
 		}
 
 		var resp TokenExchangeResponse
-		json.Unmarshal(rec.Body.Bytes(), &resp)
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode response: %v", err)
+		}
 		if resp.ExpiresIn != 300 {
 			t.Errorf("expires_in = %d, want 300 (5 minutes)", resp.ExpiresIn)
 		}
@@ -431,7 +433,9 @@ func TestTokenExchangeHandler(t *testing.T) {
 		}
 
 		var errResp tokenExchangeErrorResponse
-		json.Unmarshal(rec.Body.Bytes(), &errResp)
+		if err := json.Unmarshal(rec.Body.Bytes(), &errResp); err != nil {
+			t.Fatalf("decode error response: %v", err)
+		}
 		if errResp.Error != middleware.ErrAuthCredentialRejected {
 			t.Errorf("error = %q, want %q", errResp.Error, middleware.ErrAuthCredentialRejected)
 		}
@@ -507,7 +511,9 @@ func TestTokenExchangeHandler(t *testing.T) {
 		}
 
 		var resp TokenExchangeResponse
-		json.Unmarshal(rec.Body.Bytes(), &resp)
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode clamped TTL response: %v", err)
+		}
 		if resp.ExpiresIn != 3600 {
 			t.Errorf("expires_in = %d, want 3600 (1h, clamped to max)", resp.ExpiresIn)
 		}
@@ -536,7 +542,9 @@ func TestTokenExchangeIntegration(t *testing.T) {
 		}
 
 		var resp TokenExchangeResponse
-		json.Unmarshal(rec.Body.Bytes(), &resp)
+		if err := json.Unmarshal(rec.Body.Bytes(), &resp); err != nil {
+			t.Fatalf("decode exchange response: %v", err)
+		}
 		token := resp.Token
 
 		// Step 2: Use token as Bearer in a request through SPIFFEAuth middleware.
@@ -643,7 +651,7 @@ func TestTokenExchangeIntegration(t *testing.T) {
 			capturedSPIFFEID = middleware.GetSPIFFEID(r.Context())
 			capturedAuthMethod = middleware.GetAuthMethod(r.Context())
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte(`{"jsonrpc":"2.0","result":{"tools":[]},"id":1}`))
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","result":{"tools":[]},"id":1}`))
 		})
 
 		validator := func(tokenStr string) (*middleware.ExchangeTokenClaims, error) {
@@ -679,14 +687,16 @@ func TestTokenExchangeIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("exchange request failed: %v", err)
 		}
-		defer exchangeResp.Body.Close()
+		defer func() { _ = exchangeResp.Body.Close() }()
 
 		if exchangeResp.StatusCode != http.StatusOK {
 			t.Fatalf("exchange status = %d, want 200", exchangeResp.StatusCode)
 		}
 
 		var tokenResp TokenExchangeResponse
-		json.NewDecoder(exchangeResp.Body).Decode(&tokenResp)
+		if err := json.NewDecoder(exchangeResp.Body).Decode(&tokenResp); err != nil {
+			t.Fatalf("decode exchange response: %v", err)
+		}
 
 		// Step 2: Use token to call protected endpoint (simulating tools/list).
 		mcpReq, _ := http.NewRequest(http.MethodPost, server.URL+"/", strings.NewReader(`{"jsonrpc":"2.0","method":"tools/list","id":1}`))
@@ -697,7 +707,7 @@ func TestTokenExchangeIntegration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("MCP request failed: %v", err)
 		}
-		defer mcpResp.Body.Close()
+		defer func() { _ = mcpResp.Body.Close() }()
 
 		if mcpResp.StatusCode != http.StatusOK {
 			t.Fatalf("MCP status = %d, want 200", mcpResp.StatusCode)

@@ -251,6 +251,8 @@ test-integration: $(COMPLIANCE_VENV) ## Run tagged integration tests against an 
 	PRECINCT_KEYDB_URL="$$keydb_url" go test -tags=integration ./tests/integration/... -v -timeout 30m
 
 DC_MCPTEST := docker compose -f $(COMPOSE_DIR)/docker-compose.yml -f $(COMPOSE_DIR)/docker-compose.mcpserver-test.yml
+SPIRE_AGENT_SOCKET_HOST := $(abspath $(COMPOSE_DIR)/data/spire-agent-socket/api.sock)
+GO_TEST_IMAGE := golang:1.26.1
 
 test-mcpserver-integration: ## Run mcpserver SPIRE mTLS integration tests (AC 10-11)
 	@echo "Starting SPIRE stack for mcpserver integration tests..."
@@ -264,12 +266,38 @@ test-mcpserver-integration: ## Run mcpserver SPIRE mTLS integration tests (AC 10
 	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
 		docker network create phoenix-observability-network 2>/dev/null || true; \
 	fi
-	@$(DC_MCPTEST) up -d --build --wait spire-server spire-agent spire-entry-registrar-test 2>&1 || \
+	@$(DC_MCPTEST) up -d --build --wait spire-server spire-agent 2>&1 || \
+		{ echo "ERROR: Failed to start SPIRE core"; $(DC_MCPTEST) logs; $(DC_MCPTEST) down -v --remove-orphans; exit 1; }
+	@$(DC_MCPTEST) up -d --build spire-entry-registrar-test 2>&1 || \
 		{ echo "ERROR: Failed to start SPIRE stack"; $(DC_MCPTEST) logs; $(DC_MCPTEST) down -v --remove-orphans; exit 1; }
+	@registrar_exit="$$(docker wait spire-entry-registrar-test)"; \
+	if [ "$$registrar_exit" != "0" ]; then \
+		echo "ERROR: SPIRE test registrar exited with status $$registrar_exit"; \
+		$(DC_MCPTEST) logs spire-entry-registrar-test; \
+		$(DC_MCPTEST) down -v --remove-orphans; \
+		exit 1; \
+	fi
+	@for _ in $$(seq 1 30); do \
+		if [ -S "$(SPIRE_AGENT_SOCKET_HOST)" ]; then \
+			break; \
+		fi; \
+		sleep 1; \
+	done
+	@if [ ! -S "$(SPIRE_AGENT_SOCKET_HOST)" ]; then \
+		echo "ERROR: SPIRE agent socket never appeared at $(SPIRE_AGENT_SOCKET_HOST)"; \
+		$(DC_MCPTEST) logs spire-agent; \
+		$(DC_MCPTEST) down -v --remove-orphans; \
+		exit 1; \
+	fi
 	@echo ""
 	@echo "Running mcpserver integration tests..."
-	@SPIRE_AGENT_SOCKET=$(COMPOSE_DIR)/data/spire-agent-socket/api.sock \
-		go test ./pkg/mcpserver/... -tags=integration -v -timeout 5m; \
+	@docker run --rm \
+		-v "$(CURDIR):/workspace" \
+		-v "$(abspath $(COMPOSE_DIR)/data/spire-agent-socket):/tmp/spire-agent" \
+		-w /workspace \
+		-e SPIRE_AGENT_SOCKET=unix:///tmp/spire-agent/api.sock \
+		$(GO_TEST_IMAGE) \
+		sh -lc 'PATH="/usr/local/go/bin:$$PATH" /usr/local/go/bin/go test ./pkg/mcpserver -tags=integration -run "TestIntegration_SPIRE_" -v -timeout 5m'; \
 		test_exit=$$?; \
 		echo ""; \
 		echo "Tearing down SPIRE stack..."; \

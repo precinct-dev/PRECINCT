@@ -23,22 +23,40 @@ which will substitute it with the actual secret value.`,
 			ref := args[0]
 
 			client := spike.NewClient(spike.DefaultConfig())
+			out := cmd.OutOrStdout()
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Issuing token: ref=%s\n", ref)
+			if _, err := fmt.Fprintf(out, "Issuing token: ref=%s\n", ref); err != nil {
+				return err
+			}
 
 			token, err := client.Issue(ref, exp, scope)
 			if err != nil {
 				return fmt.Errorf("failed to issue token: %w", err)
 			}
 
-			out := cmd.OutOrStdout()
-			fmt.Fprintln(out, "SUCCESS: Token issued")
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, "Token:")
-			fmt.Fprintf(out, "  %s\n", token)
-			fmt.Fprintln(out)
-			fmt.Fprintln(out, "Use this token in your agent requests to the gateway.")
-			fmt.Fprintln(out, "The gateway will substitute it with the actual secret.")
+			lines := []string{
+				"SUCCESS: Token issued",
+				"",
+				"Token:",
+			}
+			for _, line := range lines {
+				if _, err := fmt.Fprintln(out, line); err != nil {
+					return err
+				}
+			}
+			if _, err := fmt.Fprintf(out, "  %s\n", token); err != nil {
+				return err
+			}
+			lines = []string{
+				"",
+				"Use this token in your agent requests to the gateway.",
+				"The gateway will substitute it with the actual secret.",
+			}
+			for _, line := range lines {
+				if _, err := fmt.Fprintln(out, line); err != nil {
+					return err
+				}
+			}
 
 			return nil
 		},

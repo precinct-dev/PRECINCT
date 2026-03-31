@@ -1,7 +1,7 @@
 {
   "schema_version": "openclaw_ops_drill.v1",
-  "generated_at": "2026-03-15T03:56:28Z",
-  "date": "2026-03-15",
+  "generated_at": "2026-03-31T09:41:17Z",
+  "date": "2026-03-31",
   "status": "pass",
   "commands": [
     "make phoenix-up",
@@ -21,7 +21,7 @@
     {
       "name": "ws_probe_pre_restart",
       "status": "pass",
-      "artifact": "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-ws-pre-restart.json"
+      "artifact": "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-ws-pre-restart.json"
     },
     {
       "name": "incident_trigger_deny",
@@ -32,7 +32,7 @@
     {
       "name": "log_capture",
       "status": "pass",
-      "artifact": "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-gateway.log"
+      "artifact": "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-gateway.log"
     },
     {
       "name": "containment_restart",
@@ -42,7 +42,7 @@
     {
       "name": "rollback_preflight",
       "status": "pass",
-      "artifact": "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-preflight.log"
+      "artifact": "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-preflight.log"
     },
     {
       "name": "post_recovery_deny_check",
@@ -53,15 +53,15 @@
     {
       "name": "ws_probe_post_restart",
       "status": "pass",
-      "artifact": "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-ws-post-restart.json"
+      "artifact": "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-ws-post-restart.json"
     }
   ],
   "artifacts": [
-    "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-incident.json",
-    "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-recovery.json",
-    "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-gateway.log",
-    "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-preflight.log",
-    "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-ws-pre-restart.json",
-    "docs/operations/artifacts/openclaw-operations-drill-20260315T035628Z-ws-post-restart.json"
+    "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-incident.json",
+    "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-recovery.json",
+    "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-gateway.log",
+    "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-preflight.log",
+    "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-ws-pre-restart.json",
+    "docs/operations/artifacts/openclaw-operations-drill-20260331T094117Z-ws-post-restart.json"
   ]
 }

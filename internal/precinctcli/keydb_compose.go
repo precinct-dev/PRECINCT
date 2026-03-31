@@ -374,32 +374,8 @@ func (k *KeyDB) composeTTL(ctx context.Context, key string) (int, error) {
 	return parseComposeInt(out)
 }
 
-func (k *KeyDB) composeLRange(ctx context.Context, key string) ([]string, error) {
-	out, err := k.runComposeKeyDBCLI(ctx, "--raw", "LRANGE", key, "0", "-1")
-	if err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(out) == "" {
-		return nil, nil
-	}
-	return splitNonEmptyLines(out), nil
-}
-
 func (k *KeyDB) composeLLen(ctx context.Context, key string) (int64, error) {
 	out, err := k.runComposeKeyDBCLI(ctx, "--raw", "LLEN", key)
-	if err != nil {
-		return 0, err
-	}
-	n, err := parseComposeInt(out)
-	if err != nil {
-		return 0, err
-	}
-	return int64(n), nil
-}
-
-func (k *KeyDB) composeExists(ctx context.Context, keys ...string) (int64, error) {
-	args := append([]string{"--raw", "EXISTS"}, keys...)
-	out, err := k.runComposeKeyDBCLI(ctx, args...)
 	if err != nil {
 		return 0, err
 	}

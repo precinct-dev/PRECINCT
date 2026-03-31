@@ -368,16 +368,16 @@ func RenderMarkdown(report Report) string {
 	var b strings.Builder
 
 	b.WriteString("# Control Verification Report\n\n")
-	b.WriteString(fmt.Sprintf("- Generated: `%s`\n", report.GeneratedAt))
-	b.WriteString(fmt.Sprintf("- Matrix: `%s`\n", report.MatrixPath))
-	b.WriteString(fmt.Sprintf("- Controls: `%d` total, `%d` pass, `%d` fail\n", report.Summary.ControlsTotal, report.Summary.ControlsPassed, report.Summary.ControlsFailed))
-	b.WriteString(fmt.Sprintf("- Issues: `%d`\n\n", report.Summary.IssueCount))
+	fmt.Fprintf(&b, "- Generated: `%s`\n", report.GeneratedAt)
+	fmt.Fprintf(&b, "- Matrix: `%s`\n", report.MatrixPath)
+	fmt.Fprintf(&b, "- Controls: `%d` total, `%d` pass, `%d` fail\n", report.Summary.ControlsTotal, report.Summary.ControlsPassed, report.Summary.ControlsFailed)
+	fmt.Fprintf(&b, "- Issues: `%d`\n\n", report.Summary.IssueCount)
 
 	b.WriteString("## Control Status\n\n")
 	b.WriteString("| Control ID | Domain | Status |\n")
 	b.WriteString("|---|---|---|\n")
 	for _, control := range report.Controls {
-		b.WriteString(fmt.Sprintf("| `%s` | `%s` | `%s` |\n", control.ID, control.Domain, strings.ToUpper(control.Status)))
+		fmt.Fprintf(&b, "| `%s` | `%s` | `%s` |\n", control.ID, control.Domain, strings.ToUpper(control.Status))
 	}
 
 	if len(report.Issues) == 0 {
@@ -396,7 +396,7 @@ func RenderMarkdown(report Report) string {
 		if target == "" {
 			target = "-"
 		}
-		b.WriteString(fmt.Sprintf("- `%s` `%s` target=`%s`: %s\n", issue.Code, controlID, target, issue.Message))
+		fmt.Fprintf(&b, "- `%s` `%s` target=`%s`: %s\n", issue.Code, controlID, target, issue.Message)
 	}
 
 	return b.String()

@@ -126,7 +126,7 @@ func TestNewGateway(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
-	defer gw.Close()
+	t.Cleanup(func() { _ = gw.Close() })
 
 	if gw == nil {
 		t.Fatal("Gateway is nil")
@@ -186,7 +186,7 @@ func TestHealthEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
-	defer gw.Close()
+	t.Cleanup(func() { _ = gw.Close() })
 
 	handler := gw.Handler()
 
@@ -633,7 +633,7 @@ func TestMiddlewareChainIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
-	defer gw.Close()
+	t.Cleanup(func() { _ = gw.Close() })
 
 	handler := gw.Handler()
 
@@ -685,7 +685,7 @@ func TestTokenSubstitutionOrderingInRealHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
-	defer gw.Close()
+	t.Cleanup(func() { _ = gw.Close() })
 
 	// Get the REAL handler from gateway.Handler() - not a mock
 	handler := gw.Handler()

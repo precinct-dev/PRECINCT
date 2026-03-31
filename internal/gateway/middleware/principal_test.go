@@ -605,7 +605,7 @@ func TestPrincipalHeaders_AuditEnrichment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAuditor: %v", err)
 	}
-	defer auditor.Close()
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	// Build the middleware chain: AuditLog -> PrincipalHeaders -> inner
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

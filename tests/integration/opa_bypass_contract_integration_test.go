@@ -122,7 +122,7 @@ func doBypassProbeRequest(t *testing.T, baseURL string, contract middleware.OPAB
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var out map[string]any
 	_ = json.NewDecoder(resp.Body).Decode(&out)

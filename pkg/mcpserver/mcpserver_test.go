@@ -57,7 +57,7 @@ func doPost(t *testing.T, ts *httptest.Server, body io.Reader, sessionID string)
 // readJSON decodes a JSON-RPC response from the HTTP response body.
 func readJSON(t *testing.T, resp *http.Response) map[string]any {
 	t.Helper()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	b, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("read body: %v", err)
@@ -80,7 +80,7 @@ func initSession(t *testing.T, ts *httptest.Server) string {
 	if sid == "" {
 		t.Fatal("initialize: missing Mcp-Session-Id header")
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return sid
 }
 
@@ -236,7 +236,7 @@ func TestNotificationsInitialized(t *testing.T) {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)
 	}
 	b, _ := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if len(b) != 0 {
 		t.Errorf("expected empty body, got %q", string(b))
 	}
@@ -494,7 +494,7 @@ func TestHealth_MethodNotAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", resp.StatusCode)
 	}
@@ -510,7 +510,7 @@ func TestRoot_MethodNotAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", resp.StatusCode)
 	}
@@ -525,7 +525,7 @@ func TestUnknownPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)
 	}
@@ -541,7 +541,7 @@ func TestSessionID_MissingOnNonInitialize(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestSessionID_InvalidOnNonInitialize(t *testing.T) {
@@ -554,7 +554,7 @@ func TestSessionID_InvalidOnNonInitialize(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestEndToEnd(t *testing.T) {
@@ -592,7 +592,7 @@ func TestEndToEnd(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("notifications/initialized: status %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Step 3: tools/list
 	resp = doPost(t, ts, rpcBody(t, 2, "tools/list", nil), sid)
@@ -697,7 +697,7 @@ func TestContentTypeOnResponses(t *testing.T) {
 	if !strings.HasPrefix(ct, "application/json") {
 		t.Errorf("Content-Type = %q, want application/json", ct)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestMultipleSessions(t *testing.T) {
@@ -796,7 +796,7 @@ func TestRunContext_ListenAndServe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /health: %v", err)
 	}
-	defer healthResp.Body.Close()
+	defer func() { _ = healthResp.Body.Close() }()
 	if healthResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET /health: status %d, want 200", healthResp.StatusCode)
 	}
@@ -828,7 +828,7 @@ func TestRunContext_ListenAndServe(t *testing.T) {
 	if sid == "" {
 		t.Fatal("initialize: missing Mcp-Session-Id")
 	}
-	initResp.Body.Close()
+	_ = initResp.Body.Close()
 
 	// Activate the session via notifications/initialized.
 	activateBody, _ := json.Marshal(map[string]any{
@@ -845,7 +845,7 @@ func TestRunContext_ListenAndServe(t *testing.T) {
 	if activateResp.StatusCode != http.StatusOK {
 		t.Fatalf("notifications/initialized: status %d", activateResp.StatusCode)
 	}
-	activateResp.Body.Close()
+	_ = activateResp.Body.Close()
 
 	// tools/call with the session
 	callBody, _ := json.Marshal(map[string]any{

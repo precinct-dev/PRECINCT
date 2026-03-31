@@ -40,7 +40,7 @@ func initAndActivate(t *testing.T, ts *httptest.Server) string {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("notifications/initialized: status %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	return sid
 }
 
@@ -70,7 +70,7 @@ func TestSession_InitializeReturnsSessionID(t *testing.T) {
 	if sid == "" {
 		t.Fatal("initialize must return Mcp-Session-Id header")
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Verify the session ID looks like a UUID (basic length/format check).
 	if len(sid) < 32 {
@@ -91,7 +91,7 @@ func TestSession_InitializeCreatesSessionInCreatedState(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("tools/list in created state: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // --- 2. Session Activation ---
@@ -108,7 +108,7 @@ func TestSession_ActivationViaNotificationsInitialized(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("notifications/initialized: status = %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Now tools/list should work.
 	resp = doPost(t, ts, rpcBody(t, 2, "tools/list", nil), sid)
@@ -157,21 +157,21 @@ func TestSession_MissingSessionIDReturns404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404 for missing session ID", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// tools/call without any session header.
 	resp = doPost(t, ts, rpcBody(t, 2, "tools/call", map[string]any{"name": "ping"}), "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404 for missing session ID on tools/call", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// notifications/initialized without session header.
 	resp = doPost(t, ts, rpcBody(t, nil, "notifications/initialized", nil), "")
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404 for missing session ID on notifications/initialized", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // --- 4. Invalid Session ---
@@ -188,13 +188,13 @@ func TestSession_InvalidSessionIDReturns404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("tools/list with invalid session: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	resp = doPost(t, ts, rpcBody(t, 2, "tools/call", map[string]any{"name": "ping"}), fakeID)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("tools/call with invalid session: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // --- 5. Session Expiry ---
@@ -212,7 +212,7 @@ func TestSession_ExpiredSessionReturns404(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("tools/list on fresh session: status = %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Wait for the session to expire.
 	time.Sleep(100 * time.Millisecond)
@@ -222,7 +222,7 @@ func TestSession_ExpiredSessionReturns404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("tools/list on expired session: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestSession_ExpiryResetsOnActivity(t *testing.T) {
@@ -241,7 +241,7 @@ func TestSession_ExpiryResetsOnActivity(t *testing.T) {
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("request %d: status = %d, want 200 (session should still be alive)", i+1, resp.StatusCode)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}
 
 	// Now wait for full expiry without activity.
@@ -251,7 +251,7 @@ func TestSession_ExpiryResetsOnActivity(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("status = %d, want 404 (session expired after inactivity)", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // --- 6. Session Termination ---
@@ -268,21 +268,21 @@ func TestSession_DeleteTerminatesSession(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("tools/list before DELETE: status = %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// DELETE the session.
 	resp = doDelete(t, ts, sid)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("DELETE /: status = %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Subsequent requests on that session should get 404.
 	resp = doPost(t, ts, rpcBody(t, 2, "tools/list", nil), sid)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("tools/list after DELETE: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestSession_DeleteWithInvalidSessionReturns404(t *testing.T) {
@@ -295,7 +295,7 @@ func TestSession_DeleteWithInvalidSessionReturns404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("DELETE with invalid session: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestSession_DeleteWithoutSessionIDReturns404(t *testing.T) {
@@ -307,7 +307,7 @@ func TestSession_DeleteWithoutSessionIDReturns404(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("DELETE without session ID: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // --- 7. Multiple Sessions ---
@@ -357,21 +357,21 @@ func TestSession_TerminatingOneDoesNotAffectAnother(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("DELETE session1: status = %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Session 1 should be gone.
 	resp = doPost(t, ts, rpcBody(t, 1, "tools/list", nil), sid1)
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("session1 after DELETE: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Session 2 should still work.
 	resp = doPost(t, ts, rpcBody(t, 2, "tools/list", nil), sid2)
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("session2 after session1 DELETE: status = %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // --- 8. Cleanup ---
@@ -390,7 +390,7 @@ func TestSession_CleanupRemovesExpiredSessions(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("tools/list on fresh session: status = %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Wait for expiry + cleanup interval to pass.
 	time.Sleep(200 * time.Millisecond)
@@ -400,7 +400,7 @@ func TestSession_CleanupRemovesExpiredSessions(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("tools/list on cleaned-up session: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestSession_CleanupDoesNotRemoveActiveSessions(t *testing.T) {
@@ -420,7 +420,7 @@ func TestSession_CleanupDoesNotRemoveActiveSessions(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("tools/list on active session: status = %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 // --- 9. Serial Execution ---
@@ -459,7 +459,7 @@ func TestSession_SerialExecution_ConcurrentCallsSerialized(t *testing.T) {
 			"name":      "slow",
 			"arguments": map[string]any{"idx": 1.0},
 		}), sid)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}()
 
 	go func() {
@@ -468,7 +468,7 @@ func TestSession_SerialExecution_ConcurrentCallsSerialized(t *testing.T) {
 			"name":      "slow",
 			"arguments": map[string]any{"idx": 2.0},
 		}), sid)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}()
 
 	wg.Wait()
@@ -520,13 +520,13 @@ func TestSession_SerialExecution_DifferentSessionsConcurrent(t *testing.T) {
 	go func() {
 		defer wg.Done()
 		resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "slow"}), sid1)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}()
 
 	go func() {
 		defer wg.Done()
 		resp := doPost(t, ts, rpcBody(t, 2, "tools/call", map[string]any{"name": "slow"}), sid2)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 	}()
 
 	wg.Wait()
@@ -571,7 +571,7 @@ func TestSession_WithoutSerialExecution_ConcurrentCallsAllowed(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			resp := doPost(t, ts, rpcBody(t, id+1, "tools/call", map[string]any{"name": "slow"}), sid)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}(i)
 	}
 
@@ -598,7 +598,7 @@ func TestSession_CannotToolsCallInCreatedState(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("tools/call in created state: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestSession_CannotToolsListInCreatedState(t *testing.T) {
@@ -614,7 +614,7 @@ func TestSession_CannotToolsListInCreatedState(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("tools/list in created state: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 }
 
 func TestSession_CreatedToActiveTransition(t *testing.T) {
@@ -629,14 +629,14 @@ func TestSession_CreatedToActiveTransition(t *testing.T) {
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("before activation: status = %d, want 404", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Send notifications/initialized to transition to "active".
 	resp = doPost(t, ts, rpcBody(t, nil, "notifications/initialized", nil), sid)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("notifications/initialized: status = %d, want 200", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// In "active" state: tools/list works.
 	resp = doPost(t, ts, rpcBody(t, 2, "tools/list", nil), sid)

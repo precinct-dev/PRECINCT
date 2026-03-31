@@ -54,11 +54,6 @@ func isModelProxyPath(path string) bool {
 	}
 }
 
-// isOpenAICompatPath is kept as a backward-compatible alias.
-func isOpenAICompatPath(path string) bool {
-	return isModelProxyPath(path)
-}
-
 func (g *Gateway) handleModelCompatEntry(w http.ResponseWriter, r *http.Request) bool {
 	if !isModelProxyPath(r.URL.Path) {
 		return false
