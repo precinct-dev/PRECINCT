@@ -18,9 +18,8 @@ request:
 Run the stack:
 
 ```
-docker network create phoenix-observability-network || true
+make phoenix-up
 docker compose --profile mock -f deploy/compose/docker-compose.yml \
-  -f deploy/compose/docker-compose.phoenix.yml \
   -f deploy/compose/docker-compose.oauth-fixtures.yml \
   up -d --wait
 ```
@@ -52,8 +51,8 @@ host publication of `mock-oauth-issuer:8088`.
 Stop and clean up:
 
 ```
+make phoenix-down
 docker compose --profile mock -f deploy/compose/docker-compose.yml \
-  -f deploy/compose/docker-compose.phoenix.yml \
   -f deploy/compose/docker-compose.oauth-fixtures.yml \
   down -v
 ```

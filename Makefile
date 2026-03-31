@@ -165,9 +165,25 @@ compose-bootstrap-verify:
 # 3. Phoenix
 # ===========================================================================
 
-.PHONY: phoenix-up phoenix-down phoenix-reset
+.PHONY: phoenix-up phoenix-down phoenix-reset phoenix-network-ensure
+
+phoenix-network-ensure:
+	@if docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
+		compose_network_label="$$(docker network inspect phoenix-observability-network --format '{{index .Labels "com.docker.compose.network"}}' 2>/dev/null || true)"; \
+		if [ "$$compose_network_label" != "phoenix-net" ]; then \
+			attached_containers="$$(docker network inspect phoenix-observability-network --format '{{range $$id, $$c := .Containers}}{{$$c.Name}} {{end}}' 2>/dev/null | xargs)"; \
+			if [ -n "$$attached_containers" ]; then \
+				echo "ERROR: phoenix-observability-network exists with incompatible labels and is in use by: $$attached_containers"; \
+				echo "Stop the attached containers (or run 'make down' if they belong to the local stack), then retry 'make phoenix-up'."; \
+				exit 1; \
+			fi; \
+			echo "Repairing stale phoenix-observability-network so Phoenix compose can recreate it..."; \
+			docker network rm phoenix-observability-network >/dev/null; \
+		fi; \
+	fi
 
 phoenix-up: ## Start standalone Phoenix + OTel collector (persistent traces)
+	@$(MAKE) phoenix-network-ensure
 	docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml up -d --build --wait --wait-timeout 60
 	@echo "Phoenix UI: http://localhost:6006"
 
@@ -263,9 +279,7 @@ test-mcpserver-integration: ## Run mcpserver SPIRE mTLS integration tests (AC 10
 	fi
 	@mkdir -p $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
 	@chmod 777 $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
-	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
-		docker network create phoenix-observability-network 2>/dev/null || true; \
-	fi
+	@$(MAKE) phoenix-up >/dev/null
 	@$(DC_MCPTEST) up -d --build --wait spire-server spire-agent 2>&1 || \
 		{ echo "ERROR: Failed to start SPIRE core"; $(DC_MCPTEST) logs; $(DC_MCPTEST) down -v --remove-orphans; exit 1; }
 	@$(DC_MCPTEST) up -d --build spire-entry-registrar-test 2>&1 || \
