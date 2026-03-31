@@ -281,10 +281,8 @@ services:
         while [ "$$attempt" -le "$$max_attempts" ]; do
           echo "spike-seeder: secret put attempt $$attempt/$$max_attempts"
           PUT_OUT="$$(spike secret put deadbeef value=test-secret-value-12345 2>&1 || true)"
-          echo "$$PUT_OUT"
 
           LIST_OUT="$$(spike secret list 2>&1 || true)"
-          echo "$$LIST_OUT"
 
           if ! echo "$$PUT_OUT" | grep -qi "Error:" && echo "$$LIST_OUT" | grep -q "deadbeef"; then
             seeded=1
@@ -346,7 +344,6 @@ services:
           --path-pattern='.*' \
           --spiffeid-pattern='^spiffe://poc.local/gateways/.*' \
           --permissions=read 2>&1 || true)"
-          echo "$$POLICY_OUT"
 
           if ! echo "$$POLICY_OUT" | grep -qi "Error:" || echo "$$POLICY_OUT" | grep -qi "already exists"; then
             policy_created=1

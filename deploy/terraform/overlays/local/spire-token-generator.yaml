@@ -76,7 +76,7 @@ spec:
                 -socketPath /tmp/spire-server/private/api.sock \
                 -spiffeID spiffe://precinct.poc/agent/local \
                 -ttl 86400 2>&1)
-              echo "Token output: ${TOKEN_OUTPUT}"
+              echo "Join token command completed."
 
               TOKEN=$(echo "${TOKEN_OUTPUT}" | awk '/Token:/ {print $2}')
               if [ -z "${TOKEN}" ]; then
