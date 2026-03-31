@@ -3,7 +3,7 @@
 **As Of:** 2026-02-22
 **Last Updated:** 2026-03-10
 **Branch:** main (all epic branches merged and deleted)
-**Reference Architecture Version:** 2.4
+**Reference Architecture Version:** 2.5 (current architecture doc); canonical control-plane contract set: 2.4
 
 ---
 
@@ -326,7 +326,7 @@ DSPy, PydanticAI, and other Python agent frameworks run externally and connect t
 
 Captured 2026-03-10 after repo rename to `precinct-dev/PRECINCT`. All Dependabot PRs (#28--#45) were closed without merging. The following updates are recommended as a single coordinated PR once CI is re-enabled.
 
-**Go version:** `go.mod` currently declares `go 1.24.6`; system has `1.26.1`. Recommended: update to `go 1.26` and run `go mod tidy`.
+**Go version:** the repo and release docs are standardized on `go 1.26.1`, matching the validated system toolchain used for current builds and tests. Treat `1.26.1` as the supported baseline until an older compatibility floor is explicitly verified.
 
 **GitHub Actions** (batch into one branch `chore/update-github-actions`): All are major version bumps requiring Actions Runner v2.327.1+ (Node 24 runtime).
 

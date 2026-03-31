@@ -22,8 +22,9 @@
 
 This is a **reference implementation of a PRECINCT Gateway** that implements a 13-layer
 middleware chain for securing AI agent tool calls. It validates the
-[PRECINCT v2.5](docs/architecture/reference-architecture.md),
-a 200+ page document defining security patterns for production agentic AI systems.
+[PRECINCT v2.5](docs/architecture/reference-architecture.md)
+reference architecture, while the current canonical control-plane contract set
+in this repository remains [v2.4](contracts/v2.4/contract-set.v2.4.md).
 
 The gateway interposes between AI agents and MCP tool servers, enforcing
 authentication, authorization, audit, data-loss prevention, rate limiting,
@@ -47,7 +48,7 @@ Go and Python SDKs are provided for agent integration.
 |---|-----------------|-------------|
 | 1 | Request Size Guard | Rejects oversized payloads (configurable, default 10 MB) |
 | 2 | Request Shape Validator | Validates JSON-RPC 2.0 envelope structure |
-| 3 | SPIFFE Authentication | Validates X-SPIFFE-ID header against trust domain |
+| 3 | SPIFFE Authentication | Validates SPIFFE identity from mTLS client certs in prod or `X-SPIFFE-ID` in dev |
 | 4 | Audit Logger | Decision journal with structured JSON logging + OTel spans |
 | 5 | Tool Registry | Verifies tool existence and SHA-256 hash integrity |
 | 6 | OPA Policy Engine | Embedded Rego evaluation (tool grants, risk levels, step-up) |
@@ -65,7 +66,7 @@ The gateway exposes per-plane control endpoints for framework-agnostic governanc
 
 | Endpoint | Plane | Function |
 |----------|-------|----------|
-| `POST /v1/ingress/admit` | Ingress | Canonical envelope validation, SPIFFE source principal matching, SHA-256 payload content-addressing, replay detection (30min nonce TTL) |
+| `POST /v1/ingress/submit` | Ingress | Canonical envelope validation, SPIFFE source principal matching, SHA-256 payload content-addressing, replay detection (30min nonce TTL). `/v1/ingress/admit` remains a compatibility alias |
 | `POST /v1/context/admit` | Context | Memory tier enforcement (ephemeral/session/long_term/regulated), provenance validation, DLP classification |
 | `POST /v1/model/call` | Model | Provider authorization, data residency, HIPAA-aware prompt safety, budget tracking |
 | `POST /v1/tool/execute` | Tool | Capability registry, CLI shell-injection prevention (command allowlist, max-args, denied-arg-tokens), step-up |
@@ -112,7 +113,7 @@ See [docs/sidecar-identity.md](docs/sidecar-identity.md) for deployment instruct
 
 ## Quick Start
 
-Prerequisites: Docker, Docker Compose, Go 1.24.6+, make.
+Prerequisites: Docker, Docker Compose, Go 1.26.1, make.
 
 ```bash
 make phoenix-up      # Start observability stack (Phoenix + OTel collector)
@@ -187,7 +188,7 @@ docs/                     All documentation
 tests/e2e/                E2E demo test suites
 tests/integration/        Go integration tests
 tests/benchmark/          Load testing scripts
-cli/                      PRECINCT CLI (agw)
+cli/                      PRECINCT CLI
 agents/                   Reference agent implementations
 ports/                    Platform integrations (Discord, OpenClaw)
 examples/                 Starter examples for extending the gateway

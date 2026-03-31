@@ -128,7 +128,6 @@ func TestNewGateway(t *testing.T) {
 	}
 	defer gw.Close()
 
-
 	if gw == nil {
 		t.Fatal("Gateway is nil")
 		return
@@ -188,7 +187,6 @@ func TestHealthEndpoint(t *testing.T) {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
 	defer gw.Close()
-
 
 	handler := gw.Handler()
 
@@ -637,7 +635,6 @@ func TestMiddlewareChainIntegration(t *testing.T) {
 	}
 	defer gw.Close()
 
-
 	handler := gw.Handler()
 
 	// Test valid request through full chain
@@ -689,7 +686,6 @@ func TestTokenSubstitutionOrderingInRealHandler(t *testing.T) {
 		t.Fatalf("Failed to create gateway: %v", err)
 	}
 	defer gw.Close()
-
 
 	// Get the REAL handler from gateway.Handler() - not a mock
 	handler := gw.Handler()

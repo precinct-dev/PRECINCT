@@ -25,4 +25,3 @@ func TestMakeUpgradeCheckRuns(t *testing.T) {
 		t.Fatalf("expected JSON output; got:\n%s", s)
 	}
 }
-

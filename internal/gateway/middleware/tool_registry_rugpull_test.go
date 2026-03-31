@@ -229,9 +229,9 @@ func TestToolRegistryVerify_RugPullMismatchDenied_NoClientToolHash(t *testing.T)
 		}
 		var result struct {
 			Tools []struct {
-				Name        string                 `json:"name"`
-				Description string                 `json:"description"`
-				InputSchema map[string]any         `json:"inputSchema"`
+				Name        string         `json:"name"`
+				Description string         `json:"description"`
+				InputSchema map[string]any `json:"inputSchema"`
 			} `json:"tools"`
 		}
 		if err := json.Unmarshal(rpcResp.Result, &result); err != nil {
@@ -270,4 +270,3 @@ func TestToolRegistryVerify_RugPullMismatchDenied_NoClientToolHash(t *testing.T)
 		t.Fatalf("expected code=%s, got %s", ErrRegistryHashMismatch, ge.Code)
 	}
 }
-

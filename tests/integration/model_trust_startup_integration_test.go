@@ -1,9 +1,9 @@
 package integration
 
 import (
-	"encoding/base64"
 	"crypto/ed25519"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/pem"
 	"os"
 	"path/filepath"

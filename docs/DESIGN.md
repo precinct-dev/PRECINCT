@@ -741,11 +741,11 @@ curl -s -X POST http://localhost:9090 \
 For Go-based agents or tools:
 
 ```go
-import "github.com/precinct-dev/PRECINCT/sdk/gateway"
+import "github.com/precinct-dev/precinct/sdk/go/mcpgateway"
 
-client := gateway.NewClient(
-    gateway.WithURL("http://localhost:9090"),
-    gateway.WithSPIFFEID("spiffe://poc.local/agents/my-agent/dev"),
+client := mcpgateway.NewClient(
+    "http://localhost:9090",
+    "spiffe://poc.local/agents/my-agent/dev",
 )
 
 result, err := client.Call(ctx, "tavily_search", map[string]any{

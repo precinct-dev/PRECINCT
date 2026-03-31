@@ -26,9 +26,9 @@ func TestEmailAdapter_Registration(t *testing.T) {
 	requireGateway(t)
 
 	paths := []struct {
-		path        string
-		operation   string
-		isStub      bool
+		path      string
+		operation string
+		isStub    bool
 	}{
 		{"/email/send", "messaging_send", false},
 		{"/email/webhooks", "email_webhook", true},

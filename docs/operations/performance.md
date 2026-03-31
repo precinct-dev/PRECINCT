@@ -62,7 +62,7 @@ HTTP traffic against the full Docker Compose stack:
 
 ### End-to-End Latency (In-Process, 1000 Iterations)
 
-> **Reference hardware**: Apple M3 Max, Go 1.24.6, macOS Darwin 25.3.0.
+> **Reference hardware**: Apple M3 Max, Go 1.26.1, macOS Darwin 25.3.0.
 > Measured 2026-02-06.
 
 #### After RFA-lz1: Async Audit Logging
@@ -200,7 +200,7 @@ overhead, upstream MCP server):
 ## Reproducing These Results
 
 ```bash
-# 1. Ensure Go 1.24+ is installed
+# 1. Ensure Go 1.25+ is installed
 go version
 
 # 2. Run in-process benchmarks (no Docker required)

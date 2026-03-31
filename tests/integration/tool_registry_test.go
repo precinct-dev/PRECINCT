@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package integration
@@ -224,10 +225,10 @@ func TestDestinationRestrictions(t *testing.T) {
 		wantReason  string
 	}{
 		{
-			name:     "TavilyAllowedToDomain",
-			tool:     "tavily_search",
-			params:   map[string]interface{}{"query": "test", "destination": "api.tavily.com"},
-			spiffeID: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
+			name:        "TavilyAllowedToDomain",
+			tool:        "tavily_search",
+			params:      map[string]interface{}{"query": "test", "destination": "api.tavily.com"},
+			spiffeID:    "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev",
 			wantAllowed: true,
 			wantReason:  "",
 		},

@@ -42,13 +42,13 @@ func TestRepaveKeyDB(t *testing.T) {
 	}
 
 	// Ensure KeyDB is running (this test is self-contained; it does not require the full stack).
-	run("docker", "compose", "up", "-d", "--wait", "--wait-timeout", "180", "keydb")
+	run("docker", composeArgs("up", "-d", "--wait", "--wait-timeout", "180", "keydb")...)
 
 	key := fmt.Sprintf("repave_test_key_%d", time.Now().UnixNano())
 	want := "repave_test_value"
 
-	run("docker", "compose", "exec", "-T", "keydb", "keydb-cli", "set", key, want)
-	gotBefore := strings.TrimSpace(run("docker", "compose", "exec", "-T", "keydb", "keydb-cli", "get", key))
+	runComposeKeyDBCLI(t, "keydb", "SET", key, want)
+	gotBefore := strings.TrimSpace(runComposeKeyDBCLI(t, "keydb", "GET", key))
 	if gotBefore != want {
 		t.Fatalf("expected keydb get before repave to return %q, got %q", want, gotBefore)
 	}
@@ -62,18 +62,18 @@ func TestRepaveKeyDB(t *testing.T) {
 		t.Fatalf("repave output missing pull marker; output:\n%s", out)
 	}
 
-	pong := strings.TrimSpace(run("docker", "compose", "exec", "-T", "keydb", "keydb-cli", "ping"))
+	pong := strings.TrimSpace(runComposeKeyDBCLI(t, "keydb", "PING"))
 	if pong != "PONG" {
 		t.Fatalf("expected PONG after repave, got %q", pong)
 	}
 
-	gotAfter := strings.TrimSpace(run("docker", "compose", "exec", "-T", "keydb", "keydb-cli", "get", key))
+	gotAfter := strings.TrimSpace(runComposeKeyDBCLI(t, "keydb", "GET", key))
 	if gotAfter != want {
 		t.Fatalf("expected keydb get after repave to return %q, got %q", want, gotAfter)
 	}
 
 	// Cleanup test key so the persisted volume doesn't accumulate test data.
-	run("docker", "compose", "exec", "-T", "keydb", "keydb-cli", "del", key)
+	runComposeKeyDBCLI(t, "keydb", "DEL", key)
 
 	// AC6: repave state file updated.
 	statePath := filepath.Join(dir, ".repave-state.json")

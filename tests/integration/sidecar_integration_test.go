@@ -70,7 +70,7 @@ func TestSidecarToGatewayFlow(t *testing.T) {
 // request to that identity.
 //
 // It sends a tool call through the gateway with the sidecar SPIFFE ID, then
-// uses `agw audit search` to find the audit entry and confirm the spiffe_id
+// uses `precinct audit search` to find the audit entry and confirm the spiffe_id
 // field matches.
 func TestSidecarAuditAttribution(t *testing.T) {
 	requireGateway(t)
@@ -105,7 +105,7 @@ func TestSidecarAuditAttribution(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Search audit logs for entries attributed to the sidecar SPIFFE ID.
-	cmd := exec.Command("go", "run", "./cli/agw", "audit", "search",
+	cmd := exec.Command("go", "run", "./cli/precinct", "audit", "search",
 		"--spiffe-id", sidecarSPIFFEID,
 		"--last", "1m",
 		"--format", "json",
@@ -115,7 +115,7 @@ func TestSidecarAuditAttribution(t *testing.T) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		t.Fatalf("agw audit search failed: %v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+		t.Fatalf("precinct audit search failed: %v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
 	}
 
 	var entries []struct {

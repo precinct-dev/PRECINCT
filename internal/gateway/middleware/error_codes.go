@@ -9,19 +9,19 @@ package middleware
 // a 403 in normal flow vs a 503 when the service backing the check is down).
 const (
 	// SPIFFE Auth (step 3) -- 401 Unauthorized
-	ErrAuthMissingIdentity        = "auth_missing_identity"
-	ErrAuthInvalidIdentity        = "auth_invalid_identity"
-	ErrAuthInvalidBearerToken     = "auth_invalid_bearer_token"
-	ErrAuthIntrospectionFailed    = "auth_introspection_failed"
+	ErrAuthMissingIdentity     = "auth_missing_identity"
+	ErrAuthInvalidIdentity     = "auth_invalid_identity"
+	ErrAuthInvalidBearerToken  = "auth_invalid_bearer_token"
+	ErrAuthIntrospectionFailed = "auth_introspection_failed"
 
 	// Token Exchange -- 401 Unauthorized (OC-xkkc)
-	ErrAuthTokenExpired        = "auth_token_expired"
-	ErrAuthTokenInvalid        = "auth_token_invalid"
-	ErrAuthCredentialRejected  = "auth_credential_rejected"
+	ErrAuthTokenExpired       = "auth_token_expired"
+	ErrAuthTokenInvalid       = "auth_token_invalid"
+	ErrAuthCredentialRejected = "auth_credential_rejected"
 
 	// OPA Policy (step 6) -- 403 Forbidden
-	ErrAuthzPolicyDenied    = "authz_policy_denied"
-	ErrAuthzNoMatchingGrant = "authz_no_matching_grant"
+	ErrAuthzPolicyDenied          = "authz_policy_denied"
+	ErrAuthzNoMatchingGrant       = "authz_no_matching_grant"
 	ErrAuthzToolNotFound          = "authz_tool_not_found"
 	ErrPrincipalLevelInsufficient = "principal_level_insufficient" // OC-3ch6
 
@@ -30,8 +30,8 @@ const (
 	ErrRegistryToolUnknown  = "registry_tool_unknown"
 
 	// Data Source Integrity (step 5) -- 403 Forbidden (OC-am3w)
-	ErrDataSourceHashMismatch   = "data_source_hash_mismatch"
-	ErrUnregisteredDataSource   = "unregistered_data_source"
+	ErrDataSourceHashMismatch = "data_source_hash_mismatch"
+	ErrUnregisteredDataSource = "unregistered_data_source"
 
 	// DLP (step 7) -- 403 Forbidden
 	ErrDLPCredentialsDetected   = "dlp_credentials_detected"

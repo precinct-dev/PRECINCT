@@ -11,6 +11,7 @@
 
   <meta property="og:title" content="PRECINCT Capabilities">
   <meta property="og:description" content="A complete map of all implemented PRECINCT capabilities with proof commands and coverage links.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://precinct.dev/pages/capabilities.html">
   <meta property="og:site_name" content="PRECINCT">
@@ -415,7 +416,7 @@
                 </thead>
                 <tbody>
                   <tr>
-                    <td><code>POST /v1/ingress/admit</code></td>
+                    <td><code>POST /v1/ingress/submit</code> (<code>/v1/ingress/admit</code> alias)</td>
                     <td>Ingress</td>
                     <td>Canonical envelope validation, source principal matching, replay detection, payload content-addressing</td>
                   </tr>
@@ -664,7 +665,7 @@ make k8s-opensearch-up
 
 # Compliance evidence from OpenSearch (HTTPS + mTLS)
 export PRECINCT_OPENSEARCH_PASSWORD='<secret>'
-go run ./cli/agw compliance collect \
+go run ./cli/precinct compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \

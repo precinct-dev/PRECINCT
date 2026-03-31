@@ -10,14 +10,14 @@ help: ## Show this help
 		awk 'BEGIN {FS = ":.*?## "}; {printf "  %-12s %s\n", $$1, $$2}'
 
 test: ## Run all CLI tests
-	go test ./agw/... -count=1 -v
+	go test ./precinct/... -count=1 -v
 
 build: ## Build the precinct binary
 	@mkdir -p $(BUILD_DIR)
-	go build -o $(BUILD_DIR)/$(BINARY) ./agw/
+	go build -o $(BUILD_DIR)/$(BINARY) ./precinct/
 
 install: build ## Install precinct to GOPATH/bin
-	go install ./agw/
+	go install ./precinct/
 
 clean: ## Remove build artifacts
 	rm -f $(BUILD_DIR)/$(BINARY)

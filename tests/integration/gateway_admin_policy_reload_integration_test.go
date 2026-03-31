@@ -25,9 +25,14 @@ func TestGatewayAdminPolicyReloadIntegration_ModifyRegistryAndReload(t *testing.
 	if err != nil {
 		t.Fatalf("read tool-registry.yaml: %v", err)
 	}
+	originalSig, err := os.ReadFile(configPath + ".sig")
+	if err != nil {
+		t.Fatalf("read tool-registry.yaml.sig: %v", err)
+	}
 
 	t.Cleanup(func() {
 		_ = os.WriteFile(configPath, original, 0644)
+		_ = os.WriteFile(configPath+".sig", originalSig, 0644)
 		_, _ = triggerPolicyReload()
 	})
 
@@ -57,6 +62,7 @@ func TestGatewayAdminPolicyReloadIntegration_ModifyRegistryAndReload(t *testing.
 	if err := os.WriteFile(configPath, updatedYAML, 0644); err != nil {
 		t.Fatalf("write updated registry yaml: %v", err)
 	}
+	signWithProjectAttestationKey(t, configPath)
 
 	reloadResp, err := triggerPolicyReload()
 	if err != nil {

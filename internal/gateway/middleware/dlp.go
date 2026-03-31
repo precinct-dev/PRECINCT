@@ -361,11 +361,17 @@ func shouldSkipDLPScan(r *http.Request) bool {
 		"/v1/context/admit",
 		"/v1/model/call",
 		"/v1/tool/execute",
-		"/v1/loop/check":
+		"/v1/loop/check",
+		"/admin/approvals/request",
+		"/admin/approvals/grant",
+		"/admin/approvals/deny",
+		"/admin/approvals/consume":
 		// Phase 3 routes carry structured governance contracts whose envelope
 		// metadata often includes IDs/timestamps that look like PII to the raw
-		// regex scanner. These routes apply plane-specific safety policy after
-		// contract validation, so bypass the generic body-wide DLP pass here.
+		// regex scanner. The approval admin routes likewise carry control-plane
+		// metadata such as request IDs and operator identifiers, not user content.
+		// These routes apply route-specific governance after authz, so bypass the
+		// generic body-wide DLP pass here.
 		return true
 	default:
 		return false

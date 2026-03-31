@@ -398,7 +398,7 @@ before upstream proxy forwarding:
 | `X-Mission-Out-Of-Scope-Message` | No | `POST /openai/v1/chat/completions` | Safe fallback assistant message | `I can help with orders and menu questions only.` |
 
 **Notes:**
-- In `SPIFFE_MODE=dev` (default), callers may authenticate with either `X-SPIFFE-ID` or `Authorization: Bearer <jwt>`.
+- In `SPIFFE_MODE=dev`, callers may authenticate with either `X-SPIFFE-ID` or `Authorization: Bearer <jwt>`.
 - In `SPIFFE_MODE=prod`, callers may authenticate with a client certificate `spiffe://` URI SAN or `Authorization: Bearer <jwt>`. `X-SPIFFE-ID` headers are ignored.
 - Bearer tokens are validated against the configured OAuth resource-server JWKS, mapped to `spiffe://<SPIFFE_TRUST_DOMAIN>/external/<subject>`, and stripped before the upstream MCP server sees the request.
 - The `X-Session-ID` must be a valid UUID. The session context middleware uses it to track data flow across requests for exfiltration detection.
@@ -954,7 +954,7 @@ Key gateway configuration parameters that affect API behavior:
 |----------|---------|-------------|
 | `PORT` | `9090` | HTTP listen port |
 | `UPSTREAM_URL` | `http://host.docker.internal:8081/mcp` | Upstream MCP server URL |
-| `SPIFFE_MODE` | `dev` | `dev` (header-based auth) or `prod` (mTLS) |
+| `SPIFFE_MODE` | `prod` | `dev` (header-based auth) or `prod` (mTLS) |
 | `SPIFFE_TRUST_DOMAIN` | `poc.local` | SPIFFE trust domain for identity validation |
 | `SPIFFE_LISTEN_PORT` | `9443` | HTTPS port when `SPIFFE_MODE=prod` |
 | `MAX_REQUEST_SIZE_BYTES` | `10485760` (10 MB) | Maximum request body size |

@@ -1003,8 +1003,8 @@ func TestRLMGovernance_IntegrationViaGateway_SchemaErrors(t *testing.T) {
 						Action:   "model.call",
 						Resource: "model/inference",
 						Attributes: map[string]any{
-							"rlm_depth":        2,
-							"uasgs_mediated":   true,
+							"rlm_depth":      2,
+							"uasgs_mediated": true,
 						},
 					},
 				}

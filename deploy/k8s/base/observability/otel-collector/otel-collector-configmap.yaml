@@ -51,7 +51,7 @@ data:
 
     exporters:
       # Export to Phoenix for trace visualization via OTLP gRPC
-      otlp_grpc/phoenix:
+      otlp/phoenix:
         endpoint: phoenix.observability.svc.cluster.local:4317
         tls:
           insecure: true
@@ -66,17 +66,17 @@ data:
         traces:
           receivers: [otlp]
           processors: [batch, resource]
-          exporters: [otlp_grpc/phoenix, debug]
+          exporters: [otlp/phoenix, debug]
 
         metrics:
           receivers: [otlp]
           processors: [batch, resource]
-          exporters: [otlp_grpc/phoenix, debug]
+          exporters: [debug]
 
         logs:
           receivers: [otlp]
           processors: [batch, resource]
-          exporters: [otlp_grpc/phoenix, debug]
+          exporters: [debug]
 
       telemetry:
         logs:

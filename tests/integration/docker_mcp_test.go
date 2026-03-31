@@ -18,10 +18,32 @@ import (
 	"bytes"
 	"encoding/json"
 	"net/http"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/precinct-dev/precinct/internal/gateway/middleware"
+	"gopkg.in/yaml.v3"
 )
+
+func loadIntegrationRegistryHashes(t *testing.T) map[string]string {
+	t.Helper()
+
+	registryBytes, err := os.ReadFile(filepath.Join(pocDir(), "config", "tool-registry.yaml"))
+	if err != nil {
+		t.Fatalf("read tool registry: %v", err)
+	}
+	var registry middleware.ToolRegistryConfig
+	if err := yaml.Unmarshal(registryBytes, &registry); err != nil {
+		t.Fatalf("unmarshal tool registry: %v", err)
+	}
+	registryHashes := make(map[string]string, len(registry.Tools))
+	for _, tool := range registry.Tools {
+		registryHashes[tool.Name] = tool.Hash
+	}
+	return registryHashes
+}
 
 // TestDockerMCPTavilyTool verifies that Tavily search tool is callable through gateway
 func TestDockerMCPTavilyTool(t *testing.T) {
@@ -29,15 +51,18 @@ func TestDockerMCPTavilyTool(t *testing.T) {
 	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
+	registryHashes := loadIntegrationRegistryHashes(t)
 
 	// Test Tavily search with valid SPIFFE ID that has tavily_search permission
-	// Note: Using gateway SPIFFE ID which has "*" wildcard access
+	// Note: Using gateway SPIFFE ID which has "*" wildcard access, plus the
+	// approved tool hash required by the hardened compose profile.
 	mcpReq := map[string]interface{}{
 		"jsonrpc": "2.0",
 		"method":  "tavily_search",
 		"params": map[string]interface{}{
 			"query":       "Docker MCP integration test",
 			"max_results": 2,
+			"tool_hash":   registryHashes["tavily_search"],
 		},
 		"id": "tavily-test-001",
 	}
@@ -58,14 +83,13 @@ func TestDockerMCPTavilyTool(t *testing.T) {
 	}
 	defer resp.Body.Close()
 
-	// Verify request was allowed through gateway
-	// Note: We may get 502 if Docker MCP Gateway is not running, but that's OK
-	// for testing that the gateway ALLOWS the request (policy pass)
+	// Verify request was allowed through the hardened gateway. A 200 from the
+	// mock upstream or a 502 from an unavailable upstream both prove policy pass.
 	if resp.StatusCode == http.StatusForbidden {
-		t.Errorf("Tavily tool was blocked by gateway (403), expected to be allowed")
+		t.Errorf("Tavily tool was blocked by gateway (403) despite supplying the approved hash")
 	}
 
-	t.Logf("Tavily tool call status: %d (allowed through gateway)", resp.StatusCode)
+	t.Logf("Tavily tool call status: %d (policy passed with approved hash)", resp.StatusCode)
 }
 
 // TestDockerMCPReadToolWorkspaceScope verifies read tool is restricted to POC workspace
@@ -386,38 +410,35 @@ func TestDockerMCPToolHashVerification(t *testing.T) {
 		t.Fatalf("Gateway not ready: %v", err)
 	}
 
+	registryHashes := loadIntegrationRegistryHashes(t)
+
 	tests := []struct {
 		name        string
 		tool        string
-		correctHash string
 		wrongHash   string
 		params      map[string]interface{}
 	}{
 		{
 			name:        "TavilyHashVerification",
 			tool:        "tavily_search",
-			correctHash: "76c6b3d8a7ddbc387ca87aa784e99354feeda1ff438768cd99232a6772cceac0",
 			wrongHash:   "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
 			params:      map[string]interface{}{"query": "test"},
 		},
 		{
 			name:        "ReadHashVerification",
 			tool:        "read",
-			correctHash: "c4fbe869591f047985cd812915ed87d2c9c77de445089dcbc507416a86491453",
 			wrongHash:   "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
 			params:      map[string]interface{}{"file_path": pocDir() + "/README.md"},
 		},
 		{
 			name:        "GrepHashVerification",
 			tool:        "grep",
-			correctHash: "8bf71be3abae46b7ac610d92913c20e5f8d46bdbde9144c1c7e9798d92518cec",
 			wrongHash:   "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
 			params:      map[string]interface{}{"pattern": "test", "path": pocDir()},
 		},
 		{
 			name:        "BashHashVerification",
 			tool:        "bash",
-			correctHash: "ada241bb834f0737fd259606208f5d8ba2aeb2adbefa5ddc9df8f59b7c152c9f",
 			wrongHash:   "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
 			params:      map[string]interface{}{"command": "echo test"},
 		},
@@ -425,12 +446,17 @@ func TestDockerMCPToolHashVerification(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name+"_CorrectHash", func(t *testing.T) {
+			correctHash, ok := registryHashes[tt.tool]
+			if !ok || correctHash == "" {
+				t.Fatalf("missing registry hash for tool %q", tt.tool)
+			}
+
 			// Test with correct hash - should be allowed
 			params := make(map[string]interface{})
 			for k, v := range tt.params {
 				params[k] = v
 			}
-			params["tool_hash"] = tt.correctHash
+			params["tool_hash"] = correctHash
 
 			mcpReq := map[string]interface{}{
 				"jsonrpc": "2.0",

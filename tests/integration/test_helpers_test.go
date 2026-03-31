@@ -8,7 +8,12 @@ package integration
 
 import (
 	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"net"
 	"net/http"
@@ -20,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/precinct-dev/precinct/internal/precinctcli"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -47,6 +53,64 @@ func pocDir() string {
 		return "."
 	}
 	return abs
+}
+
+func composeArgs(extra ...string) []string {
+	root := pocDir()
+	args := []string{
+		"compose",
+		"-f", filepath.Join(root, "deploy", "compose", "docker-compose.yml"),
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("DEMO_SERVICE_MODE")), "real") {
+		envFile := filepath.Join(root, ".env")
+		if _, err := os.Stat(envFile); err == nil {
+			args = append(args, "--env-file", envFile)
+		}
+		args = append(args, "-f", filepath.Join(root, "deploy", "compose", "docker-compose.real.yml"))
+	} else {
+		args = append(args,
+			"-f", filepath.Join(root, "deploy", "compose", "docker-compose.mock.yml"),
+			"--profile", "mock",
+		)
+	}
+	return append(args, extra...)
+}
+
+func composeCommand(args ...string) *exec.Cmd {
+	cmd := exec.Command("docker", composeArgs(args...)...)
+	cmd.Dir = pocDir()
+	return cmd
+}
+
+func signWithProjectAttestationKey(t *testing.T, path string) {
+	t.Helper()
+
+	keyPath := filepath.Join(pocDir(), "config", "attestation-ed25519.key")
+	keyPEM, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatalf("read attestation key %s: %v", keyPath, err)
+	}
+	block, _ := pem.Decode(keyPEM)
+	if block == nil {
+		t.Fatalf("decode PEM attestation key %s", keyPath)
+	}
+	parsed, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse attestation key %s: %v", keyPath, err)
+	}
+	privateKey, ok := parsed.(ed25519.PrivateKey)
+	if !ok {
+		t.Fatalf("attestation key %s is %T, want ed25519.PrivateKey", keyPath, parsed)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read policy file %s for signing: %v", path, err)
+	}
+	sig := ed25519.Sign(privateKey, content)
+	if err := os.WriteFile(path+".sig", []byte(base64.StdEncoding.EncodeToString(sig)), 0o644); err != nil {
+		t.Fatalf("write signature %s.sig: %v", path, err)
+	}
 }
 
 // waitForService waits for a service to be ready by polling its health endpoint.
@@ -250,12 +314,20 @@ func keydbExists(t *testing.T, keys ...string) int64 {
 
 func runComposeKeyDBCLI(t *testing.T, service string, args ...string) string {
 	t.Helper()
-	cmdArgs := append([]string{"compose", "exec", "-T", service, "keydb-cli", "--raw"}, args...)
-	cmd := exec.Command("docker", cmdArgs...)
-	cmd.Dir = pocDir()
-	out, err := cmd.CombinedOutput()
+	out, err := tryRunComposeKeyDBCLI(service, args...)
 	if err != nil {
-		t.Fatalf("docker %s failed: %v output=%q", strings.Join(cmdArgs, " "), err, string(out))
+		t.Fatalf("compose service command for %s failed: %v", service, err)
 	}
-	return string(out)
+	return out
+}
+
+func tryRunComposeKeyDBCLI(service string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	out, err := precinctcli.RunComposeServiceCommand(ctx, service, append([]string{"keydb-cli", "--raw"}, args...)...)
+	if err != nil {
+		return "", err
+	}
+	return out, nil
 }

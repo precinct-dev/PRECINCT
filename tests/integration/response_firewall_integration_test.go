@@ -110,7 +110,7 @@ func approvalTokenForToolCall(t *testing.T, gwURL, spiffeID, sessionID, tool str
 
 	code, body := approvalAdminPost(t, gwURL+"/admin/approvals/request", map[string]any{
 		"scope":        scope,
-		"requested_by": "response-firewall@test",
+		"requested_by": "response-firewall-test",
 		"ttl_seconds":  120,
 	})
 	if code != http.StatusOK {
@@ -123,7 +123,7 @@ func approvalTokenForToolCall(t *testing.T, gwURL, spiffeID, sessionID, tool str
 
 	code, body = approvalAdminPost(t, gwURL+"/admin/approvals/grant", map[string]any{
 		"request_id":  requestID,
-		"approved_by": "security@test",
+		"approved_by": "security-test",
 		"reason":      "response-firewall-integration",
 	})
 	if code != http.StatusOK {

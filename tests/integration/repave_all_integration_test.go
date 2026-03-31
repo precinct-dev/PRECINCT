@@ -60,7 +60,7 @@ func TestRepaveAll_GeneratesReport_UpdatesState_AndPreservesKeyDBData(t *testing
 	waitHealthy := func(service string, timeout time.Duration) error {
 		deadline := time.Now().Add(timeout)
 		for time.Now().Before(deadline) {
-			cmd := exec.CommandContext(ctx, "docker", "compose", "ps", "-q", service)
+			cmd := exec.CommandContext(ctx, "docker", composeArgs("ps", "-q", service)...)
 			cmd.Dir = dir
 			b, _ := cmd.CombinedOutput()
 			cid := strings.TrimSpace(string(b))
@@ -111,8 +111,8 @@ func TestRepaveAll_GeneratesReport_UpdatesState_AndPreservesKeyDBData(t *testing
 	// Seed KeyDB with a key to prove volume preservation across full-stack repave.
 	key := fmt.Sprintf("repave_all_test_key_%d", time.Now().UnixNano())
 	want := "repave_all_test_value"
-	if out, code := run(nil, "docker", "compose", "exec", "-T", "keydb", "keydb-cli", "set", key, want); code != 0 {
-		t.Skipf("could not seed keydb (stack may be unstable):\n%s", out)
+	if _, err := tryRunComposeKeyDBCLI("keydb", "SET", key, want); err != nil {
+		t.Skipf("could not seed keydb (stack may be unstable):\n%v", err)
 	}
 
 	// Run full-stack repave (AC1-4,6-8).
@@ -201,8 +201,8 @@ func TestRepaveAll_GeneratesReport_UpdatesState_AndPreservesKeyDBData(t *testing
 	}
 
 	// Volume preservation (AC5): KeyDB data should still be present after repave.
-	if out, code := run(nil, "docker", "compose", "exec", "-T", "keydb", "keydb-cli", "get", key); code != 0 {
-		t.Fatalf("failed to read keydb after repave:\n%s", out)
+	if out, err := tryRunComposeKeyDBCLI("keydb", "GET", key); err != nil {
+		t.Fatalf("failed to read keydb after repave: %v", err)
 	} else {
 		got := strings.TrimSpace(out)
 		if got != want {
@@ -211,7 +211,7 @@ func TestRepaveAll_GeneratesReport_UpdatesState_AndPreservesKeyDBData(t *testing
 	}
 
 	// Cleanup.
-	_, _ = run(nil, "docker", "compose", "exec", "-T", "keydb", "keydb-cli", "del", key)
+	_, _ = tryRunComposeKeyDBCLI("keydb", "DEL", key)
 }
 
 func TestRepaveAll_StopOnFailure_Simulated(t *testing.T) {
@@ -229,8 +229,9 @@ func TestRepaveAll_StopOnFailure_Simulated(t *testing.T) {
 	cmd.Dir = dir
 	_ = cmd.Run() // best-effort
 
-	// Bring up the main stack using the repo's resilient readiness path.
-	up := exec.CommandContext(ctx, "make", "up")
+	// Use the repo's resilient startup helper so the test doesn't hang on raw
+	// compose edge cases while the stack is already converging.
+	up := exec.CommandContext(ctx, "bash", "scripts/ensure-stack.sh", "--resilient")
 	up.Dir = dir
 	if out, err := up.CombinedOutput(); err != nil {
 		t.Skipf("compose stack not healthy; skipping stop-on-failure test.\nOutput:\n%s", string(out))

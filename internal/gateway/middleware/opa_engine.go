@@ -51,17 +51,17 @@ type OPAEngineConfig struct {
 
 // OPAEngine handles embedded OPA policy evaluation
 type OPAEngine struct {
-	policyDir            string
-	runtimeCfg           OPAEngineConfig
-	query                *rego.PreparedEvalQuery
-	contextQuery         *rego.PreparedEvalQuery           // RFA-xwc: query for mcp.context policy
-	uiPolicyQueries      *uiPolicyPreparedQueries          // RFA-j2d.7: queries for mcp.ui.policy rules
-	dataSourcePolicyQuery *dataSourcePolicyPreparedQueries  // OC-4zrf: queries for precinct.data_source policy
-	policyCount          int
-	publicKey            ed25519.PublicKey
-	mu                   sync.RWMutex
-	watcher              *fsnotify.Watcher
-	stopChan             chan struct{}
+	policyDir             string
+	runtimeCfg            OPAEngineConfig
+	query                 *rego.PreparedEvalQuery
+	contextQuery          *rego.PreparedEvalQuery          // RFA-xwc: query for mcp.context policy
+	uiPolicyQueries       *uiPolicyPreparedQueries         // RFA-j2d.7: queries for mcp.ui.policy rules
+	dataSourcePolicyQuery *dataSourcePolicyPreparedQueries // OC-4zrf: queries for precinct.data_source policy
+	policyCount           int
+	publicKey             ed25519.PublicKey
+	mu                    sync.RWMutex
+	watcher               *fsnotify.Watcher
+	stopChan              chan struct{}
 }
 
 // dataSourcePolicyPreparedQueries holds compiled queries for data source policy rules.
@@ -73,11 +73,11 @@ type dataSourcePolicyPreparedQueries struct {
 
 // OPAEngineReloadResult captures metadata from a policy reload operation.
 type OPAEngineReloadResult struct {
-	PolicyCount          int
-	AttestationVerified  bool
-	AttestationMode      string
-	Rejected             bool
-	RejectionReason      string
+	PolicyCount         int
+	AttestationVerified bool
+	AttestationMode     string
+	Rejected            bool
+	RejectionReason     string
 }
 
 // uiPolicyPreparedQueries holds the compiled queries for each rule in the

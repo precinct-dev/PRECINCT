@@ -11,6 +11,7 @@
 
   <meta property="og:title" content="PRECINCT SDKs | Python &amp; Go">
   <meta property="og:description" content="First-class SDK support for integrating agents with the PRECINCT gateway in Python and Go.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://precinct.dev/pages/sdks.html">
   <meta property="og:site_name" content="PRECINCT">
@@ -240,7 +241,7 @@
                 and zero external dependencies beyond <code>google/uuid</code>.
               </p>
               <ul>
-                <li>Go &ge;1.24.6</li>
+                <li>Go 1.26.1 (supported baseline)</li>
                 <li>Auto-detects protocol methods vs tool names</li>
                 <li>Goroutine-safe with connection pooling</li>
                 <li>mTLS via custom <code>http.Client</code></li>
@@ -367,7 +368,7 @@ client, err := mcpgateway.NewClient(
             <pre data-lang="bash"><code>pip install mcp-gateway-sdk</code></pre>
             <p>See the <a href="python-sdk.html#installation">Python SDK installation guide</a> for optional dependency groups.</p>
             <h3>Go</h3>
-            <pre data-lang="bash"><code>go get github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway</code></pre>
+            <pre data-lang="bash"><code>go get github.com/precinct-dev/precinct/sdk/go/mcpgateway</code></pre>
             <p>See the <a href="go-sdk.html#installation">Go SDK installation guide</a> for local development setup.</p>
 
             <div class="callout callout-warning">

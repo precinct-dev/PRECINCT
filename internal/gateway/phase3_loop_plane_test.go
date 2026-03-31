@@ -542,8 +542,8 @@ func TestLoopPlane_SchemaInvalid_MissingUsage(t *testing.T) {
 
 func TestLoopPlane_OperatorHalt_FromAnyNonTerminalState(t *testing.T) {
 	nonTerminalEvents := []struct {
-		name         string
-		setupEvent   string
+		name           string
+		setupEvent     string
 		setupOverrides map[string]any
 	}{
 		{

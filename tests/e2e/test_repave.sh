@@ -102,7 +102,7 @@ run_cmd() {
 start_keydb_proxy() {
   local keydb_network
   local container_name
-  container_name="agw-keydb-proxy-$$"
+  container_name="precinct-keydb-proxy-$$"
   keydb_network="$(docker inspect keydb --format '{{range $k, $_ := .NetworkSettings.Networks}}{{$k}} {{end}}' 2>/dev/null | awk '{print $1}')"
   if [ -z "$keydb_network" ]; then
     log_fail "keydb proxy setup" "unable to discover KeyDB container network"
@@ -328,8 +328,8 @@ main() {
   log_pass "single KeyDB repave preserved data and updated state"
 
   log_header "4) Repave Status (KeyDB)"
-  run_cmd "agw_repave_status_keydb" "$PRECINCT_BIN" repave status --format json
-  if ! jq -e '.containers[] | select(.name=="keydb") | (.last_repave != "NEVER" and (.health=="healthy" or .health=="running"))' "$TMP_DIR/agw_repave_status_keydb.out" >/dev/null; then
+  run_cmd "precinct_repave_status_keydb" "$PRECINCT_BIN" repave status --format json
+  if ! jq -e '.containers[] | select(.name=="keydb") | (.last_repave != "NEVER" and (.health=="healthy" or .health=="running"))' "$TMP_DIR/precinct_repave_status_keydb.out" >/dev/null; then
     log_fail "precinct repave status keydb" "expected keydb last_repave and healthy status"
     exit 1
   fi
@@ -352,8 +352,8 @@ main() {
   log_pass "SPIRE identity re-issued across SPIRE repave (${spire_serial_before} -> ${spire_serial_after})"
 
   log_header "6) Repave Status (All Containers)"
-  run_cmd "agw_repave_status_all" "$PRECINCT_BIN" repave status --format json
-  if ! jq -e '.containers | length >= 9' "$TMP_DIR/agw_repave_status_all.out" >/dev/null; then
+  run_cmd "precinct_repave_status_all" "$PRECINCT_BIN" repave status --format json
+  if ! jq -e '.containers | length >= 9' "$TMP_DIR/precinct_repave_status_all.out" >/dev/null; then
     log_fail "precinct repave status all" "expected at least 9 containers in status output"
     exit 1
   fi
@@ -361,7 +361,7 @@ main() {
   expected="spire-server spire-agent keydb spike-keeper-1 spike-nexus precinct-gateway mock-mcp-server otel-collector phoenix"
   local svc
   for svc in $expected; do
-    if ! jq -e --arg s "$svc" '.containers[] | select(.name==$s) | (.last_repave != "NEVER")' "$TMP_DIR/agw_repave_status_all.out" >/dev/null; then
+    if ! jq -e --arg s "$svc" '.containers[] | select(.name==$s) | (.last_repave != "NEVER")' "$TMP_DIR/precinct_repave_status_all.out" >/dev/null; then
       log_fail "precinct status container ${svc}" "missing repave timestamp for ${svc}"
       exit 1
     fi

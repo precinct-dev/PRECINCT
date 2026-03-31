@@ -11,6 +11,7 @@
 
   <meta property="og:title" content="Go SDK Reference | mcpgateway">
   <meta property="og:description" content="Complete API reference for the PRECINCT Go SDK (mcpgateway): GatewayClient, functional options, error handling, wire format, and mTLS configuration.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://precinct.dev/pages/go-sdk.html">
   <meta property="og:site_name" content="PRECINCT">
@@ -219,14 +220,14 @@
             <h2>Overview</h2>
             <p>
               The <code>mcpgateway</code> package is a single-purpose Go module for
-              communicating with the PRECINCT gateway. It requires Go &ge;1.24.6 and has
+              communicating with the PRECINCT gateway. It is validated and supported with Go 1.26.1 and has
               exactly one external dependency: <code>github.com/google/uuid</code>
               (used to auto-generate session IDs).
             </p>
             <ul>
-              <li><strong>Module path:</strong> <code>github.com/precinct-dev/PRECINCT/sdk/go</code></li>
+              <li><strong>Module path:</strong> <code>github.com/precinct-dev/precinct/sdk/go</code></li>
               <li><strong>Package:</strong> <code>mcpgateway</code></li>
-              <li><strong>Go version:</strong> &ge;1.24.6</li>
+              <li><strong>Supported Go version:</strong> 1.26.1</li>
               <li><strong>Dependencies:</strong> <code>github.com/google/uuid</code></li>
             </ul>
             <p>
@@ -242,7 +243,7 @@
             <h2>Installation</h2>
 
             <h3>From the Repository</h3>
-            <pre data-lang="bash"><code>go get github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway</code></pre>
+            <pre data-lang="bash"><code>go get github.com/precinct-dev/precinct/sdk/go/mcpgateway</code></pre>
 
             <h3>Local Development (replace directive)</h3>
             <p>
@@ -252,11 +253,11 @@
             <pre data-lang="go"><code>// go.mod
 module myagent
 
-go 1.24.6
+go 1.26.1
 
-require github.com/precinct-dev/PRECINCT/sdk/go v0.0.0
+require github.com/precinct-dev/precinct/sdk/go v0.0.0
 
-replace github.com/precinct-dev/PRECINCT/sdk/go => ../PRECINCT/sdk/go</code></pre>
+replace github.com/precinct-dev/precinct/sdk/go => ../PRECINCT/sdk/go</code></pre>
 
             <pre data-lang="bash"><code>go mod tidy</code></pre>
           </section>
@@ -272,7 +273,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway"
+    "github.com/precinct-dev/precinct/sdk/go/mcpgateway"
 )
 
 func main() {
@@ -1065,7 +1066,7 @@ result, err := client.Call(ctx, "tavily_search", params)
     "net/http"
     "os"
 
-    "github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway"
+    "github.com/precinct-dev/precinct/sdk/go/mcpgateway"
 )
 
 // Load SVID certificate and key (provided by SPIRE agent)
