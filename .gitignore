@@ -16,6 +16,7 @@ Thumbs.db
 .env.local
 .env.*.local
 .envrc
+.wrangler/
 
 # Logs and runtime temp files
 *.log

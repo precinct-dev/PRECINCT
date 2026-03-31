@@ -227,7 +227,7 @@
                 integration.
               </p>
               <ul>
-                <li>Python &ge;3.10</li>
+                <li>Python 3.13</li>
                 <li>Automatic SPIFFE ID injection</li>
                 <li>Exponential backoff retry (503 only)</li>
                 <li>Context manager lifecycle</li>
@@ -365,7 +365,7 @@ client, err := mcpgateway.NewClient(
           <section id="installation">
             <h2>Installation</h2>
             <h3>Python</h3>
-            <pre data-lang="bash"><code>pip install mcp-gateway-sdk</code></pre>
+            <pre data-lang="bash"><code>uv add ./sdk/python</code></pre>
             <p>See the <a href="python-sdk.html#installation">Python SDK installation guide</a> for optional dependency groups.</p>
             <h3>Go</h3>
             <pre data-lang="bash"><code>go get github.com/precinct-dev/precinct/sdk/go/mcpgateway</code></pre>

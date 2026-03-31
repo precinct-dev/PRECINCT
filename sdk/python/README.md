@@ -26,18 +26,18 @@ Python client library for making MCP JSON-RPC tool calls through the Agentic AI 
 
 ## Installation
 
-**Requirements:** Python >= 3.10
+**Requirements:** Python 3.13
 
-Install from the local SDK directory:
+From this repository:
 
 ```bash
-pip install ./sdk/python
+uv sync --project sdk/python --python 3.13
 ```
 
-Or using `uv`:
+From another `uv`-managed project:
 
 ```bash
-uv pip install ./sdk/python
+uv add ./sdk/python
 ```
 
 **Core dependency:** [httpx](https://www.python-httpx.org/) >= 0.28.0
@@ -46,10 +46,10 @@ uv pip install ./sdk/python
 
 ```bash
 # OpenTelemetry tracing support
-pip install ./sdk/python[otel]
+uv sync --project sdk/python --python 3.13 --extra otel
 
 # Development dependencies (pytest, httpx)
-pip install ./sdk/python[dev]
+uv sync --project sdk/python --python 3.13 --extra dev
 ```
 
 ---
@@ -494,7 +494,7 @@ When `trace_tool_arguments=True`, the client also emits `mcp.tool.arguments` wit
 **Install the optional OTel dependency:**
 
 ```bash
-pip install ./sdk/python[otel]
+uv sync --project sdk/python --python 3.13 --extra otel
 # Installs: opentelemetry-api >= 1.39.0
 ```
 

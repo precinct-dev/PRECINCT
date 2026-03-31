@@ -31,7 +31,7 @@ try:
     import yaml
 except ImportError:
     print(
-        "ERROR: PyYAML is required.  Install with:  pip install pyyaml",
+        "ERROR: PyYAML is required. Run: uv sync --project tools/compliance --python 3.13",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -42,7 +42,7 @@ try:
     from openpyxl.utils import get_column_letter
 except ImportError:
     print(
-        "ERROR: openpyxl is required.  Install with:  pip install openpyxl",
+        "ERROR: openpyxl is required. Run: uv sync --project tools/compliance --python 3.13",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -51,7 +51,7 @@ try:
     from fpdf import FPDF
 except ImportError:
     print(
-        "ERROR: fpdf2 is required.  Install with:  pip install fpdf2",
+        "ERROR: fpdf2 is required. Run: uv sync --project tools/compliance --python 3.13",
         file=sys.stderr,
     )
     sys.exit(1)

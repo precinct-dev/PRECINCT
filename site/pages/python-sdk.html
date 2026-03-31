@@ -195,7 +195,7 @@
           <p class="lead">
             Complete API reference for <code>mcp-gateway-sdk</code> (v0.1.0), the
             PRECINCT Python SDK for integrating agents with the security gateway. Built
-            on <code>httpx</code>, requires Python &gt;=3.10, and works with any agent
+            on <code>httpx</code>, requires Python 3.13, and works with any agent
             framework or raw HTTP.
           </p>
 
@@ -252,12 +252,11 @@
             <h2>Installation</h2>
 
             <h3>Core install</h3>
-            <pre data-lang="bash"><code># With pip (from local checkout)
-cd sdk/python
-pip install -e .
+            <pre data-lang="bash"><code># From this repository
+uv sync --project sdk/python --python 3.13
 
-# With uv
-uv pip install -e sdk/python</code></pre>
+# From another uv-managed project
+uv add ./sdk/python</code></pre>
 
             <h3>Optional dependency groups</h3>
             <p>
@@ -279,19 +278,19 @@ uv pip install -e sdk/python</code></pre>
                 <tbody>
                   <tr>
                     <td><code>env</code></td>
-                    <td><code>pip install -e ".[env]"</code></td>
+                    <td><code>uv sync --project sdk/python --python 3.13 --extra env</code></td>
                     <td><code>python-dotenv&gt;=1.0.1</code></td>
                     <td>Enable <code>load_dotenv()</code> helper</td>
                   </tr>
                   <tr>
                     <td><code>otel</code></td>
-                    <td><code>pip install -e ".[otel]"</code></td>
+                    <td><code>uv sync --project sdk/python --python 3.13 --extra otel</code></td>
                     <td><code>opentelemetry-api&gt;=1.39.0</code></td>
                     <td>Enable <code>setup_observability()</code> and tracer wiring</td>
                   </tr>
                   <tr>
                     <td><code>dev</code></td>
-                    <td><code>pip install -e ".[dev]"</code></td>
+                    <td><code>uv sync --project sdk/python --python 3.13 --extra dev</code></td>
                     <td><code>pytest&gt;=9.0.0</code>, <code>httpx&gt;=0.28.0</code></td>
                     <td>Development and testing</td>
                   </tr>
@@ -300,7 +299,7 @@ uv pip install -e sdk/python</code></pre>
             </div>
 
             <pre data-lang="bash"><code># Install all optional groups at once
-pip install -e ".[env,otel,dev]"</code></pre>
+uv sync --project sdk/python --python 3.13 --extra env --extra otel --extra dev</code></pre>
 
             <div class="callout callout-warning">
               <div class="callout-title">

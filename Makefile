@@ -21,8 +21,8 @@ DC_REAL := $(DC) --env-file .env -f $(COMPOSE_DIR)/docker-compose.real.yml
 
 # Compliance tooling
 AUDIT_LOG ?= /tmp/audit.jsonl
-COMPLIANCE_VENV := tools/compliance/.venv
-COMPLIANCE_PYTHON := $(COMPLIANCE_VENV)/bin/python3
+PYTHON_VERSION ?= 3.13
+UV_CACHE_DIR ?= $(CURDIR)/.cache/uv
 CONFORMANCE_REPORT ?= build/conformance/conformance-report.json
 
 # Validation suite filter (compose|k8s, default: all)
@@ -120,6 +120,7 @@ clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
 	-docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml down -v >/dev/null 2>&1 || true
 	-docker compose -f $(COMPOSE_DIR)/docker-compose.opensearch.yml down -v >/dev/null 2>&1 || true
 	rm -rf build/sbom/ build/bin/
+	rm -f gateway service precinct openclaw-ws-smoke
 	@echo "Clearing SPIRE data directories (stale SVIDs prevent clean restart)..."
 	rm -rf $(COMPOSE_DIR)/data/spire-server/ $(COMPOSE_DIR)/data/spire-agent/
 	@echo "Clearing x509pop certificates..."
@@ -385,7 +386,7 @@ tracker-surface-validate:
 # 5. Demos (demo, demo-compose, demo-k8s, demo-cli)
 # ===========================================================================
 
-.PHONY: demo demo-compose demo-compose-mock demo-k8s demo-cli
+.PHONY: demo demo-compose demo-compose-mock demo-k8s demo-cli demo-walking-skeleton
 
 demo: ## Run E2E demo (Docker Compose + K8s)
 	@bash examples/run.sh compose
@@ -399,6 +400,9 @@ demo-compose-mock: ## Run E2E demo with mock services (deterministic, no externa
 
 demo-k8s: ## Run E2E demo (K8s; leaves cluster running for inspection)
 	@bash examples/run.sh k8s --no-teardown
+
+demo-walking-skeleton: ## Run minimal walking skeleton demo against a live Compose stack
+	@bash scripts/demo-walking-skeleton.sh
 
 demo-cli: ## Run all CLI demos (precinct CLI, operate, compliance, repave, upgrade)
 	@bash scripts/ensure-stack.sh --resilient
@@ -839,12 +843,16 @@ build-images:
 	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
 	@echo "Built: $(GATEWAY_IMAGE):$(IMAGE_TAG), $(S3_MCP_IMAGE):$(IMAGE_TAG)"
 
-build: build-cli ## Build service binaries and CLI
+build: build-cli build-gateway ## Build local binaries and gateway image
 	@echo "Building PRECINCT Gateway..."
 	$(DC) build precinct-gateway
 
 build-cli: ## Build CLI binary (delegates to cli/Makefile)
 	$(MAKE) -C cli build
+
+build-gateway: ## Build gateway binary into build/bin/
+	@mkdir -p build/bin
+	go build -o build/bin/gateway ./cmd/gateway
 
 install: ## Install CLI binary (delegates to cli/Makefile)
 	$(MAKE) -C cli install
@@ -876,10 +884,6 @@ control-matrix-check:
 
 .PHONY: compliance-report compliance-evidence test-compliance gdpr-delete gdpr-ropa
 
-$(COMPLIANCE_VENV): tools/compliance/requirements.txt
-	python3 -m venv $(COMPLIANCE_VENV)
-	$(COMPLIANCE_PYTHON) -m pip install --quiet -r tools/compliance/requirements.txt
-
 compliance-report: test-compliance
 	@if $(DC) ps --format '{{.State}}' 2>/dev/null | grep -q 'running'; then \
 		echo "Running E2E suite for fresh audit logs..."; \
@@ -888,7 +892,7 @@ compliance-report: test-compliance
 	else \
 		echo "Docker stack not running, using existing audit log at $(AUDIT_LOG)"; \
 	fi
-	$(COMPLIANCE_PYTHON) tools/compliance/generate.py --audit-log $(AUDIT_LOG) --project-root .
+	UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --project tools/compliance --python $(PYTHON_VERSION) python tools/compliance/generate.py --audit-log $(AUDIT_LOG) --project-root .
 
 compliance-evidence:
 	@if [ -z "$(FRAMEWORK)" ]; then \
@@ -900,8 +904,8 @@ compliance-evidence:
 	if [ -n "$(COSIGN_KEY)" ]; then args="$$args --cosign-key $(COSIGN_KEY)"; fi; \
 	go run ./cli/precinct compliance collect --framework "$(FRAMEWORK)" $$args
 
-test-compliance: $(COMPLIANCE_VENV)
-	cd tools/compliance && $(CURDIR)/$(COMPLIANCE_PYTHON) -m pytest test_generate.py -v
+test-compliance:
+	UV_CACHE_DIR=$(UV_CACHE_DIR) uv run --project tools/compliance --python $(PYTHON_VERSION) pytest tools/compliance/test_generate.py -v
 
 gdpr-ropa:
 	@cat docs/compliance/gdpr-article-30-ropa.md

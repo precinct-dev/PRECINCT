@@ -49,10 +49,8 @@ Agent -> Gateway (9090) -> [13-step middleware chain] -> Docker MCP Server (8081
 
 3. Python virtual environment:
    ```bash
-   cd agents/dspy_researcher
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
+   cd sample-agents/dspy_researcher
+   uv sync --python 3.13 --group dev
    ```
 
 4. Seed provider secret in SPIKE (reference-based, no raw key in `.env`):
@@ -66,10 +64,10 @@ Agent -> Gateway (9090) -> [13-step middleware chain] -> Docker MCP Server (8081
 
 ```bash
 # Default topic
-python agent.py
+uv run python agent.py
 
 # Custom topic
-python agent.py "zero trust architecture for AI agents"
+uv run python agent.py "zero trust architecture for AI agents"
 ```
 
 ## Environment Variables
@@ -99,13 +97,13 @@ python agent.py "zero trust architecture for AI agents"
 
 ```bash
 # Unit tests (no compose stack needed)
-pytest test_agent.py -v -k "not integration"
+uv run pytest test_agent.py -v -k "not integration"
 
 # Integration tests (requires compose stack)
-pytest test_agent.py -v -m integration
+uv run pytest test_agent.py -v -m integration
 
 # All tests
-pytest test_agent.py -v
+uv run pytest test_agent.py -v
 ```
 
 ## Gateway Denial Handling
