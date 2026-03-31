@@ -445,7 +445,7 @@ func applyEscalationOverrides(rd *RiskDimension, session *AgentSession) {
 type RiskScoreOption func(*riskScoreOptions)
 
 type riskScoreOptions struct {
-	reversibility *ActionReversibility
+	reversibility  *ActionReversibility
 	principalLevel int // 0=system, 1=owner, 2=operator, 3=agent, 4=external
 }
 

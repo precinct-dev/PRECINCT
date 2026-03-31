@@ -103,7 +103,7 @@ no inline credentials are stored in manifests.
 
 ```bash
 export PRECINCT_OPENSEARCH_PASSWORD='<secret>'
-go run ./cli/agw compliance collect \
+go run ./cli/precinct compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \

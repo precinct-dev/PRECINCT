@@ -25,6 +25,16 @@
     if (stored === "light" || stored === "dark") {
       return stored;
     }
+
+    if (window.matchMedia) {
+      if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+        return "light";
+      }
+      if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+        return "dark";
+      }
+    }
+
     // Default to dark -- this is a security infrastructure site
     return "dark";
   }
@@ -261,16 +271,34 @@
 
     if (!toggleBtn || !sidebar) return;
 
+    if (!sidebar.id) {
+      sidebar.id = "sidebar-mobile-panel";
+    }
+    toggleBtn.setAttribute("aria-controls", sidebar.id);
+    toggleBtn.setAttribute("aria-expanded", "false");
+    sidebar.setAttribute("aria-hidden", "true");
+
     function openSidebar() {
       sidebar.classList.add("open");
       if (overlay) overlay.classList.add("open");
       document.body.style.overflow = "hidden";
+      toggleBtn.setAttribute("aria-expanded", "true");
+      sidebar.setAttribute("aria-hidden", "false");
+
+      var firstLink = sidebar.querySelector("a, button, [tabindex]:not([tabindex='-1'])");
+      if (firstLink) firstLink.focus();
     }
 
-    function closeSidebar() {
+    function closeSidebar(options) {
       sidebar.classList.remove("open");
       if (overlay) overlay.classList.remove("open");
       document.body.style.overflow = "";
+      toggleBtn.setAttribute("aria-expanded", "false");
+      sidebar.setAttribute("aria-hidden", "true");
+
+      if (options && options.restoreFocus) {
+        toggleBtn.focus();
+      }
     }
 
     toggleBtn.addEventListener("click", function () {
@@ -282,13 +310,15 @@
     });
 
     if (overlay) {
-      overlay.addEventListener("click", closeSidebar);
+      overlay.addEventListener("click", function () {
+        closeSidebar({ restoreFocus: true });
+      });
     }
 
     // Close on Escape
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && sidebar.classList.contains("open")) {
-        closeSidebar();
+        closeSidebar({ restoreFocus: true });
       }
     });
 

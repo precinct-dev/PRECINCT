@@ -20,28 +20,13 @@ func (g *Gateway) handlePhase3PlaneEntry(w http.ResponseWriter, r *http.Request)
 		return false
 	}
 
-	switch r.URL.Path {
-	case "/v1/ingress/submit":
-		g.handleIngressAdmit(w, r)
-		return true
-	case "/v1/ingress/admit":
-		g.handleIngressAdmit(w, r)
-		return true
-	case "/v1/context/admit":
-		g.handleContextAdmit(w, r)
-		return true
-	case "/v1/model/call":
-		g.handleModelCall(w, r)
-		return true
-	case "/v1/tool/execute":
-		g.handleToolExecute(w, r)
-		return true
-	case "/v1/loop/check":
-		g.handleLoopCheck(w, r)
-		return true
-	default:
+	handler, ok := g.phase3RouteHandlers()[r.URL.Path]
+	if !ok {
 		return false
 	}
+
+	handler(w, r)
+	return true
 }
 
 func getDecisionCorrelationIDs(r *http.Request, env RunEnvelope) (traceID string, decisionID string) {
@@ -601,9 +586,9 @@ func evaluateContextInvariants(attrs map[string]any) (Decision, ReasonCode, int,
 	case "ephemeral", "session", "long_term", "regulated":
 	default:
 		return DecisionDeny, ReasonContextSchemaInvalid, http.StatusBadRequest, map[string]any{
-			"invariant":    "memory_tier_validation",
-			"memory_tier":  memoryTier,
-			"error":        "memory_tier must be one of ephemeral/session/long_term/regulated",
+			"invariant":   "memory_tier_validation",
+			"memory_tier": memoryTier,
+			"error":       "memory_tier must be one of ephemeral/session/long_term/regulated",
 		}
 	}
 

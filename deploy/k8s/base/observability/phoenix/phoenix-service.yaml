@@ -7,7 +7,7 @@
 #   2. NodePort for UI access (operator browses to phoenix:6006)
 #
 # DNS name: phoenix.observability.svc.cluster.local
-# Used by: otel-collector (otlp_grpc/phoenix exporter endpoint)
+# Used by: otel-collector (otlp/phoenix exporter endpoint)
 #
 # For production, replace NodePort with:
 #   - LoadBalancer (via cloud-specific LB controller)

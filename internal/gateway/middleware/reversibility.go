@@ -3,10 +3,11 @@
 // Used by step-up gating to make informed decisions about irreversible actions.
 //
 // Four-tier taxonomy:
-//   Score 0: fully reversible (read-only, no side effects)
-//   Score 1: mostly reversible (can be undone with effort)
-//   Score 2: partially reversible (requires backup to undo)
-//   Score 3: irreversible (permanent data/state loss)
+//
+//	Score 0: fully reversible (read-only, no side effects)
+//	Score 1: mostly reversible (can be undone with effort)
+//	Score 2: partially reversible (requires backup to undo)
+//	Score 3: irreversible (permanent data/state loss)
 package middleware
 
 import "strings"
@@ -15,7 +16,7 @@ import "strings"
 type ActionReversibility struct {
 	Score          int    `json:"score"`           // 0=fully reversible, 1=mostly, 2=partially, 3=irreversible
 	Category       string `json:"category"`        // "reversible", "costly_reversible", "partially_reversible", "irreversible"
-	Explanation    string `json:"explanation"`      // human-readable explanation
+	Explanation    string `json:"explanation"`     // human-readable explanation
 	RequiresBackup bool   `json:"requires_backup"` // should pre-action snapshot be taken?
 }
 

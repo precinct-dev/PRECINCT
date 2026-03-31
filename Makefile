@@ -68,7 +68,6 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 		echo "x509pop certs not found; generating..."; \
 		bash scripts/generate-x509pop-certs.sh; \
 	fi
-	@rm -rf $(COMPOSE_DIR)/data/spire-agent-socket
 	@mkdir -p $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
 	@chmod 777 $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
 	@# Real mode: ensure OpenClaw config dir exists with gateway bind config.
@@ -242,7 +241,7 @@ test-unit: ## Run unit tests (Go packages and non-tagged suites)
 	go test ./internal/gateway/middleware/... -v -cover
 	go test ./tests/unit/... -v
 
-test-integration: ## Run tagged integration tests against an ensured local stack
+test-integration: $(COMPLIANCE_VENV) ## Run tagged integration tests against an ensured local stack
 	@echo "Ensuring local stack is healthy for tagged integration tests..."
 	@bash scripts/ensure-stack.sh --resilient
 	@echo ""
@@ -260,7 +259,6 @@ test-mcpserver-integration: ## Run mcpserver SPIRE mTLS integration tests (AC 10
 		echo "x509pop certs not found; generating..."; \
 		bash scripts/generate-x509pop-certs.sh; \
 	fi
-	@rm -rf $(COMPOSE_DIR)/data/spire-agent-socket
 	@mkdir -p $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
 	@chmod 777 $(COMPOSE_DIR)/data/spire-agent-socket $(COMPOSE_DIR)/data/spire-agent
 	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
@@ -364,10 +362,10 @@ compose-down: ## Tear down Docker Compose stack and volumes
 demo-cli: ## Run all CLI demos (precinct CLI, operate, compliance, repave, upgrade)
 	@bash scripts/ensure-stack.sh --resilient
 	@mkdir -p build/bin
-	@go build -o build/bin/precinct ./cli/agw/
-	$(call run_demo_test,precinct-cli,tests/e2e/test_agw_cli.sh)
-	$(call run_demo_test,precinct-operate,tests/e2e/test_agw_operate.sh)
-	$(call run_demo_test,precinct-compliance,tests/e2e/test_agw_compliance.sh)
+	@go build -o build/bin/precinct ./cli/precinct/
+	$(call run_demo_test,precinct-cli,tests/e2e/test_precinct_cli.sh)
+	$(call run_demo_test,precinct-operate,tests/e2e/test_precinct_operate.sh)
+	$(call run_demo_test,precinct-compliance,tests/e2e/test_precinct_compliance.sh)
 	$(call run_demo_test,repave,tests/e2e/test_repave.sh)
 	$(call run_demo_test,upgrade,tests/e2e/test_upgrade.sh)
 
@@ -685,24 +683,24 @@ production-reality-closure-local-artifacts-validate:
 precinct-demo:
 	@bash scripts/ensure-stack.sh
 	@mkdir -p build/bin
-	@go build -o build/bin/precinct ./cli/agw/
-	$(call run_demo_test,precinct-demo,tests/e2e/test_agw_cli.sh)
+	@go build -o build/bin/precinct ./cli/precinct/
+	$(call run_demo_test,precinct-demo,tests/e2e/test_precinct_cli.sh)
 
 precinct-operate-demo:
 	@bash scripts/ensure-stack.sh --resilient
 	@mkdir -p build/bin
-	@go build -o build/bin/precinct ./cli/agw/
-	$(call run_demo_test,precinct-operate-demo,tests/e2e/test_agw_operate.sh)
+	@go build -o build/bin/precinct ./cli/precinct/
+	$(call run_demo_test,precinct-operate-demo,tests/e2e/test_precinct_operate.sh)
 
 compliance-demo:
 	@bash scripts/ensure-stack.sh --resilient
 	@mkdir -p build/bin
-	@go build -o build/bin/precinct ./cli/agw/
-	$(call run_demo_test,compliance-demo,tests/e2e/test_agw_compliance.sh)
+	@go build -o build/bin/precinct ./cli/precinct/
+	$(call run_demo_test,compliance-demo,tests/e2e/test_precinct_compliance.sh)
 
 repave-demo: up
 	@mkdir -p build/bin
-	@go build -o build/bin/precinct ./cli/agw/
+	@go build -o build/bin/precinct ./cli/precinct/
 	$(call run_demo_test,repave-demo,tests/e2e/test_repave.sh)
 
 upgrade-demo:
@@ -765,7 +763,7 @@ benchmark:
 
 build-tools:
 	@mkdir -p build/bin
-	go build -o build/bin/precinct ./cli/agw/
+	go build -o build/bin/precinct ./cli/precinct/
 	go build -o build/bin/openclaw-ws-smoke ./ports/openclaw/cmd/openclaw-ws-smoke
 
 .PHONY: openclaw-demo
@@ -859,7 +857,7 @@ compliance-evidence:
 	@args=""; \
 	if [ "$(SIGN)" = "1" ]; then args="$$args --sign"; fi; \
 	if [ -n "$(COSIGN_KEY)" ]; then args="$$args --cosign-key $(COSIGN_KEY)"; fi; \
-	go run ./cli/agw compliance collect --framework "$(FRAMEWORK)" $$args
+	go run ./cli/precinct compliance collect --framework "$(FRAMEWORK)" $$args
 
 test-compliance: $(COMPLIANCE_VENV)
 	cd tools/compliance && $(CURDIR)/$(COMPLIANCE_PYTHON) -m pytest test_generate.py -v
@@ -872,7 +870,7 @@ gdpr-delete:
 		echo "Usage: make gdpr-delete SPIFFE_ID=spiffe://poc.local/agents/example"; \
 		exit 1; \
 	fi
-	go run ./cli/agw gdpr delete "$(SPIFFE_ID)" --confirm
+	go run ./cli/precinct gdpr delete "$(SPIFFE_ID)" --confirm
 
 # ---------------------------------------------------------------------------
 # 13. Internal helpers and operational targets

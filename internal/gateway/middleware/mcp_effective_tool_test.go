@@ -82,4 +82,3 @@ func TestParsedMCPRequest_RequestTypeFlags(t *testing.T) {
 		t.Fatalf("Expected IsNotification=true")
 	}
 }
-

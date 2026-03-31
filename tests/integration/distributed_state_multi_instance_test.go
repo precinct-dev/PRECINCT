@@ -8,9 +8,9 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/precinct-dev/precinct/internal/gateway"
 	"github.com/precinct-dev/precinct/internal/testutil"
-	"github.com/alicebob/miniredis/v2"
 )
 
 func newRuleOpsTestServerURLWithKeyDB(t *testing.T, keydbURL string) string {

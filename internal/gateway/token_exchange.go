@@ -31,6 +31,7 @@ const (
 
 	defaultTokenExchangeTTL = 15 * time.Minute
 	maxTokenExchangeTTL     = 1 * time.Hour
+	minTokenExchangeKeyLen  = 32
 
 	// Environment variable for the HMAC signing key.
 	tokenExchangeSigningKeyEnv = "TOKEN_EXCHANGE_SIGNING_KEY"
@@ -131,6 +132,13 @@ func LoadTokenExchangeConfig(path string) (*TokenExchangeConfig, error) {
 	signingKeyRaw := os.Getenv(tokenExchangeSigningKeyEnv)
 	if signingKeyRaw == "" {
 		return nil, fmt.Errorf("environment variable %s is required", tokenExchangeSigningKeyEnv)
+	}
+	if len(signingKeyRaw) < minTokenExchangeKeyLen {
+		return nil, fmt.Errorf(
+			"environment variable %s must be at least %d bytes",
+			tokenExchangeSigningKeyEnv,
+			minTokenExchangeKeyLen,
+		)
 	}
 	cfg.signingKey = []byte(signingKeyRaw)
 

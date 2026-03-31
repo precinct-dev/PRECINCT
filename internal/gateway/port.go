@@ -77,12 +77,12 @@ type PortGatewayServices interface {
 
 // ModelEgressResult is the exported version of modelEgressResult for use by port adapters.
 type ModelEgressResult struct {
-	StatusCode       int
-	ResponseBody     []byte
-	ResponseHeaders  http.Header
-	Reason           ReasonCode
-	ProviderUsed     string
-	UpstreamStatus   int
+	StatusCode        int
+	ResponseBody      []byte
+	ResponseHeaders   http.Header
+	Reason            ReasonCode
+	ProviderUsed      string
+	UpstreamStatus    int
 	FallbackAttempted bool
 }
 

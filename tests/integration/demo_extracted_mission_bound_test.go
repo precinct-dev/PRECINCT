@@ -51,9 +51,9 @@ func newMissionBoundTestGateway(t *testing.T) (*httptest.Server, string) {
 		AdminAuthzAllowedSPIFFEIDs: []string{
 			adminSPIFFEIDForTest(),
 		},
-		DestinationsConfigPath:         destinationsPath,
-		RateLimitRPM:                   100000,
-		RateLimitBurst:                 100000,
+		DestinationsConfigPath:          destinationsPath,
+		RateLimitRPM:                    100000,
+		RateLimitBurst:                  100000,
 		ModelPolicyIntentPrependEnabled: true,
 	}
 

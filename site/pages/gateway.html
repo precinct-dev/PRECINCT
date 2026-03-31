@@ -12,6 +12,7 @@
   <!-- Open Graph -->
   <meta property="og:title" content="PRECINCT Gateway">
   <meta property="og:description" content="Centralized enforcement point for agentic AI: 13-layer defense-in-depth middleware, SPIFFE identity, OPA policy, DLP scanning, and late-binding secrets.">
+  <meta name="twitter:card" content="summary_large_image">
   <meta property="og:type" content="article">
   <meta property="og:url" content="https://precinct.dev/pages/gateway.html">
   <meta property="og:site_name" content="PRECINCT">
@@ -323,8 +324,8 @@ sequenceDiagram
                   </tr>
                   <tr>
                     <td><code>POST</code></td>
-                    <td><code>/v1/ingress/admit</code></td>
-                    <td>Ingress plane admission. Validates canonical connector envelopes: SPIFFE source principal matching, SHA-256 payload content-addressing, replay detection with 30-minute nonce TTL, and 10-minute freshness windows.</td>
+                    <td><code>/v1/ingress/submit</code></td>
+                    <td>Canonical ingress plane admission. Validates connector envelopes with SPIFFE source principal matching, SHA-256 payload content-addressing, replay detection with 30-minute nonce TTL, and 10-minute freshness windows. <code>/v1/ingress/admit</code> remains a compatibility alias.</td>
                   </tr>
                   <tr>
                     <td><code>POST</code></td>

@@ -4,8 +4,10 @@
 // DeepScanner posts to: {GUARD_MODEL_ENDPOINT}/chat/completions
 // where GUARD_MODEL_ENDPOINT defaults to https://api.groq.com/openai/v1.
 //
-// We intentionally return a high score to force deepscan_blocked when the
-// DeepScanMiddleware is dispatched (DLP flagged potential_injection).
+// We deterministically classify obviously suspicious payloads as malicious and
+// everything else as benign. This keeps demo-compose security proofs stable
+// without accidentally blocking all medium-risk traffic that goes through the
+// step-up guard path.
 package main
 
 import (
@@ -15,6 +17,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -39,6 +42,41 @@ type chatCompletionResponse struct {
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
+}
+
+func classifyPromptGuardContent(messages []struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}) string {
+	var parts []string
+	for _, msg := range messages {
+		parts = append(parts, msg.Content)
+	}
+	content := strings.ToLower(strings.Join(parts, "\n"))
+
+	suspiciousSignals := []string{
+		"ignore all previous instructions",
+		"reveal your system prompt",
+		"system prompt",
+		"dan mode",
+		"do anything now",
+		"unrestricted ai",
+		"new instructions:",
+		"bypass all security",
+		"forget everything you were told",
+		"disregard all previous rules",
+		"bypass all security checks",
+		"grant admin access",
+		"pretend to be a dan",
+		"jailbreak",
+	}
+	for _, signal := range suspiciousSignals {
+		if strings.Contains(content, signal) {
+			return "MALICIOUS"
+		}
+	}
+
+	return "BENIGN"
 }
 
 func main() {
@@ -78,8 +116,8 @@ func main() {
 		var req chatCompletionRequest
 		_ = json.NewDecoder(r.Body).Decode(&req) // best-effort (we don't need content)
 
-		// Return a high probability as plain text content ("0.85") which DeepScanner
-		// parses as both injection and jailbreak probabilities (see parsePromptGuardContent).
+		classification := classifyPromptGuardContent(req.Messages)
+
 		resp := chatCompletionResponse{
 			ID:      "mock-guard-" + time.Now().UTC().Format("20060102T150405Z"),
 			Object:  "chat.completion",
@@ -100,7 +138,7 @@ func main() {
 						Content string `json:"content"`
 					}{
 						Role:    "assistant",
-						Content: "0.85",
+						Content: classification,
 					},
 					FinishReason: "stop",
 				},

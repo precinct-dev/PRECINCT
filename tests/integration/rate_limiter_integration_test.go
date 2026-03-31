@@ -25,11 +25,11 @@ func TestRateLimiterIntegration(t *testing.T) {
 	gateway := "spiffe://poc.local/gateways/precinct-gateway/dev"
 
 	t.Run("RateLimitHeadersPresent", func(t *testing.T) {
-		// Verify rate limit headers are present in normal responses
+		// Use an allowed method so the request reaches step-11 rate limiting.
 		mcpReq := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"method":  "tavily_search",
-			"params":  map[string]interface{}{"query": "rate-limit-headers-present"},
+			"method":  "tools/list",
+			"params":  map[string]interface{}{},
 			"id":      1,
 		}
 		reqBody, _ := json.Marshal(mcpReq)
@@ -47,6 +47,10 @@ func TestRateLimiterIntegration(t *testing.T) {
 			t.Fatalf("Failed to send request: %v", err)
 		}
 		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected tools/list to succeed, got %d", resp.StatusCode)
+		}
 
 		// Verify rate limit headers are present
 		if limit := resp.Header.Get("X-RateLimit-Limit"); limit == "" {
@@ -66,11 +70,11 @@ func TestRateLimiterIntegration(t *testing.T) {
 	})
 
 	t.Run("IndependentAgentLimits", func(t *testing.T) {
-		// Verify different agents have independent rate limits
+		// Verify different agents have independent rate limits with an allowed request.
 		mcpReq := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"method":  "tavily_search",
-			"params":  map[string]interface{}{"query": "rate-limit-independent-agents"},
+			"method":  "tools/list",
+			"params":  map[string]interface{}{},
 			"id":      1,
 		}
 		reqBody, _ := json.Marshal(mcpReq)
@@ -98,29 +102,23 @@ func TestRateLimiterIntegration(t *testing.T) {
 		}
 		defer resp2.Body.Close()
 
-		// Both agents should succeed (independent rate limits)
-		// Note: We're not testing exhaustion here, just independence
-		if resp1.StatusCode >= 500 {
+		// Both agents should succeed and receive independent header state.
+		if resp1.StatusCode != http.StatusOK {
 			t.Errorf("Expected researcher request to succeed, got %d", resp1.StatusCode)
 		}
-		if resp2.StatusCode >= 500 {
+		if resp2.StatusCode != http.StatusOK {
 			t.Errorf("Expected gateway request to succeed with independent limit, got %d", resp2.StatusCode)
+		}
+		if resp1.Header.Get("X-RateLimit-Remaining") == "" || resp2.Header.Get("X-RateLimit-Remaining") == "" {
+			t.Fatalf("expected rate-limit headers for both agents")
 		}
 	})
 
 	t.Run("RateLimitExceededWithRetryAfter", func(t *testing.T) {
-		// This test requires a low rate limit for the test environment
-		// With default 100 req/min + 20 burst, we'd need to send 120+ requests
-		// Instead, we verify the 429 response structure when it occurs
-
-		// Note: In a real production test, you'd lower RATE_LIMIT_RPM for testing
-		// For this POC test, we'll just verify the rate limit headers exist
-		// and have valid values, proving the middleware is active
-
 		mcpReq := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"method":  "tavily_search",
-			"params":  map[string]interface{}{"query": "rate-limit-retry-after"},
+			"method":  "tools/list",
+			"params":  map[string]interface{}{},
 			"id":      1,
 		}
 		reqBody, _ := json.Marshal(mcpReq)
@@ -128,13 +126,11 @@ func TestRateLimiterIntegration(t *testing.T) {
 		// Use a unique agent for this test to avoid interference
 		testAgent := "spiffe://poc.local/agents/mcp-client/ratelimit-researcher/dev"
 
-		// Send multiple requests rapidly to test rate limiting
-		// With 100 req/min + 20 burst, we won't hit the limit in this test
-		// But we verify the headers are present and valid
 		var lastResp *http.Response
 		client := &http.Client{Timeout: 5 * time.Second}
+		saw429 := false
 
-		for i := 0; i < 5; i++ {
+		for i := 0; i < 90; i++ {
 			req, _ := http.NewRequest("POST", gatewayURL, bytes.NewBuffer(reqBody))
 			req.Header.Set("X-Spiffe-Id", testAgent)
 			req.Header.Set("Content-Type", "application/json")
@@ -149,20 +145,25 @@ func TestRateLimiterIntegration(t *testing.T) {
 			}
 			lastResp = resp
 
-			// Check if we got rate limited (unlikely with default settings)
 			if resp.StatusCode == http.StatusTooManyRequests {
-				// Verify 429 response has proper structure
+				saw429 = true
+
+				// Verify 429 response has proper structure.
 				var respBody map[string]interface{}
 				if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
 					t.Fatalf("Failed to decode 429 response body: %v", err)
 				}
 
-				if respBody["error"] != "rate_limit_exceeded" {
-					t.Errorf("Expected error=rate_limit_exceeded, got %v", respBody["error"])
+				if respBody["code"] != "ratelimit_exceeded" {
+					t.Errorf("Expected code=ratelimit_exceeded, got %v", respBody["code"])
 				}
 
-				if _, exists := respBody["retry_after_seconds"]; !exists {
-					t.Error("Expected retry_after_seconds in 429 response")
+				details, ok := respBody["details"].(map[string]interface{})
+				if !ok {
+					t.Fatalf("Expected details object in 429 response, got %v", respBody["details"])
+				}
+				if _, exists := details["retry_after_seconds"]; !exists {
+					t.Error("Expected retry_after_seconds in 429 response details")
 				}
 
 				// Verify rate limit headers are present even in 429
@@ -172,7 +173,10 @@ func TestRateLimiterIntegration(t *testing.T) {
 				break
 			}
 
-			// Verify rate limit headers in normal responses
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("request %d: expected 200 or 429, got %d", i+1, resp.StatusCode)
+			}
+
 			if limit := resp.Header.Get("X-RateLimit-Limit"); limit == "" {
 				t.Errorf("Request %d: Expected X-RateLimit-Limit header", i+1)
 			}
@@ -186,6 +190,9 @@ func TestRateLimiterIntegration(t *testing.T) {
 
 		if lastResp != nil {
 			lastResp.Body.Close()
+		}
+		if !saw429 {
+			t.Fatalf("expected to hit 429 within the configured local rate limit window")
 		}
 	})
 }

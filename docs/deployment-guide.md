@@ -23,7 +23,7 @@ For EKS IaC details, see [EKS IaC Approach](eks-iac.md).
 |------|----------------|---------|
 | Docker | 25.0+ | Container runtime |
 | Docker Compose | 2.24+ | Multi-container orchestration |
-| Go | 1.23+ | Building gateway and services |
+| Go | 1.26.1 | Building gateway and services |
 | make | Any | Build automation |
 | Bash | 4.0+ | Setup and demo scripts |
 
@@ -506,7 +506,7 @@ The gateway is configured via environment variables. The most commonly needed on
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SPIFFE_MODE` | `dev` | SPIFFE mode: `dev` (HTTP) or `prod` (mTLS) |
+| `SPIFFE_MODE` | `prod` | SPIFFE mode: `dev` (HTTP) or `prod` (mTLS) |
 | `SPIFFE_TRUST_DOMAIN` | `poc.local` | SPIFFE trust domain |
 | `SPIFFE_LISTEN_PORT` | `9443` | mTLS listen port (prod mode) |
 | `SPIFFE_ENDPOINT_SOCKET` | `unix:///tmp/spire-agent/public/api.sock` | SPIRE agent workload API socket |

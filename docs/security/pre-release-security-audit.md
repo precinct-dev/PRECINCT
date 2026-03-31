@@ -3,7 +3,7 @@
 **Date:** 2026-03-14
 **Auditor:** Automated + Manual Code Review
 **Scope:** Full codebase security review covering 7 audit areas
-**Branch:** story/OC-1nwr
+**Branch:** story/OC-1nwr (historical audit branch)
 
 ---
 
@@ -12,9 +12,10 @@
 PRECINCT demonstrates a mature security posture for a pre-release project. The
 architecture makes strong use of SPIFFE/SPIRE for zero-trust identity, mTLS for
 transport security, OPA for policy enforcement, and DLP for data loss prevention.
-No critical findings were identified. Three high-severity issues were found and
-fixed in this audit (all Dockerfile non-root hardening). Several medium and low
-findings are documented with accepted risk rationale.
+This document is a point-in-time assessment of that branch snapshot only; it is
+not the authoritative release sign-off for the current `main` branch. Three
+high-severity issues were found and fixed in that audit (all Dockerfile non-root
+hardening). Several medium and low findings are documented with accepted risk rationale.
 
 ---
 
@@ -28,7 +29,7 @@ findings are documented with accepted risk rationale.
   `db.Exec`, or `db.Query` calls. The system uses KeyDB (Redis protocol) which is
   not susceptible to SQL injection.
 - **Command Injection:** `exec.Command` usage is present in CLI tooling
-  (`internal/agw/`) and test infrastructure. All invocations use explicit command
+  (`internal/precinctcli/`) and test infrastructure. All invocations use explicit command
   arrays (not shell interpolation). No user-supplied input is passed to shell commands.
 - **Prompt Injection:** DLP middleware (`internal/gateway/middleware/dlp.go`) includes
   comprehensive prompt injection detection patterns (ignore instructions, DAN mode,

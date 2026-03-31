@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/precinct-dev/precinct/internal/gateway/middleware"
 	"github.com/precinct-dev/precinct/internal/testutil"
-	"github.com/alicebob/miniredis/v2"
 )
 
 func newDistributedStateGateway(t *testing.T, keydbURL string, handleTTLSeconds int) *Gateway {

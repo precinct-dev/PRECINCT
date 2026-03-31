@@ -56,12 +56,12 @@ type OPAInput struct {
 	Params      map[string]interface{} `json:"params"`
 	StepUpToken string                 `json:"step_up_token"`
 	Session     SessionInput           `json:"session"`
-	UI          *UIInput               `json:"ui,omitempty"`          // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
-	Principal   *PrincipalInput        `json:"principal,omitempty"`   // OC-3ch6: principal authority for level-based access control
-	DataSource  *DataSourceInput       `json:"data_source,omitempty"` // OC-4zrf: data source access control
-	AuthMethod  string                 `json:"auth_method"`                     // OC-qfxx: authentication method (header_declared, mtls_svid, oauth_jwt, oauth_introspection, token_exchange)
-	OAuthScopes []string               `json:"oauth_scopes,omitempty"`          // OC-qfxx: OAuth scopes from bearer token
-	OAuthIssuer string                 `json:"oauth_issuer,omitempty"`          // OC-qfxx: OAuth token issuer
+	UI          *UIInput               `json:"ui,omitempty"`           // RFA-j2d.7: MCP-UI fields for UI-aware policy evaluation
+	Principal   *PrincipalInput        `json:"principal,omitempty"`    // OC-3ch6: principal authority for level-based access control
+	DataSource  *DataSourceInput       `json:"data_source,omitempty"`  // OC-4zrf: data source access control
+	AuthMethod  string                 `json:"auth_method"`            // OC-qfxx: authentication method (header_declared, mtls_svid, oauth_jwt, oauth_introspection, token_exchange)
+	OAuthScopes []string               `json:"oauth_scopes,omitempty"` // OC-qfxx: OAuth scopes from bearer token
+	OAuthIssuer string                 `json:"oauth_issuer,omitempty"` // OC-qfxx: OAuth token issuer
 }
 
 // SessionInput represents session data for OPA evaluation

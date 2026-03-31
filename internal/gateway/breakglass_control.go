@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/precinct-dev/precinct/internal/gateway/middleware"
 	"github.com/google/uuid"
+	"github.com/precinct-dev/precinct/internal/gateway/middleware"
 )
 
 var (

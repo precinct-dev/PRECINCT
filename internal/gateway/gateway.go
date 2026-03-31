@@ -650,112 +650,6 @@ func (g *Gateway) PublicHandler() http.Handler {
 	return mux
 }
 
-func (g *Gateway) protectedHandler() http.Handler {
-	// Build middleware chain in order:
-	// 1. Request size limit
-	// 2. Body capture
-	// 3. SPIFFE auth
-	// 4. Audit log
-	// 5. Tool registry verify
-	// 6. OPA policy
-	// 7. DLP scanning
-	// 8. Session context (RFA-qq0.15)
-	// 9. Step-up gating (RFA-qq0.17: risk scoring + destination check + guard model)
-	// 10. Deep scan dispatch (async, after step-up gating)
-	// 11. Rate limiting (per-agent token bucket)
-	// 12. Circuit breaker (protect upstream from cascading failures)
-	// 13. Token substitution hook (SECURITY: LAST before proxy - no middleware sees real secrets)
-	// 14. Response firewall (RFA-qq0.16: wraps proxy, intercepts responses before return)
-	// 15. Proxy to upstream
-
-	// RFA-qq0.16: Wrap proxy handler with response firewall
-	// The response firewall intercepts responses AFTER they come back from upstream
-	// but BEFORE they flow back through the middleware chain to the agent
-	proxyWithResponseFirewall := middleware.ResponseFirewall(
-		g.proxyHandler(),
-		g.registry,
-		g.handleStore,
-		g.config.HandleTTL,
-	)
-
-	handler := http.Handler(proxyWithResponseFirewall)
-
-	// Apply middleware in reverse order (innermost first)
-	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor, middleware.NewToolRegistryScopeResolver(g.registry)) // 13 - LAST before proxy (RFA-0gr: dynamic scope)
-	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)                                                         // 12
-	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)                                                                 // 11
-	handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig)                                                    // 10
-	if g.extensionRegistry != nil {
-		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostAnalysis, g.auditor) // post_analysis: after DeepScan, before RateLimit
-	}
-	handler = middleware.StepUpGating(handler, g.groqGuardClient, g.destinationAllowlist, g.riskConfig, g.registry, g.auditor, g.approvalCapabilities) // 9
-	handler = middleware.SessionContextMiddleware(handler, g.sessionContext)                                                                           // 8
-	if g.extensionRegistry != nil {
-		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostInspection, g.auditor) // post_inspection: after DLP, before Session
-	}
-	// OC-xj4w: Use trusted-agent-aware DLP when port adapters have registered
-	// trusted agent overrides. System prompts from trusted agents bypass DLP
-	// scanning; user messages are always scanned.
-	if g.trustedAgentDLP != nil && len(g.trustedAgentDLP.Agents) > 0 {
-		handler = middleware.DLPMiddlewareWithTrustedAgents(handler, g.dlpScanner, g.trustedAgentDLP, g.dlpPolicy()) // 7
-	} else {
-		handler = middleware.DLPMiddleware(handler, g.dlpScanner, g.dlpPolicy()) // 7
-	}
-	handler = middleware.OPAPolicy(handler, g.opa) // 6
-	if g.extensionRegistry != nil {
-		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostAuthz, g.auditor) // post_authz: after OPA, before DLP
-	}
-	var toolHashRefresher middleware.ObservedToolHashRefresher
-	if g.config.MCPTransportMode == "mcp" {
-		toolHashRefresher = g.refreshObservedToolHashes
-	}
-	failClosedObservedHash := g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict"
-	// OC-9aac: Wire data source verification into the tool registry middleware.
-	// This enables rug-pull detection for external data sources referenced in tool call parameters.
-	dsPolicy := g.config.UnknownDataSourcePolicy
-	if dsPolicy == "" {
-		dsPolicy = "flag"
-	}
-	handler = middleware.ToolRegistryVerify(
-		handler,
-		g.registry,
-		g.observedToolHashes,
-		toolHashRefresher,
-		middleware.WithObservedHashFailClosed(failClosedObservedHash),
-		middleware.WithDataSourceVerification(httpDataSourceFetcher, dsPolicy),
-	) // 5
-	handler = middleware.AuditLog(handler, g.auditor)                                               // 4
-	handler = middleware.PrincipalHeaders(handler, g.config.SPIFFETrustDomain, g.config.SPIFFEMode) // 3b: OC-t7go
-	// Build SPIFFEAuth options: OAuth JWT and/or token exchange validator.
-	var spiffeAuthOpts []middleware.SPIFFEAuthOption
-	if g.oauthJWTConfig != nil {
-		spiffeAuthOpts = append(spiffeAuthOpts, middleware.WithOAuthJWTConfig(g.oauthJWTConfig, g.config.SPIFFETrustDomain))
-	}
-	// OC-xkkc: Wire exchange token validator into SPIFFEAuth middleware.
-	if g.tokenExchangeConfig != nil {
-		signingKey := g.tokenExchangeConfig.signingKey
-		spiffeAuthOpts = append(spiffeAuthOpts, middleware.WithExchangeTokenValidator(
-			func(token string) (*middleware.ExchangeTokenClaims, error) {
-				claims, err := ValidateExchangeToken(token, signingKey)
-				if err != nil {
-					return nil, err
-				}
-				return &middleware.ExchangeTokenClaims{
-					Sub:        claims.Sub,
-					AuthMethod: claims.PrecinctAuthMethod,
-				}, nil
-			},
-		))
-	}
-	handler = middleware.SPIFFEAuth(handler, g.config.SPIFFEMode, spiffeAuthOpts...) // 3
-	handler = middleware.BodyCapture(handler)                                    // 2
-	handler = middleware.RequestSizeLimit(handler, g.config.MaxRequestSizeBytes) // 1
-	handler = middleware.RequestMetrics(handler)                                 // 0 - outermost: record request_total with status code
-	handler = middleware.RuntimeProfile(handler, g.config.SPIFFEMode, g.config.EnforcementProfile)
-
-	return handler
-}
-
 func exactPathHandler(path string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != path {
@@ -814,160 +708,7 @@ func (g *Gateway) proxyHandler() http.Handler {
 		// Wrap response writer to capture status code for span and internal route handling.
 		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
-		// Route-level compensating controls for OPA-bypassed paths.
-		if allowed, contractID := g.enforceOPABypassCompensatingChecks(proxyRW, r.WithContext(ctx)); !allowed {
-			result := "denied"
-			if proxyRW.statusCode < 400 {
-				result = "allowed"
-			}
-			span.SetAttributes(
-				attribute.Int("status_code", proxyRW.statusCode),
-				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "opa_bypass_compensating_check"),
-				attribute.String("mcp.contract_id", contractID),
-			)
-			return
-		}
-
-		// Demo-only rugpull control endpoints. These execute inside the full
-		// middleware chain and require explicit admin authorization.
-		if r.URL.Path == "/__demo__/rugpull/on" || r.URL.Path == "/__demo__/rugpull/off" {
-			enable := r.URL.Path == "/__demo__/rugpull/on"
-			g.handleDemoRugpullToggle(proxyRW, r.WithContext(ctx), enable)
-			result := "allowed"
-			if proxyRW.statusCode >= 400 {
-				result = "denied"
-			}
-			span.SetAttributes(
-				attribute.Int("status_code", proxyRW.statusCode),
-				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "demo rugpull endpoint"),
-			)
-			return
-		}
-
-		// Demo-only, fast-path endpoint for deterministic rate-limit proofs.
-		//
-		// This path is intentionally handled inside the normal middleware chain
-		// (see Handler()) so requests still pass through Step 11 rate limiting.
-		// We gate it behind the same secure-by-default demo toggle used for rugpull
-		// admin endpoints so it is not exposed accidentally in non-demo runs.
-		if r.URL.Path == "/__demo__/ratelimit" {
-			if g.config == nil || !g.config.DemoRugpullAdminEnabled || g.config.SPIFFEMode != "dev" {
-				http.NotFound(w, r)
-				span.SetAttributes(
-					attribute.String("mcp.result", "denied"),
-					attribute.String("mcp.reason", "demo endpoints disabled"),
-				)
-				return
-			}
-			if r.Method != http.MethodGet {
-				w.WriteHeader(http.StatusMethodNotAllowed)
-				span.SetAttributes(
-					attribute.String("mcp.result", "denied"),
-					attribute.String("mcp.reason", "method not allowed"),
-				)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"ok":true}`))
-			span.SetAttributes(
-				attribute.Int("status_code", http.StatusOK),
-				attribute.String("mcp.result", "allowed"),
-				attribute.String("mcp.reason", "demo ratelimit endpoint"),
-			)
-			return
-		}
-
-		if g.handleConnectorAuthorityEntry(proxyRW, r.WithContext(ctx)) {
-			result := "allowed"
-			if proxyRW.statusCode >= 400 {
-				result = "denied"
-			}
-			span.SetAttributes(
-				attribute.Int("status_code", proxyRW.statusCode),
-				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "connector_conformance_entry"),
-				attribute.String("mcp.gateway.middleware", v24MiddlewareConnectorAuth),
-				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
-				attribute.String("mcp.v24.endpoint", r.URL.Path),
-			)
-			return
-		}
-
-		if g.handleV24AdminEntry(proxyRW, r.WithContext(ctx)) {
-			result := "allowed"
-			if proxyRW.statusCode >= 400 {
-				result = "denied"
-			}
-			adminMiddleware := adminMiddlewareForPath(r.URL.Path)
-			span.SetAttributes(
-				attribute.Int("status_code", proxyRW.statusCode),
-				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "v24_admin_entry"),
-				attribute.String("mcp.gateway.middleware", adminMiddleware),
-				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
-				attribute.String("mcp.v24.endpoint", r.URL.Path),
-			)
-			return
-		}
-
-		// Port adapter dispatch: registered adapters get first crack at
-		// requests before the hardcoded fallback paths below.
-		for _, port := range g.portAdapters {
-			if port.TryServeHTTP(proxyRW, r.WithContext(ctx)) {
-				result := "allowed"
-				if proxyRW.statusCode >= 400 {
-					result = "denied"
-				}
-				span.SetAttributes(
-					attribute.Int("status_code", proxyRW.statusCode),
-					attribute.String("mcp.result", result),
-					attribute.String("mcp.reason", "port_adapter_"+port.Name()),
-					attribute.String("mcp.gateway.middleware", "port_"+port.Name()),
-					attribute.Int("mcp.gateway.step", v24MiddlewareStep),
-					attribute.String("mcp.v24.endpoint", r.URL.Path),
-				)
-				return
-			}
-		}
-
-		// NOTE: handleAppWSEntry and handleAppHTTPEntry were removed.
-		// Third-party integrations are now dispatched via the port adapter loop above.
-
-		// Phase 3 walking skeleton: internal plane entry points are served
-		// from the gateway boundary under /v1/* and still pass the full middleware chain.
-		if g.handlePhase3PlaneEntry(proxyRW, r.WithContext(ctx)) {
-			result := "allowed"
-			if proxyRW.statusCode >= 400 {
-				result = "denied"
-			}
-			span.SetAttributes(
-				attribute.Int("status_code", proxyRW.statusCode),
-				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "phase3_plane_entry"),
-				attribute.String("mcp.gateway.middleware", v24MiddlewarePhase3Plane),
-				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
-				attribute.String("mcp.v24.endpoint", r.URL.Path),
-			)
-			return
-		}
-		// OpenAI-compatible model egress path. This route keeps external model calls
-		// inside PRECINCT Gateway policy controls while remaining SDK/framework friendly.
-		if g.handleModelCompatEntry(proxyRW, r.WithContext(ctx)) {
-			result := "allowed"
-			if proxyRW.statusCode >= 400 {
-				result = "denied"
-			}
-			span.SetAttributes(
-				attribute.Int("status_code", proxyRW.statusCode),
-				attribute.String("mcp.result", result),
-				attribute.String("mcp.reason", "phase3_model_egress"),
-				attribute.String("mcp.gateway.middleware", v24MiddlewareModelCompat),
-				attribute.Int("mcp.gateway.step", v24MiddlewareStep),
-				attribute.String("mcp.v24.endpoint", r.URL.Path),
-			)
+		if g.tryInternalProxyRoutes(proxyRW, r.WithContext(ctx), span) {
 			return
 		}
 
@@ -1326,26 +1067,82 @@ func extractUIResourceFromMCPResult(result json.RawMessage, resourceURI string) 
 	return nil, mimeType, fmt.Errorf("no resource contents found")
 }
 
-// httpDataSourceFetcher is a ContentFetcher that retrieves data source content
-// over HTTP/HTTPS. Used by WithDataSourceVerification to fetch content for
-// hash verification against the registry baseline.
-// OC-9aac: Enables rug-pull detection for external data sources.
-func httpDataSourceFetcher(uri string) ([]byte, error) {
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Get(uri)
-	if err != nil {
-		return nil, fmt.Errorf("data source fetch failed: %w", err)
+// newHTTPDataSourceFetcher returns a ContentFetcher that retrieves data source
+// content over HTTP/HTTPS only after applying the gateway destination allowlist.
+// Redirects are disabled so a permitted hostname cannot bounce the fetch onto a
+// different destination. This keeps data source verification inside the same
+// outbound policy model used elsewhere in the gateway.
+func newHTTPDataSourceFetcher(allowlist *middleware.DestinationAllowlist) middleware.ContentFetcher {
+	transport := &http.Transport{
+		Proxy: nil,
+		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+			host, _, err := net.SplitHostPort(address)
+			if err != nil {
+				return nil, fmt.Errorf("parse data source dial address: %w", err)
+			}
+			if !allowDataSourceHost(host, allowlist) {
+				return nil, fmt.Errorf("data source destination %q is not on the allowlist", host)
+			}
+
+			dialer := &net.Dialer{Timeout: 10 * time.Second}
+			return dialer.DialContext(ctx, network, address)
+		},
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("data source returned HTTP %d", resp.StatusCode)
+	client := &http.Client{
+		Timeout:   10 * time.Second,
+		Transport: transport,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if req != nil && req.URL != nil {
+				return fmt.Errorf("redirects are not allowed for data source verification (%s)", req.URL.String())
+			}
+			return fmt.Errorf("redirects are not allowed for data source verification")
+		},
 	}
-	// Limit read to 10 MB to prevent resource exhaustion
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
-	if err != nil {
-		return nil, fmt.Errorf("data source read failed: %w", err)
+
+	return func(rawURI string) ([]byte, error) {
+		parsed, err := url.Parse(rawURI)
+		if err != nil {
+			return nil, fmt.Errorf("invalid data source URI: %w", err)
+		}
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return nil, fmt.Errorf("unsupported data source URI scheme %q", parsed.Scheme)
+		}
+		host := parsed.Hostname()
+		if host == "" {
+			return nil, fmt.Errorf("data source URI is missing a hostname")
+		}
+		if !allowDataSourceHost(host, allowlist) {
+			return nil, fmt.Errorf("data source destination %q is not on the allowlist", host)
+		}
+
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, parsed.String(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("data source fetch request failed: %w", err)
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("data source fetch failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("data source returned HTTP %d", resp.StatusCode)
+		}
+		body, err := io.ReadAll(io.LimitReader(resp.Body, 10*1024*1024))
+		if err != nil {
+			return nil, fmt.Errorf("data source read failed: %w", err)
+		}
+		return body, nil
 	}
-	return body, nil
+}
+
+func allowDataSourceHost(host string, allowlist *middleware.DestinationAllowlist) bool {
+	if strings.TrimSpace(host) == "" {
+		return false
+	}
+	if allowlist == nil {
+		return false
+	}
+	return allowlist.IsAllowed(host)
 }
 
 // refreshObservedToolHashes performs an internal tools/list call upstream and

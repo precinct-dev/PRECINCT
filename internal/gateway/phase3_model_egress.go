@@ -21,7 +21,7 @@ import (
 const (
 	openAICompatChatCompletionsPath = "/openai/v1/chat/completions"
 	openAICompatResponsesPath       = "/openai/v1/responses"
-	anthropicMessagesPath            = "/v1/messages"
+	anthropicMessagesPath           = "/v1/messages"
 )
 
 type modelProviderResponse struct {

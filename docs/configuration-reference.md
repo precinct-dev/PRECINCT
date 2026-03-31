@@ -39,7 +39,7 @@ function `ConfigFromEnv()`.
 | `MAX_REQUEST_SIZE_BYTES` | `10485760` (10 MB) | Maximum request body size in bytes |
 | `LOG_LEVEL` | `info` | Log verbosity: `debug`, `info`, `warn`, `error` |
 | `AUDIT_LOG_PATH` | `/var/log/gateway/audit.jsonl` | Path to the JSONL audit log file |
-| `SPIFFE_MODE` | `dev` | SPIFFE operating mode: `dev` (HTTP, no mTLS) or `prod` (HTTPS with SPIRE mTLS) |
+| `SPIFFE_MODE` | `prod` | SPIFFE operating mode: `dev` (HTTP, no mTLS) or `prod` (HTTPS with SPIRE mTLS) |
 | `SPIFFE_TRUST_DOMAIN` | `poc.local` | SPIFFE trust domain for workload identity |
 | `SPIFFE_LISTEN_PORT` | `9443` | HTTPS listen port when `SPIFFE_MODE=prod` |
 | `SPIFFE_ENDPOINT_SOCKET` | _(none)_ | SPIRE Workload API socket URI (e.g., `unix:///tmp/spire-agent/public/api.sock`). This is the only SPIRE socket variable the gateway reads; `SPIRE_AGENT_SOCKET` (set in docker-compose.yml) is not consumed by gateway code |
@@ -413,7 +413,7 @@ Profile-specific audit sink override:
 
 ```bash
 export PRECINCT_OPENSEARCH_PASSWORD='<secret>'
-go run ./cli/agw compliance collect \
+go run ./cli/precinct compliance collect \
   --framework soc2 \
   --audit-source opensearch \
   --opensearch-url https://opensearch.observability.svc.cluster.local:9200 \
@@ -626,11 +626,11 @@ functionally identical to the base config. It is mounted by `docker-compose.phoe
 ```
 Receivers (OTLP gRPC :4317, HTTP :4318)
   -> Processors (batch: 1s/1024, resource attributes)
-  -> Exporters (otlp_grpc/phoenix -> phoenix:4317, debug)
+  -> Exporters (otlp/phoenix -> phoenix:4317, debug)
 ```
 
-**Pipelines**: `traces`, `metrics`, `logs` -- all follow the same
-receiver -> processor -> exporter path.
+**Pipelines**: `traces` exports to Phoenix + debug. `metrics` and `logs`
+export to `debug` only because Phoenix is used as the trace backend.
 
 ### config/spire/server.conf
 

@@ -31,13 +31,13 @@ func TestDeepScanGroqIntegration(t *testing.T) {
 	scanner := middleware.NewDeepScanner(apiKey, 10*time.Second)
 
 	tests := []struct {
-		name           string
-		content        string
-		expectError    bool
-		minLatencyMs   int64
-		maxLatencyMs   int64
-		minScore       float64 // Minimum expected threat score
-		maxScore       float64 // Maximum expected threat score
+		name         string
+		content      string
+		expectError  bool
+		minLatencyMs int64
+		maxLatencyMs int64
+		minScore     float64 // Minimum expected threat score
+		maxScore     float64 // Maximum expected threat score
 	}{
 		{
 			name:         "InjectionPattern",
@@ -150,12 +150,12 @@ func TestDeepScanMiddlewareIntegration(t *testing.T) {
 	}
 
 	tests := []struct {
-		name           string
-		content        string
-		spiffeID       string
-		tool           string
-		expectFlagged  bool
-		maxRespTimeMs  int64 // Fast path should not be blocked
+		name          string
+		content       string
+		spiffeID      string
+		tool          string
+		expectFlagged bool
+		maxRespTimeMs int64 // Fast path should not be blocked
 	}{
 		{
 			name:          "InjectionFlagged",

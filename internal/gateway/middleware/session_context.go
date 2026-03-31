@@ -24,17 +24,17 @@ type SessionContext struct {
 
 // AgentSession represents a single agent's session
 type AgentSession struct {
-	ID                  string
-	SPIFFEID            string
-	StartTime           time.Time
-	Actions             []ToolAction
-	DataClassifications []string
-	RiskScore           float64
-	Flags               []string
+	ID                           string
+	SPIFFEID                     string
+	StartTime                    time.Time
+	Actions                      []ToolAction
+	DataClassifications          []string
+	RiskScore                    float64
+	Flags                        []string
 	EscalationScore              float64           // OC-h4m7: cumulative escalation score for session risk tracking
-	EscalationHistory            []EscalationEvent  // OC-d77k: ordered history of escalation-contributing actions
-	EscalationFlags              []string           // OC-d77k: threshold-crossing flags (e.g., "escalation_critical")
-	DestructiveActionsAuthorized int                // OC-lmzm: count of authorized actions that required backup (Score >= 2)
+	EscalationHistory            []EscalationEvent // OC-d77k: ordered history of escalation-contributing actions
+	EscalationFlags              []string          // OC-d77k: threshold-crossing flags (e.g., "escalation_critical")
+	DestructiveActionsAuthorized int               // OC-lmzm: count of authorized actions that required backup (Score >= 2)
 }
 
 // EscalationEvent records a single action's contribution to the session escalation score.
@@ -50,8 +50,8 @@ type EscalationEvent struct {
 
 // Escalation threshold constants (OC-h4m7)
 const (
-	EscalationWarningThreshold  float64 = 15
-	EscalationCriticalThreshold float64 = 25
+	EscalationWarningThreshold   float64 = 15
+	EscalationCriticalThreshold  float64 = 25
 	EscalationEmergencyThreshold float64 = 40
 )
 
@@ -357,12 +357,12 @@ func containsSubstring(s, substr string) bool {
 func isExternalTarget(tool string, params map[string]interface{}) (bool, string) {
 	// Tools that typically access external services
 	externalTools := map[string]bool{
-		"email_send":      true,
-		"http_request":    true,
-		"file_upload":     true,
-		"webhook_call":    true,
-		"tavily_search":   true,
-		"messaging_send":  true,
+		"email_send":       true,
+		"http_request":     true,
+		"file_upload":      true,
+		"webhook_call":     true,
+		"tavily_search":    true,
+		"messaging_send":   true,
 		"messaging_status": true,
 	}
 

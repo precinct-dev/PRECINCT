@@ -73,11 +73,11 @@ func TestTokenSubstitutionIsLastMiddleware(t *testing.T) {
 	// Build middleware chain in CORRECT order (per Section 9.2)
 	var handler http.Handler = proxyHandler
 	handler = middleware.TokenSubstitution(handler, middleware.NewPOCSecretRedeemerWithOwner("spiffe://poc.local/agent/test-agent"), nil, nil) // 13 - LAST before proxy
-	handler = mockDeepScan(handler)                    // 10
-	handler = middleware.StepUpGating(handler, nil, nil, nil, nil, nil) // 9
-	handler = mockDLP(handler)                         // 7
-	handler = middleware.SPIFFEAuth(handler, "dev")    // 3
-	handler = middleware.BodyCapture(handler)          // 2
+	handler = mockDeepScan(handler)                                                                                                            // 10
+	handler = middleware.StepUpGating(handler, nil, nil, nil, nil, nil)                                                                        // 9
+	handler = mockDLP(handler)                                                                                                                 // 7
+	handler = middleware.SPIFFEAuth(handler, "dev")                                                                                            // 3
+	handler = middleware.BodyCapture(handler)                                                                                                  // 2
 
 	// Create request with SPIKE token
 	requestBody := `{"api_key": "` + tokenString + `"}`

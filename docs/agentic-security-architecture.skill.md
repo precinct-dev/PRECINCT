@@ -94,8 +94,8 @@ and stripped before the upstream MCP server sees the request.
 
 ## Section 2: Go SDK Reference
 
-**Package:** `github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway`
-**Min Go version:** 1.24.6
+**Package:** `github.com/precinct-dev/precinct/sdk/go/mcpgateway`
+**Supported Go version:** 1.26.1
 **External dependency:** `github.com/google/uuid`
 
 ### NewClient
@@ -729,7 +729,7 @@ import (
     "fmt"
     "log"
 
-    "github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway"
+    "github.com/precinct-dev/precinct/sdk/go/mcpgateway"
 )
 
 func main() {
@@ -842,7 +842,7 @@ import (
     "log"
     "net/http"
 
-    "github.com/precinct-dev/PRECINCT/sdk/go/mcpgateway"
+    "github.com/precinct-dev/precinct/sdk/go/mcpgateway"
     "github.com/spiffe/go-spiffe/v2/workloadapi"
 )
 

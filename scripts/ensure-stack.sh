@@ -16,6 +16,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 RESILIENT=0
+ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -27,6 +28,25 @@ done
 host_port_reachable() {
   local port="$1"
   (echo >"/dev/tcp/127.0.0.1/${port}") >/dev/null 2>&1
+}
+
+has_stale_spike_state() {
+  local nexus_logs gateway_logs
+  nexus_logs="$(docker compose -f "$ROOT_DIR/deploy/compose/docker-compose.yml" -f "$ROOT_DIR/deploy/compose/docker-compose.mock.yml" --profile mock logs spike-nexus --tail=200 2>/dev/null || true)"
+  gateway_logs="$(docker compose -f "$ROOT_DIR/deploy/compose/docker-compose.yml" -f "$ROOT_DIR/deploy/compose/docker-compose.mock.yml" --profile mock logs precinct-gateway --tail=80 2>/dev/null || true)"
+  if printf '%s\n%s\n' "$nexus_logs" "$gateway_logs" | rg -q 'crypto_decryption_failed|cipher: message authentication failed'; then
+    return 0
+  fi
+  return 1
+}
+
+reset_stale_spike_state() {
+  echo "Detected stale SPIKE encrypted state. Resetting compose stack and spike-nexus volume for a clean test bootstrap..."
+  make -C "$ROOT_DIR" down >/dev/null 2>&1 || true
+  docker volume rm -f spike-nexus-data >/dev/null 2>&1 || true
+  mkdir -p "$ROOT_DIR/deploy/compose/data/spire-agent-socket" "$ROOT_DIR/deploy/compose/data/spire-agent"
+  chmod 777 "$ROOT_DIR/deploy/compose/data/spire-agent-socket" "$ROOT_DIR/deploy/compose/data/spire-agent"
+  find "$ROOT_DIR/deploy/compose/data/spire-agent-socket" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
 }
 
 ensure_host_access() {
@@ -70,11 +90,19 @@ if [ "$RESILIENT" -eq 0 ]; then
 else
   if ! make -C "$SCRIPT_DIR/.." up; then
     echo "make up returned non-zero. Re-checking service health..."
+    if has_stale_spike_state; then
+      reset_stale_spike_state
+      make -C "$ROOT_DIR" up
+    fi
     if ! bash "$SCRIPT_DIR/compose-health-check.sh"; then
       echo "ERROR: services are not healthy after make up."
       exit 1
     fi
     echo "Services are healthy despite make up non-zero; continuing."
+  fi
+  if has_stale_spike_state; then
+    reset_stale_spike_state
+    make -C "$ROOT_DIR" up
   fi
 fi
 

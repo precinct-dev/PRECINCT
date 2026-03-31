@@ -66,7 +66,7 @@ max_ttl: "30m"
 		if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
 			t.Fatal(err)
 		}
-		t.Setenv("TOKEN_EXCHANGE_SIGNING_KEY", "test-key-123")
+		t.Setenv("TOKEN_EXCHANGE_SIGNING_KEY", "test-signing-key-material-with-32-bytes")
 
 		cfg, err := LoadTokenExchangeConfig(configPath)
 		if err != nil {
@@ -105,6 +105,30 @@ credentials:
 		}
 		if !strings.Contains(err.Error(), "TOKEN_EXCHANGE_SIGNING_KEY") {
 			t.Errorf("error should mention TOKEN_EXCHANGE_SIGNING_KEY, got: %v", err)
+		}
+	})
+
+	t.Run("fails with weak signing key env", func(t *testing.T) {
+		dir := t.TempDir()
+		configPath := filepath.Join(dir, "token-exchange.yaml")
+		hash := hashCredential(t, "key-abc")
+		configYAML := `
+credentials:
+  - credential_type: "api_key"
+    credential_hash: "` + hash + `"
+    spiffe_id: "spiffe://test.local/external/abc"
+`
+		if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
+			t.Fatal(err)
+		}
+		t.Setenv("TOKEN_EXCHANGE_SIGNING_KEY", "too-short")
+
+		_, err := LoadTokenExchangeConfig(configPath)
+		if err == nil {
+			t.Fatal("expected error for weak signing key")
+		}
+		if !strings.Contains(err.Error(), "at least 32 bytes") {
+			t.Fatalf("expected weak-key error, got: %v", err)
 		}
 	})
 

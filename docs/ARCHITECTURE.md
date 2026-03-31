@@ -229,7 +229,7 @@ The complexity of mTLS in Docker Compose is real (BA Risk #3). The approach:
 5. KeyDB requires TLS certificates written to disk; a sidecar or init script fetches the SVID and writes PEM files for KeyDB's `--tls-*` flags.
 
 **CLI setup handles this transparently (Designer requirement P3: Progressive Disclosure):**
-- `make setup` in `SPIFFE_MODE=dev` skips mTLS (header injection, HTTP). This is the default.
+- `make setup` in `SPIFFE_MODE=dev` skips mTLS (header injection, HTTP). This is an explicit development convenience mode, not the default runtime mode.
 - `make setup` in `SPIFFE_MODE=prod` enables mTLS. The CLI verifies SPIRE agent is healthy and all services can fetch SVIDs before starting the stack.
 
 **Gateway code changes:**

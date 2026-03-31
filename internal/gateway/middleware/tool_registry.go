@@ -166,14 +166,14 @@ type RegisteredUIResource struct {
 // 'Agents of Chaos', arXiv:2602.20021v1).
 // OC-cqj0: Data Source Integrity Registry.
 type DataSourceDefinition struct {
-	URI           string        `yaml:"uri" json:"uri"`                         // e.g., "https://gist.github.com/..."
-	ContentHash   string        `yaml:"content_hash" json:"content_hash"`       // SHA-256 of approved content ("sha256:" prefix + hex)
-	ApprovedAt    time.Time     `yaml:"approved_at" json:"approved_at"`         // when the content was approved
-	ApprovedBy    string        `yaml:"approved_by" json:"approved_by"`         // SPIFFE ID of approver
-	MaxSizeBytes  int64         `yaml:"max_size_bytes" json:"max_size_bytes"`   // max allowed content size (0 = no limit)
-	MutablePolicy string       `yaml:"mutable_policy" json:"mutable_policy"`   // "block_on_change", "flag_on_change", "allow"
-	RefreshTTL    time.Duration `yaml:"refresh_ttl" json:"refresh_ttl"`         // how often to re-verify
-	LastVerified  time.Time     `yaml:"last_verified" json:"last_verified"`     // last successful verification
+	URI           string        `yaml:"uri" json:"uri"`                       // e.g., "https://gist.github.com/..."
+	ContentHash   string        `yaml:"content_hash" json:"content_hash"`     // SHA-256 of approved content ("sha256:" prefix + hex)
+	ApprovedAt    time.Time     `yaml:"approved_at" json:"approved_at"`       // when the content was approved
+	ApprovedBy    string        `yaml:"approved_by" json:"approved_by"`       // SPIFFE ID of approver
+	MaxSizeBytes  int64         `yaml:"max_size_bytes" json:"max_size_bytes"` // max allowed content size (0 = no limit)
+	MutablePolicy string        `yaml:"mutable_policy" json:"mutable_policy"` // "block_on_change", "flag_on_change", "allow"
+	RefreshTTL    time.Duration `yaml:"refresh_ttl" json:"refresh_ttl"`       // how often to re-verify
+	LastVerified  time.Time     `yaml:"last_verified" json:"last_verified"`   // last successful verification
 }
 
 // uiResourceKey returns the map key for a UI resource: "server|resourceURI".
@@ -198,7 +198,7 @@ type ToolRegistry struct {
 	mu          sync.RWMutex
 	tools       map[string]ToolDefinition       // tool_name -> definition
 	uiResources map[string]RegisteredUIResource // "server|resourceURI" -> registration
-	dataSources map[string]DataSourceDefinition  // uri -> definition (OC-cqj0)
+	dataSources map[string]DataSourceDefinition // uri -> definition (OC-cqj0)
 	configPath  string                          // path to YAML config file (for Watch)
 	publicKey   ed25519.PublicKey               // RFA-lo1.4: Ed25519 public key for signature verification (nil = dev mode)
 }
@@ -209,7 +209,7 @@ type ToolRegistry struct {
 type ToolRegistryReloadResult struct {
 	ToolCount       int
 	UIResourceCount int
-	DataSourceCount int  // OC-cqj0: number of registered data sources
+	DataSourceCount int // OC-cqj0: number of registered data sources
 	CosignVerified  bool
 }
 
@@ -776,19 +776,19 @@ func (tr *ToolRegistry) VerifyDataSource(uri string, fetcher ContentFetcher, unk
 		switch unknownPolicy {
 		case "block":
 			return DataSourceVerifyResult{
-				Allowed:  false,
-				Reason:   "unregistered_data_source",
-				URI:      uri,
-				Policy:   "block",
-				Flagged:  false,
+				Allowed: false,
+				Reason:  "unregistered_data_source",
+				URI:     uri,
+				Policy:  "block",
+				Flagged: false,
 			}
 		case "allow":
 			return DataSourceVerifyResult{
-				Allowed:  true,
-				Reason:   "unregistered_data_source_allowed",
-				URI:      uri,
-				Policy:   "allow",
-				Flagged:  false,
+				Allowed: true,
+				Reason:  "unregistered_data_source_allowed",
+				URI:     uri,
+				Policy:  "allow",
+				Flagged: false,
 			}
 		default: // "flag" (default)
 			return DataSourceVerifyResult{

@@ -344,7 +344,7 @@ func TestBackupHeader_SessionDestructiveActionsIncremented(t *testing.T) {
 	guardClient := &mockGuardClient{injectionProb: 0.0, jailbreakProb: 0.0}
 
 	session := &AgentSession{
-		ID:                          "test-session-destructive",
+		ID:                           "test-session-destructive",
 		DestructiveActionsAuthorized: 0,
 	}
 
@@ -387,7 +387,7 @@ func TestBackupHeader_SessionNotIncrementedForReversible(t *testing.T) {
 	guardClient := &mockGuardClient{injectionProb: 0.0, jailbreakProb: 0.0}
 
 	session := &AgentSession{
-		ID:                          "test-session-no-increment",
+		ID:                           "test-session-no-increment",
 		DestructiveActionsAuthorized: 0,
 	}
 
@@ -456,7 +456,7 @@ func TestBackupHeader_Integration_OwnerPartiallyReversible(t *testing.T) {
 	defer auditor.Close()
 
 	session := &AgentSession{
-		ID:                          "integration-session",
+		ID:                           "integration-session",
 		DestructiveActionsAuthorized: 0,
 	}
 

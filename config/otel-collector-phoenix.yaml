@@ -30,7 +30,7 @@ processors:
 
 exporters:
   # Export to Phoenix for trace visualization
-  otlp_grpc/phoenix:
+  otlp/phoenix:
     endpoint: phoenix:4317
     tls:
       insecure: true
@@ -45,17 +45,18 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlp_grpc/phoenix, debug]
+      exporters: [otlp/phoenix, debug]
 
+    # Phoenix accepts OTLP traces; keep metrics/logs local for debugging.
     metrics:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlp_grpc/phoenix, debug]
+      exporters: [debug]
 
     logs:
       receivers: [otlp]
       processors: [batch, resource]
-      exporters: [otlp_grpc/phoenix, debug]
+      exporters: [debug]
 
   telemetry:
     logs:

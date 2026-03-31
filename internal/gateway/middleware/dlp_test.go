@@ -9,6 +9,20 @@ import (
 	"testing"
 )
 
+func TestShouldSkipDLPScan_AdminApprovalRoutes(t *testing.T) {
+	for _, path := range []string{
+		"/admin/approvals/request",
+		"/admin/approvals/grant",
+		"/admin/approvals/deny",
+		"/admin/approvals/consume",
+	} {
+		req := httptest.NewRequest(http.MethodPost, path, nil)
+		if !shouldSkipDLPScan(req) {
+			t.Fatalf("expected DLP skip for %s", path)
+		}
+	}
+}
+
 func TestBuiltInScanner_Credentials(t *testing.T) {
 	scanner := NewBuiltInScanner()
 
@@ -1350,9 +1364,9 @@ func TestTrustedAgentDLPConfig_IsTrustedAgent(t *testing.T) {
 	}
 
 	tests := []struct {
-		name     string
-		spiffe   string
-		want     bool
+		name   string
+		spiffe string
+		want   bool
 	}{
 		{name: "matching trusted agent", spiffe: "spiffe://poc.local/openclaw", want: true},
 		{name: "non-matching SPIFFE", spiffe: "spiffe://poc.local/other-agent", want: false},
