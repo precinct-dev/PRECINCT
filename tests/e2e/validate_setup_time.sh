@@ -268,8 +268,8 @@ if [ "$MODE" = "compose" ]; then
 
 elif [ "$MODE" = "k8s" ]; then
     log_info "Deploying to local K8s..."
-    make k8s-local-up 2>&1 | sed 's/^/    /' || {
-        log_fail "make k8s-local-up" "K8s deployment failed"
+    make k8s-up 2>&1 | sed 's/^/    /' || {
+        log_fail "make k8s-up" "K8s deployment failed"
         exit 1
     }
     log_pass "K8s deployment complete"

@@ -219,11 +219,9 @@ make k8s-registry
 
 # 3. Deploy full stack to K8s (builds, pushes, applies overlays, waits for rollouts)
 make k8s-up
-# Alias: make k8s-local-up
 
 # 3b. Optional: include OpenSearch extension (mTLS + dashboards + audit forwarder)
 make k8s-opensearch-up
-# Alias: make k8s-local-opensearch-up
 
 # 4. Verify
 kubectl get pods -A | grep -E '(gateway|spire|spike|data|tools)'
@@ -236,7 +234,6 @@ make k8s-runtime-campaign
 
 # 7. Teardown
 make k8s-down
-# Alias: make k8s-local-down
 ```
 
 ### What `make k8s-up` Does

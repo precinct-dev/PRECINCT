@@ -362,7 +362,7 @@ make up                              # Start all services
 make demo-compose                    # Run full E2E demo (Go 21 + Python 22 tests)
 
 # K8s local stack (Docker Desktop kubeadm)
-make k8s-local-up                    # Start K8s local overlay
+make k8s-up                          # Start K8s local overlay
 make demo-k8s                        # Run full E2E demo on K8s
 
 # Phoenix observability (standalone, persistent)

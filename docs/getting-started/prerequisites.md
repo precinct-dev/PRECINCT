@@ -107,7 +107,7 @@ chmod 755 opa && sudo mv opa /usr/local/bin/
 The 30-minute threshold includes:
 
 1. Running `make setup` (interactive wizard)
-2. Starting services (`docker compose up -d` or `make k8s-local-up`)
+2. Starting services (`docker compose up -d` or `make k8s-up`)
 3. Waiting for all services to be healthy
 4. Sending the first E2E request through the full middleware chain
 

@@ -107,11 +107,13 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 	@echo "Running register-spire for any additional entries..."
 	$(MAKE) register-spire
 
-down: ## Stop Docker Compose stack (all profiles)
+down: ## Stop Docker Compose stack (all profiles). Set VOLUMES=1 to remove volumes.
 	@# Tear down with all profiles to catch mock+real containers from any previous run.
-	-$(DC_MOCK) down --remove-orphans 2>/dev/null
-	-$(DC_REAL) down --remove-orphans 2>/dev/null
-	-$(DC) down --remove-orphans 2>/dev/null
+	@args="--remove-orphans"; \
+	if [ "$(VOLUMES)" = "1" ]; then args="$$args -v"; fi; \
+	$(DC_MOCK) down $$args 2>/dev/null || true; \
+	$(DC_REAL) down $$args 2>/dev/null || true; \
+	$(DC) down $$args 2>/dev/null || true
 
 clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
 	$(DC) down -v
@@ -334,14 +336,14 @@ test-e2e: demo ## Run the full E2E demo suite (Compose + K8s)
 production-readiness-validate: security-scan-strict security-scan-validate manifest-policy-check control-matrix-check ## Strict production-readiness security evidence gate
 	@echo "production-readiness-validate: PASS"
 
-story-evidence-validate: ## Validate evidence paths in an nd story (STORY_ID=<id>)
+story-evidence-validate:
 	@if [ -z "$(STORY_ID)" ]; then \
 		echo "ERROR: STORY_ID is required (ex: make story-evidence-validate STORY_ID=RFA-565d)"; \
 		exit 1; \
 	fi
 	tests/e2e/validate_story_evidence_paths.sh "$(STORY_ID)"
 
-tracker-surface-validate: ## Audit active release workflow surfaces for stale tracker references
+tracker-surface-validate:
 	@bash -eu -o pipefail -c ' \
 		files=( \
 			"AGENTS.md" \
@@ -383,7 +385,7 @@ tracker-surface-validate: ## Audit active release workflow surfaces for stale tr
 # 5. Demos (demo, demo-compose, demo-k8s, demo-cli)
 # ===========================================================================
 
-.PHONY: demo demo-compose demo-compose-mock demo-k8s demo-cli compose-down
+.PHONY: demo demo-compose demo-compose-mock demo-k8s demo-cli
 
 demo: ## Run E2E demo (Docker Compose + K8s)
 	@bash examples/run.sh compose
@@ -397,9 +399,6 @@ demo-compose-mock: ## Run E2E demo with mock services (deterministic, no externa
 
 demo-k8s: ## Run E2E demo (K8s; leaves cluster running for inspection)
 	@bash examples/run.sh k8s --no-teardown
-
-compose-down: ## Tear down Docker Compose stack and volumes
-	$(DC) down -v
 
 demo-cli: ## Run all CLI demos (precinct CLI, operate, compliance, repave, upgrade)
 	@bash scripts/ensure-stack.sh --resilient
@@ -1125,7 +1124,7 @@ k8s-runtime-campaign:
 operations-backup-restore-drill:
 	@bash scripts/operations/run_backup_restore_drill.sh
 
-readiness-state-validate: ## Validate readiness docs/state snapshot against live nd status
+readiness-state-validate:
 	tests/e2e/validate_readiness_state_integrity.sh "$(SNAPSHOT)"
 
 validate-setup-time:
@@ -1169,14 +1168,3 @@ generate-spire-certs: ## Generate x509pop CA + agent cert for compose SPIRE atte
 
 test-x509pop-restart: ## Integration test: x509pop compose restart resilience
 	@bash tests/e2e/test_x509pop_restart.sh
-
-# ---------------------------------------------------------------------------
-# 16. Aliases (backwards compatibility)
-# ---------------------------------------------------------------------------
-
-k8s-local-up: k8s-up
-k8s-local-down: k8s-down
-k8s-local-opensearch-up: k8s-opensearch-up
-k8s-local-opensearch-down: k8s-opensearch-down
-clean-logs:
-	@if [ -d build/logs ]; then rm -rf build/logs/*; fi
