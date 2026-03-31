@@ -1,11 +1,18 @@
+FROM ghcr.io/astral-sh/uv:0.6.1 AS uv
+
 FROM python:3.13-slim-bookworm@sha256:1245b6c39d0b8e49e911c7d07b60cd9ed26016b0e439b6903d5e08730e417553 AS build
-WORKDIR /build
+WORKDIR /workspace
 
-RUN pip install --no-cache-dir httpx>=0.28.0
+COPY --from=uv /uv /uvx /bin/
 
-# Copy SDK and demo
-COPY sdk/python/mcp_gateway_sdk/ /sdk/python/mcp_gateway_sdk/
-COPY examples/python/demo.py ./demo.py
+ENV UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
+
+COPY sdk/python/ /workspace/sdk/python/
+COPY examples/python/pyproject.toml /workspace/examples/python/pyproject.toml
+COPY examples/python/demo.py /workspace/examples/python/demo.py
+
+RUN cd /workspace/examples/python && uv sync --python 3.13 --no-dev
 
 FROM python:3.13-slim-bookworm@sha256:1245b6c39d0b8e49e911c7d07b60cd9ed26016b0e439b6903d5e08730e417553
 
@@ -15,12 +22,10 @@ RUN groupadd -g 65532 appuser && \
 
 WORKDIR /app
 
-# Copy installed packages and app from builder
-COPY --from=build --chown=appuser:appuser /usr/local/lib/python3.13/site-packages/ /usr/local/lib/python3.13/site-packages/
-COPY --from=build --chown=appuser:appuser /sdk/python/mcp_gateway_sdk/ /sdk/python/mcp_gateway_sdk/
-COPY --from=build --chown=appuser:appuser /build/demo.py ./demo.py
+COPY --from=build --chown=appuser:appuser /opt/venv /opt/venv
+COPY --from=build --chown=appuser:appuser /workspace/examples/python/demo.py ./demo.py
 
-ENV PYTHONPATH=/sdk/python
+ENV PATH="/opt/venv/bin:$PATH"
 
 USER appuser
-ENTRYPOINT ["python3", "demo.py"]
+ENTRYPOINT ["python", "demo.py"]

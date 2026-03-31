@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSIONS_FILE="${ROOT_DIR}/config/versions.yaml"
 COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.yml"
 PHOENIX_COMPOSE_FILE="${ROOT_DIR}/deploy/compose/docker-compose.phoenix.yml"
-COMPLIANCE_REQS="${ROOT_DIR}/tools/compliance/requirements.txt"
+COMPLIANCE_PROJECT="${ROOT_DIR}/tools/compliance/pyproject.toml"
 COMPLIANCE_VENV_PY="${ROOT_DIR}/tools/compliance/.venv/bin/python3"
 
 FORMAT="table"
@@ -402,10 +402,10 @@ if [[ "$FORMAT" == "table" ]]; then
 fi
 emit_component_json "go-modules" "" "--" "--" "false" "$go_status" "$go_notes"
 
-# Python deps (compliance venv only)
+# Python deps (compliance project only)
 py_status="UNKNOWN"
 py_notes=""
-if [[ -f "$COMPLIANCE_REQS" ]]; then
+if [[ -f "$COMPLIANCE_PROJECT" ]]; then
   if [[ -x "$COMPLIANCE_VENV_PY" ]]; then
     if have_cmd python3; then
       # pip JSON output is easiest to count reliably.
@@ -429,7 +429,7 @@ if [[ -f "$COMPLIANCE_REQS" ]]; then
     py_notes="missing tools/compliance/.venv (run make compliance-report once to bootstrap)"
   fi
 else
-  py_notes="missing tools/compliance/requirements.txt"
+  py_notes="missing tools/compliance/pyproject.toml"
 fi
 
 if [[ "$FORMAT" == "table" ]]; then

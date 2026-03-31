@@ -214,9 +214,9 @@ if err != nil {
 ## Section 3: Python SDK Reference
 
 **Package:** `mcp_gateway_sdk`
-**Min Python:** 3.10
+**Min Python:** 3.13
 **Core dependency:** `httpx >= 0.28.0`
-**Optional:** `opentelemetry-api >= 1.39.0` (install with `pip install ./sdk/python[otel]`)
+**Optional:** `opentelemetry-api >= 1.39.0` (install with `uv sync --project sdk/python --python 3.13 --extra otel`)
 
 ### GatewayClient
 

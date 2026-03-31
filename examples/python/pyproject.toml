@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=70.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "precinct-python-example"
+version = "0.1.0"
+description = "Python example client for PRECINCT"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "httpx>=0.28.0",
+    "mcp-gateway-sdk",
+]
+
+[tool.uv.sources]
+mcp-gateway-sdk = { path = "../../sdk/python", editable = true }

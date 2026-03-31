@@ -655,7 +655,7 @@ The error includes `decision_id` and `trace_id`. The operator takes the `trace_i
 
 #### 4.5.1 Design Goal
 
-Reduce the ~120 lines of duplicated `GatewayClient` code (currently copy-pasted between `agents/dspy_researcher/agent.py` and `agents/pydantic_researcher/agent.py`) to a shared library with a clean, framework-independent interface.
+Reduce the ~120 lines of duplicated `GatewayClient` code (currently copy-pasted between `sample-agents/dspy_researcher/agent.py` and `sample-agents/pydantic_researcher/agent.py`) to a shared library with a clean, framework-independent interface.
 
 #### 4.5.2 Python SDK Interface
 
@@ -900,7 +900,7 @@ docs/
 
   agent-integration/
     overview.md                      # Marcus: architecture diagram, how agents connect
-    python-sdk.md                    # Marcus: pip install, 3-line setup, full API reference
+    python-sdk.md                    # Marcus: uv sync, 3-line setup, full API reference
     go-sdk.md                        # Marcus: go get, setup, API reference
     curl-examples.md                 # Marcus: raw HTTP for any language
     error-handling.md                # Marcus: complete error code catalog with examples

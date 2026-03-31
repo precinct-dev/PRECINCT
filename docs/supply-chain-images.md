@@ -170,7 +170,7 @@ All Dockerfiles MUST use multi-stage builds to:
 
 See template Dockerfiles:
 - `deploy/compose/Dockerfile.go-service` - Go services template
-- `deploy/compose/Dockerfile.python-agent` - Python agents template
+- `examples/python/Dockerfile` - Python example image using project-local metadata
 
 ## Docker Ignore
 

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=70.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "precinct-dspy-researcher"
+version = "0.1.0"
+description = "Sample DSPy research agent for PRECINCT"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "dspy>=3.1.0",
+    "httpx>=0.28.0",
+    "mcp-gateway-sdk",
+    "openinference-instrumentation-dspy>=0.1.30",
+    "opentelemetry-api>=1.39.0",
+    "opentelemetry-exporter-otlp>=1.39.0",
+    "opentelemetry-sdk>=1.39.0",
+    "python-dotenv>=1.0.1",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.0",
+]
+
+[tool.uv.sources]
+mcp-gateway-sdk = { path = "../../sdk/python", editable = true }

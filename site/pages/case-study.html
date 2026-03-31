@@ -496,7 +496,7 @@ sequenceDiagram
               The agent uses DSPy's module system for prompt optimization while the PRECINCT SDK handles
               identity and policy enforcement transparently.
             </p>
-            <pre><code class="language-python"># agents/dspy_researcher/agent.py
+            <pre><code class="language-python"># sample-agents/dspy_researcher/agent.py
 import dspy
 from mcp_gateway_sdk import GatewayClient
 
@@ -515,7 +515,7 @@ class ResearchAgent(dspy.Module):
               showcases type-safe, structured-output integration with PRECINCT. PydanticAI's agent framework
               provides schema validation while the PRECINCT gateway enforces runtime policy.
             </p>
-            <pre><code class="language-python"># agents/pydantic_researcher/agent.py
+            <pre><code class="language-python"># sample-agents/pydantic_researcher/agent.py
 from pydantic_ai import Agent
 from mcp_gateway_sdk import GatewayClient
 

@@ -59,10 +59,8 @@ The `GroundedAnswer` model includes:
 
 3. Python virtual environment:
    ```bash
-   cd agents/pydantic_researcher
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r requirements.txt
+   cd sample-agents/pydantic_researcher
+   uv sync --python 3.13 --group dev
    ```
 
 4. Seed provider secret in SPIKE (reference-based, no raw key in `.env`):
@@ -76,10 +74,10 @@ The `GroundedAnswer` model includes:
 
 ```bash
 # Default question
-python agent.py
+uv run python agent.py
 
 # Custom question
-python agent.py "What are the key differences between SPIFFE and traditional OAuth for agent identity?"
+uv run python agent.py "What are the key differences between SPIFFE and traditional OAuth for agent identity?"
 ```
 
 ## Environment Variables
@@ -101,13 +99,13 @@ python agent.py "What are the key differences between SPIFFE and traditional OAu
 
 ```bash
 # Unit tests (no compose stack needed)
-pytest test_agent.py -v -k "not integration"
+uv run pytest test_agent.py -v -k "not integration"
 
 # Integration tests (requires compose stack)
-pytest test_agent.py -v -m integration
+uv run pytest test_agent.py -v -m integration
 
 # All tests
-pytest test_agent.py -v
+uv run pytest test_agent.py -v
 ```
 
 ## Gateway Denial Handling

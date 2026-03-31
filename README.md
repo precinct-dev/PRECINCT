@@ -189,8 +189,9 @@ tests/e2e/                E2E demo test suites
 tests/integration/        Go integration tests
 tests/benchmark/          Load testing scripts
 cli/                      PRECINCT CLI
-agents/                   Reference agent implementations
-ports/                    Platform integrations (Discord, OpenClaw)
+sample-agents/            Reference agent implementations
+ports/                    Runtime platform adapters (Discord, Email, OpenClaw)
+packs/                    Declarative app integration manifests and validation assets
 examples/                 Starter examples for extending the gateway
 contracts/                PRECINCT specification versions
 site/                     Project website (precinct.dev)

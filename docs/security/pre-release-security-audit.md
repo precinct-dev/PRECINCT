@@ -214,7 +214,6 @@ repository are test fixtures in `*_test.go` files.
 | Dockerfile.gateway | Yes | Yes (distroless:nonroot) | Yes | Yes (distroless) |
 | Dockerfile.go-service | Yes | Yes (distroless:nonroot) | Yes | Yes (distroless) |
 | Dockerfile.messaging-sim | Yes | Yes (FIXED) | Yes | Yes (distroless) |
-| Dockerfile.python-agent | Yes | Yes (UID 1000) | Yes | Yes (slim) |
 | Dockerfile.s3-mcp-server | Yes | Yes (distroless:nonroot) | Yes | Yes (distroless) |
 | Dockerfile.spike-bootstrap | Yes | Yes (upstream) | Yes | Yes (upstream distroless) |
 | Dockerfile.spike-keeper | Yes | Yes (upstream) | Yes | Yes (upstream distroless) |
@@ -273,8 +272,9 @@ repository are test fixtures in `*_test.go` files.
 | python-dotenv | >=1.0.1 | Env file loading (optional) |
 | pytest | >=9.0.0 | Testing (dev only) |
 
-**Note:** The root `requirements.txt` is effectively empty (template placeholder).
-Python dependencies are managed via `sdk/python/pyproject.toml`.
+**Note:** Python dependencies are project-local and `uv`-managed via
+`sdk/python/pyproject.toml`, `tools/compliance/pyproject.toml`,
+`sample-agents/*/pyproject.toml`, and `examples/python/pyproject.toml`.
 
 ---
 
