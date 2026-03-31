@@ -18,8 +18,8 @@
 #
 # Usage:
 #   kustomize build infra/eks/overlays/local/
-#   make k8s-local-up
-#   make k8s-local-down
+#   make k8s-up
+#   make k8s-down
 # ------------------------------------------------------------------------------
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
