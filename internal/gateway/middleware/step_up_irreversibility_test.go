@@ -453,7 +453,7 @@ func TestStepUpGating_AuditIncludesReversibility(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	registry := testRegistry()
 	allowlist := defaultAllowlist()

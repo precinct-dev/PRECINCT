@@ -98,7 +98,9 @@ func TestBuildPipeline_Ordering(t *testing.T) {
 		return nil, nil
 	})
 
-	handler(context.Background(), nil)
+	if _, err := handler(context.Background(), nil); err != nil {
+		t.Fatalf("unexpected pipeline error: %v", err)
+	}
 
 	expected := []string{"first", "second", "third", "handler"}
 	if len(order) != len(expected) {
@@ -140,7 +142,9 @@ func TestRateLimitMiddleware_RejectsAfterBurstExhaustion(t *testing.T) {
 
 	// Exhaust burst.
 	for range 2 {
-		handler(context.Background(), nil)
+		if _, err := handler(context.Background(), nil); err != nil {
+			t.Fatalf("unexpected rate-limit warmup error: %v", err)
+		}
 	}
 
 	// Third call should be rejected.
@@ -276,10 +280,14 @@ func TestCacheMiddleware_ExpiredEntriesAreMisses(t *testing.T) {
 		return "result", nil
 	})
 
-	handler(ctx, nil)
+	if _, err := handler(ctx, nil); err != nil {
+		t.Fatalf("unexpected cache miss error: %v", err)
+	}
 	// Wait for expiry.
 	time.Sleep(5 * time.Millisecond)
-	handler(ctx, nil)
+	if _, err := handler(ctx, nil); err != nil {
+		t.Fatalf("unexpected cache refresh error: %v", err)
+	}
 
 	if callCount != 2 {
 		t.Errorf("call count = %d, want 2 (expired entry should be a miss)", callCount)
@@ -315,7 +323,9 @@ func TestContextMiddleware_InjectsServerName(t *testing.T) {
 		return nil, nil
 	})
 
-	handler(context.Background(), nil)
+	if _, err := handler(context.Background(), nil); err != nil {
+		t.Fatalf("unexpected context middleware error: %v", err)
+	}
 	if gotName != "my-server" {
 		t.Errorf("ServerName = %q, want %q", gotName, "my-server")
 	}
@@ -357,7 +367,9 @@ func TestLoggingMiddleware_LogsSuccess(t *testing.T) {
 		return "ok", nil
 	})
 
-	handler(ctx, map[string]any{"secret": "password123"})
+	if _, err := handler(ctx, map[string]any{"secret": "password123"}); err != nil {
+		t.Fatalf("unexpected logging middleware error: %v", err)
+	}
 
 	output := buf.String()
 	if !strings.Contains(output, "tool call completed") {
@@ -392,7 +404,9 @@ func TestLoggingMiddleware_LogsError(t *testing.T) {
 		return nil, fmt.Errorf("broken")
 	})
 
-	handler(ctx, nil)
+	if _, err := handler(ctx, nil); err == nil {
+		t.Fatal("expected handler error")
+	}
 
 	output := buf.String()
 	if !strings.Contains(output, "tool call failed") {
@@ -728,8 +742,10 @@ func TestPipeline_WithoutCaching(t *testing.T) {
 
 	args := map[string]any{"name": "counter", "arguments": map[string]any{"x": "y"}}
 
-	doPost(t, ts, rpcBody(t, 1, "tools/call", args), sid).Body.Close()
-	doPost(t, ts, rpcBody(t, 2, "tools/call", args), sid).Body.Close()
+	resp1 := doPost(t, ts, rpcBody(t, 1, "tools/call", args), sid)
+	_ = resp1.Body.Close()
+	resp2 := doPost(t, ts, rpcBody(t, 2, "tools/call", args), sid)
+	_ = resp2.Body.Close()
 
 	if callCount.Load() != 2 {
 		t.Errorf("handler called %d times, want 2 (no cache)", callCount.Load())
@@ -878,7 +894,7 @@ func TestPipeline_LoggingIncludesDuration(t *testing.T) {
 	sid := initAndActivate(t, ts)
 
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "slow"}), sid)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	output := logBuf.String()
 	// Parse the log line to verify duration is present and positive.
@@ -954,7 +970,7 @@ func TestPipeline_Ordering(t *testing.T) {
 		"name":      "echo",
 		"arguments": map[string]any{"a": "b"},
 	}), sid)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -1148,14 +1164,14 @@ func TestPipeline_ExistingEndToEndStillWorks(t *testing.T) {
 		t.Fatalf("initialize: status %d", resp.StatusCode)
 	}
 	sid := resp.Header.Get("Mcp-Session-Id")
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Step 1b: activate session
 	resp = doPost(t, ts, rpcBody(t, nil, "notifications/initialized", nil), sid)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("notifications/initialized: status %d", resp.StatusCode)
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	// Step 2: tools/list
 	resp = doPost(t, ts, rpcBody(t, 2, "tools/list", nil), sid)

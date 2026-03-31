@@ -1,6 +1,6 @@
-# Backup/Restore Drill Report (2026-03-15)
+# Backup/Restore Drill Report (2026-03-31)
 
-- Generated At (UTC): 2026-03-15T03:56:28Z
+- Generated At (UTC): 2026-03-31T09:38:23Z
 - Status: PASS
 
 ## Scope
@@ -21,7 +21,7 @@ docker cp <container>:/tmp/audit.jsonl <backup>
 
 ## Artifacts
 
-- docs/operations/artifacts/backups/20260315T035628Z/keydb-dump.rdb
-- docs/operations/artifacts/backups/20260315T035628Z/spike-nexus-data
-- docs/operations/artifacts/backups/20260315T035628Z/audit.jsonl
+- docs/operations/artifacts/backups/20260331T093823Z/keydb-dump.rdb
+- docs/operations/artifacts/backups/20260331T093823Z/spike-nexus-data
+- docs/operations/artifacts/backups/20260331T093823Z/audit.jsonl
 - docs/operations/artifacts/backup-restore-drill-latest.json

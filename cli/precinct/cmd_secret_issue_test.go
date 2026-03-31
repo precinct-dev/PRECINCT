@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -117,19 +116,5 @@ func TestSecretIssue_DefaultExp(t *testing.T) {
 	// Default exp is 300
 	if !strings.Contains(out, "exp:300") {
 		t.Fatalf("expected default exp:300 in token, got %q", out)
-	}
-}
-
-func seedTestSecret(t *testing.T, tmpDir, ref, value string) {
-	t.Helper()
-	storagePath := filepath.Join(tmpDir, ".spike", "secrets.json")
-	client := spike.NewClient(&spike.Config{StoragePath: storagePath})
-	if _, err := os.Stat(filepath.Dir(storagePath)); os.IsNotExist(err) {
-		if err := client.Init(); err != nil {
-			t.Fatalf("init: %v", err)
-		}
-	}
-	if err := client.Put(&spike.Secret{Ref: ref, Value: value}); err != nil {
-		t.Fatalf("put: %v", err)
 	}
 }

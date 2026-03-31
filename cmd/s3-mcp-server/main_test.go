@@ -126,7 +126,7 @@ func initSession(t *testing.T, baseURL string) string {
 	if err != nil {
 		t.Fatalf("initialize request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("initialize: expected 200, got %d", resp.StatusCode)
 	}
@@ -147,7 +147,7 @@ func initSession(t *testing.T, baseURL string) string {
 	if err != nil {
 		t.Fatalf("notifications/initialized failed: %v", err)
 	}
-	defer resp2.Body.Close()
+	defer func() { _ = resp2.Body.Close() }()
 	if resp2.StatusCode != http.StatusOK {
 		t.Fatalf("notifications/initialized: expected 200, got %d", resp2.StatusCode)
 	}
@@ -169,7 +169,7 @@ func doRPC(t *testing.T, baseURL, sessionID string, req jsonrpcRequest) jsonrpcR
 	if err != nil {
 		t.Fatalf("RPC request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var rpcResp jsonrpcResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
@@ -188,7 +188,7 @@ func TestIntegration_HealthCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("health check failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected 200, got %d", resp.StatusCode)
@@ -424,7 +424,7 @@ func TestIntegration_InvalidJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var rpcResp jsonrpcResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
@@ -446,7 +446,7 @@ func TestIntegration_MethodNotAllowed(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Errorf("expected 405, got %d", resp.StatusCode)

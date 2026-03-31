@@ -497,7 +497,7 @@ func TestStepUpGating_AuditIncludesEscalation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	registry := testRegistry()
 	allowlist := defaultAllowlist()
@@ -590,7 +590,7 @@ func TestStepUpGating_AuditEscalation_NoSession(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	registry := testRegistry()
 	allowlist := defaultAllowlist()

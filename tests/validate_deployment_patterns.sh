@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 DOC="$PROJECT_ROOT/docs/architecture/deployment-patterns.md"
-GATEWAY="$PROJECT_ROOT/internal/gateway/gateway.go"
+PIPELINE="$PROJECT_ROOT/internal/gateway/protected_pipeline.go"
 TAXONOMY="$PROJECT_ROOT/tools/compliance/control_taxonomy.yaml"
 
 PASS_COUNT=0
@@ -51,11 +51,11 @@ else
     exit 1
 fi
 
-if [ -f "$GATEWAY" ]; then
-    pass "gateway.go exists"
+if [ -f "$PIPELINE" ]; then
+    pass "protected_pipeline.go exists"
 else
-    fail "gateway.go not found at $GATEWAY"
-    printf "\nCannot continue without gateway.go. Aborting.\n"
+    fail "protected_pipeline.go not found at $PIPELINE"
+    printf "\nCannot continue without protected_pipeline.go. Aborting.\n"
     exit 1
 fi
 
@@ -64,15 +64,28 @@ fi
 # ---------------------------------------------------------------------------
 printf "\n=== Check 1: Middleware chain cross-reference ===\n"
 
-# Extract middleware function names from the Handler() method in gateway.go.
+# Extract middleware function names from the protected pipeline builder.
 # We specifically look for lines that apply middleware in the chain:
 #   handler = middleware.XXX(...)    -- steps 1-13
 #   middleware.ResponseFirewall(...) -- step 14 (wraps proxy)
 # This avoids picking up constructors (New...) and utility functions.
-MIDDLEWARE_NAMES=$(grep -E '(handler = middleware\.|middleware\.ResponseFirewall)' "$GATEWAY" \
+MIDDLEWARE_NAMES=$(grep -E '(handler = middleware\.|middleware\.ResponseFirewall)' "$PIPELINE" \
     | grep -oE 'middleware\.[A-Z][a-zA-Z]+' \
     | sed 's/middleware\.//' \
     | sort -u)
+
+MIDDLEWARE_NAMES=$(printf "%s\n" "$MIDDLEWARE_NAMES" | while IFS= read -r mw; do
+    case "$mw" in
+        DLPMiddlewareWithTrustedAgents)
+            printf "DLPMiddleware\n"
+            ;;
+        NewToolRegistryScopeResolver|SlotPostAnalysis|SlotPostAuthz|SlotPostInspection)
+            ;;
+        *)
+            printf "%s\n" "$mw"
+            ;;
+    esac
+done | sort -u)
 
 # The middleware names we expect to find in the document (based on the Handler
 # method). We verify each middleware function name appears in the document text.

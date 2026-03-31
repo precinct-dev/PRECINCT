@@ -178,7 +178,7 @@ func TestBackupHeader_AuditIncludesBackupRecommended(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	registry := testRegistry()
 	registry.tools["modify_resource"] = ToolDefinition{
@@ -274,7 +274,7 @@ func TestBackupHeader_AuditBackupRecommendedFalse_WhenReversible(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	registry := testRegistry()
 	allowlist := defaultAllowlist()
@@ -453,7 +453,7 @@ func TestBackupHeader_Integration_OwnerPartiallyReversible(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create auditor: %v", err)
 	}
-	defer auditor.Close()
+	t.Cleanup(func() { _ = auditor.Close() })
 
 	session := &AgentSession{
 		ID:                           "integration-session",

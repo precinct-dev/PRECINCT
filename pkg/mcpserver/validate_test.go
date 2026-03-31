@@ -491,7 +491,6 @@ func TestApplyEnvOverrides_NoEnvVarsSet(t *testing.T) {
 		"CACHE_ENABLED", "CACHE_TTL", "RATE_LIMIT_ENABLED",
 		"RATE_LIMIT_RPS", "RATE_LIMIT_BURST", "SHUTDOWN_TIMEOUT"} {
 		t.Setenv(key, "")
-		os.Unsetenv(key)
 	}
 
 	s := newTestServer("test")

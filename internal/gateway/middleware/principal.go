@@ -36,15 +36,6 @@ var principalMappings = []principalMapping{
 	{"external/", 4, "external_user", []string{"read"}},
 }
 
-// anonymousRole is the fallback for unrecognized or invalid SPIFFE IDs.
-var anonymousRole = PrincipalRole{
-	Level:        5,
-	Role:         "anonymous",
-	Capabilities: []string{},
-	TrustDomain:  "",
-	AuthMethod:   "",
-}
-
 // ResolvePrincipalRole resolves a SPIFFE ID to a PrincipalRole based on the
 // path prefix hierarchy. The trustDomain parameter is the expected trust domain;
 // if the SPIFFE ID belongs to a different domain, anonymous is returned.

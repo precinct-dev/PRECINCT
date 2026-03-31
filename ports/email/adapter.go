@@ -56,7 +56,7 @@ func stubError(w http.ResponseWriter, operation string) {
 		"operation": operation,
 		"message":   operation + " is not yet implemented",
 	}
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 // All handlers are stubs returning 501 -- implemented in future stories.

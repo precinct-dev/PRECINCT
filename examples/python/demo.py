@@ -43,6 +43,10 @@ def unique_session_id(prefix: str) -> str:
     return f"{prefix}-{time.time_ns()}"
 
 
+def real_demo_mode() -> bool:
+    return os.environ.get("DEMO_SERVICE_MODE") == "real"
+
+
 def print_proof(ok: bool, reason: str) -> bool:
     tag = f"{GREEN}PASS{RESET}" if ok else f"{RED}FAIL{RESET}"
     print(f"  PROOF:  {tag} -- {reason}")
@@ -100,7 +104,7 @@ def test_happy_path(url: str) -> bool:
 
 
 def test_mcp_tools_call(url: str) -> bool:
-    """2. MCP transport: tools/call through all 13 layers to mock MCP server."""
+    """2. MCP transport: tools/call through all 13 layers to the upstream MCP server."""
     client = new_client(url)
     try:
         result = client.call("tavily_search", query="AI security best practices")
@@ -108,8 +112,14 @@ def test_mcp_tools_call(url: str) -> bool:
             return print_proof(False, "got None result from MCP transport")
         result_str = json.dumps(result) if not isinstance(result, str) else result
         print(f"  Result preview: {result_str[:200]}")
+        if real_demo_mode():
+            if "Tavily API error" in result_str:
+                return print_proof(True, "MCP transport reached live Tavily upstream and returned a provider-side error through all 13 layers")
+            if '"content"' in result_str or '"results"' in result_str:
+                return print_proof(True, "MCP transport returned live upstream data through all 13 layers")
+            return print_proof(False, "real-mode result did not contain recognizable upstream data")
         if "AI Security" not in result_str:
-            return print_proof(False, "result does not contain expected canned search data")
+            return print_proof(False, "result does not contain expected canned mock search data")
         return print_proof(True, "MCP transport returned actual search results through all 13 layers")
     except GatewayError as e:
         print_gateway_error(e)

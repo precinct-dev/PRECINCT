@@ -20,14 +20,29 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+type testTracerProvider struct {
+	*sdktrace.TracerProvider
+}
+
+func (tp testTracerProvider) Shutdown(context.Context) {}
+
 // newTestTracer returns a TracerProvider with an in-memory span exporter
 // and the exporter itself for inspecting recorded spans.
-func newTestTracer() (*sdktrace.TracerProvider, *tracetest.InMemoryExporter) {
+func newTestTracer() (testTracerProvider, *tracetest.InMemoryExporter) {
 	exporter := tracetest.NewInMemoryExporter()
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithSyncer(exporter),
 	)
-	return tp, exporter
+	return testTracerProvider{TracerProvider: tp}, exporter
+}
+
+func mustCallToolHandler(t *testing.T, handler ToolHandler, ctx context.Context) any {
+	t.Helper()
+	result, err := handler(ctx, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	return result
 }
 
 // --- Unit Tests: OTel Middleware ---
@@ -73,7 +88,7 @@ func TestOTelMiddleware_RecordsToolNameAttribute(t *testing.T) {
 	handler := mw(func(_ context.Context, _ map[string]any) (any, error) {
 		return "ok", nil
 	})
-	handler(ctx, nil)
+	mustCallToolHandler(t, handler, ctx)
 
 	spans := exporter.GetSpans()
 	if len(spans) != 1 {
@@ -95,7 +110,7 @@ func TestOTelMiddleware_RecordsServerNameAttribute(t *testing.T) {
 	handler := mw(func(_ context.Context, _ map[string]any) (any, error) {
 		return "ok", nil
 	})
-	handler(ctx, nil)
+	mustCallToolHandler(t, handler, ctx)
 
 	spans := exporter.GetSpans()
 	if len(spans) != 1 {
@@ -115,7 +130,7 @@ func TestOTelMiddleware_RecordsSessionIDAttribute(t *testing.T) {
 	handler := mw(func(_ context.Context, _ map[string]any) (any, error) {
 		return "ok", nil
 	})
-	handler(ctx, nil)
+	mustCallToolHandler(t, handler, ctx)
 
 	spans := exporter.GetSpans()
 	if len(spans) != 1 {
@@ -135,7 +150,7 @@ func TestOTelMiddleware_RecordsDurationMs(t *testing.T) {
 	handler := mw(func(_ context.Context, _ map[string]any) (any, error) {
 		return "ok", nil
 	})
-	handler(ctx, nil)
+	mustCallToolHandler(t, handler, ctx)
 
 	spans := exporter.GetSpans()
 	if len(spans) != 1 {
@@ -170,7 +185,7 @@ func TestOTelMiddleware_SuccessOutcome(t *testing.T) {
 	handler := mw(func(_ context.Context, _ map[string]any) (any, error) {
 		return "ok", nil
 	})
-	handler(ctx, nil)
+	mustCallToolHandler(t, handler, ctx)
 
 	spans := exporter.GetSpans()
 	if len(spans) != 1 {
@@ -268,7 +283,7 @@ func TestOTelMiddleware_SpanContextAvailableInHandler(t *testing.T) {
 		spanCtx = trace.SpanFromContext(ctx).SpanContext()
 		return "ok", nil
 	})
-	handler(ctx, nil)
+	mustCallToolHandler(t, handler, ctx)
 
 	if !spanCtx.IsValid() {
 		t.Error("expected valid span context inside handler")
@@ -535,9 +550,9 @@ func TestOTelIntegration_MultipleToolCallsCreateMultipleSpans(t *testing.T) {
 	sid := initAndActivate(t, ts)
 
 	resp := doPost(t, ts, rpcBody(t, 1, "tools/call", map[string]any{"name": "tool-a"}), sid)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	resp = doPost(t, ts, rpcBody(t, 2, "tools/call", map[string]any{"name": "tool-b"}), sid)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 
 	spans := exporter.GetSpans()
 	if len(spans) != 2 {
@@ -694,8 +709,8 @@ func TestRateLimitMiddleware_SpanRecordsDenied(t *testing.T) {
 		return "ok", nil
 	})
 
-	handler(context.Background(), nil) // allowed
-	handler(context.Background(), nil) // denied
+	mustCallToolHandler(t, handler, context.Background()) // allowed
+	mustCallToolHandler(t, handler, context.Background()) // denied
 
 	spans := exporter.GetSpans()
 	if len(spans) != 2 {
@@ -716,7 +731,7 @@ func TestRateLimitMiddleware_NoSpanWithoutTracer(t *testing.T) {
 		return "ok", nil
 	})
 
-	handler(context.Background(), nil)
+	mustCallToolHandler(t, handler, context.Background())
 
 	spans := exporter.GetSpans()
 	if len(spans) != 0 {
@@ -736,7 +751,7 @@ func TestCacheMiddleware_CreatesSpanOnMiss(t *testing.T) {
 	handler := mw(func(_ context.Context, _ map[string]any) (any, error) {
 		return "result", nil
 	})
-	handler(ctx, nil)
+	mustCallToolHandler(t, handler, ctx)
 
 	spans := exporter.GetSpans()
 	if len(spans) != 1 {
@@ -762,8 +777,8 @@ func TestCacheMiddleware_CreatesSpanOnHit(t *testing.T) {
 		return "result", nil
 	})
 
-	handler(ctx, nil) // miss
-	handler(ctx, nil) // hit
+	mustCallToolHandler(t, handler, ctx) // miss
+	mustCallToolHandler(t, handler, ctx) // hit
 
 	spans := exporter.GetSpans()
 	if len(spans) != 2 {
@@ -788,7 +803,9 @@ func TestCacheMiddleware_SpanOnError(t *testing.T) {
 	handler := mw(func(_ context.Context, _ map[string]any) (any, error) {
 		return nil, fmt.Errorf("fail")
 	})
-	handler(ctx, nil)
+	if _, err := handler(ctx, nil); err == nil {
+		t.Fatal("expected cache middleware to propagate the handler error")
+	}
 
 	spans := exporter.GetSpans()
 	if len(spans) != 1 {
@@ -809,7 +826,7 @@ func TestCacheMiddleware_NoSpanWithoutTracer(t *testing.T) {
 	handler := mw(func(_ context.Context, _ map[string]any) (any, error) {
 		return "result", nil
 	})
-	handler(ctx, nil)
+	mustCallToolHandler(t, handler, ctx)
 
 	spans := exporter.GetSpans()
 	if len(spans) != 0 {

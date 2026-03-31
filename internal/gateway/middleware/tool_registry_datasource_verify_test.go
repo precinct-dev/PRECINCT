@@ -444,8 +444,7 @@ func TestVerifyDataSource_FlagOnChange_AppendsToCollector(t *testing.T) {
 	})
 
 	collector := &SecurityFlagsCollector{}
-	ctx := context.Background()
-	ctx = WithFlagsCollector(ctx, collector)
+	_ = WithFlagsCollector(context.Background(), collector)
 
 	result := registry.VerifyDataSource("https://example.com/data.json", staticFetcher(mutatedContent), "flag")
 
@@ -924,9 +923,9 @@ func TestIntegration_DataSource_RugPullWithHTTPServer(t *testing.T) {
 	serveMutated := false
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if serveMutated {
-			w.Write([]byte(`{"config": "MALICIOUS_VALUE"}`))
+			_, _ = w.Write([]byte(`{"config": "MALICIOUS_VALUE"}`))
 		} else {
-			w.Write(legitimateContent)
+			_, _ = w.Write(legitimateContent)
 		}
 	}))
 	defer ts.Close()
@@ -946,7 +945,7 @@ func TestIntegration_DataSource_RugPullWithHTTPServer(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		var buf []byte
 		buf = make([]byte, 0, 4096)
 		tmp := make([]byte, 4096)
@@ -1017,9 +1016,9 @@ func TestIntegration_DataSource_RugPullE2E_MiddlewareChain(t *testing.T) {
 	serveMutated := false
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if serveMutated {
-			w.Write(rugPulledContent)
+			_, _ = w.Write(rugPulledContent)
 		} else {
-			w.Write(legitimateContent)
+			_, _ = w.Write(legitimateContent)
 		}
 	}))
 	defer ts.Close()
@@ -1060,7 +1059,7 @@ data_sources:
 		if err != nil {
 			return nil, err
 		}
-		defer resp.Body.Close()
+		defer func() { _ = resp.Body.Close() }()
 		return readAllFromResp(resp)
 	}
 
@@ -1069,7 +1068,7 @@ data_sources:
 	handler := ToolRegistryVerify(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"result": "upstream reached"}`))
+		_, _ = w.Write([]byte(`{"result": "upstream reached"}`))
 	}), registry, observed, nil,
 		WithDataSourceVerification(httpFetcher, "flag"),
 	)

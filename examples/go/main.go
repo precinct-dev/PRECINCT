@@ -46,6 +46,10 @@ func demoSessionID(prefix string) string {
 
 var gatewayURL = flag.String("gateway-url", "http://localhost:9090", "Gateway base URL")
 
+func realDemoMode() bool {
+	return os.Getenv("DEMO_SERVICE_MODE") == "real"
+}
+
 func main() {
 	flag.Parse()
 
@@ -477,10 +481,10 @@ func testHappyPath() bool {
 	return printProof(false, fmt.Sprintf("unexpected error type: %T", err))
 }
 
-// 2. MCP transport: tools/call flows through all 13 middleware layers to mock MCP server.
-// Unlike the happy path which accepts 502 as success, this test REQUIRES actual results
-// from the mock MCP server. This proves the MCP Streamable HTTP transport works end-to-end:
-// SDK -> gateway (13 middleware layers) -> MCP transport -> mock MCP server -> results back.
+// 2. MCP transport: tools/call flows through all 13 middleware layers to the upstream MCP server.
+// In mock mode we require the canned mock payload. In real mode we accept any non-empty upstream
+// result, including provider-side quota errors, because that still proves the full transport path:
+// SDK -> gateway (13 middleware layers) -> MCP transport -> upstream -> results back.
 func testMCPToolsCall() bool {
 	client := newClient()
 	ctx := context.Background()
@@ -513,9 +517,19 @@ func testMCPToolsCall() bool {
 	resultStr := string(resultJSON)
 	fmt.Printf("  %sResult preview:%s %s\n", colorDim, colorReset, truncateStr(resultStr, 200))
 
-	// Verify the canned search results are present
+	if realDemoMode() {
+		if strings.Contains(resultStr, "Tavily API error") {
+			return printProof(true, "MCP transport reached live Tavily upstream and returned a provider-side error through all 13 layers")
+		}
+		if strings.Contains(resultStr, "\"content\"") || strings.Contains(resultStr, "\"results\"") {
+			return printProof(true, "MCP transport returned live upstream data through all 13 layers")
+		}
+		return printProof(false, "real-mode result did not contain recognizable upstream data")
+	}
+
+	// Verify the canned search results are present in mock mode.
 	if !strings.Contains(resultStr, "AI Security") {
-		return printProof(false, "result does not contain expected canned search data")
+		return printProof(false, "result does not contain expected canned mock search data")
 	}
 
 	return printProof(true, "MCP transport returned actual search results through all 13 layers")

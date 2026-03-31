@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
-	"os"
 	"testing"
 	"time"
 )
@@ -103,7 +102,7 @@ func TestDevMode_ServerStartsPlaintextHTTP(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /health over plaintext: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("health status = %d, want 200", resp.StatusCode)
 	}
@@ -156,7 +155,6 @@ func TestEnvVarOverride_SPIREAgentSocket(t *testing.T) {
 func TestEnvVarOverride_NotSet_UsesWithSPIRE(t *testing.T) {
 	// When SPIRE_AGENT_SOCKET is NOT set, the WithSPIRE path is used.
 	t.Setenv("SPIRE_AGENT_SOCKET", "")
-	os.Unsetenv("SPIRE_AGENT_SOCKET")
 
 	const optPath = "/run/spire/sockets/agent.sock"
 	s := newTestServer("no-env",

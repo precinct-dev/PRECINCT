@@ -91,11 +91,17 @@ func (k *keyDBApprovalDistributedStore) MarkNonceConsumed(ctx context.Context, n
 	if ttl < time.Minute {
 		ttl = time.Minute
 	}
-	set, err := k.client.SetNX(ctx, key, "1", ttl).Result()
+	set, err := k.client.SetArgs(ctx, key, "1", redis.SetArgs{
+		Mode: "NX",
+		TTL:  ttl,
+	}).Result()
+	if err == redis.Nil {
+		return false, nil
+	}
 	if err != nil {
 		return false, fmt.Errorf("keydb setnx approval nonce: %w", err)
 	}
-	return set, nil
+	return set == "OK", nil
 }
 
 func approvalRequestKey(requestID string) string {
