@@ -201,15 +201,6 @@ log_info "Running 'make clean' to ensure pristine state..."
 make -C "${REPO_ROOT}" clean 2>&1 | tail -5
 log_info "Clean complete."
 
-# Pre-create the phoenix-observability-network if absent. The compose stack
-# references it as an external network. Creating it here avoids triggering
-# 'make phoenix-up' inside 'make up', which can fail if the OTel collector
-# has a config issue unrelated to SPIRE attestation.
-if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
-    log_info "Creating phoenix-observability-network (external network for compose)..."
-    docker network create phoenix-observability-network 2>/dev/null || true
-fi
-
 # Verify x509pop certs were removed by clean
 if [ -f "${COMPOSE_DIR}/data/x509pop/agent.crt" ]; then
     record_fail "make clean did not remove x509pop certs"
@@ -318,11 +309,6 @@ check_timeout
 # ===========================================================================
 
 log_header "Phase 3: Restart Without Clean"
-
-# Ensure phoenix network exists (compose down may have removed it)
-if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
-    docker network create phoenix-observability-network 2>/dev/null || true
-fi
 
 log_info "Running 'make up' (should NOT regenerate certs)..."
 make -C "${REPO_ROOT}" up 2>&1 | tail -20
