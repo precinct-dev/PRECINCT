@@ -194,9 +194,11 @@ ports/                    Runtime platform adapters (Discord, Email, OpenClaw)
 packs/                    Declarative app integration manifests and validation assets
 examples/                 Starter examples for extending the gateway
 contracts/                PRECINCT specification versions
-site/                     Project website (precinct.dev)
 scripts/                  Setup and operational scripts
 ```
+
+Website source lives in the private companion repository:
+`https://github.com/precinct-dev/precinct-site`
 
 
 ## Make Commands

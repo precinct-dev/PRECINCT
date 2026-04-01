@@ -710,7 +710,9 @@ func TestRateLimitMiddleware_SpanRecordsDenied(t *testing.T) {
 	})
 
 	mustCallToolHandler(t, handler, context.Background()) // allowed
-	mustCallToolHandler(t, handler, context.Background()) // denied
+	if _, err := handler(context.Background(), nil); err == nil {
+		t.Fatal("expected rate limit denial on second call")
+	}
 
 	spans := exporter.GetSpans()
 	if len(spans) != 2 {

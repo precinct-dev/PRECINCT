@@ -12,5 +12,8 @@ dependencies = [
     "mcp-gateway-sdk",
 ]
 
+[tool.uv]
+package = false
+
 [tool.uv.sources]
 mcp-gateway-sdk = { path = "../../sdk/python", editable = true }

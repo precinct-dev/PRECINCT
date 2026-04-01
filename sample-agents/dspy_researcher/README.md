@@ -97,13 +97,13 @@ uv run python agent.py "zero trust architecture for AI agents"
 
 ```bash
 # Unit tests (no compose stack needed)
-uv run pytest test_agent.py -v -k "not integration"
+uv run python -m pytest test_agent.py -v -k "not integration"
 
 # Integration tests (requires compose stack)
-uv run pytest test_agent.py -v -m integration
+uv run python -m pytest test_agent.py -v -m integration
 
 # All tests
-uv run pytest test_agent.py -v
+uv run python -m pytest test_agent.py -v
 ```
 
 ## Gateway Denial Handling
