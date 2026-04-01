@@ -12,7 +12,7 @@ COPY sdk/python/ /workspace/sdk/python/
 COPY examples/python/pyproject.toml /workspace/examples/python/pyproject.toml
 COPY examples/python/demo.py /workspace/examples/python/demo.py
 
-RUN cd /workspace/examples/python && uv sync --python 3.13 --no-dev
+RUN cd /workspace/examples/python && uv sync --python 3.13 --no-dev --no-editable
 
 FROM python:3.13-slim-bookworm@sha256:1245b6c39d0b8e49e911c7d07b60cd9ed26016b0e439b6903d5e08730e417553
 
