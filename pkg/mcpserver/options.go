@@ -188,7 +188,7 @@ func applyEnvOverrides(s *Server) error {
 	var errs []error
 
 	// PORT
-	if v, ok := os.LookupEnv("PORT"); ok {
+	if v, ok := os.LookupEnv("PORT"); ok && v != "" {
 		port, err := strconv.Atoi(v)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("mcpserver: invalid PORT %q: %w", v, err))
@@ -205,7 +205,7 @@ func applyEnvOverrides(s *Server) error {
 	}
 
 	// LOG_LEVEL
-	if v, ok := os.LookupEnv("LOG_LEVEL"); ok {
+	if v, ok := os.LookupEnv("LOG_LEVEL"); ok && v != "" {
 		lower := strings.ToLower(v)
 		if !validLogLevels[lower] {
 			errs = append(errs, fmt.Errorf("mcpserver: invalid LOG_LEVEL %q: must be one of debug, info, warn, error", v))
@@ -226,7 +226,7 @@ func applyEnvOverrides(s *Server) error {
 	}
 
 	// CACHE_ENABLED
-	if v, ok := os.LookupEnv("CACHE_ENABLED"); ok {
+	if v, ok := os.LookupEnv("CACHE_ENABLED"); ok && v != "" {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("mcpserver: invalid CACHE_ENABLED %q: %w", v, err))
@@ -236,7 +236,7 @@ func applyEnvOverrides(s *Server) error {
 	}
 
 	// CACHE_TTL
-	if v, ok := os.LookupEnv("CACHE_TTL"); ok {
+	if v, ok := os.LookupEnv("CACHE_TTL"); ok && v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("mcpserver: invalid CACHE_TTL %q: %w", v, err))
@@ -246,7 +246,7 @@ func applyEnvOverrides(s *Server) error {
 	}
 
 	// RATE_LIMIT_ENABLED
-	if v, ok := os.LookupEnv("RATE_LIMIT_ENABLED"); ok {
+	if v, ok := os.LookupEnv("RATE_LIMIT_ENABLED"); ok && v != "" {
 		b, err := strconv.ParseBool(v)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("mcpserver: invalid RATE_LIMIT_ENABLED %q: %w", v, err))
@@ -256,7 +256,7 @@ func applyEnvOverrides(s *Server) error {
 	}
 
 	// RATE_LIMIT_RPS
-	if v, ok := os.LookupEnv("RATE_LIMIT_RPS"); ok {
+	if v, ok := os.LookupEnv("RATE_LIMIT_RPS"); ok && v != "" {
 		rps, err := strconv.ParseFloat(v, 64)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("mcpserver: invalid RATE_LIMIT_RPS %q: %w", v, err))
@@ -266,7 +266,7 @@ func applyEnvOverrides(s *Server) error {
 	}
 
 	// RATE_LIMIT_BURST
-	if v, ok := os.LookupEnv("RATE_LIMIT_BURST"); ok {
+	if v, ok := os.LookupEnv("RATE_LIMIT_BURST"); ok && v != "" {
 		burst, err := strconv.Atoi(v)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("mcpserver: invalid RATE_LIMIT_BURST %q: %w", v, err))
@@ -276,7 +276,7 @@ func applyEnvOverrides(s *Server) error {
 	}
 
 	// SHUTDOWN_TIMEOUT
-	if v, ok := os.LookupEnv("SHUTDOWN_TIMEOUT"); ok {
+	if v, ok := os.LookupEnv("SHUTDOWN_TIMEOUT"); ok && v != "" {
 		d, err := time.ParseDuration(v)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("mcpserver: invalid SHUTDOWN_TIMEOUT %q: %w", v, err))

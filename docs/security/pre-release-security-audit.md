@@ -91,7 +91,8 @@ No XML parsing in the codebase. The system uses JSON and YAML exclusively.
 
 **Status: N/A**
 
-No HTML template rendering. The gateway is a JSON API. The site (`site/`) serves
+No HTML template rendering. The gateway is a JSON API. The site
+(`precinct-dev/precinct-site`) serves
 static HTML files. The gateway sets Content-Security-Policy headers via the CSP
 mediator (`ui_csp_mediator.go`).
 
