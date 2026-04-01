@@ -222,7 +222,7 @@ else
     log_fail "Profile mediation gate" "Expected 403/MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED, got code=${PROFILE_MEDIATION_DENY_CODE} reason=${PROFILE_MEDIATION_DENY_REASON} body=${RESP_BODY:0:240}"
 fi
 
-if [ "$ACTIVE_PROFILE" = "prod_regulated_hipaa" ]; then
+if [ "$PROFILE_HIPAA_GATE" = "true" ]; then
     gateway_post "/v1/model/call" "{
       \"envelope\": {
         \"run_id\": \"${RUN_ID}-hipaa-allow\",
@@ -242,6 +242,7 @@ if [ "$ACTIVE_PROFILE" = "prod_regulated_hipaa" ]; then
         \"action\": \"model.call\",
         \"resource\": \"model/inference\",
         \"attributes\": {
+          \"compliance_profile\": \"hipaa\",
           \"provider\": \"openai\",
           \"model\": \"gpt-4o\",
           \"prompt\": \"Summarize this non-sensitive wellness note.\"
@@ -273,6 +274,7 @@ if [ "$ACTIVE_PROFILE" = "prod_regulated_hipaa" ]; then
         \"action\": \"model.call\",
         \"resource\": \"model/inference\",
         \"attributes\": {
+          \"compliance_profile\": \"hipaa\",
           \"provider\": \"openai\",
           \"model\": \"gpt-4o\",
           \"prompt_has_phi\": true,
@@ -286,7 +288,7 @@ if [ "$ACTIVE_PROFILE" = "prod_regulated_hipaa" ]; then
         log_fail "HIPAA prompt safety gate" "Expected 403/PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
     fi
 else
-    log_skip "HIPAA profile-specific prompt safety checks" "Active profile is ${ACTIVE_PROFILE}; run with ENFORCEMENT_PROFILE=prod_regulated_hipaa for strict HIPAA profile checks"
+    log_skip "HIPAA prompt safety checks" "HIPAA prompt safety gate is disabled for active profile ${ACTIVE_PROFILE}"
 fi
 
 log_subheader "F0.5: Connector conformance lifecycle (register -> validate -> approve -> activate)"
