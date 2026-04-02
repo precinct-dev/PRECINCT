@@ -14,6 +14,28 @@ NC='\033[0m' # No Color
 
 # ---- Configuration ----
 GATEWAY_URL="${GATEWAY_URL:-http://localhost:9090}"
+resolve_control_url() {
+    if [ -n "${CONTROL_URL:-}" ]; then
+        echo "$CONTROL_URL"
+        return
+    fi
+
+    case "$GATEWAY_URL" in
+        *://precinct-gateway:9090)
+            echo "${GATEWAY_URL/precinct-gateway:9090/precinct-control:9090}"
+            ;;
+        *://localhost:9090)
+            echo "${GATEWAY_URL/localhost:9090/localhost:9091}"
+            ;;
+        *://127.0.0.1:9090)
+            echo "${GATEWAY_URL/127.0.0.1:9090/127.0.0.1:9091}"
+            ;;
+        *)
+            echo "$GATEWAY_URL"
+            ;;
+    esac
+}
+CONTROL_URL="$(resolve_control_url)"
 PHOENIX_URL="${PHOENIX_URL:-http://localhost:6006}"
 OTEL_URL="${OTEL_URL:-http://localhost:4318}"
 
@@ -161,13 +183,36 @@ gateway_request() {
 # Make a raw POST to a specific path
 # Usage: gateway_post PATH BODY_JSON SPIFFE_ID
 # Sets: RESP_BODY, RESP_CODE
+is_control_path() {
+    local path="$1"
+    case "$path" in
+        /admin|/admin/*|/v1/connectors/*)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+request_base_url_for_path() {
+    local path="$1"
+    if is_control_path "$path"; then
+        echo "$CONTROL_URL"
+        return
+    fi
+    echo "$GATEWAY_URL"
+}
+
 gateway_post() {
     local path="$1"
     local body="$2"
     local spiffe_id="${3:-$DEFAULT_SPIFFE_ID}"
+    local base_url
+    base_url="$(request_base_url_for_path "$path")"
 
     local full_response
-    full_response=$(curl -s -w "\n%{http_code}" -X POST "${GATEWAY_URL}${path}" \
+    full_response=$(curl -s -w "\n%{http_code}" -X POST "${base_url}${path}" \
         -H "Content-Type: application/json" \
         -H "X-SPIFFE-ID: ${spiffe_id}" \
         -d "$body" 2>&1) || true
@@ -183,9 +228,11 @@ gateway_post() {
 gateway_get() {
     local path="$1"
     local spiffe_id="${2:-$DEFAULT_SPIFFE_ID}"
+    local base_url
+    base_url="$(request_base_url_for_path "$path")"
 
     local full_response
-    full_response=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}${path}" \
+    full_response=$(curl -s -w "\n%{http_code}" -X GET "${base_url}${path}" \
         -H "X-SPIFFE-ID: ${spiffe_id}" 2>&1) || true
 
     RESP_CODE=$(echo "$full_response" | tail -n1)

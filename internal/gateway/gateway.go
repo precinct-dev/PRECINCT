@@ -22,6 +22,7 @@ import (
 
 	"github.com/precinct-dev/precinct/internal/gateway/mcpclient"
 	"github.com/precinct-dev/precinct/internal/gateway/middleware"
+	"github.com/precinct-dev/precinct/internal/precinctcontrol"
 	"github.com/redis/go-redis/v9"
 	"github.com/spiffe/go-spiffe/v2/workloadapi"
 	"go.opentelemetry.io/otel"
@@ -214,9 +215,7 @@ func New(cfg *Config) (*Gateway, error) {
 		token := &middleware.SPIKEToken{Ref: "groq-api-key"}
 
 		for attempt := 1; attempt <= maxAttempts; attempt++ {
-			fetchCtx, fetchCancel := context.WithTimeout(context.Background(), 10*time.Second)
-			secret, err := nexusRedeemer.RedeemSecret(fetchCtx, token)
-			fetchCancel() // immediately, NOT defer
+			secret, err := nexusRedeemer.RedeemSecret(context.Background(), token)
 
 			if err == nil && secret.Value != "" {
 				guardAPIKey = secret.Value
@@ -540,7 +539,7 @@ func New(cfg *Config) (*Gateway, error) {
 	tokenExchangeConfigPath := getEnvOrDefault("TOKEN_EXCHANGE_CONFIG_PATH", "/config/token-exchange.yaml")
 	if tokenExchangeConfigPath != "" {
 		if txCfg, err := LoadTokenExchangeConfig(tokenExchangeConfigPath); err != nil {
-			slog.Warn("token exchange config not loaded (endpoint disabled)", "path", tokenExchangeConfigPath, "error", err)
+			slog.Info("token exchange config not loaded (endpoint disabled)", "path", tokenExchangeConfigPath, "error", err)
 		} else {
 			tokenExchangeCfg = txCfg
 			slog.Info("token exchange endpoint enabled", "credentials", len(txCfg.Credentials))
@@ -582,7 +581,7 @@ func New(cfg *Config) (*Gateway, error) {
 		cca:                        newConnectorConformanceAuthority(),
 		ingressReplayGuard:         newIngressReplayGuard(5*time.Minute, 15*time.Second),
 		ingressPolicy:              newIngressPlanePolicyEngine(),
-		adminAuthzAllowedSPIFFEIDs: normalizeAdminAuthzAllowlist(cfg.AdminAuthzAllowedSPIFFEIDs),
+		adminAuthzAllowedSPIFFEIDs: precinctcontrol.NormalizeAdminAuthzAllowlist(cfg.AdminAuthzAllowedSPIFFEIDs),
 		rlmEngine:                  newRLMGovernanceEngine(),
 		tokenExchangeConfig:        tokenExchangeCfg,
 	}, nil
@@ -608,6 +607,61 @@ func (g *Gateway) Handler() http.Handler {
 				DefaultPublicEndpointConfig()))
 	}
 	mux.Handle("/", protected)
+
+	return mux
+}
+
+// ControlHandler returns the control-plane HTTP handler with middleware chain.
+// Unlike Handler(), control-plane traffic is limited to explicit admin and connector routes,
+// health, and public metadata/token-exchange endpoints.
+func (g *Gateway) ControlHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/health", http.HandlerFunc(g.healthHandler))
+	// RFA-qq0.16: Handle dereference endpoint
+	mux.Handle("/data/dereference", g.dataHandleDereferenceHandler())
+	// OC-owta: Protected Resource Metadata (unauthenticated discovery)
+	mux.Handle("/.well-known/oauth-protected-resource", oauthProtectedResourceHandler(g.oauthJWTConfig))
+	// OC-xkkc: Token exchange endpoint (unauthenticated -- caller has no SPIFFE identity yet)
+	// OC-uli2: Wrapped with public endpoint hardening (rate limit + size limit + audit)
+	if g.tokenExchangeConfig != nil {
+		mux.Handle("/v1/auth/token-exchange",
+			publicEndpointWrapper(
+				tokenExchangeHandler(g.tokenExchangeConfig),
+				DefaultPublicEndpointConfig()))
+	}
+
+	controlProxyTracer := otel.Tracer("precinct-gateway", trace.WithInstrumentationVersion("2.0.0"))
+	controlProxyHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, span := controlProxyTracer.Start(r.Context(), "gateway.control",
+			trace.WithAttributes(
+				attribute.String("mcp.gateway.middleware", "proxy"),
+				attribute.String("upstream_url", g.config.UpstreamURL),
+			),
+		)
+		defer span.End()
+
+		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		if g.tryControlProxyRoutes(proxyRW, r.WithContext(ctx), span) {
+			return
+		}
+		http.NotFound(proxyRW, r)
+		span.SetAttributes(
+			attribute.Int("status_code", proxyRW.statusCode),
+			attribute.String("mcp.result", "denied"),
+			attribute.String("mcp.reason", "unknown control route"),
+		)
+	})
+
+	controlProtected := g.buildProtectedPipeline(
+		middleware.ResponseFirewall(
+			controlProxyHandler,
+			g.registry,
+			g.handleStore,
+			g.config.HandleTTL,
+		),
+	)
+
+	mux.Handle("/", controlProtected)
 
 	return mux
 }
@@ -708,7 +762,17 @@ func (g *Gateway) proxyHandler() http.Handler {
 		// Wrap response writer to capture status code for span and internal route handling.
 		proxyRW := &proxyResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 
-		if g.tryInternalProxyRoutes(proxyRW, r.WithContext(ctx), span) {
+		if precinctcontrol.IsControlServicePath(r.URL.Path) {
+			http.NotFound(proxyRW, r)
+			span.SetAttributes(
+				attribute.Int("status_code", http.StatusNotFound),
+				attribute.String("mcp.result", "denied"),
+				attribute.String("mcp.reason", "control route served by precinct-control"),
+			)
+			return
+		}
+
+		if g.tryGatewayProxyRoutes(proxyRW, r.WithContext(ctx), span) {
 			return
 		}
 
@@ -758,6 +822,10 @@ func (prw *proxyResponseWriter) WriteHeader(code int) {
 		prw.written = true
 	}
 	prw.ResponseWriter.WriteHeader(code)
+}
+
+func (prw *proxyResponseWriter) StatusCode() int {
+	return prw.statusCode
 }
 
 func (prw *proxyResponseWriter) Write(b []byte) (int, error) {
@@ -2073,9 +2141,10 @@ func (g *Gateway) EnableSPIFFETLS(ctx context.Context) error {
 	// over the mTLS connection to upstream MCP servers.
 	g.proxy.Transport = NewTracingTransport(spiffeTLS.UpstreamTransport)
 
-	// RFA-8z8.2 AC2: Configure the KeyDB client for TLS if KeyDB is in use.
-	// The KeyDB client needs the same X509Source for mTLS to KeyDB.
-	if g.config.KeyDBURL != "" {
+	// RFA-8z8.2 AC2: Configure the KeyDB client for TLS only in full prod mode.
+	// The supplemental internal mTLS listener used by local/K8s dev should not
+	// silently flip unrelated local data-plane dependencies into TLS mode.
+	if strings.EqualFold(g.config.SPIFFEMode, "prod") && g.config.KeyDBURL != "" {
 		if err := g.enableKeyDBTLS(spiffeTLS, keyDBAuthzAllowedSPIFFEIDs); err != nil {
 			if g.enforcementProfile != nil && g.enforcementProfile.StartupGateMode == "strict" {
 				return fmt.Errorf("failed to enable keydb TLS in strict profile: %w", err)
@@ -2150,8 +2219,9 @@ func shouldFetchGuardAPIKeyFromSPIKE(cfg *Config) bool {
 	if cfg == nil || strings.TrimSpace(cfg.SPIKENexusURL) == "" {
 		return false
 	}
-	// Always attempt SPIKE fetch when Nexus is available. If the key is found,
-	// shouldSwitchGuardModelEndpointToReal will switch from mock to real endpoint.
+	if strings.Contains(strings.ToLower(strings.TrimSpace(cfg.GuardModelEndpoint)), "mock-guard-model") {
+		return false
+	}
 	return true
 }
 

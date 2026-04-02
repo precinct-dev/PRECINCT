@@ -27,8 +27,9 @@
 #
 # Registered workloads:
 #   1. precinct-gateway -- the security enforcement gateway
-#   2. tools/* -- MCP tool server workloads (wildcard-like via namespace selector)
-#   3. spike-nexus -- SPIKE token service
+#   2. precinct-control -- the control-plane service
+#   3. tools/* -- MCP tool server workloads (wildcard-like via namespace selector)
+#   4. spike-nexus -- SPIKE token service
 #
 # Re-running is idempotent: SPIRE deduplicates entries by SPIFFE ID.
 # ------------------------------------------------------------------------------
@@ -92,6 +93,18 @@ data:
       -selector k8s:sa:precinct-gateway \
       -dns precinct-gateway \
       -dns precinct-gateway.gateway.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
+    # Control workload
+    echo "  Workload: precinct-control..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://precinct.poc/agent/k8s-psat \
+      -spiffeID spiffe://precinct.poc/ns/gateway/sa/precinct-control \
+      -selector k8s:ns:gateway \
+      -selector k8s:sa:precinct-control \
+      -dns precinct-control \
+      -dns precinct-control.gateway.svc.cluster.local \
     || echo "  (entry may already exist, continuing)"
 
     # Tool server workloads

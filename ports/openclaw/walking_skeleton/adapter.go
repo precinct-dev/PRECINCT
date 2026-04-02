@@ -14,12 +14,15 @@ type EnvelopeParams struct {
 
 type IngressSubmitParams struct {
 	EnvelopeParams
+	ConnectorType      string
 	ConnectorID        string
 	ConnectorSignature string
 	SourceID           string
 	SourcePrincipal    string
 	EventID            string
+	Nonce              string
 	EventTimestamp     string
+	Payload            map[string]any
 }
 
 type ContextAdmitParams struct {
@@ -71,17 +74,28 @@ func buildRequest(envelope EnvelopeParams, action, resource string, attributes m
 }
 
 func BuildIngressSubmitRequest(params IngressSubmitParams) map[string]any {
+	connectorType := params.ConnectorType
+	if connectorType == "" {
+		connectorType = "webhook"
+	}
+	payload := params.Payload
+	if payload == nil {
+		payload = map[string]any{}
+	}
 	return buildRequest(
 		params.EnvelopeParams,
 		"ingress.admit",
 		"ingress/event",
 		map[string]any{
+			"connector_type":      connectorType,
 			"connector_id":        params.ConnectorID,
 			"connector_signature": params.ConnectorSignature,
 			"source_id":           params.SourceID,
 			"source_principal":    params.SourcePrincipal,
 			"event_id":            params.EventID,
+			"nonce":               params.Nonce,
 			"event_timestamp":     params.EventTimestamp,
+			"payload":             payload,
 		},
 	)
 }

@@ -82,17 +82,26 @@ func SPIFFEAuth(next http.Handler, mode string, opts ...SPIFFEAuthOption) http.H
 		ctx = r.Context()
 
 		if mode == "dev" {
-			// Dev mode: read from header (Phase 1 behavior preserved)
+			// Dev mode: preserve header-declared identity for localhost/demo flows,
+			// but prefer a verified SPIFFE mTLS identity when a client certificate
+			// is present. This supports an internal mTLS listener without changing
+			// the existing HTTP demo surface.
+			if spiffeID == "" {
+				spiffeID = ExtractSPIFFEIDFromTLS(r)
+				if spiffeID != "" && GetAuthMethod(ctx) == "" {
+					ctx = WithAuthMethod(ctx, "mtls_svid")
+				}
+			}
 			if spiffeID == "" {
 				spiffeID = r.Header.Get("X-SPIFFE-ID")
 			}
 			if spiffeID == "" {
 				WriteGatewayError(w, r.WithContext(ctx), http.StatusUnauthorized, GatewayError{
 					Code:           ErrAuthMissingIdentity,
-					Message:        "Missing X-SPIFFE-ID header",
+					Message:        "Missing X-SPIFFE-ID header or SPIFFE mTLS client certificate",
 					Middleware:     "spiffe_auth",
 					MiddlewareStep: 3,
-					Remediation:    "Include a valid X-SPIFFE-ID header in the request.",
+					Remediation:    "Include a valid X-SPIFFE-ID header or present a valid client certificate with a spiffe:// URI SAN.",
 				})
 				return
 			}

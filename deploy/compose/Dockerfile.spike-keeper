@@ -8,7 +8,7 @@
 # TCP dial proves the TLS listener is up without requiring authorization.
 
 # ============================================================================
-# Stage 1: Build the TCP healthcheck binary
+# Stage 1: Build the helper binaries
 # ============================================================================
 FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
 
@@ -28,7 +28,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -ldflags="-s -w" \
     -trimpath \
     -o /build/tcp-healthcheck \
-    ./cmd/tcp-healthcheck
+    ./cmd/tcp-healthcheck \
+    && CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/spike-keeper-wrapper \
+    ./cmd/spike-keeper-wrapper
 
 # ============================================================================
 # Stage 2: Runtime -- spike-keeper + healthcheck sidecar binary
@@ -36,6 +41,9 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
 FROM ghcr.io/spiffe/spike-keeper:0.8.0@sha256:ff6515ee37aabd1ace606a8d95129b716dc7ced2976de5a30dae7dc80f5b2c83
 
 COPY --from=builder /build/tcp-healthcheck /usr/local/bin/tcp-healthcheck
+COPY --from=builder /build/spike-keeper-wrapper /usr/local/bin/spike-keeper-wrapper
 
 HEALTHCHECK --interval=5s --timeout=15s --start-period=15s --retries=12 \
     CMD ["/usr/local/bin/tcp-healthcheck"]
+
+ENTRYPOINT ["/usr/local/bin/spike-keeper-wrapper"]

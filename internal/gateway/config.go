@@ -59,6 +59,7 @@ type Config struct {
 	SPIKENexusURL                   string    // SPIKE Nexus URL for secret redemption via mTLS (RFA-a2y.1)
 	SPIFFETrustDomain               string    // SPIFFE trust domain (default: poc.local) (RFA-8z8.1)
 	SPIFFEListenPort                int       // Port for HTTPS when SPIFFE_MODE=prod (default: 9443) (RFA-8z8.1)
+	SPIFFEInternalMTLSEnabled       bool      // Enable a supplemental internal SPIFFE mTLS listener outside prod mode
 	PublicListenPort                int       // Port for the public HTTP listener in SPIFFE_MODE=prod (default: 9090)
 	PublicListenHost                string    // Host/interface for the public HTTP listener in SPIFFE_MODE=prod (default: 0.0.0.0)
 	PublicRouteAllowlist            string    // Comma-separated exact public paths exposed by the prod public listener
@@ -231,6 +232,8 @@ func ConfigFromEnv() *Config {
 			spiffeListenPort = parsed
 		}
 	}
+	spiffeInternalMTLSEnabled := strings.EqualFold(strings.TrimSpace(os.Getenv("SPIFFE_INTERNAL_MTLS_ENABLED")), "1") ||
+		strings.EqualFold(strings.TrimSpace(os.Getenv("SPIFFE_INTERNAL_MTLS_ENABLED")), "true")
 	publicListenPort := defaultPublicListenPort
 	if sp := os.Getenv("PUBLIC_LISTEN_PORT"); sp != "" {
 		if parsed, err := strconv.Atoi(sp); err == nil {
@@ -351,6 +354,7 @@ func ConfigFromEnv() *Config {
 		SPIKENexusURL:                   getEnvOrDefault("SPIKE_NEXUS_URL", ""),
 		SPIFFETrustDomain:               spiffeTrustDomain,
 		SPIFFEListenPort:                spiffeListenPort,
+		SPIFFEInternalMTLSEnabled:       spiffeInternalMTLSEnabled,
 		PublicListenPort:                publicListenPort,
 		PublicListenHost:                getEnvOrDefault("PUBLIC_LISTEN_HOST", defaultPublicListenHost),
 		PublicRouteAllowlist:            getEnvOrDefault("PUBLIC_ROUTE_ALLOWLIST", defaultPublicRouteAllowlist),

@@ -56,12 +56,11 @@ func NewSPIFFETLSConfig(ctx context.Context, upstreamAuthzAllowedSPIFFEIDs []str
 	}
 	slog.Info("SPIFFE mTLS: obtained SVID", "svid_id", svid.ID, "cert_expires", svid.Certificates[0].NotAfter.Format("2006-01-02T15:04:05Z"))
 
-	// Server TLS: present our SVID, require and verify client certificates
-	// against the SPIRE trust bundle. This enforces mTLS -- only clients
-	// with valid SVIDs from our trust domain can connect.
-	serverTLS := tlsconfig.TLSServerConfig(x509Source)
-	serverTLS.ClientAuth = tls.RequireAndVerifyClientCert
-	serverTLS.ClientCAs = nil // go-spiffe handles this via the VerifyPeerCertificate callback
+	// Server TLS: present our SVID and require/verify client certificates
+	// against the SPIRE trust bundle. Use the dedicated mutual-TLS helper so
+	// workload SVID verification is driven by go-spiffe's trust bundle rather
+	// than the standard library's CA pool defaults.
+	serverTLS := tlsconfig.MTLSServerConfig(x509Source, x509Source, tlsconfig.AuthorizeAny())
 	serverTLS.MinVersion = tls.VersionTLS12
 
 	peerAuthz, err := buildSPIFFEPeerAuthorizer(upstreamAuthzAllowedSPIFFEIDs, "upstream")

@@ -68,6 +68,18 @@ data:
       -dns precinct-gateway.gateway.svc.cluster.local \
     || echo "  (entry may already exist, continuing)"
 
+    # Control workload
+    echo "  Workload: precinct-control..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://precinct.poc/agent/local \
+      -spiffeID spiffe://precinct.poc/ns/gateway/sa/precinct-control \
+      -selector k8s:ns:gateway \
+      -selector k8s:sa:precinct-control \
+      -dns precinct-control \
+      -dns precinct-control.gateway.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
     # Tool server workloads
     echo "  Workload: mcp-tool (tools namespace)..."
     /opt/spire/bin/spire-server entry create \

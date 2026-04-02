@@ -33,6 +33,7 @@ The system includes these workload identities:
 | SPIFFE ID | Component | Purpose |
 |-----------|-----------|---------|
 | `spiffe://poc.local/gateways/precinct-gateway/dev` | PRECINCT Gateway | Enforces all security controls (auth, authz, content inspection) |
+| `spiffe://poc.local/gateways/precinct-control/dev` | PRECINCT Control | Serves admin/control-plane APIs under the same zero-trust contract set |
 | `spiffe://poc.local/agents/mcp-client/dspy-researcher/dev` | DSPy Agent | Research agent using DSPy framework |
 | `spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev` | PydanticAI Agent | Research agent using PydanticAI framework |
 | `spiffe://poc.local/tools/docker-mcp-server/dev` | Docker MCP Server | Containerized tool execution service |
@@ -87,7 +88,7 @@ Execute the test suite to verify all registrations:
 ```
 
 Expected output:
-- All 5+ workload SPIFFE IDs are registered
+- All 6+ workload SPIFFE IDs are registered
 - Gateway entry has correct Docker label selectors
 - Script is idempotent (re-running shows "already exists")
 

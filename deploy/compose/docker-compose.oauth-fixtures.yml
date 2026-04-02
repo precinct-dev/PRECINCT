@@ -41,3 +41,11 @@ services:
     environment:
       - OAUTH_RESOURCE_SERVER_CONFIG_PATH=/config/oauth-resource-server.yaml
       - MCP_TRANSPORT_MODE=proxy
+
+  precinct-control:
+    depends_on:
+      mock-oauth-issuer:
+        condition: service_healthy
+    environment:
+      - OAUTH_RESOURCE_SERVER_CONFIG_PATH=/config/oauth-resource-server.yaml
+      - MCP_TRANSPORT_MODE=proxy

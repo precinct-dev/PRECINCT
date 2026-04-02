@@ -94,7 +94,8 @@ func main() {
 	// RFA-8z8.1: In prod mode, initialize SPIFFE mTLS before creating the server.
 	// This connects to the SPIRE Agent, obtains an X.509 SVID, and configures
 	// both the server TLS and the reverse proxy upstream transport.
-	if strings.EqualFold(cfg.SPIFFEMode, "prod") {
+	enableSupplementalMTLS := cfg.SPIFFEInternalMTLSEnabled && !strings.EqualFold(cfg.SPIFFEMode, "prod")
+	if strings.EqualFold(cfg.SPIFFEMode, "prod") || enableSupplementalMTLS {
 		if err := gw.EnableSPIFFETLS(context.Background()); err != nil {
 			log.Fatalf("Failed to initialize SPIFFE mTLS: %v", err)
 		}
@@ -102,6 +103,7 @@ func main() {
 
 	internalSrv := newInternalServer(cfg, gw)
 	publicSrv := newPublicServer(cfg, gw)
+	supplementalMTLSSrv := newSupplementalMTLSServer(cfg, gw)
 
 	// Start server in goroutine
 	go func() {
@@ -124,6 +126,14 @@ func main() {
 			}
 		}
 	}()
+	if supplementalMTLSSrv != nil {
+		go func() {
+			log.Printf("Starting PRECINCT Gateway internal SPIFFE mTLS listener (HTTPS/mTLS) on port %d", cfg.SPIFFEListenPort)
+			if err := supplementalMTLSSrv.ListenAndServeTLS("", ""); err != nil && err != http.ErrServerClosed {
+				log.Fatalf("Supplemental mTLS server failed: %v", err)
+			}
+		}()
+	}
 	if publicSrv != nil {
 		go func() {
 			log.Printf("Starting PRECINCT Gateway public listener (HTTP) on %s", publicSrv.Addr)
@@ -148,6 +158,11 @@ func main() {
 	if publicSrv != nil {
 		if err := publicSrv.Shutdown(ctx); err != nil {
 			log.Fatalf("Public gateway forced to shutdown: %v", err)
+		}
+	}
+	if supplementalMTLSSrv != nil {
+		if err := supplementalMTLSSrv.Shutdown(ctx); err != nil {
+			log.Fatalf("Supplemental mTLS gateway forced to shutdown: %v", err)
 		}
 	}
 
@@ -193,6 +208,20 @@ func newPublicServer(cfg *gateway.Config, gw *gateway.Gateway) *http.Server {
 	return &http.Server{
 		Addr:         gateway.ResolvePublicListenAddr(cfg),
 		Handler:      gw.PublicHandler(),
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+}
+
+func newSupplementalMTLSServer(cfg *gateway.Config, gw *gateway.Gateway) *http.Server {
+	if strings.EqualFold(cfg.SPIFFEMode, "prod") || !cfg.SPIFFEInternalMTLSEnabled {
+		return nil
+	}
+	return &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.SPIFFEListenPort),
+		Handler:      gw.Handler(),
+		TLSConfig:    gw.ServerTLSConfig(),
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,

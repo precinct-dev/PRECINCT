@@ -1,0 +1,61 @@
+# Multi-Stage Dockerfile for PRECINCT Control Plane
+# Reference: docs/supply-chain-images.md
+
+# ============================================================================
+# Stage 1: Builder
+# ============================================================================
+FROM golang:1.26.1-alpine@sha256:2389ebfa5b7f43eeafbd6be0c3700cc46690ef842ad962f6c5bd6be49ed82039 AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    git
+
+# Set working directory
+WORKDIR /build
+
+# Copy go.mod and go.sum first for layer caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY . .
+
+# Build the control service
+# CGO_ENABLED=0: Creates statically linked binary (required for distroless)
+# -ldflags="-s -w": Strip debug info and symbol table (smaller binary)
+# -trimpath: Remove file system paths from binary (reproducible builds)
+# TARGETARCH: Set by Docker BuildKit (amd64/arm64) based on --platform or host
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/precinct-control \
+    ./cmd/precinct-control
+
+# ============================================================================
+# Stage 2: Runtime (Distroless)
+# ============================================================================
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
+
+# Set working directory
+WORKDIR /app
+
+# Copy CA certificates from builder (required for HTTPS to OPA/registry)
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy the compiled binary from builder
+COPY --from=builder /build/precinct-control /app/precinct-control
+
+# Expose control service port (internal service-to-service only; no host map by default)
+EXPOSE 9090
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["/app/precinct-control", "health"]
+
+# Run the control service
+ENTRYPOINT ["/app/precinct-control"]
+CMD []

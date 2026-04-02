@@ -15,6 +15,7 @@ import (
 // Walking skeleton scope (RFA-qq5f): only GET /health.
 type Client struct {
 	baseURL       string
+	controlURL    string
 	httpClient    *http.Client
 	adminSPIFFEID string
 }
@@ -32,12 +33,33 @@ func NewClient(baseURL string) *Client {
 		adminSPIFFEID = "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 	}
 	return &Client{
-		baseURL: strings.TrimRight(baseURL, "/"),
+		baseURL:    strings.TrimRight(baseURL, "/"),
+		controlURL: deriveControlURL(baseURL),
 		httpClient: &http.Client{
 			Timeout: 3 * time.Second,
 		},
 		adminSPIFFEID: adminSPIFFEID,
 	}
+}
+
+func deriveControlURL(baseURL string) string {
+	override := strings.TrimSpace(os.Getenv("PRECINCT_CONTROL_URL"))
+	if override != "" {
+		return strings.TrimRight(override, "/")
+	}
+
+	controlURL := strings.TrimRight(baseURL, "/")
+	replacements := [][2]string{
+		{"://precinct-gateway:9090", "://precinct-control:9090"},
+		{"://localhost:9090", "://localhost:9091"},
+		{"://127.0.0.1:9090", "://127.0.0.1:9091"},
+	}
+	for _, replacement := range replacements {
+		if strings.Contains(controlURL, replacement[0]) {
+			return strings.Replace(controlURL, replacement[0], replacement[1], 1)
+		}
+	}
+	return controlURL
 }
 
 func (c *Client) applyAdminHeaders(req *http.Request) {
@@ -129,7 +151,7 @@ type policyReloadErrorResponse struct {
 }
 
 func (c *Client) GetCircuitBreakers(ctx context.Context) ([]CircuitBreakerEntry, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/admin/circuit-breakers", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.controlURL+"/admin/circuit-breakers", nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -160,7 +182,7 @@ func (c *Client) GetCircuitBreaker(ctx context.Context, tool string) (*CircuitBr
 		return nil, fmt.Errorf("tool is empty")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/admin/circuit-breakers/"+tool, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.controlURL+"/admin/circuit-breakers/"+tool, nil)
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
@@ -202,7 +224,7 @@ func (c *Client) ResetCircuitBreakers(ctx context.Context, tool string) (Circuit
 		return CircuitBreakersResetOutput{}, fmt.Errorf("marshal reset request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/admin/circuit-breakers/reset", bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.controlURL+"/admin/circuit-breakers/reset", bytes.NewReader(reqBody))
 	if err != nil {
 		return CircuitBreakersResetOutput{}, fmt.Errorf("create request: %w", err)
 	}
@@ -236,7 +258,7 @@ func (c *Client) ResetCircuitBreakers(ctx context.Context, tool string) (Circuit
 }
 
 func (c *Client) ReloadPolicy(ctx context.Context) (PolicyReloadOutput, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/admin/policy/reload", nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.controlURL+"/admin/policy/reload", nil)
 	if err != nil {
 		return PolicyReloadOutput{}, fmt.Errorf("create request: %w", err)
 	}

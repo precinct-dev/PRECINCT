@@ -189,9 +189,15 @@ port_route_matches(route) if {
 
 destination_allowed(tool, params) if {
     # Other tools - default deny external egress unless explicitly allowed
-    not tool in ["tavily_search", "tavily_extract", "tavily_crawl", "tavily_map", "tavily_research", "read", "grep", "bash", "messaging_send", "messaging_status"]
+    # llm_query is enforced by the dedicated model-plane provider catalog and
+    # destination mediation in the gateway before upstream egress occurs.
+    not tool in ["tavily_search", "tavily_extract", "tavily_crawl", "tavily_map", "tavily_research", "read", "grep", "bash", "messaging_send", "messaging_status", "llm_query"]
     # Would check against tool registry allowed_destinations
     false
+}
+
+destination_allowed(tool, params) if {
+    tool == "llm_query"
 }
 
 # Step-up gating for high-risk tools

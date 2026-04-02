@@ -31,6 +31,8 @@ const (
 	colorDim   = "\033[2m"
 )
 
+var demoRunSuffix = fmt.Sprintf("%x", time.Now().UnixNano())
+
 // testCase holds a single E2E test with rich self-documenting metadata.
 type testCase struct {
 	name   string // Short test name (shown in [N/M] header)
@@ -42,6 +44,18 @@ type testCase struct {
 
 func demoSessionID(prefix string) string {
 	return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
+}
+
+func demoAgentSPIFFE(name string) string {
+	return fmt.Sprintf("spiffe://poc.local/agents/%s-%s/dev", name, demoRunSuffix)
+}
+
+func demoOwnerSPIFFE(name string) string {
+	return fmt.Sprintf("spiffe://poc.local/owner/%s-%s", name, demoRunSuffix)
+}
+
+func demoExternalSPIFFE(name string) string {
+	return fmt.Sprintf("spiffe://poc.local/external/%s-%s", name, demoRunSuffix)
 }
 
 var gatewayURL = flag.String("gateway-url", "http://localhost:9090", "Gateway base URL")
@@ -416,7 +430,7 @@ func main() {
 // newClient creates a client with the DSPy researcher SPIFFE ID.
 func newClient() *mcpgateway.GatewayClient {
 	return mcpgateway.NewClient(*gatewayURL, dspySPIFFE,
-		mcpgateway.WithTimeout(10*time.Second),
+		mcpgateway.WithTimeout(20*time.Second),
 		mcpgateway.WithMaxRetries(0), // No retries for demo -- we want immediate responses
 	)
 }
@@ -1404,6 +1418,7 @@ func testRateLimit() bool {
 	// endpoint which still runs inside the normal middleware chain (incl. Step 11 rate limiting).
 	ctx := context.Background()
 	endpoint := strings.TrimSuffix(*gatewayURL, "/") + "/__demo__/ratelimit"
+	spiffeID := demoAgentSPIFFE("mcp-client-ratelimit")
 
 	const (
 		maxAttempts = 5000
@@ -1424,7 +1439,7 @@ func testRateLimit() bool {
 	// Probe that the endpoint exists (demo toggle must be enabled in the gateway).
 	{
 		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-		req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+		req.Header.Set("X-SPIFFE-ID", spiffeID)
 		req.Header.Set("X-Session-ID", "demo-rl-probe")
 		resp, err := sharedHTTP.Do(req)
 		if err != nil {
@@ -1452,7 +1467,7 @@ func testRateLimit() bool {
 			}
 
 			req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-			req.Header.Set("X-SPIFFE-ID", dspySPIFFE)
+			req.Header.Set("X-SPIFFE-ID", spiffeID)
 			req.Header.Set("X-Session-ID", fmt.Sprintf("demo-rl-%d", workerID))
 
 			resp, err := sharedHTTP.Do(req)
@@ -1570,7 +1585,7 @@ func sendPrincipalRequest(spiffeID, action, sessionID string) (int, *mcpgateway.
 // but the error code must NOT be principal_level_insufficient.
 func testPrincipalOwnerDestructive() bool {
 	status, ge, _, err := sendPrincipalRequest(
-		"spiffe://poc.local/owner/alice",
+		demoOwnerSPIFFE("alice-principal"),
 		"delete",
 		"demo-principal-owner-destructive",
 	)
@@ -1603,7 +1618,7 @@ func testPrincipalOwnerDestructive() bool {
 // External identity must be denied with principal_level_insufficient for destructive actions.
 func testPrincipalExternalDestructive() bool {
 	status, ge, _, err := sendPrincipalRequest(
-		"spiffe://poc.local/external/bob",
+		demoExternalSPIFFE("bob-principal-destructive"),
 		"delete",
 		"demo-principal-external-destructive",
 	)
@@ -1636,7 +1651,7 @@ func testPrincipalExternalDestructive() bool {
 // Agent identity passes the principal-level check for messaging (level <= 3).
 func testPrincipalAgentMessaging() bool {
 	status, ge, _, err := sendPrincipalRequest(
-		"spiffe://poc.local/agents/summarizer/dev",
+		demoAgentSPIFFE("summarizer-principal"),
 		"notify",
 		"demo-principal-agent-messaging",
 	)
@@ -1668,7 +1683,7 @@ func testPrincipalAgentMessaging() bool {
 // External identity must be denied with principal_level_insufficient for messaging actions.
 func testPrincipalExternalMessaging() bool {
 	status, ge, _, err := sendPrincipalRequest(
-		"spiffe://poc.local/external/bob",
+		demoExternalSPIFFE("bob-principal-messaging"),
 		"notify",
 		"demo-principal-external-messaging",
 	)
@@ -1703,7 +1718,7 @@ func testPrincipalExternalMessaging() bool {
 // ClassifyReversibility scores 0 (reversible). The tool reaches step 9 and
 // is allowed (or reaches upstream with 502 if no upstream is running).
 func testIrrev1ReadAllowed() bool {
-	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/external/bob",
+	client := mcpgateway.NewClient(*gatewayURL, demoExternalSPIFFE("bob-irrev-read"),
 		mcpgateway.WithTimeout(10*time.Second),
 		mcpgateway.WithMaxRetries(0),
 		mcpgateway.WithSessionID(demoSessionID("irrev-demo-read")),
@@ -1736,7 +1751,7 @@ func testIrrev1ReadAllowed() bool {
 // (not irreversible) and either reaches upstream (200/502) or is denied for
 // a non-reversibility reason. The key assertion: code must NOT be irreversible_action_denied.
 func testIrrev2CreateEvaluated() bool {
-	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/external/bob",
+	client := mcpgateway.NewClient(*gatewayURL, demoExternalSPIFFE("bob-irrev-create"),
 		mcpgateway.WithTimeout(10*time.Second),
 		mcpgateway.WithMaxRetries(0),
 		mcpgateway.WithSessionID(demoSessionID("irrev-demo-create")),
@@ -1778,7 +1793,7 @@ func testIrrev2CreateEvaluated() bool {
 //
 // Uses CallWithMetadata to read advisory headers through the SDK (no raw HTTP).
 func testIrrev3OwnerDelete() bool {
-	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/owner/alice",
+	client := mcpgateway.NewClient(*gatewayURL, demoOwnerSPIFFE("alice-irrev-delete"),
 		mcpgateway.WithTimeout(10*time.Second),
 		mcpgateway.WithMaxRetries(0),
 		mcpgateway.WithSessionID(demoSessionID("irrev-demo-owner-delete")),
@@ -1824,7 +1839,7 @@ func testIrrev3OwnerDelete() bool {
 // principal_level_insufficient for destructive actions -- whichever check fires
 // first (OPA or step-up) produces a 403 denial.
 func testIrrev4ExternalDelete() bool {
-	client := mcpgateway.NewClient(*gatewayURL, "spiffe://poc.local/external/bob",
+	client := mcpgateway.NewClient(*gatewayURL, demoExternalSPIFFE("bob-irrev-delete"),
 		mcpgateway.WithTimeout(10*time.Second),
 		mcpgateway.WithMaxRetries(0),
 		mcpgateway.WithSessionID(demoSessionID("irrev-demo-external-delete")),
@@ -1855,7 +1870,7 @@ func testIrrev4ExternalDelete() bool {
 // S-IRREV-5: Irreversible action in an escalated session.
 func testIrrev5EscalatedSessionDeny() bool {
 	sessionID := demoSessionID("irrev-demo-escalated")
-	agentSPIFFE := "spiffe://poc.local/agents/summarizer/dev"
+	agentSPIFFE := demoAgentSPIFFE("summarizer-irrev")
 
 	escalationClient := mcpgateway.NewClient(*gatewayURL, agentSPIFFE,
 		mcpgateway.WithTimeout(10*time.Second),
@@ -1884,10 +1899,12 @@ func testIrrev5EscalatedSessionDeny() bool {
 		printGatewayError(ge)
 		// Agent (level=3) + shutdown (destructive): OPA fires principal_level_insufficient
 		// at step 6 (level=3 > 2 with destructive action). If OPA doesn't fire,
-		// step-up gating (step 9) catches it as irreversible. Either 403 proves the defense.
+		// step-up gating (step 9) catches it as irreversible. A stricter
+		// no_matching_grant authz denial is also acceptable fail-closed behavior.
 		ok := ge.HTTPStatus == 403 &&
 			(ge.Code == "stepup_denied" || ge.Code == "stepup_approval_required" ||
-				ge.Code == "irreversible_action_denied" || ge.Code == "principal_level_insufficient")
+				ge.Code == "irreversible_action_denied" || ge.Code == "principal_level_insufficient" ||
+				ge.Code == "authz_policy_denied")
 		return printProof(ok, fmt.Sprintf("PROOF S-IRREV-5: Irreversible action in escalated session denied -- code=%s, step=%d", ge.Code, ge.Step))
 	}
 	fmt.Printf("  Error: %v\n", err)
@@ -1968,7 +1985,7 @@ func parseGatewayErrorResp(body []byte) (code string, step int, message string) 
 
 // S-DISCORD-DLP: Discord /discord/send with OpenAI API key credential is blocked by DLP at step 7.
 func testDiscordDLP() bool {
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := demoAgentSPIFFE("discord-dlp")
 	sessionID := demoSessionID("demo-discord-dlp")
 
 	body, _ := json.Marshal(map[string]any{
@@ -2000,7 +2017,7 @@ func testDiscordDLP() bool {
 
 // S-DISCORD-RATE: Rate limiter at step 11 throttles rapid Discord /discord/send requests.
 func testDiscordRate() bool {
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := demoAgentSPIFFE("discord-rate")
 
 	// Use the demo-only fast path endpoint which traverses the middleware chain
 	// (including rate limiter at step 11) but does not require adapter JSON parsing.
@@ -2091,7 +2108,7 @@ func testDiscordRate() bool {
 
 // S-EMAIL-DLP: Email /email/send with SSN blocked before delivery.
 func testEmailDLP() bool {
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := demoAgentSPIFFE("email-dlp")
 	sessionID := demoSessionID("demo-email-dlp")
 
 	body, _ := json.Marshal(map[string]any{
@@ -2139,7 +2156,7 @@ func testEmailDLP() bool {
 
 // S-EMAIL-MASS: Email /email/send with >10 recipients triggers step-up approval requirement.
 func testEmailMass() bool {
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := demoAgentSPIFFE("email-mass")
 	sessionID := demoSessionID("demo-email-mass")
 
 	// Build recipient list with 15 addresses (exceeds massEmailThreshold of 10).
@@ -2182,7 +2199,7 @@ func testEmailMass() bool {
 // are either flagged (policy=flag) and caught by deep scan at step 10, or blocked
 // directly (policy=block) at step 7.
 func testDiscordInject() bool {
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := demoAgentSPIFFE("discord-inject")
 	sessionID := demoSessionID("demo-discord-inject")
 
 	body, _ := json.Marshal(map[string]any{
@@ -2235,7 +2252,7 @@ func testDiscordInject() bool {
 // Step 2: Forward that sensitive data via /discord/send in the same session.
 // The DLP middleware (step 7) blocks the credential/PII in the outbound Discord message.
 func testEmailExfil() bool {
-	spiffeID := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	spiffeID := demoAgentSPIFFE("email-exfil")
 	sessionID := demoSessionID("demo-exfil-cross-channel")
 
 	// Step 1: Read email containing sensitive data (SSN).
@@ -2325,7 +2342,7 @@ func testEmailExfil() bool {
 // S-ESC-5 executes before S-ESC-4 so the read happens during Critical (32) rather than Emergency (40).
 func testEscalationDetection() bool {
 	sessionID := demoSessionID("esc-demo-session")
-	ownerSPIFFE := "spiffe://poc.local/owner/alice"
+	ownerSPIFFE := demoOwnerSPIFFE("alice-escalation")
 	allPassed := true
 
 	ownerClient := mcpgateway.NewClient(*gatewayURL, ownerSPIFFE,

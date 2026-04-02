@@ -47,12 +47,21 @@ deploy: deploy-configmap deploy-gateway ## Deploy all gateway components (Config
 		@echo "Creating ConfigMap from source policy files..."
 		$(KUBECTL) -n $(NAMESPACE) create configmap gateway-config \
 			--from-file=mcp_policy.rego=$(OPA_DIR)/mcp_policy.rego \
+			--from-file=mcp_policy.rego.sig=$(OPA_DIR)/mcp_policy.rego.sig \
 			--from-file=ui_policy.rego=$(OPA_DIR)/ui_policy.rego \
+			--from-file=ui_policy.rego.sig=$(OPA_DIR)/ui_policy.rego.sig \
 			--from-file=ui_csp_policy.rego=$(OPA_DIR)/ui_csp_policy.rego \
+			--from-file=ui_csp_policy.rego.sig=$(OPA_DIR)/ui_csp_policy.rego.sig \
 			--from-file=exfiltration.rego=$(OPA_DIR)/exfiltration.rego \
+			--from-file=exfiltration.rego.sig=$(OPA_DIR)/exfiltration.rego.sig \
 			--from-file=context_policy.rego=$(OPA_DIR)/context_policy.rego \
+			--from-file=context_policy.rego.sig=$(OPA_DIR)/context_policy.rego.sig \
+			--from-file=principal_policy.rego=$(OPA_DIR)/principal_policy.rego \
+			--from-file=principal_policy.rego.sig=$(OPA_DIR)/principal_policy.rego.sig \
 			--from-file=tool_grants.yaml=$(OPA_DIR)/tool_grants.yaml \
+			--from-file=tool_grants.yaml.sig=$(OPA_DIR)/tool_grants.yaml.sig \
 			--from-file=ui_capability_grants.yaml=$(OPA_DIR)/ui_capability_grants.yaml \
+			--from-file=ui_capability_grants.yaml.sig=$(OPA_DIR)/ui_capability_grants.yaml.sig \
 			--from-file=tool-registry.yaml=$(TOOL_REGISTRY) \
 			--from-file=tool-registry.yaml.sig=$(TOOL_REGISTRY).sig \
 			--from-file=capability-registry-v2.yaml=$(CAPABILITY_REGISTRY_V2) \

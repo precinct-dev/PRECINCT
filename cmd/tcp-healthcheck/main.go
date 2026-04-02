@@ -1,29 +1,19 @@
-// cmd/tcp-healthcheck performs a TCP connection health check.
-// It connects to a host:port and immediately closes -- no TLS, no HTTP.
-// This is for distroless containers where the service's TLS authorizer
-// rejects self-connections (e.g., SPIKE Keeper only allows Nexus/Bootstrap).
-//
-// The server logs "TLS handshake error from 127.0.0.1: EOF" each time
-// because the connection closes before the TLS handshake begins. This is
-// cosmetic noise, not a real error. It cannot be suppressed because:
-//   - Go's http.Server unconditionally logs TLS handshake failures
-//     (https://github.com/golang/go/issues/26918)
-//   - SPIKE Keeper requires mTLS (ClientAuth: RequireAnyClientCert),
-//     so a TLS-level handshake without a client cert also fails
-//   - Presenting a client cert requires SPIRE SVID access, and the
-//     Keeper's application-layer authorizer only allows Nexus/Bootstrap
+// cmd/tcp-healthcheck performs a local listener health check without creating
+// a network connection. It inspects /proc/net/tcp and /proc/net/tcp6 for a
+// LISTEN socket on the configured port, which avoids TLS handshake EOF noise
+// in servers that require mTLS (for example SPIKE Keeper).
 //
 // Environment variables:
 //   - HEALTHCHECK_ADDR: TCP address to check (default: localhost:8443)
 //
-// Exit codes: 0 = healthy (port reachable), 1 = unhealthy.
+// Exit codes: 0 = healthy (port listening), 1 = unhealthy.
 package main
 
 import (
 	"fmt"
-	"net"
 	"os"
-	"time"
+	"strconv"
+	"strings"
 )
 
 func main() {
@@ -32,10 +22,60 @@ func main() {
 		addr = "localhost:8443"
 	}
 
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	port, err := parsePort(addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "tcp-healthcheck: dial %s: %v\n", addr, err)
+		fmt.Fprintf(os.Stderr, "tcp-healthcheck: parse %s: %v\n", addr, err)
 		os.Exit(1)
 	}
-	_ = conn.Close()
+
+	listening, err := hasListeningPort("/proc/net/tcp", port)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tcp-healthcheck: inspect /proc/net/tcp: %v\n", err)
+		os.Exit(1)
+	}
+	if !listening {
+		listening, err = hasListeningPort("/proc/net/tcp6", port)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "tcp-healthcheck: inspect /proc/net/tcp6: %v\n", err)
+			os.Exit(1)
+		}
+	}
+	if !listening {
+		fmt.Fprintf(os.Stderr, "tcp-healthcheck: port %d is not listening\n", port)
+		os.Exit(1)
+	}
+}
+
+func parsePort(addr string) (int, error) {
+	idx := strings.LastIndex(addr, ":")
+	if idx == -1 || idx == len(addr)-1 {
+		return 0, fmt.Errorf("missing port")
+	}
+	return strconv.Atoi(addr[idx+1:])
+}
+
+func hasListeningPort(path string, port int) (bool, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false, err
+	}
+
+	wantPort := strings.ToUpper(fmt.Sprintf("%04X", port))
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 4 || fields[0] == "sl" {
+			continue
+		}
+		local := fields[1]
+		state := fields[3]
+		parts := strings.Split(local, ":")
+		if len(parts) != 2 {
+			continue
+		}
+		if parts[1] == wantPort && state == "0A" {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }

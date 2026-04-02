@@ -44,6 +44,10 @@ resources:
   - spire-token-generator.yaml
   - gateway-secrets.yaml
   - mock-oauth-issuer.yaml
+  - mock-guard-model.yaml
+  - mock-guard-model-alias.yaml
+  - openclaw.yaml
+  - openclaw-networkpolicies.yaml
   # Development namespace with policy-controller exemption
   - namespace-dev-exempt.yaml
 
@@ -64,13 +68,21 @@ configMapGenerator:
       - guard-artifact.bin=gateway-config/guard-artifact.bin
       - guard-artifact.bin.sig=gateway-config/guard-artifact.bin.sig
       - mcp_policy.rego=gateway-config/mcp_policy.rego
+      - mcp_policy.rego.sig=gateway-config/mcp_policy.rego.sig
       - ui_policy.rego=gateway-config/ui_policy.rego
+      - ui_policy.rego.sig=gateway-config/ui_policy.rego.sig
       - ui_csp_policy.rego=gateway-config/ui_csp_policy.rego
+      - ui_csp_policy.rego.sig=gateway-config/ui_csp_policy.rego.sig
       - exfiltration.rego=gateway-config/exfiltration.rego
+      - exfiltration.rego.sig=gateway-config/exfiltration.rego.sig
       - context_policy.rego=gateway-config/context_policy.rego
+      - context_policy.rego.sig=gateway-config/context_policy.rego.sig
       - principal_policy.rego=gateway-config/principal_policy.rego
+      - principal_policy.rego.sig=gateway-config/principal_policy.rego.sig
       - tool_grants.yaml=gateway-config/tool_grants.yaml
+      - tool_grants.yaml.sig=gateway-config/tool_grants.yaml.sig
       - ui_capability_grants.yaml=gateway-config/ui_capability_grants.yaml
+      - ui_capability_grants.yaml.sig=gateway-config/ui_capability_grants.yaml.sig
       - risk_thresholds.yaml=gateway-config/risk_thresholds.yaml
       - extensions-demo-k8s.yaml=gateway-config/extensions-demo-k8s.yaml
 
@@ -78,6 +90,38 @@ generatorOptions:
   disableNameSuffixHash: true
 
 patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: spike-nexus
+      namespace: spike-system
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: registry:5000/spike-nexus:latest
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/mtls-healthcheck"]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 6
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/mtls-healthcheck"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+
   # --------------------------------------------------------------------------
   # Gateway: NodePort on 30090, reduced resources, debug logging
   # --------------------------------------------------------------------------
@@ -99,6 +143,42 @@ patches:
             targetPort: http
             nodePort: 30090
             protocol: TCP
+          - name: mtls
+            port: 9443
+            targetPort: mtls
+            protocol: TCP
+
+  - target:
+      kind: Service
+      name: precinct-control
+      namespace: gateway
+    patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: precinct-control
+        namespace: gateway
+      spec:
+        type: NodePort
+        ports:
+          - name: http
+            port: 9090
+            targetPort: http
+            nodePort: 30091
+            protocol: TCP
+
+  - target:
+      kind: Service
+      name: spike-nexus
+      namespace: spike-system
+    patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: spike-nexus
+        namespace: spike-system
+      spec:
+        publishNotReadyAddresses: true
 
   - target:
       kind: Deployment
@@ -147,6 +227,10 @@ patches:
                     type: RuntimeDefault
             containers:
               - name: precinct-gateway
+                ports:
+                  - name: mtls
+                    containerPort: 9443
+                    protocol: TCP
                 image: registry:5000/precinct-gateway:latest
                 imagePullPolicy: Always
                 env:
@@ -155,6 +239,10 @@ patches:
                   - name: SPIFFE_MODE
                     value: "dev"
                   - name: ALLOW_INSECURE_DEV_MODE
+                    value: "1"
+                  - name: DEV_LISTEN_HOST
+                    value: "0.0.0.0"
+                  - name: ALLOW_NON_LOOPBACK_DEV_BIND
                     value: "1"
                   - name: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS
                     value: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
@@ -184,11 +272,13 @@ patches:
                   - name: DEEP_SCAN_FALLBACK
                     value: "fail_closed"
                   - name: GUARD_MODEL_ENDPOINT
-                    value: ""
+                    value: "http://mock-guard-model.tools.svc.cluster.local:8080/openai/v1"
+                  - name: MODEL_PROVIDER_ENDPOINT_GROQ
+                    value: "http://mock-guard-model:8080/openai/v1/chat/completions"
                   - name: GUARD_MODEL_NAME
-                    value: ""
+                    value: "llama-prompt-guard-2-86m"
                   - name: GUARD_API_KEY
-                    value: ""
+                    value: "demo-guard-key"
                   - name: DLP_INJECTION_POLICY
                     value: ""
                   - name: RATE_LIMIT_RPM
@@ -199,13 +289,21 @@ patches:
                   - name: MCP_TRANSPORT_MODE
                     value: "mcp"
                   - name: SPIFFE_TRUST_DOMAIN
-                    # Local K8s demo clients authenticate via X-SPIFFE-ID in dev mode
-                    # using the canonical demo identities under spiffe://poc.local/...
-                    value: "poc.local"
+                    # Local K8s workloads receive SPIFFE identities from the local
+                    # SPIRE trust domain and use the internal mTLS listener.
+                    value: "precinct.poc"
+                  - name: SPIFFE_LISTEN_PORT
+                    value: "9443"
+                  - name: SPIFFE_INTERNAL_MTLS_ENABLED
+                    value: "1"
                   - name: DESTINATIONS_CONFIG_PATH
                     value: "/config/destinations/destinations.yaml"
                   - name: EXTENSION_REGISTRY_PATH
                     value: "/config/extensions-demo-k8s.yaml"
+                  - name: TOOL_REGISTRY_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                  - name: MODEL_PROVIDER_CATALOG_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
                 volumeMounts:
                   - name: config-destinations
                     mountPath: /config/destinations
@@ -220,6 +318,149 @@ patches:
                 livenessProbe:
                   exec:
                     command: ["/app/gateway", "health"]
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 6
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+            volumes:
+              - name: config-destinations
+                configMap:
+                  name: gateway-config
+                  items:
+                    - key: destinations.yaml
+                      path: destinations.yaml
+
+  - target:
+      kind: Deployment
+      name: precinct-control
+      namespace: gateway
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: precinct-control
+        namespace: gateway
+      spec:
+        replicas: 1
+        template:
+          spec:
+            initContainers:
+              - name: wait-for-spire-socket
+                image: busybox:1.36
+                command: ["sh", "-c"]
+                args:
+                  - |
+                    set -eu
+                    i=1
+                    while [ "$i" -le 60 ]; do
+                      if [ -S /run/spire/sockets/agent.sock ]; then
+                        exit 0
+                      fi
+                      echo "waiting for SPIRE Workload API socket: /run/spire/sockets/agent.sock" >&2
+                      sleep 1
+                      i=$((i + 1))
+                    done
+                    echo "SPIRE Workload API socket not found after 60s" >&2
+                    exit 1
+                volumeMounts:
+                  - name: spire-agent-socket
+                    mountPath: /run/spire/sockets
+                    readOnly: true
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  runAsGroup: 1000
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
+            containers:
+              - name: precinct-control
+                image: registry:5000/precinct-control:latest
+                imagePullPolicy: Always
+                env:
+                  - name: LOG_LEVEL
+                    value: "debug"
+                  - name: SPIFFE_MODE
+                    value: "dev"
+                  - name: ALLOW_INSECURE_DEV_MODE
+                    value: "1"
+                  - name: DEV_LISTEN_HOST
+                    value: "0.0.0.0"
+                  - name: ALLOW_NON_LOOPBACK_DEV_BIND
+                    value: "1"
+                  - name: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+                  - name: SPIFFE_ENDPOINT_SOCKET
+                    value: "unix:///run/spire/sockets/agent.sock"
+                  - name: KEYDB_URL
+                    value: "redis://keydb.data.svc.cluster.local:6379"
+                  - name: UPSTREAM_URL
+                    value: "http://mcp-server.tools.svc.cluster.local:8081"
+                  - name: SPIKE_NEXUS_URL
+                    value: "https://spike-nexus.spike-system.svc.cluster.local:8443"
+                  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                    value: "otel-collector.observability.svc.cluster.local:4317"
+                  - name: OTEL_SERVICE_NAME
+                    value: "precinct-control"
+                  - name: GROQ_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: gateway-secrets
+                        key: groq-api-key
+                        optional: true
+                  - name: DEEP_SCAN_TIMEOUT
+                    value: "5"
+                  - name: DEEP_SCAN_FALLBACK
+                    value: "fail_closed"
+                  - name: GUARD_MODEL_ENDPOINT
+                    value: "http://mock-guard-model.tools.svc.cluster.local:8080/openai/v1"
+                  - name: MODEL_PROVIDER_ENDPOINT_GROQ
+                    value: "http://mock-guard-model:8080/openai/v1/chat/completions"
+                  - name: GUARD_MODEL_NAME
+                    value: "llama-prompt-guard-2-86m"
+                  - name: GUARD_API_KEY
+                    value: "demo-guard-key"
+                  - name: DLP_INJECTION_POLICY
+                    value: ""
+                  - name: RATE_LIMIT_RPM
+                    value: "600"
+                  - name: RATE_LIMIT_BURST
+                    value: "100"
+                  - name: MCP_TRANSPORT_MODE
+                    value: "mcp"
+                  - name: SPIFFE_TRUST_DOMAIN
+                    value: "poc.local"
+                  - name: DESTINATIONS_CONFIG_PATH
+                    value: "/config/destinations/destinations.yaml"
+                  - name: EXTENSION_REGISTRY_PATH
+                    value: "/config/extensions-demo-k8s.yaml"
+                  - name: TOOL_REGISTRY_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                  - name: MODEL_PROVIDER_CATALOG_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                volumeMounts:
+                  - name: config-destinations
+                    mountPath: /config/destinations
+                    readOnly: true
+                readinessProbe:
+                  exec:
+                    command: ["/app/precinct-control", "health"]
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  timeoutSeconds: 5
+                  failureThreshold: 6
+                livenessProbe:
+                  exec:
+                    command: ["/app/precinct-control", "health"]
                   initialDelaySeconds: 30
                   periodSeconds: 10
                   timeoutSeconds: 5
@@ -477,6 +718,8 @@ patches:
                     value: "DEBUG"
                   - name: SPIKE_STACK_TRACES_ON_LOG_FATAL
                     value: "1"
+                  - name: HEALTHCHECK_URL
+                    value: "https://127.0.0.1:8443/healthz"
                 resources:
                   requests:
                     cpu: 25m
@@ -484,6 +727,20 @@ patches:
                   limits:
                     cpu: 100m
                     memory: 256Mi
+                readinessProbe:
+                  exec:
+                    command: ["/usr/local/bin/tcp-healthcheck"]
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+                livenessProbe:
+                  exec:
+                    command: ["/usr/local/bin/tcp-healthcheck"]
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
 
   - target:
       kind: ConfigMap
@@ -532,6 +789,30 @@ patches:
                   limits:
                     cpu: 100m
                     memory: 256Mi
+
+  - target:
+      kind: Deployment
+      name: spike-keeper
+      namespace: spike-system
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/tcp-healthcheck"]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/tcp-healthcheck"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
 
   - target:
       kind: Deployment
@@ -609,8 +890,7 @@ patches:
         name: spike-secret-seeder
         namespace: spike-system
 
-  # SPIKE Nexus: replace HTTPS probes with TCP socket (JSON patch)
-  # SPIKE requires mTLS; kubelet can't provide SPIFFE client certs.
+  # SPIKE Nexus: use in-container mTLS healthcheck to avoid kubelet TLS EOF spam.
   - target:
       kind: Deployment
       name: spike-nexus
@@ -619,8 +899,8 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/livenessProbe
         value:
-          tcpSocket:
-            port: 8443
+          exec:
+            command: ["/usr/local/bin/mtls-healthcheck"]
           # Nexus performs shard recovery on startup; allow time for Keeper/Bootstrap.
           initialDelaySeconds: 90
           periodSeconds: 10
@@ -629,8 +909,8 @@ patches:
       - op: replace
         path: /spec/template/spec/containers/0/readinessProbe
         value:
-          tcpSocket:
-            port: 8443
+          exec:
+            command: ["/usr/local/bin/mtls-healthcheck"]
           initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 3

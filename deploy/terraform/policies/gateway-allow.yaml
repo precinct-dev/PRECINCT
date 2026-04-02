@@ -7,11 +7,14 @@
 # traffic flows required for the gateway to function:
 #
 #   INGRESS:
-#     - Only namespaces explicitly labeled for gateway ingress on port 9090
+#     - Only namespaces explicitly labeled for gateway ingress on ports 9090
+#       (public HTTP) and 9443 (internal SPIFFE mTLS)
 #       (networking.agentic.io/gateway-ingress-allowed=true).
 #
 #   EGRESS:
 #     - To mcp-server in tools namespace on port 8081 (upstream tool calls)
+#     - To mock-guard-model in tools namespace on port 8080 (local deep-scan mock)
+#     - To content-scanner in tools namespace on port 8085 (post-inspection extension)
 #     - To otel-collector in observability namespace on 4317/4318 (OTLP traces)
 #     - To SPIRE agent on the host (SPIFFE SVID retrieval via Unix socket)
 #     - To kube-dns on port 53 (DNS resolution)
@@ -34,8 +37,12 @@ metadata:
     app.kubernetes.io/component: network-policy
 spec:
   podSelector:
-    matchLabels:
-      app.kubernetes.io/name: precinct-gateway
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - precinct-gateway
+          - precinct-control
   policyTypes:
     - Ingress
   ingress:
@@ -50,6 +57,8 @@ spec:
       ports:
         - protocol: TCP
           port: 9090
+        - protocol: TCP
+          port: 9443
 ---
 # Allow gateway egress to required destinations
 apiVersion: networking.k8s.io/v1
@@ -62,8 +71,12 @@ metadata:
     app.kubernetes.io/component: network-policy
 spec:
   podSelector:
-    matchLabels:
-      app.kubernetes.io/name: precinct-gateway
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values:
+          - precinct-gateway
+          - precinct-control
   policyTypes:
     - Egress
   egress:
@@ -86,6 +99,30 @@ spec:
           port: 8081
         - protocol: TCP
           port: 8082
+
+    # Allow egress to mock-guard-model in tools namespace.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: tools
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: mock-guard-model
+      ports:
+        - protocol: TCP
+          port: 8080
+
+    # Allow egress to content-scanner in tools namespace.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: tools
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: content-scanner
+      ports:
+        - protocol: TCP
+          port: 8085
 
     # Allow egress to OTEL Collector in observability namespace (OTLP traces)
     # Story: RFA-9fv.7

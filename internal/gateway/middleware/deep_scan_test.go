@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -2059,6 +2060,197 @@ func TestChunkMiddleware_LargePayload_InjectionDetected(t *testing.T) {
 	}
 	t.Logf("Chunked injection test: chunks=%d, injection=%.4f, jailbreak=%.4f",
 		capturedResult.ChunkCount, capturedResult.InjectionScore, capturedResult.JailbreakScore)
+}
+
+func TestDeepScanMiddleware_TrustedAgentScansUserContentOnly(t *testing.T) {
+	var scannedBodies []string
+	mockGroq := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bodyBytes, _ := io.ReadAll(r.Body)
+		scannedBodies = append(scannedBodies, string(bodyBytes))
+
+		score := "0.0"
+		if strings.Contains(string(bodyBytes), "SYSTEM_MARKER") {
+			score = "0.99"
+		}
+
+		resp := GroqClassificationResponse{
+			ID:    "test-id",
+			Model: "meta-llama/llama-prompt-guard-2-86m",
+			Choices: []struct {
+				Index   int `json:"index"`
+				Message struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"message"`
+				FinishReason string `json:"finish_reason"`
+			}{
+				{
+					Index: 0,
+					Message: struct {
+						Role    string `json:"role"`
+						Content string `json:"content"`
+					}{
+						Role:    "assistant",
+						Content: score,
+					},
+					FinishReason: "stop",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockGroq.Close()
+
+	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+		APIKey:       "test-key",
+		Timeout:      5 * time.Second,
+		FallbackMode: "fail_closed",
+	})
+	scanner.groqBaseURL = mockGroq.URL
+
+	nextCalled := false
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	trustedAgents := &TrustedAgentDLPConfig{
+		Agents: []TrustedAgentDLPEntry{
+			{
+				SPIFFEID:       "spiffe://poc.local/agents/ports/openclaw/dev",
+				DLPBypassScope: "system_prompt",
+			},
+		},
+	}
+
+	middleware := DeepScanMiddleware(nextHandler, scanner, DefaultRiskConfig(), trustedAgents)
+
+	req := httptest.NewRequest("POST", "/openai/v1/chat/completions", nil)
+	ctx := WithSecurityFlags(req.Context(), []string{"potential_injection"})
+	ctx = WithRequestBody(ctx, []byte(`{
+		"model":"openai/gpt-oss-120b",
+		"messages":[
+			{"role":"system","content":"SYSTEM_MARKER follow HEARTBEAT instructions"},
+			{"role":"user","content":"Hi"}
+		]
+	}`))
+	ctx = WithTraceID(ctx, "trusted-agent-deep-scan")
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/agents/ports/openclaw/dev")
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	middleware.ServeHTTP(w, req)
+
+	if !nextCalled {
+		t.Fatal("expected next handler to be called")
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	if len(scannedBodies) != 1 {
+		t.Fatalf("expected exactly one deep scan request, got %d", len(scannedBodies))
+	}
+	if strings.Contains(scannedBodies[0], "SYSTEM_MARKER") {
+		t.Fatalf("expected trusted-agent deep scan payload to exclude system prompt, got %s", scannedBodies[0])
+	}
+}
+
+func TestDeepScanMiddleware_TrustedAgentScansStructuredUserContentOnly(t *testing.T) {
+	var scannedBodies []string
+	mockGroq := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		bodyBytes, _ := io.ReadAll(r.Body)
+		scannedBodies = append(scannedBodies, string(bodyBytes))
+
+		score := "0.0"
+		if strings.Contains(string(bodyBytes), "SYSTEM_MARKER") {
+			score = "0.99"
+		}
+
+		resp := GroqClassificationResponse{
+			ID:    "test-id",
+			Model: "meta-llama/llama-prompt-guard-2-86m",
+			Choices: []struct {
+				Index   int `json:"index"`
+				Message struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"message"`
+				FinishReason string `json:"finish_reason"`
+			}{
+				{
+					Index: 0,
+					Message: struct {
+						Role    string `json:"role"`
+						Content string `json:"content"`
+					}{
+						Role:    "assistant",
+						Content: score,
+					},
+					FinishReason: "stop",
+				},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockGroq.Close()
+
+	scanner := NewDeepScannerWithConfig(DeepScannerConfig{
+		APIKey:       "test-key",
+		Timeout:      5 * time.Second,
+		FallbackMode: "fail_closed",
+	})
+	scanner.groqBaseURL = mockGroq.URL
+
+	nextCalled := false
+	nextHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	trustedAgents := &TrustedAgentDLPConfig{
+		Agents: []TrustedAgentDLPEntry{
+			{
+				SPIFFEID:       "spiffe://poc.local/agents/ports/openclaw/dev",
+				DLPBypassScope: "system_prompt",
+			},
+		},
+	}
+
+	middleware := DeepScanMiddleware(nextHandler, scanner, DefaultRiskConfig(), trustedAgents)
+
+	req := httptest.NewRequest("POST", "/openai/v1/chat/completions", nil)
+	ctx := WithSecurityFlags(req.Context(), []string{"potential_injection"})
+	ctx = WithRequestBody(ctx, []byte(`{
+		"model":"openai/gpt-oss-120b",
+		"messages":[
+			{"role":"system","content":[{"type":"text","text":"SYSTEM_MARKER follow HEARTBEAT instructions"}]},
+			{"role":"user","content":[{"type":"text","text":"Hi"},{"type":"input_text","text":"Need a short summary"}]}
+		]
+	}`))
+	ctx = WithTraceID(ctx, "trusted-agent-deep-scan-structured")
+	ctx = WithSPIFFEID(ctx, "spiffe://poc.local/agents/ports/openclaw/dev")
+	req = req.WithContext(ctx)
+
+	w := httptest.NewRecorder()
+	middleware.ServeHTTP(w, req)
+
+	if !nextCalled {
+		t.Fatal("expected next handler to be called")
+	}
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", w.Code)
+	}
+	if len(scannedBodies) != 1 {
+		t.Fatalf("expected exactly one deep scan request, got %d", len(scannedBodies))
+	}
+	if strings.Contains(scannedBodies[0], "SYSTEM_MARKER") {
+		t.Fatalf("expected trusted-agent deep scan payload to exclude structured system prompt, got %s", scannedBodies[0])
+	}
+	if !strings.Contains(scannedBodies[0], "Need a short summary") {
+		t.Fatalf("expected trusted-agent deep scan payload to include structured user content, got %s", scannedBodies[0])
+	}
 }
 
 // --- Integration Test: Real Groq API ---

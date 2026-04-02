@@ -3,89 +3,92 @@ package gateway
 import (
 	"net/http"
 
+	"github.com/precinct-dev/precinct/internal/precinctcontrol"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 )
 
-type proxyRouteDispatch struct {
-	reason     string
-	middleware string
-	step       int
-	try        func(*Gateway, *proxyResponseWriter, *http.Request) bool
-}
-
 func (g *Gateway) tryInternalProxyRoutes(proxyRW *proxyResponseWriter, r *http.Request, span trace.Span) bool {
-	if allowed, contractID := g.enforceOPABypassCompensatingChecks(proxyRW, r); !allowed {
-		result := proxyDispatchResult(proxyRW.statusCode)
-		attrs := []attribute.KeyValue{
-			attribute.Int("status_code", proxyRW.statusCode),
-			attribute.String("mcp.result", result),
-			attribute.String("mcp.reason", "opa_bypass_compensating_check"),
-		}
-		if contractID != "" {
-			attrs = append(attrs, attribute.String("mcp.contract_id", contractID))
-		}
-		span.SetAttributes(attrs...)
-		return true
-	}
-
-	if g.tryDemoProxyRoute(proxyRW, r, span) {
-		return true
-	}
-
-	if handled, portName := g.tryPortAdapterRoute(proxyRW, r); handled {
-		g.setProxyRouteSpanAttributes(
-			span,
-			proxyRW,
-			"port_adapter_"+portName,
-			"port_"+portName,
-			v24MiddlewareStep,
-			r.URL.Path,
-		)
-		return true
-	}
-
-	for _, route := range g.internalProxyRoutes() {
-		if route.try(g, proxyRW, r) {
-			g.setProxyRouteSpanAttributes(span, proxyRW, route.reason, route.middleware, route.step, r.URL.Path)
-			return true
-		}
-	}
-
-	return false
+	return g.tryGatewayProxyRoutes(proxyRW, r, span)
 }
 
-func (g *Gateway) internalProxyRoutes() []proxyRouteDispatch {
-	return []proxyRouteDispatch{
+func (g *Gateway) tryGatewayProxyRoutes(proxyRW *proxyResponseWriter, r *http.Request, span trace.Span) bool {
+	return precinctcontrol.DispatchInternalProxyRoutes(
+		proxyRW,
+		r,
+		span,
+		precinctcontrol.DispatchConfig{
+			EnforceOPABypass: g.enforceOPABypassCompensatingChecks,
+			TryDemoRoute: func(w http.ResponseWriter, req *http.Request, routeSpan trace.Span) bool {
+				proxyResponseWriter, ok := w.(*proxyResponseWriter)
+				if !ok {
+					return false
+				}
+				return g.tryDemoProxyRoute(proxyResponseWriter, req, routeSpan)
+			},
+			TryPortAdapterRoute: func(w http.ResponseWriter, req *http.Request) (bool, string) {
+				proxyResponseWriter, ok := w.(*proxyResponseWriter)
+				if !ok {
+					return false, ""
+				}
+				return g.tryPortAdapterRoute(proxyResponseWriter, req)
+			},
+			PortAdapterRouteStep: v24MiddlewareStep,
+			InternalRoutes:       g.gatewayInternalRoutes(),
+			OnRouteMatched:       g.setProxyRouteSpanAttributes,
+		},
+	)
+}
+
+func (g *Gateway) tryControlProxyRoutes(proxyRW *proxyResponseWriter, r *http.Request, span trace.Span) bool {
+	return precinctcontrol.DispatchInternalProxyRoutes(
+		proxyRW,
+		r,
+		span,
+		precinctcontrol.DispatchConfig{
+			EnforceOPABypass: g.enforceOPABypassCompensatingChecks,
+			InternalRoutes:   g.controlServiceRoutes(),
+			OnRouteMatched:   g.setProxyRouteSpanAttributes,
+		},
+	)
+}
+
+func (g *Gateway) gatewayInternalRoutes() []precinctcontrol.ControlRoute {
+	return []precinctcontrol.ControlRoute{
 		{
-			reason:     "connector_conformance_entry",
-			middleware: v24MiddlewareConnectorAuth,
-			step:       v24MiddlewareStep,
-			try: func(g *Gateway, proxyRW *proxyResponseWriter, r *http.Request) bool {
-				return g.handleConnectorAuthorityEntry(proxyRW, r)
+			Reason:     "phase3_plane_entry",
+			Middleware: v24MiddlewarePhase3Plane,
+			Step:       v24MiddlewareStep,
+			Try: func(w http.ResponseWriter, r *http.Request) bool {
+				return g.handlePhase3PlaneEntry(w, r)
 			},
 		},
 		{
-			reason: "v24_admin_entry",
-			step:   v24MiddlewareStep,
-			try: func(g *Gateway, proxyRW *proxyResponseWriter, r *http.Request) bool {
-				return g.handleV24AdminEntry(proxyRW, r)
+			Reason:     "phase3_model_egress",
+			Middleware: v24MiddlewareModelCompat,
+			Step:       v24MiddlewareStep,
+			Try: func(w http.ResponseWriter, r *http.Request) bool {
+				return g.handleModelCompatEntry(w, r)
+			},
+		},
+	}
+}
+
+func (g *Gateway) controlServiceRoutes() []precinctcontrol.ControlRoute {
+	return []precinctcontrol.ControlRoute{
+		{
+			Reason:     "connector_authority_entry",
+			Middleware: v24MiddlewareConnectorAuth,
+			Step:       v24MiddlewareStep,
+			Try: func(w http.ResponseWriter, r *http.Request) bool {
+				return g.handleConnectorAuthorityEntry(w, r)
 			},
 		},
 		{
-			reason:     "phase3_plane_entry",
-			middleware: v24MiddlewarePhase3Plane,
-			step:       v24MiddlewareStep,
-			try: func(g *Gateway, proxyRW *proxyResponseWriter, r *http.Request) bool {
-				return g.handlePhase3PlaneEntry(proxyRW, r)
-			},
-		},
-		{
-			reason:     "phase3_model_egress",
-			middleware: v24MiddlewareModelCompat,
-			step:       v24MiddlewareStep,
-			try: func(g *Gateway, proxyRW *proxyResponseWriter, r *http.Request) bool {
-				return g.handleModelCompatEntry(proxyRW, r)
+			Reason: "v24_admin_entry",
+			Step:   v24MiddlewareStep,
+			Try: func(w http.ResponseWriter, r *http.Request) bool {
+				return g.handleV24AdminEntry(w, r)
 			},
 		},
 	}
@@ -105,7 +108,7 @@ func (g *Gateway) tryDemoProxyRoute(proxyRW *proxyResponseWriter, r *http.Reques
 	case "/__demo__/rugpull/on", "/__demo__/rugpull/off":
 		enable := r.URL.Path == "/__demo__/rugpull/on"
 		g.handleDemoRugpullToggle(proxyRW, r, enable)
-		g.setProxyRouteSpanAttributes(span, proxyRW, "demo rugpull endpoint", "", 0, "")
+		g.setProxyRouteSpanAttributes(span, proxyRW.statusCode, "demo rugpull endpoint", "", 0, "", "")
 		return true
 	case "/__demo__/ratelimit":
 		if g.config == nil || !g.config.DemoRugpullAdminEnabled || g.config.SPIFFEMode != "dev" {
@@ -127,18 +130,20 @@ func (g *Gateway) tryDemoProxyRoute(proxyRW *proxyResponseWriter, r *http.Reques
 		proxyRW.Header().Set("Content-Type", "application/json")
 		proxyRW.WriteHeader(http.StatusOK)
 		_, _ = proxyRW.Write([]byte(`{"ok":true}`))
-		g.setProxyRouteSpanAttributes(span, proxyRW, "demo ratelimit endpoint", "", 0, "")
+		g.setProxyRouteSpanAttributes(span, proxyRW.statusCode, "demo ratelimit endpoint", "", 0, "", "")
 		return true
-	default:
-		return false
 	}
+	return false
 }
 
-func (g *Gateway) setProxyRouteSpanAttributes(span trace.Span, proxyRW *proxyResponseWriter, reason, middleware string, step int, endpoint string) {
+func (g *Gateway) setProxyRouteSpanAttributes(span trace.Span, statusCode int, reason, middleware string, step int, endpoint, contractID string) {
 	attrs := []attribute.KeyValue{
-		attribute.Int("status_code", proxyRW.statusCode),
-		attribute.String("mcp.result", proxyDispatchResult(proxyRW.statusCode)),
+		attribute.Int("status_code", statusCode),
+		attribute.String("mcp.result", proxyDispatchResult(statusCode)),
 		attribute.String("mcp.reason", reason),
+	}
+	if contractID != "" {
+		attrs = append(attrs, attribute.String("mcp.contract_id", contractID))
 	}
 	if middleware == "" && reason == "v24_admin_entry" {
 		middleware = adminMiddlewareForPath(endpoint)

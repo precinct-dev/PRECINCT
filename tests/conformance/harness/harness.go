@@ -366,7 +366,7 @@ func evalContractsFixture(fx Fixture) (string, string, error) {
 }
 
 func evalConnectorsFixture(fx Fixture, opts RunOptions) (string, string, error) {
-	baseURL, cleanup, err := resolveGatewayURL(opts)
+	_, controlURL, cleanup, err := resolveServiceURLs(opts)
 	if err != nil {
 		return "fail", "", err
 	}
@@ -375,16 +375,16 @@ func evalConnectorsFixture(fx Fixture, opts RunOptions) (string, string, error) 
 	switch fx.CaseID {
 	case "lifecycle_success":
 		connectorID := fmt.Sprintf("conformance-connector-%d", time.Now().UnixNano())
-		expectedSig, err := registerConnector(baseURL, connectorID, opts.SPIFFEID, "", opts.Live)
+		expectedSig, err := registerConnector(controlURL, connectorID, opts.SPIFFEID, "", opts.Live)
 		if err != nil {
 			return "fail", err.Error(), nil
 		}
-		_, err = registerConnector(baseURL, connectorID, opts.SPIFFEID, expectedSig, opts.Live)
+		_, err = registerConnector(controlURL, connectorID, opts.SPIFFEID, expectedSig, opts.Live)
 		if err != nil {
 			return "fail", err.Error(), nil
 		}
 		for _, op := range []string{"validate", "approve", "activate"} {
-			code, body, err := postJSONWithRetry(baseURL, "/v1/connectors/"+op, opts.SPIFFEID, map[string]any{"connector_id": connectorID}, opts.Live)
+			code, body, err := postJSONWithRetry(controlURL, "/v1/connectors/"+op, opts.SPIFFEID, map[string]any{"connector_id": connectorID}, opts.Live)
 			if err != nil {
 				return "fail", fmt.Sprintf("connector %s failed: %v", op, err), nil
 			}
@@ -395,15 +395,15 @@ func evalConnectorsFixture(fx Fixture, opts RunOptions) (string, string, error) 
 		return "pass", "connector lifecycle completed (register->validate->approve->activate)", nil
 	case "invalid_transition_denied":
 		connectorID := fmt.Sprintf("conformance-connector-invalid-%d", time.Now().UnixNano())
-		expectedSig, err := registerConnector(baseURL, connectorID, opts.SPIFFEID, "", opts.Live)
+		expectedSig, err := registerConnector(controlURL, connectorID, opts.SPIFFEID, "", opts.Live)
 		if err != nil {
 			return "fail", err.Error(), nil
 		}
-		_, err = registerConnector(baseURL, connectorID, opts.SPIFFEID, expectedSig, opts.Live)
+		_, err = registerConnector(controlURL, connectorID, opts.SPIFFEID, expectedSig, opts.Live)
 		if err != nil {
 			return "fail", err.Error(), nil
 		}
-		code, body, err := postJSONWithRetry(baseURL, "/v1/connectors/activate", opts.SPIFFEID, map[string]any{"connector_id": connectorID}, opts.Live)
+		code, body, err := postJSONWithRetry(controlURL, "/v1/connectors/activate", opts.SPIFFEID, map[string]any{"connector_id": connectorID}, opts.Live)
 		if err != nil {
 			return "fail", fmt.Sprintf("connector invalid transition request failed: %v", err), nil
 		}
@@ -417,7 +417,7 @@ func evalConnectorsFixture(fx Fixture, opts RunOptions) (string, string, error) 
 }
 
 func evalRuleOpsFixture(fx Fixture, opts RunOptions) (string, string, error) {
-	baseURL, cleanup, err := resolveGatewayURL(opts)
+	_, controlURL, cleanup, err := resolveServiceURLs(opts)
 	if err != nil {
 		return "fail", "", err
 	}
@@ -426,12 +426,12 @@ func evalRuleOpsFixture(fx Fixture, opts RunOptions) (string, string, error) {
 	switch fx.CaseID {
 	case "signed_promotion_success":
 		rulesetID := fmt.Sprintf("conformance-ruleops-%d", time.Now().UnixNano())
-		expectedSig, msg, ok := createValidateApproveRuleSet(baseURL, opts.SPIFFEID, rulesetID, opts.Live)
+		expectedSig, msg, ok := createValidateApproveRuleSet(controlURL, opts.SPIFFEID, rulesetID, opts.Live)
 		if !ok {
 			return "fail", msg, nil
 		}
 
-		signCode, signBody, err := postJSONWithRetry(baseURL, "/admin/dlp/rulesets/sign", opts.SPIFFEID, map[string]any{
+		signCode, signBody, err := postJSONWithRetry(controlURL, "/admin/dlp/rulesets/sign", opts.SPIFFEID, map[string]any{
 			"ruleset_id": rulesetID,
 			"signature":  expectedSig,
 		}, opts.Live)
@@ -442,7 +442,7 @@ func evalRuleOpsFixture(fx Fixture, opts RunOptions) (string, string, error) {
 			return "fail", fmt.Sprintf("sign expected 200, got %d body=%v", signCode, signBody), nil
 		}
 
-		promoteCode, promoteBody, err := postJSONWithRetry(baseURL, "/admin/dlp/rulesets/promote", opts.SPIFFEID, map[string]any{
+		promoteCode, promoteBody, err := postJSONWithRetry(controlURL, "/admin/dlp/rulesets/promote", opts.SPIFFEID, map[string]any{
 			"ruleset_id": rulesetID,
 			"mode":       "active",
 		}, opts.Live)
@@ -455,10 +455,10 @@ func evalRuleOpsFixture(fx Fixture, opts RunOptions) (string, string, error) {
 		return "pass", "signed ruleset promotion succeeded", nil
 	case "unsigned_promotion_denied":
 		rulesetID := fmt.Sprintf("conformance-ruleops-unsigned-%d", time.Now().UnixNano())
-		if _, msg, ok := createValidateApproveRuleSet(baseURL, opts.SPIFFEID, rulesetID, opts.Live); !ok {
+		if _, msg, ok := createValidateApproveRuleSet(controlURL, opts.SPIFFEID, rulesetID, opts.Live); !ok {
 			return "fail", msg, nil
 		}
-		code, body, err := postJSONWithRetry(baseURL, "/admin/dlp/rulesets/promote", opts.SPIFFEID, map[string]any{
+		code, body, err := postJSONWithRetry(controlURL, "/admin/dlp/rulesets/promote", opts.SPIFFEID, map[string]any{
 			"ruleset_id": rulesetID,
 			"mode":       "active",
 		}, opts.Live)
@@ -619,8 +619,8 @@ func newProfileGatewayConfig(spiffeMode string) (*gateway.Config, func(), error)
 	return cfg, cleanup, nil
 }
 
-func createValidateApproveRuleSet(baseURL, spiffeID, rulesetID string, live bool) (expectedSignature string, message string, ok bool) {
-	createCode, createBody, err := postJSONWithRetry(baseURL, "/admin/dlp/rulesets/create", spiffeID, map[string]any{
+func createValidateApproveRuleSet(controlURL, spiffeID, rulesetID string, live bool) (expectedSignature string, message string, ok bool) {
+	createCode, createBody, err := postJSONWithRetry(controlURL, "/admin/dlp/rulesets/create", spiffeID, map[string]any{
 		"ruleset_id": rulesetID,
 		"created_by": "conformance@test",
 		"content": map[string]any{
@@ -636,7 +636,7 @@ func createValidateApproveRuleSet(baseURL, spiffeID, rulesetID string, live bool
 		return "", fmt.Sprintf("create expected 200, got %d body=%v", createCode, createBody), false
 	}
 
-	validateCode, validateBody, err := postJSONWithRetry(baseURL, "/admin/dlp/rulesets/validate", spiffeID, map[string]any{"ruleset_id": rulesetID}, live)
+	validateCode, validateBody, err := postJSONWithRetry(controlURL, "/admin/dlp/rulesets/validate", spiffeID, map[string]any{"ruleset_id": rulesetID}, live)
 	if err != nil {
 		return "", fmt.Sprintf("validate failed: %v", err), false
 	}
@@ -644,7 +644,7 @@ func createValidateApproveRuleSet(baseURL, spiffeID, rulesetID string, live bool
 		return "", fmt.Sprintf("validate expected 200, got %d body=%v", validateCode, validateBody), false
 	}
 
-	approveCode, approveBody, err := postJSONWithRetry(baseURL, "/admin/dlp/rulesets/approve", spiffeID, map[string]any{
+	approveCode, approveBody, err := postJSONWithRetry(controlURL, "/admin/dlp/rulesets/approve", spiffeID, map[string]any{
 		"ruleset_id":  rulesetID,
 		"approved_by": "conformance@test",
 	}, live)
@@ -661,7 +661,7 @@ func createValidateApproveRuleSet(baseURL, spiffeID, rulesetID string, live bool
 	return expectedSignature, "", true
 }
 
-func registerConnector(baseURL, connectorID, spiffeID, signature string, live bool) (string, error) {
+func registerConnector(controlURL, connectorID, spiffeID, signature string, live bool) (string, error) {
 	manifest := map[string]any{
 		"connector_id":     connectorID,
 		"connector_type":   "webhook",
@@ -675,7 +675,7 @@ func registerConnector(baseURL, connectorID, spiffeID, signature string, live bo
 			"value":     signature,
 		}
 	}
-	code, body, err := postJSONWithRetry(baseURL, "/v1/connectors/register", spiffeID, map[string]any{
+	code, body, err := postJSONWithRetry(controlURL, "/v1/connectors/register", spiffeID, map[string]any{
 		"connector_id": connectorID,
 		"manifest":     manifest,
 	}, live)
@@ -692,18 +692,19 @@ func registerConnector(baseURL, connectorID, spiffeID, signature string, live bo
 	return expectedSig, nil
 }
 
-func resolveGatewayURL(opts RunOptions) (baseURL string, cleanup func(), err error) {
+func resolveServiceURLs(opts RunOptions) (gatewayURL, controlURL string, cleanup func(), err error) {
 	if opts.Live {
-		return strings.TrimRight(opts.GatewayURL, "/"), func() {}, nil
+		gatewayURL = strings.TrimRight(opts.GatewayURL, "/")
+		return gatewayURL, deriveControlURL(gatewayURL), func() {}, nil
 	}
 	tmpDir, err := os.MkdirTemp("", "conformance-harness-*")
 	if err != nil {
-		return "", nil, fmt.Errorf("create temp dir: %w", err)
+		return "", "", nil, fmt.Errorf("create temp dir: %w", err)
 	}
 	destinationsPath := filepath.Join(tmpDir, "destinations.yaml")
 	if err := os.WriteFile(destinationsPath, []byte("allowed_destinations:\n  - \"127.0.0.1\"\n  - \"localhost\"\n  - \"::1\"\n"), 0o644); err != nil {
 		_ = os.RemoveAll(tmpDir)
-		return "", nil, fmt.Errorf("write destinations config: %w", err)
+		return "", "", nil, fmt.Errorf("write destinations config: %w", err)
 	}
 
 	cfg := &gateway.Config{
@@ -725,14 +726,30 @@ func resolveGatewayURL(opts RunOptions) (baseURL string, cleanup func(), err err
 	gw, err := gateway.New(cfg)
 	if err != nil {
 		_ = os.RemoveAll(tmpDir)
-		return "", nil, fmt.Errorf("new gateway: %w", err)
+		return "", "", nil, fmt.Errorf("new gateway: %w", err)
 	}
-	srv := httptest.NewServer(gw.Handler())
+	gatewaySrv := httptest.NewServer(gw.Handler())
+	controlSrv := httptest.NewServer(gw.ControlHandler())
 	cleanup = func() {
-		srv.Close()
+		gatewaySrv.Close()
+		controlSrv.Close()
 		_ = os.RemoveAll(tmpDir)
 	}
-	return strings.TrimRight(srv.URL, "/"), cleanup, nil
+	return strings.TrimRight(gatewaySrv.URL, "/"), strings.TrimRight(controlSrv.URL, "/"), cleanup, nil
+}
+
+func deriveControlURL(gatewayURL string) string {
+	replacer := strings.NewReplacer(
+		"://precinct-gateway:9090", "://precinct-control:9090",
+		"://localhost:9090", "://localhost:9091",
+		"://127.0.0.1:9090", "://127.0.0.1:9091",
+		"://host.docker.internal:39090", "://host.docker.internal:39091",
+	)
+	controlURL := replacer.Replace(gatewayURL)
+	if controlURL == gatewayURL {
+		return gatewayURL
+	}
+	return controlURL
 }
 
 func postJSON(baseURL, path, spiffeID string, payload map[string]any) (int, map[string]any, error) {

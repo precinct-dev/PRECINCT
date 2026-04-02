@@ -7,7 +7,8 @@
 # traffic flows required for the gateway to function:
 #
 #   INGRESS:
-#     - Only namespaces explicitly labeled for gateway ingress on port 9090
+#     - Only namespaces explicitly labeled for gateway ingress on ports 9090
+#       (public HTTP) and 9443 (internal SPIFFE mTLS)
 #       (networking.agentic.io/gateway-ingress-allowed=true).
 #
 #   EGRESS:
@@ -43,6 +44,8 @@ spec:
       ports:
         - protocol: TCP
           port: 9090
+        - protocol: TCP
+          port: 9443
 ---
 # Allow gateway egress to required destinations
 apiVersion: networking.k8s.io/v1

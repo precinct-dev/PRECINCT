@@ -10,12 +10,17 @@ func TestBuildIngressSubmitRequest(t *testing.T) {
 			SPIFFEID:  "spiffe://poc.local/agents/mcp-client/openclaw/dev",
 			Plane:     "ingress",
 		},
+		ConnectorType:      "webhook",
 		ConnectorID:        "openclaw-webhook",
 		ConnectorSignature: "sig-1",
 		SourceID:           "openclaw-webhook",
 		SourcePrincipal:    "spiffe://poc.local/agents/mcp-client/openclaw/dev",
 		EventID:            "evt-1",
+		Nonce:              "nonce-1",
 		EventTimestamp:     "2026-02-13T00:00:00Z",
+		Payload: map[string]any{
+			"channel": "webhook",
+		},
 	})
 
 	env := mapField(t, req["envelope"])
@@ -28,6 +33,16 @@ func TestBuildIngressSubmitRequest(t *testing.T) {
 	}
 	if policy["resource"] != "ingress/event" {
 		t.Fatalf("expected ingress resource, got %v", policy["resource"])
+	}
+	attrs := mapField(t, policy["attributes"])
+	if attrs["connector_type"] != "webhook" {
+		t.Fatalf("expected webhook connector type, got %v", attrs["connector_type"])
+	}
+	if attrs["nonce"] != "nonce-1" {
+		t.Fatalf("expected nonce-1, got %v", attrs["nonce"])
+	}
+	if _, ok := attrs["payload"].(map[string]any); !ok {
+		t.Fatalf("expected payload map, got %T", attrs["payload"])
 	}
 }
 

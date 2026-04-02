@@ -20,6 +20,7 @@ from mcp_gateway_sdk import CallResult, GatewayClient, GatewayError, ResponseMet
 
 DSPY_SPIFFE = "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 DEMO_EXPECT_DLP_PII_BLOCK = os.getenv("DEMO_EXPECT_DLP_PII_BLOCK", "") == "1"
+DEMO_RUN_SUFFIX = format(time.time_ns(), "x")
 
 # ANSI colors
 RESET = "\033[0m"
@@ -41,6 +42,18 @@ class TestCase:
 
 def unique_session_id(prefix: str) -> str:
     return f"{prefix}-{time.time_ns()}"
+
+
+def demo_agent_spiffe(name: str) -> str:
+    return f"spiffe://poc.local/agents/{name}-{DEMO_RUN_SUFFIX}/dev"
+
+
+def demo_owner_spiffe(name: str) -> str:
+    return f"spiffe://poc.local/owner/{name}-{DEMO_RUN_SUFFIX}"
+
+
+def demo_external_spiffe(name: str) -> str:
+    return f"spiffe://poc.local/external/{name}-{DEMO_RUN_SUFFIX}"
 
 
 def real_demo_mode() -> bool:
@@ -788,6 +801,7 @@ def test_rate_limit(url: str) -> bool:
     # that token refill prevents exhausting the bucket. Burst against the gateway's demo-only fast
     # path endpoint which still runs inside the normal middleware chain (incl. Step 11 rate limiting).
     endpoint = url.rstrip("/") + "/__demo__/ratelimit"
+    spiffe_id = demo_agent_spiffe("mcp-client-ratelimit")
     probe_session_id = unique_session_id("demo-rl-probe")
     worker_session_prefix = unique_session_id("demo-rl")
 
@@ -796,7 +810,7 @@ def test_rate_limit(url: str) -> bool:
 
     # Probe endpoint existence (demo endpoints must be enabled in the gateway).
     try:
-        r = httpx.get(endpoint, headers={"X-SPIFFE-ID": DSPY_SPIFFE, "X-Session-ID": probe_session_id}, timeout=5.0)
+        r = httpx.get(endpoint, headers={"X-SPIFFE-ID": spiffe_id, "X-Session-ID": probe_session_id}, timeout=5.0)
         if r.status_code == 404:
             return print_proof(False, "rate limit probe returned 404: /__demo__/ratelimit not enabled (set DEMO_RUGPULL_ADMIN_ENABLED=1 in gateway)")
     except Exception as e:
@@ -826,7 +840,7 @@ def test_rate_limit(url: str) -> bool:
                 try:
                     resp = client.get(
                         endpoint,
-                        headers={"X-SPIFFE-ID": DSPY_SPIFFE, "X-Session-ID": f"{worker_session_prefix}-{worker_id}"},
+                        headers={"X-SPIFFE-ID": spiffe_id, "X-Session-ID": f"{worker_session_prefix}-{worker_id}"},
                     )
                     if resp.status_code == 429:
                         with first_429_lock:
@@ -915,7 +929,7 @@ def _send_principal_request(
 def test_principal_owner_destructive(url: str) -> bool:
     """S-PRINCIPAL-1: Owner (level 1) allowed destructive operation."""
     status, ge, _ = _send_principal_request(
-        url, "spiffe://poc.local/owner/alice", "delete", unique_session_id("demo-principal-owner-destructive"),
+        url, demo_owner_spiffe("alice-principal"), "delete", unique_session_id("demo-principal-owner-destructive"),
     )
     if ge:
         print_gateway_error(ge)
@@ -931,7 +945,7 @@ def test_principal_owner_destructive(url: str) -> bool:
 def test_principal_external_destructive(url: str) -> bool:
     """S-PRINCIPAL-2: External user (level 4) denied destructive operation."""
     status, ge, _ = _send_principal_request(
-        url, "spiffe://poc.local/external/bob", "delete", unique_session_id("demo-principal-external-destructive"),
+        url, demo_external_spiffe("bob-principal-destructive"), "delete", unique_session_id("demo-principal-external-destructive"),
     )
     if ge:
         print_gateway_error(ge)
@@ -950,7 +964,7 @@ def test_principal_external_destructive(url: str) -> bool:
 def test_principal_agent_messaging(url: str) -> bool:
     """S-PRINCIPAL-3: Agent (level 3) allowed messaging operation."""
     status, ge, _ = _send_principal_request(
-        url, "spiffe://poc.local/agents/summarizer/dev", "notify", unique_session_id("demo-principal-agent-messaging"),
+        url, demo_agent_spiffe("summarizer-principal"), "notify", unique_session_id("demo-principal-agent-messaging"),
     )
     if ge:
         print_gateway_error(ge)
@@ -966,7 +980,7 @@ def test_principal_agent_messaging(url: str) -> bool:
 def test_principal_external_messaging(url: str) -> bool:
     """S-PRINCIPAL-4: External user (level 4) denied messaging operation."""
     status, ge, _ = _send_principal_request(
-        url, "spiffe://poc.local/external/bob", "notify", unique_session_id("demo-principal-external-messaging"),
+        url, demo_external_spiffe("bob-principal-messaging"), "notify", unique_session_id("demo-principal-external-messaging"),
     )
     if ge:
         print_gateway_error(ge)
@@ -987,7 +1001,7 @@ def test_principal_external_messaging(url: str) -> bool:
 def test_irrev1_read_allowed(url: str) -> bool:
     """S-IRREV-1: Read action (reversible, Score=0) fast-pathed."""
     client = GatewayClient(
-        url=url, spiffe_id="spiffe://poc.local/external/bob",
+        url=url, spiffe_id=demo_external_spiffe("bob-irrev-read"),
         timeout=10.0, max_retries=0, session_id=unique_session_id("irrev-demo-read"),
     )
     try:
@@ -1006,7 +1020,7 @@ def test_irrev1_read_allowed(url: str) -> bool:
 def test_irrev2_create_evaluated(url: str) -> bool:
     """S-IRREV-2: Create action (costly_reversible, Score=1) evaluated appropriately."""
     client = GatewayClient(
-        url=url, spiffe_id="spiffe://poc.local/external/bob",
+        url=url, spiffe_id=demo_external_spiffe("bob-irrev-create"),
         timeout=10.0, max_retries=0, session_id=unique_session_id("irrev-demo-create"),
     )
     try:
@@ -1030,7 +1044,7 @@ def test_irrev3_owner_delete(url: str) -> bool:
     Uses call_with_metadata() to read advisory headers through the SDK (no raw HTTP).
     """
     client = GatewayClient(
-        url=url, spiffe_id="spiffe://poc.local/owner/alice",
+        url=url, spiffe_id=demo_owner_spiffe("alice-irrev-delete"),
         timeout=10.0, max_retries=0, session_id=unique_session_id("irrev-demo-owner-delete"),
     )
     try:
@@ -1063,7 +1077,7 @@ def test_irrev3_owner_delete(url: str) -> bool:
 def test_irrev4_external_delete(url: str) -> bool:
     """S-IRREV-4: External delete denied (irreversible or principal_level_insufficient)."""
     client = GatewayClient(
-        url=url, spiffe_id="spiffe://poc.local/external/bob",
+        url=url, spiffe_id=demo_external_spiffe("bob-irrev-delete"),
         timeout=10.0, max_retries=0, session_id=unique_session_id("irrev-demo-external-delete"),
     )
     try:
@@ -1084,7 +1098,7 @@ def test_irrev4_external_delete(url: str) -> bool:
 def test_irrev5_escalated_session_deny(url: str) -> bool:
     """S-IRREV-5: Irreversible action in escalated session denied."""
     session_id = unique_session_id("irrev-demo-escalated")
-    agent_spiffe = "spiffe://poc.local/agents/summarizer/dev"
+    agent_spiffe = demo_agent_spiffe("summarizer-irrev")
 
     escalation_client = GatewayClient(
         url=url, spiffe_id=agent_spiffe,
@@ -1109,6 +1123,7 @@ def test_irrev5_escalated_session_deny(url: str) -> bool:
             ok = e.http_status == 403 and e.code in (
                 "stepup_denied", "stepup_approval_required",
                 "irreversible_action_denied", "principal_level_insufficient",
+                "authz_policy_denied",
             )
             return print_proof(ok,
                 f"PROOF S-IRREV-5: Irreversible action in escalated session denied -- code={e.code}, step={e.step}")

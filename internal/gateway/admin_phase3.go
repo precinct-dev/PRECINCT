@@ -8,6 +8,8 @@ import (
 	"time"
 
 	"github.com/precinct-dev/precinct/internal/gateway/middleware"
+	"github.com/precinct-dev/precinct/internal/precinctcontrol"
+	"github.com/precinct-dev/precinct/internal/precinctevidence"
 )
 
 // logLoopAdminEvent emits an audit event for loop admin operations.
@@ -17,35 +19,7 @@ func (g *Gateway) logLoopAdminEvent(r *http.Request, action string, httpStatus i
 		return
 	}
 	traceID, decisionID := getDecisionCorrelationIDs(r, RunEnvelope{})
-
-	// Build a human-readable result string from metadata.
-	result := fmt.Sprintf("action=%s status=%d", action, httpStatus)
-	if metadata != nil {
-		if runID, ok := metadata["run_id"]; ok {
-			result += fmt.Sprintf(" run_id=%v", runID)
-		}
-		if state, ok := metadata["state"]; ok {
-			result += fmt.Sprintf(" state=%v", state)
-		}
-		if reason, ok := metadata["halt_reason"]; ok {
-			result += fmt.Sprintf(" halt_reason=%v", reason)
-		}
-		if errMsg, ok := metadata["error"]; ok {
-			result += fmt.Sprintf(" error=%v", errMsg)
-		}
-	}
-
-	g.auditor.Log(middleware.AuditEvent{
-		SessionID:  middleware.GetSessionID(r.Context()),
-		DecisionID: decisionID,
-		TraceID:    traceID,
-		SPIFFEID:   middleware.GetSPIFFEID(r.Context()),
-		Action:     action,
-		Result:     result,
-		Method:     r.Method,
-		Path:       r.URL.Path,
-		StatusCode: httpStatus,
-	})
+	precinctevidence.LogLoopAdminDecision(g.auditor, r, action, metadata, decisionID, traceID, httpStatus)
 }
 
 type dlpRulesetStatus struct {
@@ -77,42 +51,59 @@ func (g *Gateway) handleV24AdminEntry(w http.ResponseWriter, r *http.Request) bo
 	if !g.authorizeAdminRequest(w, r) {
 		return true
 	}
-
-	if strings.HasPrefix(r.URL.Path, dlpRulesetAdminPath) {
-		g.adminDLPRulesetsHandler(w, r)
-		return true
-	}
-	if strings.HasPrefix(r.URL.Path, approvalAdminPath) {
-		g.adminApprovalsHandler(w, r)
-		return true
-	}
-	if strings.HasPrefix(r.URL.Path, breakGlassAdminPath) {
-		g.adminBreakGlassHandler(w, r)
-		return true
-	}
-	if strings.HasPrefix(r.URL.Path, profileAdminPath) {
-		g.adminProfilesHandler(w, r)
-		return true
-	}
-	if strings.HasPrefix(r.URL.Path, "/admin/loop/runs") {
-		g.adminLoopRunsHandler(w, r)
-		return true
-	}
-	if strings.HasPrefix(r.URL.Path, "/admin/circuit-breakers/reset") {
-		g.adminCircuitBreakersResetHandler(w, r)
-		return true
-	}
-	if strings.HasPrefix(r.URL.Path, "/admin/circuit-breakers") {
-		g.adminCircuitBreakersHandler(w, r)
-		return true
-	}
-	if strings.HasPrefix(r.URL.Path, "/admin/policy/reload") {
-		g.adminPolicyReloadHandler(w, r)
-		return true
-	}
-
-	http.NotFound(w, r)
-	return true
+	return precinctcontrol.DispatchAdminRoutes(
+		w,
+		r,
+		precinctcontrol.AdminRouteConfig{
+			MiddlewareStep: v24MiddlewareStep,
+			RuleOps:        v24MiddlewareRuleOpsAdmin,
+			Approval:       v24MiddlewareApprovalAdmin,
+			BreakGlass:     v24MiddlewareBreakGlassAdmin,
+			Profile:        v24MiddlewareProfileAdmin,
+			LoopRuns:       v24MiddlewareLoopAdmin,
+			Circuit:        v24MiddlewareCircuitBreakerAdmin,
+			PolicyReload:   v24MiddlewarePolicyReloadAdmin,
+			Default:        v24MiddlewareAdminAuthz,
+		},
+		precinctcontrol.AdminGatewayRoutes{
+			HandleDLPRulesets: func(w http.ResponseWriter, r *http.Request) bool {
+				g.adminDLPRulesetsHandler(w, r)
+				return true
+			},
+			HandleApprovals: func(w http.ResponseWriter, r *http.Request) bool {
+				g.adminApprovalsHandler(w, r)
+				return true
+			},
+			HandleBreakGlass: func(w http.ResponseWriter, r *http.Request) bool {
+				g.adminBreakGlassHandler(w, r)
+				return true
+			},
+			HandleProfiles: func(w http.ResponseWriter, r *http.Request) bool {
+				g.adminProfilesHandler(w, r)
+				return true
+			},
+			HandleLoopRuns: func(w http.ResponseWriter, r *http.Request) bool {
+				g.adminLoopRunsHandler(w, r)
+				return true
+			},
+			HandleCircuitBreaker: func(w http.ResponseWriter, r *http.Request) bool {
+				if strings.HasPrefix(r.URL.Path, "/admin/circuit-breakers/reset") {
+					g.adminCircuitBreakersResetHandler(w, r)
+					return true
+				}
+				g.adminCircuitBreakersHandler(w, r)
+				return true
+			},
+			HandlePolicyReload: func(w http.ResponseWriter, r *http.Request) bool {
+				g.adminPolicyReloadHandler(w, r)
+				return true
+			},
+			HandleFallback: func(w http.ResponseWriter, r *http.Request) bool {
+				http.NotFound(w, r)
+				return true
+			},
+		},
+	)
 }
 
 // adminDLPRulesetsHandler exposes governed DLP RuleOps lifecycle operations.
@@ -359,18 +350,7 @@ func (g *Gateway) logDLPRuleOpsDecision(r *http.Request, rulesetID, operation, d
 	if g == nil || g.auditor == nil {
 		return
 	}
-	result := fmt.Sprintf("ruleset_id=%s operation=%s decision=%s reason=%s", rulesetID, operation, decision, reason)
-	g.auditor.Log(middleware.AuditEvent{
-		SessionID:  middleware.GetSessionID(r.Context()),
-		DecisionID: decisionID,
-		TraceID:    traceID,
-		SPIFFEID:   middleware.GetSPIFFEID(r.Context()),
-		Action:     "ruleops." + operation,
-		Result:     result,
-		Method:     r.Method,
-		Path:       r.URL.Path,
-		StatusCode: httpStatus,
-	})
+	precinctevidence.LogRuleOpsDecision(g.auditor, r, rulesetID, operation, decision, reason, decisionID, traceID, httpStatus)
 }
 
 // adminLoopRunsHandler exposes loop run observability and operator halt.

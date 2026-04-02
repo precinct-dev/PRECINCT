@@ -40,12 +40,18 @@ log_detail "Gateway WS URL: ${GATEWAY_WS_URL}"
 
 # --- K.1: Messaging simulator health ---
 log_subheader "K.1: Messaging simulator reachable"
-SIM_HEALTH=$(curl -sf http://localhost:8090/health 2>/dev/null || echo "")
-if echo "$SIM_HEALTH" | grep -q '"status":"ok"'; then
+SIM_STATUS=$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' messaging-sim 2>/dev/null || true)
+if [ "$SIM_STATUS" = "healthy" ]; then
     log_pass "Messaging simulator healthy"
 else
-    # Simulator may not be reachable from host in some Docker setups.
-    log_skip "Messaging simulator not reachable from host" "curl http://localhost:8090/health failed (may be internal-only)"
+    SIM_HEALTH=$(curl -sf http://localhost:8090/health 2>/dev/null || echo "")
+    if echo "$SIM_HEALTH" | grep -q '"status":"ok"'; then
+        log_pass "Messaging simulator healthy"
+    elif [ -n "$SIM_STATUS" ]; then
+        log_fail "Messaging simulator health" "Container status is ${SIM_STATUS}"
+    else
+        log_info "Messaging simulator host probe not required in this topology (service may be internal-only or absent)"
+    fi
 fi
 
 # --- K.2: WhatsApp message send via WS ---

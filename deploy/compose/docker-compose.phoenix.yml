@@ -62,9 +62,10 @@ services:
 
 networks:
   phoenix-net:
-    driver: bridge
+    external: true
     name: phoenix-observability-network
 
 volumes:
   phoenix-data:
+    external: true
     name: phoenix-data

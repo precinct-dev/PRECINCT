@@ -1,12 +1,16 @@
-# PRECINCT Gateway - EKS Deployment
+# PRECINCT Gateway Runtime - EKS Deployment
 
 Story: RFA-9fv.4
 
 ## Architecture
 
-The PRECINCT Gateway is the security enforcement point for all MCP JSON-RPC
-requests. It runs a 13-middleware chain (authentication, authorization, DLP,
-audit, etc.) before proxying requests to tool servers.
+The PRECINCT runtime is split into two cooperating services:
+
+- `precinct-gateway`: the data-plane enforcement point for MCP JSON-RPC requests
+- `precinct-control`: the extracted control-plane service for admin/governance APIs
+
+Both run with SPIFFE/SPIRE workload identity, OPA policy enforcement, and
+SPIKE-backed secret access.
 
 ```
                     +-------------------+
@@ -14,34 +18,35 @@ audit, etc.) before proxying requests to tool servers.
                     |    MCP Clients    |
                     +--------+----------+
                              |
-                             | port 9090
-                             v
-                  +----------+----------+
-   gateway ns --> | PRECINCT Gateway|
-                  | (13-middleware chain)|
-                  +----------+----------+
-                             |
-                             | port 8081 (NetworkPolicy enforced)
-                             v
-                  +----------+----------+
-   tools ns ----> |   MCP Tool Server   |
-                  |  (Docker MCP / mock)|
-                  +---------------------+
+                +------------+------------+
+                |                         |
+                v                         v
+     gateway ns +-----------+   gateway ns +-----------+
+                | precinct- |              | precinct- |
+                | gateway   |              | control   |
+                +-----+-----+              +-----------+
+                      |
+                      | port 8081 (NetworkPolicy enforced)
+                      v
+            tools ns +---------------------+
+                     |   MCP Tool Server   |
+                     |  (Docker MCP / mock)|
+                     +---------------------+
 ```
 
 ### Namespaces
 
 | Namespace | Purpose | SPIFFE ID |
 |-----------|---------|-----------|
-| `gateway` | PRECINCT Gateway | `spiffe://precinct.poc/ns/gateway/sa/precinct-gateway` |
+| `gateway` | PRECINCT runtime services | `spiffe://precinct.poc/ns/gateway/sa/precinct-gateway`, `spiffe://precinct.poc/ns/gateway/sa/precinct-control` |
 | `tools`   | MCP tool servers | `spiffe://precinct.poc/ns/tools/sa/mcp-tool` |
 
 ### NetworkPolicy Enforcement
 
 Default-deny is applied to both namespaces. Explicit allow rules permit:
 
-- **Gateway ingress**: Any source on port 9090
-- **Gateway egress**: tools:8081, spike-system:8443, kube-dns:53
+- **Gateway/control ingress**: Any source on port 9090 through the service front doors
+- **Gateway/control egress**: tools:8081, spike-system:8443, kube-dns:53
 - **Tools ingress**: Only from gateway namespace on port 8081
 - **Tools egress**: kube-dns:53, internal CIDRs only (no public internet)
 
@@ -51,15 +56,18 @@ Default-deny is applied to both namespaces. Explicit allow rules permit:
 2. SPIRE deployed (`make -C ../spire deploy`)
 3. SPIKE deployed (`make -C ../spike deploy`)
 4. NetworkPolicy-capable CNI installed (Calico or Cilium)
-5. Gateway container image built and available:
+5. Runtime container images built and available:
    ```bash
    # Build locally
    docker build -t precinct-gateway:latest -f deploy/compose/Dockerfile.gateway .
+   docker build -t precinct-control:latest -f deploy/compose/Dockerfile.control .
 
    # Push to ECR (production)
    aws ecr get-login-password | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
    docker tag precinct-gateway:latest <account>.dkr.ecr.<region>.amazonaws.com/precinct-gateway:latest
    docker push <account>.dkr.ecr.<region>.amazonaws.com/precinct-gateway:latest
+   docker tag precinct-control:latest <account>.dkr.ecr.<region>.amazonaws.com/precinct-control:latest
+   docker push <account>.dkr.ecr.<region>.amazonaws.com/precinct-control:latest
    ```
 6. `kubeconform` installed for offline validation (`brew install kubeconform`)
 
@@ -108,10 +116,13 @@ make undeploy
 | File | Resource | Description |
 |------|----------|-------------|
 | `gateway-namespace.yaml` | Namespace | `gateway` namespace with pod security standards |
-| `gateway-rbac.yaml` | ServiceAccount | Identity for SPIFFE attestation |
+| `gateway-rbac.yaml` | ServiceAccount | Identity for `precinct-gateway` SPIFFE attestation |
+| `control-rbac.yaml` | ServiceAccount | Identity for `precinct-control` SPIFFE attestation |
 | `gateway-configmap.yaml` | ConfigMap (template) | Placeholder; real data populated by Makefile |
 | `gateway-deployment.yaml` | Deployment | Gateway pod with env vars, volumes, probes |
+| `control-deployment.yaml` | Deployment | Control-plane pod with mirrored zero-trust runtime wiring |
 | `gateway-service.yaml` | Service | ClusterIP on port 9090 |
+| `control-service.yaml` | Service | ClusterIP on port 9090 for `precinct-control` |
 
 ## Configuration
 
@@ -143,16 +154,17 @@ When OPA policies change in `config/opa/`, redeploy the ConfigMap:
 
 ```bash
 make deploy-configmap
-# Then restart the gateway to pick up changes:
-kubectl -n gateway rollout restart deployment/precinct-gateway
+# Then restart the runtime services to pick up changes:
+kubectl -n gateway rollout restart deployment/precinct-gateway deployment/precinct-control
 ```
 
 ## Troubleshooting
 
-### Gateway pod not starting
+### Runtime pod not starting
 - Check SPIRE agent is running: `kubectl -n spire-system get pods`
 - Check ConfigMap exists: `kubectl -n gateway get configmap gateway-config`
-- Check events: `kubectl -n gateway describe pod -l app.kubernetes.io/name=precinct-gateway`
+- Check gateway events: `kubectl -n gateway describe pod -l app.kubernetes.io/name=precinct-gateway`
+- Check control events: `kubectl -n gateway describe pod -l app.kubernetes.io/name=precinct-control`
 
 ### Gateway cannot reach tool server
 - Verify NetworkPolicies: `make -C ../policies verify`

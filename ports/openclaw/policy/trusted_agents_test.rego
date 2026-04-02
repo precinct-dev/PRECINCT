@@ -16,6 +16,16 @@ mock_trusted_agents := [
     "dlp_bypass_scope": "system_prompt",
     "trust_tier": "port_scoped",
   },
+  {
+    "spiffe_id": "spiffe://poc.local/agents/ports/openclaw/dev",
+    "dlp_bypass_scope": "system_prompt",
+    "trust_tier": "port_scoped",
+  },
+  {
+    "spiffe_id": "spiffe://precinct.poc/ns/openclaw/sa/openclaw",
+    "dlp_bypass_scope": "system_prompt",
+    "trust_tier": "port_scoped",
+  },
 ]
 
 # --------------------------------------------------------------------------
@@ -28,6 +38,16 @@ test_openclaw_is_trusted_agent if {
 
 test_unknown_agent_is_not_trusted if {
   not trusted_agents.is_trusted_agent with input as {"spiffe_id": "spiffe://poc.local/other-agent"}
+    with data.trusted_agents as mock_trusted_agents
+}
+
+test_k8s_openclaw_is_trusted_agent if {
+  trusted_agents.is_trusted_agent with input as {"spiffe_id": "spiffe://precinct.poc/ns/openclaw/sa/openclaw"}
+    with data.trusted_agents as mock_trusted_agents
+}
+
+test_k8s_bridge_openclaw_is_trusted_agent if {
+  trusted_agents.is_trusted_agent with input as {"spiffe_id": "spiffe://poc.local/agents/ports/openclaw/dev"}
     with data.trusted_agents as mock_trusted_agents
 }
 
@@ -62,6 +82,20 @@ test_no_bypass_assistant_role_for_trusted_agent if {
   not trusted_agents.bypass_dlp_for_role with input as {
     "spiffe_id": "spiffe://poc.local/openclaw",
     "message_role": "assistant",
+  } with data.trusted_agents as mock_trusted_agents
+}
+
+test_bypass_system_role_for_k8s_trusted_agent if {
+  trusted_agents.bypass_dlp_for_role with input as {
+    "spiffe_id": "spiffe://precinct.poc/ns/openclaw/sa/openclaw",
+    "message_role": "system",
+  } with data.trusted_agents as mock_trusted_agents
+}
+
+test_bypass_system_role_for_k8s_bridge_trusted_agent if {
+  trusted_agents.bypass_dlp_for_role with input as {
+    "spiffe_id": "spiffe://poc.local/agents/ports/openclaw/dev",
+    "message_role": "system",
   } with data.trusted_agents as mock_trusted_agents
 }
 

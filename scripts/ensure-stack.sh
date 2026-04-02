@@ -53,7 +53,7 @@ ensure_host_access() {
   local gateway_recreated=0
 
   if ! host_port_reachable 6379; then
-    echo "WARN: KeyDB host port 6379 is not reachable. Integration tests will fall back to compose://keydb."
+    echo "INFO: KeyDB host port 6379 is not exposed on localhost. Compose-internal connectivity remains authoritative."
   fi
 
   if ! host_port_reachable 9090; then

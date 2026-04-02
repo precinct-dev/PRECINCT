@@ -6,6 +6,7 @@
 REGISTRY ?= ghcr.io
 IMAGE_PREFIX ?= $(REGISTRY)/$(shell git config --get remote.origin.url 2>/dev/null | sed 's|.*github.com[:/]\(.*\)\.git|\1|' | tr '[:upper:]' '[:lower:]')/precinct
 GATEWAY_IMAGE ?= $(IMAGE_PREFIX)/precinct-gateway
+CONTROL_IMAGE ?= $(IMAGE_PREFIX)/precinct-control
 S3_MCP_IMAGE ?= $(IMAGE_PREFIX)/s3-mcp-server
 IMAGE_TAG ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "dev")
 
@@ -18,6 +19,7 @@ COMPOSE_DIR := deploy/compose
 DC := docker compose -f $(COMPOSE_DIR)/docker-compose.yml
 DC_MOCK := $(DC) -f $(COMPOSE_DIR)/docker-compose.mock.yml --profile mock
 DC_REAL := $(DC) --env-file .env -f $(COMPOSE_DIR)/docker-compose.real.yml
+DC_OPENCLAW := $(DC) -f $(COMPOSE_DIR)/docker-compose.openclaw.yml
 
 # Compliance tooling
 AUDIT_LOG ?= /tmp/audit.jsonl
@@ -74,7 +76,7 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 	@if [ "$(DEMO_SERVICE_MODE)" = "real" ]; then \
 		mkdir -p $(COMPOSE_DIR)/data/openclaw-config && \
 		chmod 777 $(COMPOSE_DIR)/data/openclaw-config && \
-		cp -n $(COMPOSE_DIR)/openclaw-gateway-config.json $(COMPOSE_DIR)/data/openclaw-config/openclaw.json 2>/dev/null || true; \
+		cp $(COMPOSE_DIR)/openclaw-gateway-config.json $(COMPOSE_DIR)/data/openclaw-config/openclaw.json; \
 	fi
 	@# Select compose command based on DEMO_SERVICE_MODE (mock=default, real=external APIs)
 	@echo "Building and starting services [mode=$(or $(DEMO_SERVICE_MODE),mock)] (waiting for all health checks)..."
@@ -83,8 +85,8 @@ up: compose-verify ## Start Docker Compose stack (waits for all services healthy
 	else \
 		echo "WARN: docker compose --wait timed out. Checking core service readiness..."; \
 		if ! bash scripts/compose-health-check.sh --verbose; then \
-			echo "Attempting gateway-only recovery after compose dependency timeout..."; \
-			$(if $(filter real,$(DEMO_SERVICE_MODE)),$(DC_REAL),$(DC_MOCK)) up -d --no-deps precinct-gateway >/dev/null 2>&1 || true; \
+			echo "Attempting gateway/control recovery after compose dependency timeout..."; \
+			$(if $(filter real,$(DEMO_SERVICE_MODE)),$(DC_REAL),$(DC_MOCK)) up -d --no-deps precinct-gateway precinct-control >/dev/null 2>&1 || true; \
 		fi; \
 		echo "Waiting up to 60s for core services to become healthy..."; \
 		ready=0; \
@@ -117,7 +119,7 @@ down: ## Stop Docker Compose stack (all profiles). Set VOLUMES=1 to remove volum
 
 clean: ## Full cleanup (containers, volumes, build artifacts, logs, SPIRE state)
 	$(DC) down -v
-	-docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml down -v >/dev/null 2>&1 || true
+	-@$(PHOENIX_DC) down -v >/dev/null 2>&1 || true
 	-docker compose -f $(COMPOSE_DIR)/docker-compose.opensearch.yml down -v >/dev/null 2>&1 || true
 	rm -rf build/sbom/ build/bin/
 	rm -f gateway service precinct openclaw-ws-smoke
@@ -170,31 +172,46 @@ compose-bootstrap-verify:
 
 .PHONY: phoenix-up phoenix-down phoenix-reset phoenix-network-ensure
 
+PHOENIX_PROJECT := phoenix-observability
+PHOENIX_DC := docker compose -p phoenix-observability -f $(COMPOSE_DIR)/docker-compose.phoenix.yml
+
 phoenix-network-ensure:
-	@if docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
-		compose_network_label="$$(docker network inspect phoenix-observability-network --format '{{index .Labels "com.docker.compose.network"}}' 2>/dev/null || true)"; \
-		if [ "$$compose_network_label" != "phoenix-net" ]; then \
-			attached_containers="$$(docker network inspect phoenix-observability-network --format '{{range $$id, $$c := .Containers}}{{$$c.Name}} {{end}}' 2>/dev/null | xargs)"; \
-			if [ -n "$$attached_containers" ]; then \
-				echo "ERROR: phoenix-observability-network exists with incompatible labels and is in use by: $$attached_containers"; \
-				echo "Stop the attached containers (or run 'make down' if they belong to the local stack), then retry 'make phoenix-up'."; \
-				exit 1; \
-			fi; \
-			echo "Repairing stale phoenix-observability-network so Phoenix compose can recreate it..."; \
-			docker network rm phoenix-observability-network >/dev/null; \
+	@if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then \
+		echo "Creating shared phoenix-observability-network..."; \
+		docker network create phoenix-observability-network >/dev/null; \
+	else \
+		attached_containers="$$(docker network inspect phoenix-observability-network --format '{{range $$id, $$c := .Containers}}{{$$c.Name}} {{end}}' 2>/dev/null | xargs)"; \
+		if [ -n "$$attached_containers" ]; then \
+			for name in $$attached_containers; do \
+				case "$$name" in \
+					precinct-gateway|precinct-control|phoenix|otel-collector) ;; \
+					*) \
+						echo "ERROR: phoenix-observability-network is attached to unexpected container: $$name"; \
+						echo "Stop the unexpected container, then retry 'make phoenix-up'."; \
+						exit 1; \
+						;; \
+				esac; \
+			done; \
 		fi; \
 	fi
 
 phoenix-up: ## Start standalone Phoenix + OTel collector (persistent traces)
 	@$(MAKE) phoenix-network-ensure
-	docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml up -d --build --wait --wait-timeout 60
+	@for name in phoenix otel-collector; do \
+		project="$$(docker inspect "$$name" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null || true)"; \
+		if [ -n "$$project" ] && [ "$$project" != "$(PHOENIX_PROJECT)" ]; then \
+			echo "Migrating legacy $$name container into Phoenix observability project..."; \
+			docker rm -f "$$name" >/dev/null 2>&1 || true; \
+		fi; \
+	done
+	@$(PHOENIX_DC) up -d --build --wait --wait-timeout 60
 	@echo "Phoenix UI: http://localhost:6006"
 
 phoenix-down: ## Stop Phoenix stack (preserves trace data)
-	docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml down
+	@$(PHOENIX_DC) down
 
 phoenix-reset: ## Stop Phoenix stack and destroy trace data
-	docker compose -f $(COMPOSE_DIR)/docker-compose.phoenix.yml down -v
+	@$(PHOENIX_DC) down -v
 
 # ===========================================================================
 # 4. OpenSearch Observability (optional)
@@ -389,8 +406,8 @@ tracker-surface-validate:
 .PHONY: demo demo-compose demo-compose-mock demo-k8s demo-cli demo-walking-skeleton
 
 demo: ## Run E2E demo (Docker Compose + K8s)
-	@bash examples/run.sh compose
-	@bash examples/run.sh k8s
+	@bash examples/run.sh compose --no-teardown
+	@bash examples/run.sh k8s --no-teardown
 
 demo-compose: ## Run E2E demo with real services (OpenClaw, Tavily, Groq). Requires .env keys.
 	@bash examples/run.sh compose --no-teardown --real
@@ -398,8 +415,9 @@ demo-compose: ## Run E2E demo with real services (OpenClaw, Tavily, Groq). Requi
 demo-compose-mock: ## Run E2E demo with mock services (deterministic, no external APIs)
 	@bash examples/run.sh compose --no-teardown --mock
 
-demo-k8s: ## Run E2E demo (K8s; leaves cluster running for inspection)
+demo-k8s: ## Run E2E demo (K8s; leaves cluster running for inspection, including OpenClaw)
 	@bash examples/run.sh k8s --no-teardown
+	@$(MAKE) openclaw-demo-k8s
 
 demo-walking-skeleton: ## Run minimal walking skeleton demo against a live Compose stack
 	@bash scripts/demo-walking-skeleton.sh
@@ -436,12 +454,27 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	$(MAKE) k8s-registry
 	@echo "Building and pushing local images..."
 	docker build -f deploy/compose/Dockerfile.gateway -t precinct-gateway:latest .
+	docker build -f deploy/compose/Dockerfile.control -t precinct-control:latest .
+	docker build -f deploy/compose/Dockerfile.agent-bridge -t precinct-agent-bridge:latest .
+	docker build -f deploy/compose/Dockerfile.spike-bootstrap -t poc-spike-bootstrap:latest .
+	docker build --build-arg OPENCLAW_VARIANT=slim -f ../openclaw/Dockerfile -t openclaw:latest ../openclaw
 	docker build -f examples/mock-mcp-server/Dockerfile -t poc-mock-mcp-server:latest examples/mock-mcp-server/
+	docker build -f examples/mock-guard-model/Dockerfile -t poc-mock-guard-model:latest examples/mock-guard-model/
 	docker build -f deploy/compose/Dockerfile.spire-agent -t spire-agent-wrapper:latest .
 	docker tag precinct-gateway:latest $(LOCAL_REGISTRY)/precinct-gateway:latest
 	docker push $(LOCAL_REGISTRY)/precinct-gateway:latest
+	docker tag precinct-control:latest $(LOCAL_REGISTRY)/precinct-control:latest
+	docker push $(LOCAL_REGISTRY)/precinct-control:latest
+	docker tag precinct-agent-bridge:latest $(LOCAL_REGISTRY)/precinct-agent-bridge:latest
+	docker push $(LOCAL_REGISTRY)/precinct-agent-bridge:latest
+	docker tag poc-spike-bootstrap:latest $(LOCAL_REGISTRY)/poc-spike-bootstrap:latest
+	docker push $(LOCAL_REGISTRY)/poc-spike-bootstrap:latest
+	docker tag openclaw:latest $(LOCAL_REGISTRY)/openclaw:latest
+	docker push $(LOCAL_REGISTRY)/openclaw:latest
 	docker tag poc-mock-mcp-server:latest $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
 	docker push $(LOCAL_REGISTRY)/poc-mock-mcp-server:latest
+	docker tag poc-mock-guard-model:latest $(LOCAL_REGISTRY)/poc-mock-guard-model:latest
+	docker push $(LOCAL_REGISTRY)/poc-mock-guard-model:latest
 	docker tag spire-agent-wrapper:latest $(LOCAL_REGISTRY)/spire-agent-wrapper:latest
 	docker push $(LOCAL_REGISTRY)/spire-agent-wrapper:latest
 	docker build -f deploy/compose/Dockerfile.spike-keeper -t spike-keeper:latest .
@@ -466,53 +499,66 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo "Generating TLS certs for policy-controller webhook..."
 	@bash scripts/k8s-generate-webhook-tls.sh
 	@echo "Waiting for SPIRE infrastructure..."
-	-kubectl -n spire-system rollout status statefulset/spire-server --timeout=120s 2>/dev/null || \
+	@-kubectl -n spire-system rollout status statefulset/spire-server --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIRE Server not yet ready"
-	-kubectl -n spire-system rollout status daemonset/spire-agent --timeout=120s 2>/dev/null || \
+	@-kubectl -n spire-system rollout status daemonset/spire-agent --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIRE Agent not yet ready"
 	@echo "Registering SPIRE workload entries..."
 	$(MAKE) k8s-register-spire
 	@echo "Waiting for SPIKE Keeper..."
-	-kubectl -n spike-system rollout status deployment/spike-keeper --timeout=120s 2>/dev/null || \
+	@-kubectl -n spike-system rollout status deployment/spike-keeper --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIKE Keeper not yet ready"
-	@echo "Waiting for SPIKE Nexus (SQLite mode)..."
-	-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=120s 2>/dev/null || \
-		echo "WARNING: SPIKE Nexus not yet ready"
-	@echo "Checking SPIKE Nexus service endpoint readiness..."
+	@echo "Waiting for SPIKE Nexus pod to start (bootstrap initializes readiness)..."
 	@{ \
-		ready_ip=""; \
+		pod_name=""; \
 		for i in $$(seq 1 60); do \
-			ready_ip="$$(kubectl -n spike-system get endpoints spike-nexus -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null || true)"; \
-			if [ -n "$$ready_ip" ]; then \
+			pod_name="$$(kubectl -n spike-system get pods -l app.kubernetes.io/name=spike-nexus -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)"; \
+			if [ -n "$$pod_name" ]; then \
 				break; \
 			fi; \
 			sleep 2; \
 		done; \
-		if [ -z "$$ready_ip" ]; then \
-			echo "WARNING: SPIKE Nexus endpoint not ready yet; bootstrap job may retry until Nexus is available"; \
+		if [ -z "$$pod_name" ]; then \
+			echo "WARNING: SPIKE Nexus pod not observed yet; bootstrap job may retry until it appears"; \
 		fi; \
 	}
-	@echo "Applying SPIKE Bootstrap job (after SPIRE registration)..."
-	-kubectl -n spike-system apply -f infra/eks/overlays/local/spike-bootstrap-job.yaml >/dev/null 2>&1 || true
+	@echo "Applying SPIKE Bootstrap job (after SPIRE registration and keeper readiness)..."
+	@-kubectl -n spike-system apply -f infra/eks/overlays/local/spike-bootstrap-job.yaml >/dev/null 2>&1 || true
 	@echo "Waiting for SPIKE Bootstrap job..."
-	-kubectl -n spike-system wait --for=condition=complete job/spike-bootstrap --timeout=240s 2>/dev/null || \
+	@-kubectl -n spike-system wait --for=condition=complete job/spike-bootstrap --timeout=240s 2>/dev/null || \
 		echo "WARNING: SPIKE Bootstrap not yet complete"
+	@echo "Waiting for SPIKE Nexus (post-bootstrap)..."
+	@-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=180s 2>/dev/null || \
+		echo "WARNING: SPIKE Nexus not yet ready after bootstrap"
 	@echo "Applying SPIKE Secret Seeder job (after bootstrap)..."
-	-kubectl -n spike-system apply -f infra/eks/spike/seeder-job.yaml >/dev/null 2>&1 || true
+	@-kubectl -n spike-system apply -f infra/eks/overlays/local/spike-secret-seeder-job.yaml >/dev/null 2>&1 || true
 	@echo "Waiting for SPIKE Secret Seeder job..."
-	-kubectl -n spike-system wait --for=condition=complete job/spike-secret-seeder --timeout=120s 2>/dev/null || \
+	@-kubectl -n spike-system wait --for=condition=complete job/spike-secret-seeder --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIKE Secret Seeder not yet complete"
+	@echo "Restarting gateway/control after SPIKE bootstrap + seeding..."
+	@-kubectl -n gateway rollout restart deployment/precinct-gateway deployment/precinct-control >/dev/null 2>&1 || true
+	@-kubectl -n gateway rollout status deployment/precinct-gateway --timeout=180s 2>/dev/null || \
+		echo "WARNING: Gateway post-SPIKE restart not yet ready"
+	@-kubectl -n gateway rollout status deployment/precinct-control --timeout=180s 2>/dev/null || \
+		echo "WARNING: Control post-SPIKE restart not yet ready"
+	@echo "Restarting OpenClaw after config/secret updates..."
+	@-kubectl -n openclaw rollout restart deployment/openclaw >/dev/null 2>&1 || true
+	@-kubectl -n openclaw rollout status deployment/openclaw --timeout=180s 2>/dev/null || \
+		echo "WARNING: OpenClaw post-config restart not yet ready"
 	@echo "Waiting for remaining pods..."
-	-kubectl -n data rollout status deployment/keydb --timeout=60s 2>/dev/null || \
+	@-kubectl -n data rollout status deployment/keydb --timeout=60s 2>/dev/null || \
 		echo "WARNING: KeyDB not yet ready"
-	-kubectl -n tools rollout status deployment/mcp-server --timeout=60s 2>/dev/null || \
+	@-kubectl -n tools rollout status deployment/mcp-server --timeout=60s 2>/dev/null || \
 		echo "WARNING: MCP Server not yet ready"
-	-kubectl -n gateway rollout status deployment/precinct-gateway --timeout=120s 2>/dev/null || \
+	@-kubectl -n gateway rollout status deployment/precinct-gateway --timeout=120s 2>/dev/null || \
 		echo "WARNING: Gateway not yet ready"
-	-kubectl -n cosign-system rollout status deployment/policy-controller-webhook --timeout=60s 2>/dev/null || \
+	@-kubectl -n gateway rollout status deployment/precinct-control --timeout=120s 2>/dev/null || \
+		echo "WARNING: Control service not yet ready"
+	@-kubectl -n cosign-system rollout status deployment/policy-controller-webhook --timeout=60s 2>/dev/null || \
 		echo "WARNING: policy-controller webhook not yet ready"
 	@echo ""
 	@echo "Gateway: http://localhost:30090"
+	@echo "Control: http://localhost:30091"
 	@echo "Health:  curl -s http://localhost:30090/health"
 	@echo ""
 	@echo "To enable deep scan (optional):"
@@ -581,6 +627,26 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 				exit(ok ? 0 : 1); \
 			} \
 		' "$$file" || { echo "Gateway prod transport wiring check failed for $$o overlay"; exit 1; }; \
+	done; \
+	echo "Validating non-local control prod transport wiring..."; \
+	for o in dev staging prod; do \
+		file="/tmp/precinct-k8s-$$o.yaml"; \
+		awk ' \
+			BEGIN { RS="---"; dep=""; svc="" } \
+			$$0 ~ /kind:[[:space:]]*Deployment([[:space:]]|$$)/ && $$0 ~ /name:[[:space:]]*precinct-control([[:space:]]|$$)/ { dep=$$0 } \
+			$$0 ~ /kind:[[:space:]]*Service([[:space:]]|$$)/ && $$0 ~ /name:[[:space:]]*precinct-control([[:space:]]|$$)/ { svc=$$0 } \
+			END { \
+				ok=1; \
+				if (dep == "" || svc == "") ok=0; \
+				if (dep !~ /name:[[:space:]]*SPIFFE_MODE/ || dep !~ /value:[[:space:]]*"?prod"?/) ok=0; \
+				if (dep !~ /name:[[:space:]]*SPIFFE_ENDPOINT_SOCKET/ || dep !~ /run\/spire\/sockets\/agent\.sock/) ok=0; \
+				if (dep !~ /name:[[:space:]]*SPIFFE_LISTEN_PORT/ || dep !~ /value:[[:space:]]*"?9090"?/) ok=0; \
+				if (dep !~ /containerPort:[[:space:]]*9090/) ok=0; \
+				if (dep !~ /livenessProbe:/ || dep !~ /readinessProbe:/ || dep !~ /- \/app\/precinct-control/ || dep !~ /- health/) ok=0; \
+				if (svc !~ /port:[[:space:]]*9090/ || svc !~ /targetPort:[[:space:]]*http/) ok=0; \
+				exit(ok ? 0 : 1); \
+			} \
+		' "$$file" || { echo "Control prod transport wiring check failed for $$o overlay"; exit 1; }; \
 	done; \
 	echo "Validating admission wiring (namespace scope, include labels, keyless identity bounds)..."; \
 	tests/e2e/admission/verify-admission-manifest-wiring.sh; \
@@ -772,7 +838,7 @@ demo-sidecar: ## Run sidecar identity E2E demo (Envoy + curl client through gate
 # 10. CI components (conformance, benchmark, build-images, build-tools)
 # ---------------------------------------------------------------------------
 
-.PHONY: conformance benchmark build-tools build-images build build-cli install
+.PHONY: conformance benchmark build-tools build-images build build-cli build-gateway build-control install
 
 conformance:
 	go run ./tests/conformance/cmd/harness --output $(CONFORMANCE_REPORT)
@@ -815,6 +881,10 @@ build-tools:
 openclaw-demo: ## Run OpenClaw E2E against live Compose stack (brings stack up if needed)
 	@echo "=== OpenClaw Port Demo (E2E against live stack) ==="
 	@bash scripts/ensure-stack.sh --resilient
+	@$(MAKE) openclaw-up
+	@echo "--- Runtime: OpenClaw container health ---"
+	@docker inspect openclaw --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' | grep -qx healthy
+	@echo "OpenClaw container is healthy and left running for manual testing."
 	@echo "--- Unit tests (mock-backed) ---"
 	go test ./ports/openclaw/... -count=1
 	@echo "--- E2E: walking skeleton against live gateway ---"
@@ -825,11 +895,73 @@ openclaw-demo: ## Run OpenClaw E2E against live Compose stack (brings stack up i
 	@bash ports/openclaw/tests/e2e/scenario_k_messaging_send_receive.sh
 	@echo "--- E2E: exfiltration via messaging ---"
 	@bash ports/openclaw/tests/e2e/scenario_l_messaging_exfiltration.sh
-	@echo "=== OpenClaw Port Demo PASSED ==="
+	@echo "=== OpenClaw Port Demo PASSED (OpenClaw left running in container 'openclaw') ==="
+
+.PHONY: openclaw-up
+openclaw-up: ## Start OpenClaw against the live gateway and leave the container running for manual testing
+	@mkdir -p $(COMPOSE_DIR)/data/openclaw-config
+	@chmod 777 $(COMPOSE_DIR)/data/openclaw-config
+	@cp $(COMPOSE_DIR)/openclaw-gateway-config.json $(COMPOSE_DIR)/data/openclaw-config/openclaw.json
+	@echo "Building and starting OpenClaw in the fail-closed agent runtime..."
+	@$(DC_OPENCLAW) up -d --build --force-recreate openclaw
+	@echo "Waiting for OpenClaw to become healthy..."
+	@ready=0; \
+	for _ in $$(seq 1 24); do \
+		status="$$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' openclaw 2>/dev/null || true)"; \
+		if [ "$$status" = "healthy" ]; then \
+			ready=1; \
+			break; \
+		fi; \
+		sleep 5; \
+	done; \
+	if [ "$$ready" -ne 1 ]; then \
+		echo "ERROR: OpenClaw did not become healthy."; \
+		$(DC_OPENCLAW) ps; \
+		exit 1; \
+	fi
+	@echo "OpenClaw is healthy in container 'openclaw'."
+	@echo "Manual CLI access: docker exec -it openclaw node openclaw.mjs <command>"
+	@echo "Mounted config: $(COMPOSE_DIR)/data/openclaw-config/openclaw.json"
+
+.PHONY: openclaw-down
+openclaw-down: ## Stop and remove the hosted OpenClaw demo service only
+	-@$(DC_OPENCLAW) stop openclaw >/dev/null 2>&1 || true
+	-@$(DC_OPENCLAW) rm -f openclaw >/dev/null 2>&1 || true
 
 .PHONY: openclaw-drill
 openclaw-drill:
 	@bash ports/openclaw/scripts/run_openclaw_incident_rollback_drill.sh
+
+.PHONY: openclaw-demo-k8s
+openclaw-demo-k8s: ## Verify OpenClaw is deployed and usable on the local K8s stack
+	@echo "=== OpenClaw K8s Demo ==="
+	@kubectl config use-context docker-desktop >/dev/null 2>&1
+	@kubectl -n openclaw rollout status deployment/openclaw --timeout=300s
+	@set -e; \
+	pf_log=/tmp/precinct-openclaw-k8s-portforward.log; \
+	kubectl -n openclaw port-forward svc/openclaw 38789:18789 >"$$pf_log" 2>&1 & \
+	pf_pid=$$!; \
+	trap 'kill $$pf_pid >/dev/null 2>&1 || true' EXIT INT TERM; \
+	ready=0; \
+	for _ in $$(seq 1 30); do \
+		if curl -sf http://127.0.0.1:38789/healthz >/dev/null 2>&1 && curl -sf http://127.0.0.1:38789/readyz >/dev/null 2>&1; then \
+			ready=1; \
+			break; \
+		fi; \
+		sleep 2; \
+	done; \
+	if [ "$$ready" -ne 1 ]; then \
+		echo "ERROR: OpenClaw did not become reachable through kubectl port-forward."; \
+		cat "$$pf_log" || true; \
+		exit 1; \
+	fi; \
+	openclaw_token="$$(kubectl get secret openclaw-secrets -n openclaw -o jsonpath='{.data.OPENCLAW_GATEWAY_TOKEN}' | base64 -d)"; \
+	kubectl -n openclaw exec deploy/openclaw -- node -e "require('http').get('http://precinct-gateway.gateway.svc.cluster.local:9090/health', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"; \
+	OPENCLAW_BASE_URL="http://127.0.0.1:38789" OPENCLAW_GATEWAY_TOKEN="$$openclaw_token" bash ports/openclaw/scripts/openclaw_gateway_http_smoke.sh; \
+	echo "OpenClaw K8s health: PASS"; \
+	echo "Manual access: kubectl -n openclaw port-forward svc/openclaw 38789:18789"; \
+	echo "Gateway token: $$openclaw_token"; \
+	echo "OpenClaw UI: http://127.0.0.1:38789/"
 
 .PHONY: test-openclaw
 test-openclaw:
@@ -839,13 +971,16 @@ build-images:
 	@echo "Building container images..."
 	docker build -f deploy/compose/Dockerfile.gateway -t $(GATEWAY_IMAGE):$(IMAGE_TAG) .
 	docker tag $(GATEWAY_IMAGE):$(IMAGE_TAG) $(GATEWAY_IMAGE):dev
+	docker build -f deploy/compose/Dockerfile.control -t $(CONTROL_IMAGE):$(IMAGE_TAG) .
+	docker tag $(CONTROL_IMAGE):$(IMAGE_TAG) $(CONTROL_IMAGE):dev
 	docker build -f deploy/compose/Dockerfile.s3-mcp-server -t $(S3_MCP_IMAGE):$(IMAGE_TAG) .
 	docker tag $(S3_MCP_IMAGE):$(IMAGE_TAG) $(S3_MCP_IMAGE):dev
-	@echo "Built: $(GATEWAY_IMAGE):$(IMAGE_TAG), $(S3_MCP_IMAGE):$(IMAGE_TAG)"
+	@echo "Built: $(GATEWAY_IMAGE):$(IMAGE_TAG), $(CONTROL_IMAGE):$(IMAGE_TAG), $(S3_MCP_IMAGE):$(IMAGE_TAG)"
 
-build: build-cli build-gateway ## Build local binaries and gateway image
+build: build-cli build-gateway build-control ## Build local binaries and gateway/control image
 	@echo "Building PRECINCT Gateway..."
 	$(DC) build precinct-gateway
+	$(DC) build precinct-control
 
 build-cli: ## Build CLI binary (delegates to cli/Makefile)
 	$(MAKE) -C cli build
@@ -853,6 +988,10 @@ build-cli: ## Build CLI binary (delegates to cli/Makefile)
 build-gateway: ## Build gateway binary into build/bin/
 	@mkdir -p build/bin
 	go build -o build/bin/gateway ./cmd/gateway
+
+build-control: ## Build control binary into build/bin/
+	@mkdir -p build/bin
+	 go build -o build/bin/precinct-control ./cmd/precinct-control
 
 install: ## Install CLI binary (delegates to cli/Makefile)
 	$(MAKE) -C cli install
@@ -1010,6 +1149,12 @@ register-spire:
 		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/gateways/precinct-gateway/dev \
 		-selector docker:label:spiffe-id:precinct-gateway \
 		-selector docker:label:component:gateway 2>/dev/null || true; \
+	echo "  Registering control workload..."; \
+	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://$(COMPOSE_TRUST_DOMAIN)/gateways/precinct-control/dev \
+		-selector docker:label:spiffe-id:precinct-control \
+		-selector docker:label:component:control-plane 2>/dev/null || true; \
 	echo "  Registering DSPy researcher agent..."; \
 	$(COMPOSE_SPIRE_EXEC) entry create -socketPath $(COMPOSE_SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
@@ -1070,6 +1215,20 @@ k8s-register-spire:
 		-selector k8s:ns:gateway -selector k8s:sa:precinct-gateway \
 		-dns precinct-gateway \
 		-dns precinct-gateway.gateway.svc.cluster.local 2>/dev/null || true; \
+	echo "  Registering control workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://precinct.poc/ns/gateway/sa/precinct-control \
+		-selector k8s:ns:gateway -selector k8s:sa:precinct-control \
+		-dns precinct-control \
+		-dns precinct-control.gateway.svc.cluster.local 2>/dev/null || true; \
+	echo "  Registering openclaw workload..."; \
+	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
+		-parentID $$PARENT_ID \
+		-spiffeID spiffe://precinct.poc/ns/openclaw/sa/openclaw \
+		-selector k8s:ns:openclaw -selector k8s:sa:openclaw \
+		-dns openclaw \
+		-dns openclaw.openclaw.svc.cluster.local 2>/dev/null || true; \
 	echo "  Registering mcp-tool workload..."; \
 	$(SPIRE_EXEC) entry create -socketPath $(SPIRE_SOCK) \
 		-parentID $$PARENT_ID \
