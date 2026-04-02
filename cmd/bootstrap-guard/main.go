@@ -106,7 +106,13 @@ func streamBootstrapLogs(src io.Reader, dst io.Writer, done chan<- struct{}) {
 		if shouldSuppressBootstrapLog(line) {
 			continue
 		}
-		fmt.Fprintln(dst, line)
+		if _, err := fmt.Fprintln(dst, line); err != nil {
+			fmt.Fprintf(os.Stderr, "bootstrap-guard: log stream write failed: %v\n", err)
+			return
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "bootstrap-guard: log stream read failed: %v\n", err)
 	}
 }
 

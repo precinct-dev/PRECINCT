@@ -11,9 +11,9 @@ info() {
 }
 
 main() {
-  local gateway_policy="infra/eks/policies/gateway-allow.yaml"
-  local tool_policy="infra/eks/policies/mcp-server-allow.yaml"
-  local gateway_ns="infra/eks/gateway/gateway-namespace.yaml"
+  local gateway_policy="deploy/terraform/policies/gateway-allow.yaml"
+  local tool_policy="deploy/terraform/policies/mcp-server-allow.yaml"
+  local gateway_ns="deploy/terraform/gateway/gateway-namespace.yaml"
 
   [ -f "$gateway_policy" ] || fail "missing $gateway_policy"
   [ -f "$tool_policy" ] || fail "missing $tool_policy"

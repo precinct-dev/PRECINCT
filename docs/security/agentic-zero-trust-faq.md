@@ -135,7 +135,7 @@ It captures recurring stakeholder questions and answer patterns grounded in the 
 
 ### 10) A2A protocol seems missing from gateway implementation. Is that true?
 
-**Short answer:** A2A is covered architecturally, but not yet as a first-class dedicated runtime gateway surface in this POC.
+**Short answer:** A2A is covered architecturally, but not yet as a first-class dedicated runtime gateway surface in this reference implementation.
 
 **Status:** Roadmap
 

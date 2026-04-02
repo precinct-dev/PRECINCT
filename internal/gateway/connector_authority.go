@@ -10,7 +10,6 @@ import (
 	"github.com/precinct-dev/precinct/internal/precinctevidence"
 )
 
-const connectorManifestSchemaVersion = precinctcontrol.ConnectorManifestSchemaVersion
 const connectorSignatureAlgorithm = precinctcontrol.ConnectorSignatureAlgorithm
 
 type connectorState = precinctcontrol.ConnectorState
@@ -45,39 +44,39 @@ func computeConnectorExpectedSignature(manifest connectorManifest) string {
 }
 
 func (c *connectorConformanceAuthority) register(manifest connectorManifest) (connectorRecord, error) {
-	return c.ConnectorConformanceAuthority.Register(manifest)
+	return c.Register(manifest)
 }
 
 func (c *connectorConformanceAuthority) validate(connectorID string) (connectorRecord, error) {
-	return c.ConnectorConformanceAuthority.Validate(connectorID)
+	return c.Validate(connectorID)
 }
 
 func (c *connectorConformanceAuthority) approve(connectorID string) (connectorRecord, error) {
-	return c.ConnectorConformanceAuthority.Approve(connectorID)
+	return c.Approve(connectorID)
 }
 
 func (c *connectorConformanceAuthority) activate(connectorID string) (connectorRecord, error) {
-	return c.ConnectorConformanceAuthority.Activate(connectorID)
+	return c.Activate(connectorID)
 }
 
 func (c *connectorConformanceAuthority) revoke(connectorID string) (connectorRecord, error) {
-	return c.ConnectorConformanceAuthority.Revoke(connectorID)
+	return c.Revoke(connectorID)
 }
 
 func (c *connectorConformanceAuthority) status(connectorID string) (connectorRecord, bool) {
-	return c.ConnectorConformanceAuthority.Status(connectorID)
+	return c.Status(connectorID)
 }
 
 func (c *connectorConformanceAuthority) updateAuditRef(connectorID, decisionID, traceID, reason, operation string) {
-	c.ConnectorConformanceAuthority.UpdateAuditRef(connectorID, decisionID, traceID, reason, operation)
+	c.UpdateAuditRef(connectorID, decisionID, traceID, reason, operation)
 }
 
 func (c *connectorConformanceAuthority) runtimeCheck(connectorID, signature string) (bool, string, connectorRecord) {
-	return c.ConnectorConformanceAuthority.RuntimeCheck(connectorID, signature)
+	return c.RuntimeCheck(connectorID, signature)
 }
 
 func (c *connectorConformanceAuthority) conformanceReport() map[string]any {
-	return c.ConnectorConformanceAuthority.ConformanceReport()
+	return c.ConformanceReport()
 }
 
 type connectorLifecycleRequest struct {

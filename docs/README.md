@@ -16,7 +16,12 @@ If you are new to PRECINCT, begin with these documents in order:
 2. [Prerequisites](getting-started/prerequisites.md) -- Tools and versions required to run the reference implementation
 3. [Deployment Guide](deployment-guide.md) -- Step-by-step instructions for Docker Compose and Kubernetes deployment
 4. [Architecture Reference](architecture/reference-architecture.md) -- The full architecture specification (v2.5, 200+ pages)
-5. [Current State and Roadmap](current-state-and-roadmap.md) -- What is implemented, what is planned, and open issues
+
+---
+
+Live planning and backlog state are tracked outside the published reference
+architecture. Repository-backed release-readiness evidence comes from CI,
+validation scripts, and generated evidence bundles.
 
 ---
 
@@ -52,7 +57,6 @@ If you are new to PRECINCT, begin with these documents in order:
 
 | Document | Description |
 |----------|-------------|
-| [Security Review](security/security-review.md) | Independent security review covering threat coverage, trust boundaries, and residual risks |
 | [STRIDE/PASTA Assurance Mapping](security/stride-pasta-assurance.md) | Mapping of the reference architecture to STRIDE threat classes and the PASTA risk lifecycle |
 | [Agentic Zero-Trust FAQ](security/agentic-zero-trust-faq.md) | Answers to recurring stakeholder questions about the zero-trust posture for agent identity, policy, and egress |
 | [Security Scan Baseline](security/baseline.md) | Auditable baseline for security scan results and evidence provenance as of 2026-02-15 |
@@ -152,9 +156,3 @@ If you are new to PRECINCT, begin with these documents in order:
 | [Executive Narrative](executive-narrative.md) | Non-technical narrative for CIO, CISO, CTO, Risk, and Legal audiences explaining the security posture and trade-offs |
 
 ---
-
-## Roadmap
-
-| Document | Description |
-|----------|-------------|
-| [Current State and Roadmap](current-state-and-roadmap.md) | Live status summary of what is implemented, what is in progress, and what is planned |

@@ -15,7 +15,7 @@
 #   - Docker Desktop Kubernetes
 #
 # Cloud-specific resources (IRSA, S3 audit sink, etc.) are NOT included here.
-# They belong in cloud-specific overlays (see infra/eks/ for AWS/EKS).
+# They belong in cloud-specific overlays (see deploy/terraform/ for AWS/EKS).
 # ------------------------------------------------------------------------------
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

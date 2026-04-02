@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # =============================================================================
 # CLI Setup Wizard - RFA-tj9.2
-# Guides users through POC configuration with clear security consequence
+# Guides users through reference implementation configuration with clear security consequence
 # explanations. Invoked via 'make setup'.
 #
-# Design principles (from DESIGN.md 4.1):
+# Design principles:
 # - Pressing Enter at every prompt produces a secure, working configuration
 # - No silent degradation: every disabled control is explicitly called out
 # - Target user: 'someone who doesn't know much about security'
@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-# Resolve POC root from script location (scripts/ is one level below POC root)
+# Resolve repo root from script location (scripts/ is one level below the root)
 POC_DIR="${POC_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
 DC="docker compose -f ${POC_DIR}/deploy/compose/docker-compose.yml"
 ENV_FILE="${POC_DIR}/.env"
@@ -61,7 +61,7 @@ print_section() {
 
 print_header "PRECINCT Gateway - Setup Wizard"
 echo "  This wizard will guide you through configuring the Agentic"
-echo "  Reference Architecture POC (Docker Compose tier)."
+echo "  Reference Architecture runtime (Docker Compose tier)."
 echo ""
 echo "  Every prompt has a secure default. Press Enter to accept."
 echo ""
@@ -186,7 +186,7 @@ echo -e "${GREEN}All required prerequisites satisfied.${NC}"
 # =============================================================================
 
 print_header "Configuration"
-echo "  Each question below affects the security posture of the POC."
+echo "  Each question below affects the security posture of the runtime."
 echo "  Defaults (press Enter) produce the most secure configuration."
 echo ""
 

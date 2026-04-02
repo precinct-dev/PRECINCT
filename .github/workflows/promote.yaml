@@ -25,10 +25,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Install cosign
-        uses: sigstore/cosign-installer@v3
+        uses: sigstore/cosign-installer@v4.1.1
 
       - name: Verify image signature and provenance
         env:
@@ -45,7 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6.0.2
 
       - name: Update overlay digest
         env:
@@ -63,7 +63,7 @@ jobs:
           kustomize build "deploy/terraform/overlays/${TARGET_ENV}" | kubeconform -summary -strict -ignore-missing-schemas
 
       - name: Create promotion PR
-        uses: peter-evans/create-pull-request@v8
+        uses: peter-evans/create-pull-request@v8.1.0
         with:
           title: "promote: ${{ inputs.target_env }} <- ${{ inputs.image_digest }}"
           branch: promote/${{ inputs.target_env }}/${{ github.run_id }}
