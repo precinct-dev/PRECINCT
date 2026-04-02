@@ -64,8 +64,8 @@ image_is_exempt() {
 
 collect_images_for_namespace() {
   local file="$1"
-  local namespace="$2"
-  awk -v namespace="$namespace" '
+  local target_namespace="$2"
+  awk -v target_namespace="$target_namespace" '
     BEGIN { RS="---"; FS="\n" }
     {
       kind=""
@@ -82,7 +82,7 @@ collect_images_for_namespace() {
         }
       }
 
-      if (objns != namespace) {
+      if (objns != target_namespace) {
         next
       }
       if (kind !~ /^(Pod|Deployment|ReplicaSet|StatefulSet|DaemonSet|Job|CronJob)$/) {
