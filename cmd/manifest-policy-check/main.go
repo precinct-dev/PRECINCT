@@ -14,6 +14,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "manifest policy check failed: %v\n", err)
 		os.Exit(1)
 	}
+	if result.CheckedFiles == 0 {
+		fmt.Fprintln(os.Stderr, "[FAIL] manifest policy check scanned zero Kubernetes manifest files")
+		os.Exit(1)
+	}
 
 	if len(result.Violations) == 0 {
 		fmt.Printf("[PASS] manifest policy check passed (checked_files=%d)\n", result.CheckedFiles)

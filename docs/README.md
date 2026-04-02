@@ -16,7 +16,11 @@ If you are new to PRECINCT, begin with these documents in order:
 2. [Prerequisites](getting-started/prerequisites.md) -- Tools and versions required to run the reference implementation
 3. [Deployment Guide](deployment-guide.md) -- Step-by-step instructions for Docker Compose and Kubernetes deployment
 4. [Architecture Reference](architecture/reference-architecture.md) -- The full architecture specification (v2.5, 200+ pages)
-5. [Current State and Roadmap](current-state-and-roadmap.md) -- What is implemented, what is planned, and open issues
+
+---
+
+Live planning and backlog state are tracked in `nd`. Repository-backed release-readiness
+state is captured in `docs/status/production-readiness-state.json`.
 
 ---
 
@@ -52,7 +56,6 @@ If you are new to PRECINCT, begin with these documents in order:
 
 | Document | Description |
 |----------|-------------|
-| [Security Review](security/security-review.md) | Independent security review covering threat coverage, trust boundaries, and residual risks |
 | [STRIDE/PASTA Assurance Mapping](security/stride-pasta-assurance.md) | Mapping of the reference architecture to STRIDE threat classes and the PASTA risk lifecycle |
 | [Agentic Zero-Trust FAQ](security/agentic-zero-trust-faq.md) | Answers to recurring stakeholder questions about the zero-trust posture for agent identity, policy, and egress |
 | [Security Scan Baseline](security/baseline.md) | Auditable baseline for security scan results and evidence provenance as of 2026-02-15 |
@@ -153,8 +156,8 @@ If you are new to PRECINCT, begin with these documents in order:
 
 ---
 
-## Roadmap
+## Status
 
-| Document | Description |
+| Artifact | Description |
 |----------|-------------|
-| [Current State and Roadmap](current-state-and-roadmap.md) | Live status summary of what is implemented, what is in progress, and what is planned |
+| [Production Readiness State](status/production-readiness-state.json) | Machine-readable release-readiness snapshot validated against the live `nd` state |

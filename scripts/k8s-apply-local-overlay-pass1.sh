@@ -17,7 +17,7 @@ command -v kubectl >/dev/null 2>&1 || {
   exit 1
 }
 
-kustomize build "${POC_ROOT}/infra/eks/overlays/local" \
+kustomize build "${POC_ROOT}/deploy/terraform/overlays/local" \
   | awk '
       function flush_doc() {
         if (doc == "") return

@@ -14,8 +14,8 @@
 #   - TLS Secret (cert for webhook HTTPS)
 #
 # Usage:
-#   kustomize build infra/eks/admission/policy-controller/
-#   kubectl apply -k infra/eks/admission/policy-controller/
+#   kustomize build deploy/terraform/admission/policy-controller/
+#   kubectl apply -k deploy/terraform/admission/policy-controller/
 #
 # Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
 # ------------------------------------------------------------------------------

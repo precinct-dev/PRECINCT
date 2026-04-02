@@ -1,7 +1,7 @@
 # Security Scan Baseline
 
-**As Of:** 2026-02-15
-**Last Updated:** 2026-02-15
+**As Of:** 2026-04-02
+**Last Updated:** 2026-04-02
 **Epic:** RFA-l6h6.7.5 (Security Evidence Hardening)
 
 This document is the auditable baseline for security scan results and evidence provenance.
@@ -20,15 +20,16 @@ Produced artifacts:
 - Local per-scan summaries: `build/security-scan/latest/summaries/*.json`
 - Local raw scan outputs: `build/security-scan/latest/raw/*.sarif`, `build/security-scan/latest/raw/*.json`
 - Committed evidence snapshot: `docs/security/artifacts/security-scan-evidence-2026-02-15.json`
-- CI bundle source: `.github/workflows/security-scan.yml` uploads `security-scan-evidence-bundle`
+- CI bundle source: `.github/workflows/ci.yaml` uploads `security-scan-evidence-bundle`
 
 ## Scanning Tools
 
 | Tool | Version | Scan Type | Baseline Result Count |
 |------|---------|-----------|-----------------------|
-| gosec | v2.21.4 | Go source code security analysis | 0 |
-| trivy | 0.29.0+ | Filesystem dependency vulnerability scan | 0 |
-| trivy | 0.29.0+ | Container image vulnerability scan | 0 |
+| gosec | v2.25.0 | Go source code security analysis | 0 |
+| trivy | v0.69.3 | Filesystem dependency vulnerability scan | 0 |
+| trivy | v0.69.3 | Container image vulnerability scan | 0 |
+| trufflehog | v3.94.2 | Filesystem secret scan | 0 |
 
 ## Baseline Findings
 
@@ -57,6 +58,13 @@ Produced artifacts:
   - `docs/security/artifacts/security-scan-evidence-2026-02-15.json`
   - `build/security-scan/latest/raw/trivy-image-results.sarif`
   - `build/security-scan/latest/raw/trivy-image-results.json`
+
+### trufflehog
+
+- Baseline status: `pass`
+- Baseline result count: `0`
+- Evidence:
+  - `build/security-scan/latest/raw/trufflehog-results.jsonl`
 
 ## Accepted Risks
 
@@ -179,7 +187,7 @@ These targets fail when required scan artifacts are missing, empty, or hash-mism
 
 ## References
 
-- Security scan workflow: `.github/workflows/security-scan.yml`
+- Security scan workflow: `.github/workflows/ci.yaml` (`security` job)
 - Local artifact collector: `scripts/security/collect-security-scan-artifacts.sh`
 - Artifact validator: `tests/e2e/validate_security_scan_artifacts.sh`
 - Committed snapshot: `docs/security/artifacts/security-scan-evidence-2026-02-15.json`

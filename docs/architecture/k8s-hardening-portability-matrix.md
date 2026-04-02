@@ -8,7 +8,7 @@ Use this document with:
 - `docs/architecture/deployment-patterns.md` for detailed rationale
 - `docs/architecture/non-k8s-cloud-adaptation-guide.md` for non-K8s compensating-control design
 - `docs/deployment-guide.md` for runtime operations
-- `docs/ARCHITECTURE.md` ADR-009 for architecture-level invariants
+- `docs/architecture/reference-architecture.md` for architecture-level invariants
 - `docs/architecture/k8s-runtime-validation-campaign.md` for the executed K8s validation checklist
 - `docs/architecture/compose-backport-decision-ledger.md` for explicit portability/backport decisions
 
@@ -69,7 +69,7 @@ Use this checklist before approving an adaptation:
 - [ ] Matrix class remains `portable`, `compose-limited`, or `k8s-only` for every listed control.
 - [ ] Every `compose-limited` row keeps an explicit fallback behavior and compensating check.
 - [ ] No `k8s-only` control is represented as "fully supported" in Compose.
-- [ ] `docs/ARCHITECTURE.md` and `docs/deployment-guide.md` link to this guide.
+- [ ] `docs/architecture/reference-architecture.md` and `docs/deployment-guide.md` link to this guide.
 - [ ] Evidence pipeline includes immutable audit sink proof for Kubernetes-backed retention claims.
 - [ ] K8s runtime campaign report exists with pass/fail results per major control plane.
 - [ ] Backport decision ledger exists for all implemented features.
@@ -79,10 +79,10 @@ Use this checklist before approving an adaptation:
 Run from repository root:
 
 ```bash
--n k8s-up
--n up
-k8s-validate
-k8s-runtime-campaign
+make -n k8s-up
+make -n up
+make k8s-validate
+make k8s-runtime-campaign
 bash tests/validate_deployment_patterns.sh
 bash tests/e2e/validate_setup_time.sh k8s --dry-run
 bash tests/e2e/validate_setup_time.sh compose --dry-run

@@ -35,6 +35,12 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
     -o /build/gateway \
     ./cmd/gateway
 
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/precinct-control \
+    ./cmd/precinct-control
+
 # ============================================================================
 # Stage 2: Runtime (Distroless)
 # ============================================================================
@@ -48,6 +54,7 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 # Copy the compiled binary from builder
 COPY --from=builder /build/gateway /app/gateway
+COPY --from=builder /build/precinct-control /app/precinct-control
 
 # Expose gateway port
 EXPOSE 9090

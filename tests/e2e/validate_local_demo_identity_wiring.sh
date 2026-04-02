@@ -20,7 +20,7 @@ require_cmd() {
 require_cmd kustomize
 
 out="${TMP_DIR}/local-overlay.yaml"
-kustomize build infra/eks/overlays/local >"${out}"
+kustomize build deploy/terraform/overlays/local >"${out}"
 
 python3 - "${out}" <<'PY'
 import re

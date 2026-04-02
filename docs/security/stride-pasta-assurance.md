@@ -53,9 +53,8 @@ Defensibility statements in this document assume:
 
 Primary references:
 
-- `precinct-reference-architecture.md`
-- `agentic-ai-security-phase3-proposal.md`
-- `docs/ARCHITECTURE.md`
+- `docs/architecture/reference-architecture.md`
+- `docs/architecture/production-closure.md`
 
 Representative implementation evidence:
 

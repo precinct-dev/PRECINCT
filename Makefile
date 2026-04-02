@@ -367,7 +367,7 @@ tracker-surface-validate:
 			"AGENTS.md" \
 			"README.md" \
 			"Makefile" \
-			"docs/current-state-and-roadmap.md" \
+			"docs/README.md" \
 			"docs/deployment-guide.md" \
 			"docs/security/evidence-collection.md" \
 			"docs/operations/runbooks/incident-triage-and-response.md" \
@@ -495,7 +495,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo "Waiting for Gatekeeper to process ConstraintTemplates..."
 	@sleep 10
 	@echo "Applying overlay (pass 2: constraints, policies)..."
-	@-kubectl apply -k infra/eks/overlays/local/ 2>&1
+	@-kubectl apply -k deploy/terraform/overlays/local/ 2>&1
 	@echo "Generating TLS certs for policy-controller webhook..."
 	@bash scripts/k8s-generate-webhook-tls.sh
 	@echo "Waiting for SPIRE infrastructure..."
@@ -523,7 +523,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 		fi; \
 	}
 	@echo "Applying SPIKE Bootstrap job (after SPIRE registration and keeper readiness)..."
-	@-kubectl -n spike-system apply -f infra/eks/overlays/local/spike-bootstrap-job.yaml >/dev/null 2>&1 || true
+	@-kubectl -n spike-system apply -f deploy/terraform/overlays/local/spike-bootstrap-job.yaml >/dev/null 2>&1 || true
 	@echo "Waiting for SPIKE Bootstrap job..."
 	@-kubectl -n spike-system wait --for=condition=complete job/spike-bootstrap --timeout=240s 2>/dev/null || \
 		echo "WARNING: SPIKE Bootstrap not yet complete"
@@ -531,7 +531,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@-kubectl -n spike-system rollout status deployment/spike-nexus --timeout=180s 2>/dev/null || \
 		echo "WARNING: SPIKE Nexus not yet ready after bootstrap"
 	@echo "Applying SPIKE Secret Seeder job (after bootstrap)..."
-	@-kubectl -n spike-system apply -f infra/eks/overlays/local/spike-secret-seeder-job.yaml >/dev/null 2>&1 || true
+	@-kubectl -n spike-system apply -f deploy/terraform/overlays/local/spike-secret-seeder-job.yaml >/dev/null 2>&1 || true
 	@echo "Waiting for SPIKE Secret Seeder job..."
 	@-kubectl -n spike-system wait --for=condition=complete job/spike-secret-seeder --timeout=120s 2>/dev/null || \
 		echo "WARNING: SPIKE Secret Seeder not yet complete"
@@ -566,7 +566,7 @@ k8s-up: ## Deploy to local K8s (Docker Desktop)
 	@echo "  kubectl -n gateway rollout restart deploy/precinct-gateway"
 
 k8s-down: ## Tear down local K8s deployment
-	@-kubectl delete -k infra/eks/overlays/local/ --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
+	@-kubectl delete -k deploy/terraform/overlays/local/ --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
 	@echo "Cleaning up Gatekeeper cluster-scoped resources..."
 	-kubectl delete validatingwebhookconfigurations gatekeeper-validating-webhook-configuration --ignore-not-found 2>/dev/null
 	-kubectl delete mutatingwebhookconfigurations gatekeeper-mutating-webhook-configuration --ignore-not-found 2>/dev/null
@@ -574,7 +574,7 @@ k8s-down: ## Tear down local K8s deployment
 
 k8s-opensearch-up: k8s-up ## Deploy local K8s stack plus optional OpenSearch observability extension
 	@echo "Applying OpenSearch extension overlay..."
-	@-kubectl apply -k infra/eks/overlays/local-opensearch/ 2>&1
+	@-kubectl apply -k deploy/terraform/overlays/local-opensearch/ 2>&1
 	-kubectl -n observability rollout status statefulset/opensearch --timeout=180s 2>/dev/null || \
 		echo "WARNING: OpenSearch not yet ready"
 	-kubectl -n observability rollout status deployment/opensearch-dashboards --timeout=180s 2>/dev/null || \
@@ -583,7 +583,7 @@ k8s-opensearch-up: k8s-up ## Deploy local K8s stack plus optional OpenSearch obs
 		echo "WARNING: OpenSearch audit forwarder not yet ready"
 
 k8s-opensearch-down: ## Remove only OpenSearch extension resources from local K8s deployment
-	@-kubectl delete -k infra/eks/observability/opensearch --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
+	@-kubectl delete -k deploy/terraform/observability/opensearch --ignore-not-found 2>&1 | grep -v -E 'ensure CRDs are installed first|resource mapping not found'
 
 k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first)
 	@echo "Checking K8s gateway config for drift..."
@@ -592,7 +592,7 @@ k8s-validate: ## Validate K8s overlays and Phase 3 gateway wiring (offline-first
 	overlays="local local-opensearch dev staging prod"; \
 	for o in $$overlays; do \
 		echo "Building overlay: $$o"; \
-		kustomize build "infra/eks/overlays/$$o" >"/tmp/precinct-k8s-$$o.yaml"; \
+		kustomize build "deploy/terraform/overlays/$$o" >"/tmp/precinct-k8s-$$o.yaml"; \
 	done; \
 	if command -v kubeconform >/dev/null 2>&1; then \
 		for o in $$overlays; do \
@@ -1102,7 +1102,7 @@ k8s-prereqs:
 	fi
 	@if ! kubectl get crd clusterimagepolicies.policy.sigstore.dev >/dev/null 2>&1; then \
 		echo "  Installing sigstore policy-controller CRDs..."; \
-		kubectl apply -f infra/eks/crds/policy-controller-crds.yaml; \
+		kubectl apply -f deploy/terraform/crds/policy-controller-crds.yaml; \
 	else \
 		echo "  sigstore policy-controller CRDs already installed"; \
 	fi

@@ -9,6 +9,7 @@ OUTPUT_DIR="${SECURITY_SCAN_OUT_DIR:-build/security-scan/latest}"
 STRICT_MODE="${SECURITY_SCAN_STRICT:-0}"
 GATEWAY_SCAN_IMAGE="${GATEWAY_SCAN_IMAGE:-precinct-gateway:scan}"
 REBUILD_GATEWAY_SCAN_IMAGE="${SECURITY_SCAN_REBUILD_IMAGE:-1}"
+TRUFFLEHOG_VERSION="${TRUFFLEHOG_VERSION:-3.94.2}"
 
 RAW_DIR="${OUTPUT_DIR}/raw"
 SUMMARY_DIR="${OUTPUT_DIR}/summaries"
@@ -16,9 +17,13 @@ MANIFEST_PATH="${OUTPUT_DIR}/security-scan-manifest.json"
 TRIVY_FS_SKIP_DIRS=(
   ".beads"
   ".cache"
+  ".venv"
+  ".vault"
+  "build"
   "sample-agents/pydantic_researcher/.venv"
 )
 
+rm -rf "${OUTPUT_DIR}"
 mkdir -p "${RAW_DIR}" "${SUMMARY_DIR}"
 
 timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -30,6 +35,12 @@ build_trivy_fs_skip_flags() {
     flags+=("--skip-dirs" "${dir}")
   done
   printf '%q ' "${flags[@]}"
+}
+
+build_gosec_target_args() {
+  local targets=()
+  mapfile -t targets < <(go list -f '{{.Dir}}' ./... | grep -Ev '/(\.cache|\.venv|\.vault)(/|$)')
+  printf '%q ' "${targets[@]}"
 }
 
 sha256_file() {
@@ -48,6 +59,15 @@ sarif_result_count() {
     return
   fi
   jq '[.runs[]?.results[]?] | length' "${sarif_file}" 2>/dev/null || echo 0
+}
+
+jsonl_result_count() {
+  local jsonl_file="$1"
+  if [ ! -s "${jsonl_file}" ]; then
+    echo 0
+    return
+  fi
+  awk 'NF && $0 != "[]"{count++} END{print count+0}' "${jsonl_file}"
 }
 
 run_scan_command() {
@@ -96,6 +116,40 @@ emit_scan_summary() {
     }'
 }
 
+emit_json_scan_summary() {
+  local name="$1"
+  local status="$2"
+  local runner="$3"
+  local command="$4"
+  local message="$5"
+  local json_path="$6"
+
+  local result_count=0
+  result_count="$(jsonl_result_count "${json_path}")"
+
+  jq -n \
+    --arg name "${name}" \
+    --arg status "${status}" \
+    --arg runner "${runner}" \
+    --arg command "${command}" \
+    --arg message "${message}" \
+    --arg generated_at "${timestamp}" \
+    --arg json_path "${json_path}" \
+    --argjson result_count "${result_count}" \
+    '{
+      scan: $name,
+      status: $status,
+      runner: $runner,
+      command: $command,
+      message: $message,
+      generated_at: $generated_at,
+      result_count: $result_count,
+      artifacts: {
+        json: $json_path
+      }
+    }'
+}
+
 scan_gosec_status="skipped"
 scan_gosec_runner="none"
 scan_gosec_message="gosec unavailable"
@@ -104,7 +158,8 @@ scan_gosec_sarif="${RAW_DIR}/gosec-results.sarif"
 
 if command -v gosec >/dev/null 2>&1; then
   scan_gosec_runner="binary"
-  scan_gosec_command="gosec -no-fail -fmt sarif -out '${scan_gosec_sarif}' ./..."
+  gosec_target_args="$(build_gosec_target_args)"
+  scan_gosec_command="gosec -no-fail -fmt sarif -out '${scan_gosec_sarif}' ${gosec_target_args}"
   if run_scan_command "${scan_gosec_command}"; then
     scan_gosec_status="pass"
     scan_gosec_message="gosec scan completed"
@@ -114,7 +169,8 @@ if command -v gosec >/dev/null 2>&1; then
   fi
 elif command -v docker >/dev/null 2>&1; then
   scan_gosec_runner="docker"
-  scan_gosec_command="docker run --rm -v '${POC_DIR}':/src -w /src securego/gosec:2.21.4 -no-fail -fmt sarif -out '/src/${scan_gosec_sarif}' ./..."
+  gosec_target_args="$(build_gosec_target_args)"
+  scan_gosec_command="docker run --rm -v '${POC_DIR}':/src -w /src securego/gosec:2.21.4 sh -lc \"gosec -no-fail -fmt sarif -out '/src/${scan_gosec_sarif}' ${gosec_target_args}\""
   if run_scan_command "${scan_gosec_command}"; then
     scan_gosec_status="pass"
     scan_gosec_message="gosec scan completed via container"
@@ -178,13 +234,56 @@ if command -v trivy >/dev/null 2>&1 && command -v docker >/dev/null 2>&1; then
 fi
 
 if [ "${scan_trivy_image_status}" = "pass" ] && { [ ! -s "${scan_trivy_image_sarif}" ] || [ ! -s "${scan_trivy_image_json}" ]; }; then
-  scan_trivy_image_status="failed"
-  scan_trivy_image_message="trivy image scan did not produce required outputs"
+	scan_trivy_image_status="failed"
+	scan_trivy_image_message="trivy image scan did not produce required outputs"
+fi
+
+scan_trufflehog_status="skipped"
+scan_trufflehog_runner="none"
+scan_trufflehog_message="trufflehog unavailable"
+scan_trufflehog_command=""
+scan_trufflehog_json="${RAW_DIR}/trufflehog-results.jsonl"
+
+if [ -f "${POC_DIR}/.trufflehogignore" ]; then
+  if command -v trufflehog >/dev/null 2>&1; then
+    scan_trufflehog_runner="binary"
+    scan_trufflehog_command="trufflehog filesystem --no-update --json --fail --exclude-paths '${POC_DIR}/.trufflehogignore' '${POC_DIR}' > '${scan_trufflehog_json}'"
+    if run_scan_command "${scan_trufflehog_command}"; then
+      scan_trufflehog_status="pass"
+      scan_trufflehog_message="trufflehog filesystem scan completed"
+    else
+      scan_trufflehog_status="failed"
+      scan_trufflehog_message="trufflehog filesystem scan found secrets or failed"
+    fi
+  elif command -v docker >/dev/null 2>&1; then
+    scan_trufflehog_runner="docker"
+    scan_trufflehog_command="docker run --rm -v '${POC_DIR}':/pwd -w /pwd trufflesecurity/trufflehog:${TRUFFLEHOG_VERSION} filesystem --no-update --json --fail --exclude-paths /pwd/.trufflehogignore /pwd > '${scan_trufflehog_json}'"
+    if run_scan_command "${scan_trufflehog_command}"; then
+      scan_trufflehog_status="pass"
+      scan_trufflehog_message="trufflehog filesystem scan completed via container"
+    else
+      scan_trufflehog_status="failed"
+      scan_trufflehog_message="trufflehog filesystem scan found secrets or failed"
+    fi
+  fi
+else
+  scan_trufflehog_message="missing .trufflehogignore"
+fi
+
+if [ "${scan_trufflehog_status}" = "pass" ]; then
+  if [ ! -s "${scan_trufflehog_json}" ]; then
+    printf '[]\n' > "${scan_trufflehog_json}"
+  fi
+  if [ "$(jsonl_result_count "${scan_trufflehog_json}")" -gt 0 ]; then
+    scan_trufflehog_status="failed"
+    scan_trufflehog_message="trufflehog produced findings"
+  fi
 fi
 
 emit_scan_summary "gosec" "${scan_gosec_status}" "${scan_gosec_runner}" "${scan_gosec_command}" "${scan_gosec_message}" "raw/gosec-results.sarif" "" > "${SUMMARY_DIR}/gosec-summary.json"
 emit_scan_summary "trivy_fs" "${scan_trivy_fs_status}" "${scan_trivy_fs_runner}" "${scan_trivy_fs_command}" "${scan_trivy_fs_message}" "raw/trivy-fs-results.sarif" "raw/trivy-fs-results.json" > "${SUMMARY_DIR}/trivy-fs-summary.json"
 emit_scan_summary "trivy_image" "${scan_trivy_image_status}" "${scan_trivy_image_runner}" "${scan_trivy_image_command}" "${scan_trivy_image_message}" "raw/trivy-image-results.sarif" "raw/trivy-image-results.json" > "${SUMMARY_DIR}/trivy-image-summary.json"
+emit_json_scan_summary "trufflehog" "${scan_trufflehog_status}" "${scan_trufflehog_runner}" "${scan_trufflehog_command}" "${scan_trufflehog_message}" "raw/trufflehog-results.jsonl" > "${SUMMARY_DIR}/trufflehog-summary.json"
 
 artifact_lines_file="${OUTPUT_DIR}/.artifact-lines.jsonl"
 : > "${artifact_lines_file}"
@@ -203,9 +302,11 @@ raw/trivy-fs-results.sarif
 raw/trivy-fs-results.json
 raw/trivy-image-results.sarif
 raw/trivy-image-results.json
+raw/trufflehog-results.jsonl
 summaries/gosec-summary.json
 summaries/trivy-fs-summary.json
 summaries/trivy-image-summary.json
+summaries/trufflehog-summary.json
 ARTIFACTS
 
 artifacts_json="[]"
@@ -221,6 +322,7 @@ jq -n \
   --slurpfile gosec "${SUMMARY_DIR}/gosec-summary.json" \
   --slurpfile trivy_fs "${SUMMARY_DIR}/trivy-fs-summary.json" \
   --slurpfile trivy_image "${SUMMARY_DIR}/trivy-image-summary.json" \
+  --slurpfile trufflehog "${SUMMARY_DIR}/trufflehog-summary.json" \
   --argjson artifacts "${artifacts_json}" \
   '{
     schema_version: $schema_version,
@@ -230,7 +332,8 @@ jq -n \
     scans: {
       gosec: $gosec[0],
       trivy_fs: $trivy_fs[0],
-      trivy_image: $trivy_image[0]
+      trivy_image: $trivy_image[0],
+      trufflehog: $trufflehog[0]
     },
     artifacts: $artifacts
   }' > "${MANIFEST_PATH}"

@@ -123,7 +123,7 @@ main() {
     local rendered
     rendered="$(mktemp "/tmp/precinct-overlay-digest-${overlay}.XXXXXX")"
     info "Building overlay: ${overlay}"
-    kustomize build "infra/eks/overlays/${overlay}" >"${rendered}"
+    kustomize build "deploy/terraform/overlays/${overlay}" >"${rendered}"
 
     local digest_doc
     digest_doc="$(extract_doc "${rendered}" "RequireImageDigest" "enforce-image-digest")"

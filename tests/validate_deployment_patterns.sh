@@ -301,7 +301,7 @@ done
 if grep -q "Limitations" "$DOC"; then
     pass "Limitations section exists"
 else
-    fail "Limitations section missing (DESIGN.md principle: honest limitations)"
+    fail "Limitations section missing (honest limitations principle)"
 fi
 
 # Verify join_token attestation is mentioned (retro learning)

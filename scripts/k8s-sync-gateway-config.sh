@@ -3,7 +3,7 @@ set -euo pipefail
 
 # k8s-sync-gateway-config.sh -- Detect and fix drift between the canonical
 # config/ directory (used by Docker Compose) and the K8s overlay copy
-# (infra/eks/overlays/local/gateway-config/).
+# (deploy/terraform/overlays/local/gateway-config/).
 #
 # The K8s overlay uses a configMapGenerator that requires files to be local
 # to the overlay directory. This script ensures those copies stay in sync
@@ -17,7 +17,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POC_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 COMPOSE_CONFIG="${POC_ROOT}/config"
-K8S_OVERLAY="${POC_ROOT}/infra/eks/overlays/local/gateway-config"
+K8S_OVERLAY="${POC_ROOT}/deploy/terraform/overlays/local/gateway-config"
 
 MODE="${1:---sync}"
 

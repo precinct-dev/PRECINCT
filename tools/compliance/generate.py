@@ -64,7 +64,7 @@ except ImportError:
 SCRIPT_DIR = Path(__file__).resolve().parent
 TAXONOMY_PATH = SCRIPT_DIR / "control_taxonomy.yaml"
 
-# Framework requirement descriptions (from BUSINESS.md Section 7)
+# Framework requirement descriptions aligned with the published compliance docs
 FRAMEWORK_REQUIREMENTS: dict[str, dict[str, str]] = {
     "soc2": {
         "CC6.1": "Logical and Physical Access Controls",

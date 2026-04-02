@@ -10,7 +10,7 @@ This document outlines the prerequisites for running the PRECINCT.
 |------|----------------|---------|
 | Docker | 25.0+ | Container runtime |
 | Docker Compose | 2.24+ | Multi-container orchestration |
-| Go | 1.23+ | Building gateway and services |
+| Go | 1.26.1 | Building gateway and services |
 | Bash | 4.0+ | Setup scripts |
 
 ### Local Kubernetes Deployment
@@ -98,9 +98,8 @@ chmod 755 opa && sudo mv opa /usr/local/bin/
 
 ## 30-Minute Setup Claim
 
-**BUSINESS.MD O1** states:
-
-> A new user can clone the repository and have the full security stack operational in under 30 minutes.
+PRECINCT maintains a 30-minute fresh setup target for the reference implementation,
+validated by `tests/e2e/validate_setup_time.sh`.
 
 ### What's Included in Timing
 

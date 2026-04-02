@@ -7,6 +7,7 @@ Thumbs.db
 # IDE files
 .idea/
 .vscode/
+.vault/
 *.swp
 *.swo
 *~
@@ -27,6 +28,9 @@ Thumbs.db
 # Runtime operations artifacts
 docs/operations/artifacts/
 docs/upgrades/
+docs/ARCHITECTURE.md
+docs/BUSINESS.md
+docs/DESIGN.md
 config/upgrade-snapshots/
 make-*.log
 tests/e2e/*.log

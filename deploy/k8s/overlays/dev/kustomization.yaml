@@ -9,7 +9,7 @@
 #
 # This overlay works on ANY conformant Kubernetes cluster.
 # For EKS-specific dev overlay (with admission control, IRSA, etc.),
-# see infra/eks/overlays/dev/.
+# see deploy/terraform/overlays/dev/.
 # ------------------------------------------------------------------------------
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
