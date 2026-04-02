@@ -293,6 +293,5 @@ This is a **reference implementation** validating
 It demonstrates that a 13-layer security middleware chain can be implemented,
 deployed, and tested end-to-end with real infrastructure (SPIRE, SPIKE, KeyDB,
 OPA, Phoenix, optional OpenSearch) in both Docker Compose and Kubernetes environments.
-Release-readiness evidence in the repository is anchored in
-[`docs/status/production-readiness-state.json`](docs/status/production-readiness-state.json);
-live planning and follow-up work are tracked in `nd`, not in checked-in roadmap artifacts.
+Release-readiness evidence is generated from CI and the repository's validation
+artifacts, including the security evidence bundle under `build/security-scan/latest/`.

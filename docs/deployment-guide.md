@@ -103,8 +103,6 @@ make demo-compose
 ```
 
 All services should show status `healthy`. The demo suite exercises all 13 middleware layers with real requests through the gateway.
-For current release-readiness state, use `docs/status/production-readiness-state.json`
-and `bash tests/e2e/validate_readiness_state_integrity.sh`.
 
 ### Step 4: View Traces
 
@@ -768,20 +766,8 @@ Required operator checks before any external-app promotion/reassessment:
 ```bash
 make strict-runtime-validate
 make production-readiness-validate
-make readiness-state-validate
-nd show oc-ko5 --json
-nd show oc-36m --json
 cd <upstream-reference-app-repo> && git rev-parse HEAD
 ```
-
-Historical note: the `RFA-*` identifiers in this section are archival beads-era
-campaign IDs preserved for audit context. The active tracker checks above use the
-current `nd` IDs referenced by `docs/status/production-readiness-state.json`.
-
-Current gate interpretation:
-- **GO past framework-closure gate** when `RFA-l6h6.7.7`, `RFA-l6h6.6.10`, and `RFA-l6h6.6.17.1` are accepted/closed and validation evidence is current.
-- **GO for latest-source external-app cycle** when latest-source closure chain stories are accepted/closed and no unresolved follow-up bugs remain.
-- **NO-GO** if any gate story is open/rejected/blocked, validation evidence is stale, or latest-source follow-up bugs are unresolved.
 
 ### Cloud Adaptation Playbooks
 
@@ -871,7 +857,6 @@ workflow continuity, but that is not equivalent evidence for cloud release sign-
 | `make security-scan` | Run security scans and emit artifact bundle (`build/security-scan/latest`) |
 | `make security-scan-strict` | Run security scans in strict mode (fail on skipped/failed scanners) |
 | `make security-scan-validate` | Validate required security evidence artifacts + manifest hashes |
-| `make readiness-state-validate` | Validate readiness docs/state snapshot against live `nd` status and external-app gate dependency |
 | `make production-readiness-validate` | Enforce strict security scan evidence gate for production readiness |
 | `make ci-gate-parity-validate` | Validate manual-only CI workflow policy (strict readiness + demo coverage + manual K8s policy gate) |
 | `make observability-evidence-gate-validate` | Validate strict/non-strict observability evidence gate behavior |

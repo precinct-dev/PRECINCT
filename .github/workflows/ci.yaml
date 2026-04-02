@@ -89,7 +89,6 @@ jobs:
       - name: Consistency validators
         run: |
           make tracker-surface-validate
-          bash tests/e2e/validate_readiness_state_integrity.sh
           bash tests/e2e/validate_app_integration_strategy_docs.sh
           bash tests/e2e/validate_k8s_hardening_guide.sh
           bash tests/e2e/validate_strict_runtime_wiring.sh
@@ -97,7 +96,7 @@ jobs:
           bash tests/e2e/validate_spike_shamir_profiles.sh
           bash tests/e2e/validate_immutable_audit_sink.sh
           bash tests/e2e/admission/verify-admission-manifest-wiring.sh
-          bash tests/e2e/admission/verify-overlay-image-digests.sh
+          bash tests/e2e/admission/verify-overlay-image-digests.sh staging prod
           bash tests/e2e/network-policy/verify-network-policy-manifest-wiring.sh
 
   security:

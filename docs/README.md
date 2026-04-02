@@ -19,8 +19,9 @@ If you are new to PRECINCT, begin with these documents in order:
 
 ---
 
-Live planning and backlog state are tracked in `nd`. Repository-backed release-readiness
-state is captured in `docs/status/production-readiness-state.json`.
+Live planning and backlog state are tracked outside the published reference
+architecture. Repository-backed release-readiness evidence comes from CI,
+validation scripts, and generated evidence bundles.
 
 ---
 
@@ -155,9 +156,3 @@ state is captured in `docs/status/production-readiness-state.json`.
 | [Executive Narrative](executive-narrative.md) | Non-technical narrative for CIO, CISO, CTO, Risk, and Legal audiences explaining the security posture and trade-offs |
 
 ---
-
-## Status
-
-| Artifact | Description |
-|----------|-------------|
-| [Production Readiness State](status/production-readiness-state.json) | Machine-readable release-readiness snapshot validated against the live `nd` state |
