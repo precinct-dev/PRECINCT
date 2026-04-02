@@ -84,7 +84,6 @@ jobs:
       - name: Manifest and control gates
         run: |
           make manifest-policy-check
-          make control-matrix-check
           make k8s-validate
 
       - name: Consistency validators
@@ -131,11 +130,8 @@ jobs:
           sudo install trivy /usr/local/bin/trivy
           rm -f trivy LICENSE README.md contrib/asff.tpl contrib/gitlab.tpl contrib/html.tpl contrib/junit.tpl || true
 
-      - name: Security scan
-        run: make security-scan-strict
-
-      - name: Validate security artifacts
-        run: make security-scan-validate
+      - name: Production readiness gate
+        run: make production-readiness-validate
 
       - name: Upload security evidence bundle
         uses: actions/upload-artifact@v7.0.0
