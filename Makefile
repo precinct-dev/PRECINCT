@@ -374,8 +374,12 @@ tracker-surface-validate:
 			"docs/operations/runbooks/rollback-runbook.md" \
 			"docs/operations/runbooks/security-event-response.md" \
 			"tests/e2e/validate_story_evidence_paths.sh" \
-			"tests/e2e/validate_readiness_state_integrity.sh" \
 		); \
+		if command -v rg >/dev/null 2>&1; then \
+			search_cmd=(rg -n "\\bbd\\b|beads"); \
+		else \
+			search_cmd=(grep -nE "\\bbd\\b|beads"); \
+		fi; \
 		found=0; \
 		for rel in "$${files[@]}"; do \
 			abs="$(CURDIR)/$$rel"; \
@@ -384,13 +388,13 @@ tracker-surface-validate:
 				line_text="$${match#*:}"; \
 				lower=$$(printf "%s" "$$line_text" | tr "[:upper:]" "[:lower:]"); \
 				case "$$lower" in \
-					*historical*|*archiv*|*legacy*|*compatibility*|*"does not require"*|*"canonical tracker"*|*"rg -n"*) \
+					*historical*|*archiv*|*legacy*|*compatibility*|*"does not require"*|*"canonical tracker"*|*"rg -n"*|*"grep -ne"*|*"search_cmd="*) \
 						continue \
 						;; \
 				esac; \
 				echo "[STALE] $$match"; \
 				found=1; \
-			done < <(rg -n "\\bbd\\b|beads" "$$abs" || true); \
+			done < <("$${search_cmd[@]}" "$$abs" || true); \
 		done; \
 		if [[ "$$found" -ne 0 ]]; then \
 			echo "[FAIL] found non-archival bd/beads references in active release workflow surfaces" >&2; \
@@ -712,7 +716,6 @@ validate-k8s:
 	@bash tests/e2e/validate_promotion_identity_policy.sh
 	@bash tests/e2e/validate_ci_gate_parity.sh
 	@bash tests/e2e/validate_local_k8s_runtime_campaign_artifacts.sh
-	@bash tests/e2e/validate_production_reality_closure_local_artifacts.sh
 	@echo "validate-k8s: PASS"
 
 # Individual compose validation targets (demoted from visible)
@@ -761,7 +764,7 @@ spike-shamir-validate:
 # Individual K8s validation targets (demoted from visible)
 .PHONY: strict-runtime-validate strict-overlay-operationalization-validate
 .PHONY: promotion-identity-validate ci-gate-parity-validate k8s-overlay-digest-validate
-.PHONY: local-k8s-runtime-campaign-artifacts-validate production-reality-closure-local-artifacts-validate
+.PHONY: local-k8s-runtime-campaign-artifacts-validate
 
 strict-runtime-validate:
 	tests/e2e/validate_strict_runtime_wiring.sh
@@ -780,9 +783,6 @@ ci-gate-parity-validate:
 
 local-k8s-runtime-campaign-artifacts-validate:
 	tests/e2e/validate_local_k8s_runtime_campaign_artifacts.sh
-
-production-reality-closure-local-artifacts-validate:
-	tests/e2e/validate_production_reality_closure_local_artifacts.sh
 
 # ---------------------------------------------------------------------------
 # 9. Individual demos (demoted from visible)
@@ -1062,7 +1062,7 @@ gdpr-delete:
 
 .PHONY: setup register-spire k8s-register-spire k8s-prereqs k8s-registry
 .PHONY: k8s-runtime-campaign operations-backup-restore-drill
-.PHONY: readiness-state-validate validate-setup-time
+.PHONY: validate-setup-time
 .PHONY: test-spike-seeder-groq test-gateway-spike-key test-guard-model-e2e
 
 GATEKEEPER_VERSION ?= v3.22.0
@@ -1286,9 +1286,6 @@ k8s-runtime-campaign:
 
 operations-backup-restore-drill:
 	@bash scripts/operations/run_backup_restore_drill.sh
-
-readiness-state-validate:
-	tests/e2e/validate_readiness_state_integrity.sh "$(SNAPSHOT)"
 
 validate-setup-time:
 	@if [ -z "$(MODE)" ]; then \

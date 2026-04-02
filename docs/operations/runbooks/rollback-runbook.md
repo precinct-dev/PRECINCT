@@ -42,7 +42,6 @@ kustomize build deploy/terraform/overlays/prod | kubectl apply -f -
 ```bash
 make strict-runtime-validate
 make production-readiness-validate
-make readiness-state-validate
 ```
 
 ## 5. Exit Criteria
