@@ -22,10 +22,13 @@ import (
 func newMockLegacySSEServer(t *testing.T) *httptest.Server {
 	t.Helper()
 
-	// mu protects pendingRequests and sseWriters
+	type sseClient struct {
+		events chan string
+	}
+
+	// mu protects registered SSE clients.
 	var mu sync.Mutex
-	var sseWriters []http.ResponseWriter
-	var sseFlushed []http.Flusher
+	var sseClients []*sseClient
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -43,19 +46,35 @@ func newMockLegacySSEServer(t *testing.T) *httptest.Server {
 			w.Header().Set("Connection", "keep-alive")
 			w.WriteHeader(http.StatusOK)
 
+			client := &sseClient{events: make(chan string, 8)}
+			mu.Lock()
+			sseClients = append(sseClients, client)
+			mu.Unlock()
+			defer func() {
+				mu.Lock()
+				defer mu.Unlock()
+				for i, existing := range sseClients {
+					if existing == client {
+						sseClients = append(sseClients[:i], sseClients[i+1:]...)
+						break
+					}
+				}
+			}()
+
 			// Send the endpoint event with the message URL.
 			// The URL uses the server's own address.
 			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
 			flusher.Flush()
 
-			// Register this writer for sending responses
-			mu.Lock()
-			sseWriters = append(sseWriters, w)
-			sseFlushed = append(sseFlushed, flusher)
-			mu.Unlock()
-
-			// Keep connection open until client disconnects
-			<-r.Context().Done()
+			for {
+				select {
+				case <-r.Context().Done():
+					return
+				case event := <-client.events:
+					_, _ = fmt.Fprintf(w, "event: message\ndata: %s\n\n", event)
+					flusher.Flush()
+				}
+			}
 
 		case r.Method == http.MethodPost && r.URL.Path == "/message":
 			// Message endpoint: receive JSON-RPC request, send response via SSE
@@ -93,13 +112,23 @@ func newMockLegacySSEServer(t *testing.T) *httptest.Server {
 			// Acknowledge the POST
 			w.WriteHeader(http.StatusAccepted)
 
-			// Send the response via ALL SSE streams
+			// Fan the response out to all active SSE streams. Each stream writes
+			// from its own handler goroutine, avoiding concurrent ResponseWriter use.
 			mu.Lock()
-			for i, sw := range sseWriters {
-				_, _ = fmt.Fprintf(sw, "event: message\ndata: %s\n\n", string(respJSON))
-				sseFlushed[i].Flush()
-			}
+			clients := append([]*sseClient(nil), sseClients...)
 			mu.Unlock()
+
+			for _, client := range clients {
+				timer := time.NewTimer(2 * time.Second)
+				select {
+				case client.events <- string(respJSON):
+					if !timer.Stop() {
+						<-timer.C
+					}
+				case <-timer.C:
+					t.Errorf("timed out delivering mock SSE response for %s", rpcReq.Method)
+				}
+			}
 
 		default:
 			http.Error(w, "not found", http.StatusNotFound)
