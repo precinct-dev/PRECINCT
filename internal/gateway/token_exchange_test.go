@@ -722,10 +722,9 @@ func TestTokenExchangeIntegration(t *testing.T) {
 	})
 }
 
-func TestDefaultPublicRouteAllowlistIncludesTokenExchange(t *testing.T) {
-	// Verify that the default public route allowlist includes the token exchange endpoint.
+func TestDefaultPublicRouteAllowlistExcludesTokenExchange(t *testing.T) {
 	allowlist := parsePublicRouteAllowlist(defaultPublicRouteAllowlist)
-	if _, ok := allowlist["/v1/auth/token-exchange"]; !ok {
-		t.Fatal("defaultPublicRouteAllowlist should include /v1/auth/token-exchange")
+	if _, ok := allowlist["/v1/auth/token-exchange"]; ok {
+		t.Fatal("defaultPublicRouteAllowlist should not include /v1/auth/token-exchange")
 	}
 }

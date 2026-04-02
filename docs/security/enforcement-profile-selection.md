@@ -27,6 +27,10 @@ tradeoffs operators should consider.
 - If `SPIFFE_MODE=prod`, default to `ENFORCEMENT_PROFILE=prod_standard`.
 - Upgrade to `prod_regulated_hipaa` when regulated prompt-safety controls are required.
 
+Those defaults are now implemented directly by the runtime config loader, so the
+safe-selection guidance matches what the gateway actually does when
+`ENFORCEMENT_PROFILE` is omitted.
+
 `prod_regulated_hipaa` remains the strict regulated bundle because it adds
 startup conformance guarantees and automatic HIPAA-oriented model defaults.
 The `dev` profile can still demonstrate HIPAA prompt-safety behavior for local

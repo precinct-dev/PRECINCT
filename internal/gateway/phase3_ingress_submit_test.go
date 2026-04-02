@@ -11,7 +11,7 @@ import (
 func TestIngressSubmitValidatesCanonicalEnvelope(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := newPhase3CompositeHandler(gw)
 
 	payload := map[string]any{
 		"envelope": map[string]any{
@@ -46,7 +46,7 @@ func TestIngressSubmitValidatesCanonicalEnvelope(t *testing.T) {
 func TestIngressSubmitCanonicalAndCompatibilityAlias(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := newPhase3CompositeHandler(gw)
 
 	spiffe := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 	connectorID := "connector-submit-alias"
@@ -104,7 +104,7 @@ func TestIngressSubmitCanonicalAndCompatibilityAlias(t *testing.T) {
 func TestIngressSubmitReplayAndFreshnessDeterministicReasons(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := newPhase3CompositeHandler(gw)
 
 	spiffe := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 	connectorID := "connector-submit-replay"
@@ -175,7 +175,7 @@ func TestIngressSubmitReplayAndFreshnessDeterministicReasons(t *testing.T) {
 func TestIngressSubmitSourcePrincipalMismatchDenied(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := newPhase3CompositeHandler(gw)
 
 	manifestSPIFFE := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
 	reqSPIFFE := "spiffe://poc.local/agents/mcp-client/other/dev"

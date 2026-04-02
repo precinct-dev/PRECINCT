@@ -55,7 +55,7 @@ SPIFFE identity mode behavior:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ENFORCEMENT_PROFILE` | `dev` | Runtime profile bundle: `dev`, `prod_standard`, `prod_regulated_hipaa` |
+| `ENFORCEMENT_PROFILE` | `SPIFFE_MODE`-aware (`dev` for dev, `prod_standard` for prod) | Runtime profile bundle: `dev`, `prod_standard`, `prod_regulated_hipaa` |
 | `ENFORCE_MODEL_MEDIATION_GATE` | `true` | Enforces mediated model egress (`direct`/`bypass` denied) |
 | `ENFORCE_HIPAA_PROMPT_SAFETY_GATE` | `true` | Enables HIPAA prompt safety deny checks for HIPAA-tagged model requests. In `dev`, this allows local testing of HIPAA prompt-safety behavior; `prod_regulated_hipaa` remains the strict regulated bundle |
 | `MODEL_POLICY_INTENT_PREPEND_ENABLED` | `false` | Prepends compact policy-intent guidance to OpenAI-compatible model messages. Strict production-intent overlays set this to `true` |

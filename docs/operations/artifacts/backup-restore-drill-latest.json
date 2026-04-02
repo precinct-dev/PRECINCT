@@ -32,8 +32,14 @@
     }
   ],
   "artifacts": [
+    "docs/operations/artifacts/backup-restore-drill-latest.json",
+    "docs/operations/artifacts/backup-restore-drill-latest.md"
+  ],
+  "runtime_artifacts": [
     "docs/operations/artifacts/backups/20260331T093823Z/keydb-dump.rdb",
     "docs/operations/artifacts/backups/20260331T093823Z/spike-nexus-data",
     "docs/operations/artifacts/backups/20260331T093823Z/audit.jsonl"
-  ]
+  ],
+  "runtime_artifacts_tracked": false,
+  "runtime_artifacts_note": "Runtime backup dumps are generated locally under docs/operations/artifacts/backups/ and are intentionally ignored by git."
 }

@@ -8,14 +8,29 @@ cd "${POC_DIR}"
 OUTPUT_DIR="${SECURITY_SCAN_OUT_DIR:-build/security-scan/latest}"
 STRICT_MODE="${SECURITY_SCAN_STRICT:-0}"
 GATEWAY_SCAN_IMAGE="${GATEWAY_SCAN_IMAGE:-precinct-gateway:scan}"
+REBUILD_GATEWAY_SCAN_IMAGE="${SECURITY_SCAN_REBUILD_IMAGE:-1}"
 
 RAW_DIR="${OUTPUT_DIR}/raw"
 SUMMARY_DIR="${OUTPUT_DIR}/summaries"
 MANIFEST_PATH="${OUTPUT_DIR}/security-scan-manifest.json"
+TRIVY_FS_SKIP_DIRS=(
+  ".beads"
+  ".cache"
+  "sample-agents/pydantic_researcher/.venv"
+)
 
 mkdir -p "${RAW_DIR}" "${SUMMARY_DIR}"
 
 timestamp="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+build_trivy_fs_skip_flags() {
+  local flags=()
+  local dir
+  for dir in "${TRIVY_FS_SKIP_DIRS[@]}"; do
+    flags+=("--skip-dirs" "${dir}")
+  done
+  printf '%q ' "${flags[@]}"
+}
 
 sha256_file() {
   local file="$1"
@@ -123,7 +138,8 @@ scan_trivy_fs_json="${RAW_DIR}/trivy-fs-results.json"
 
 if command -v trivy >/dev/null 2>&1; then
   scan_trivy_fs_runner="binary"
-  scan_trivy_fs_command="trivy fs --skip-dirs .beads --severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format sarif --output '${scan_trivy_fs_sarif}' . && trivy fs --skip-dirs .beads --severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format json --output '${scan_trivy_fs_json}' ."
+  trivy_fs_skip_flags="$(build_trivy_fs_skip_flags)"
+  scan_trivy_fs_command="trivy fs ${trivy_fs_skip_flags}--severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format sarif --output '${scan_trivy_fs_sarif}' . && trivy fs ${trivy_fs_skip_flags}--severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format json --output '${scan_trivy_fs_json}' ."
   if run_scan_command "${scan_trivy_fs_command}"; then
     scan_trivy_fs_status="pass"
     scan_trivy_fs_message="trivy filesystem scan completed"
@@ -147,8 +163,8 @@ scan_trivy_image_json="${RAW_DIR}/trivy-image-results.json"
 
 if command -v trivy >/dev/null 2>&1 && command -v docker >/dev/null 2>&1; then
   scan_trivy_image_runner="binary"
-  if ! docker image inspect "${GATEWAY_SCAN_IMAGE}" >/dev/null 2>&1; then
-    echo "[INFO] building ${GATEWAY_SCAN_IMAGE} for image scan"
+  if [ "${REBUILD_GATEWAY_SCAN_IMAGE}" = "1" ] || ! docker image inspect "${GATEWAY_SCAN_IMAGE}" >/dev/null 2>&1; then
+    echo "[INFO] building fresh ${GATEWAY_SCAN_IMAGE} for image scan"
     docker build -f deploy/compose/Dockerfile.gateway -t "${GATEWAY_SCAN_IMAGE}" .
   fi
   scan_trivy_image_command="trivy image --severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format sarif --output '${scan_trivy_image_sarif}' '${GATEWAY_SCAN_IMAGE}' && trivy image --severity CRITICAL,HIGH,MEDIUM --exit-code 0 --format json --output '${scan_trivy_image_json}' '${GATEWAY_SCAN_IMAGE}'"

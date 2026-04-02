@@ -235,7 +235,7 @@ func TestEnforcementProfile_StrictProdDeniesDevResearcherAdminIdentity(t *testin
 	}
 	rec := httptest.NewRecorder()
 
-	gw.Handler().ServeHTTP(rec, req)
+	gw.ControlHandler().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusForbidden {
 		t.Fatalf("expected 403 for dev researcher identity in strict prod config, got %d body=%s", rec.Code, rec.Body.String())

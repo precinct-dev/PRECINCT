@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -33,6 +34,10 @@ type PublicEndpointConfig struct {
 
 	// Now is an injectable clock for testing. Defaults to time.Now.
 	Now func() time.Time
+
+	// ClientIPResolver extracts the caller IP for rate limiting and audit.
+	// Defaults to the direct remote address when unset.
+	ClientIPResolver func(*http.Request) string
 }
 
 // DefaultPublicEndpointConfig returns sensible defaults for public endpoint
@@ -133,11 +138,15 @@ func publicEndpointWrapper(next http.Handler, cfg PublicEndpointConfig) http.Han
 	if nowFn == nil {
 		nowFn = time.Now
 	}
+	clientIPResolver := cfg.ClientIPResolver
+	if clientIPResolver == nil {
+		clientIPResolver = extractClientIP
+	}
 
 	limiter := newIPRateLimiter(cfg.RateLimit, cfg.RateBurst, nowFn)
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		remoteIP := extractClientIP(r)
+		remoteIP := clientIPResolver(r)
 		decisionID := generateHexID()
 		traceID := generateHexID()
 
@@ -199,17 +208,77 @@ func publicEndpointWrapper(next http.Handler, cfg PublicEndpointConfig) http.Han
 	})
 }
 
-// extractClientIP returns the client IP from the request. It uses
-// r.RemoteAddr, stripping the port if present. X-Forwarded-For is not
-// trusted here because this is an unauthenticated endpoint -- trusting
-// client-supplied headers would allow rate limit bypass.
-func extractClientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		// RemoteAddr may not have a port (e.g., Unix socket).
-		return r.RemoteAddr
+func parseTrustedProxyCIDRs(raw string) ([]*net.IPNet, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
 	}
-	return host
+
+	cidrs := strings.Split(raw, ",")
+	trusted := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		_, network, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, err
+		}
+		trusted = append(trusted, network)
+	}
+	return trusted, nil
+}
+
+func ipFromRemoteAddr(remoteAddr string) net.IP {
+	host, _, err := net.SplitHostPort(remoteAddr)
+	if err == nil {
+		return net.ParseIP(host)
+	}
+	return net.ParseIP(strings.TrimSpace(remoteAddr))
+}
+
+func ipInNetworks(ip net.IP, networks []*net.IPNet) bool {
+	for _, network := range networks {
+		if network.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// extractClientIP returns the direct client IP from the request remote address.
+func extractClientIP(r *http.Request) string {
+	if ip := ipFromRemoteAddr(r.RemoteAddr); ip != nil {
+		return ip.String()
+	}
+	return strings.TrimSpace(r.RemoteAddr)
+}
+
+// extractTrustedClientIP returns the first non-proxy IP from X-Forwarded-For
+// only when the direct peer is in the trusted proxy CIDR set.
+func extractTrustedClientIP(r *http.Request, trustedProxies []*net.IPNet) string {
+	remoteIP := ipFromRemoteAddr(r.RemoteAddr)
+	if remoteIP == nil || !ipInNetworks(remoteIP, trustedProxies) {
+		return extractClientIP(r)
+	}
+
+	forwardedFor := r.Header.Get("X-Forwarded-For")
+	if forwardedFor == "" {
+		return extractClientIP(r)
+	}
+
+	parts := strings.Split(forwardedFor, ",")
+	for i := len(parts) - 1; i >= 0; i-- {
+		candidate := net.ParseIP(strings.TrimSpace(parts[i]))
+		if candidate == nil {
+			continue
+		}
+		if !ipInNetworks(candidate, trustedProxies) {
+			return candidate.String()
+		}
+	}
+
+	return extractClientIP(r)
 }
 
 // generateHexID produces a 16-byte (32 hex char) cryptographic random ID.

@@ -24,11 +24,11 @@ Key public-listener settings:
 - `PUBLIC_LISTEN_PORT`
   Default: `9090`
 - `PUBLIC_ROUTE_ALLOWLIST`
-  Default: `/,/health,/.well-known/oauth-protected-resource,/v1/auth/token-exchange`
+  Default: `/,/health,/.well-known/oauth-protected-resource`
 - `PUBLIC_TRUSTED_PROXY_CIDRS`
   Default: empty
 
-`PUBLIC_TRUSTED_PROXY_CIDRS` is reserved for deployments that need to trust `X-Forwarded-For` from specific ingress proxies. Leave it empty unless the ingress path and proxy chain are well understood.
+`PUBLIC_TRUSTED_PROXY_CIDRS` is used only when the direct peer is one of the configured proxy CIDRs. In that case, the gateway derives the caller IP from `X-Forwarded-For` for public-endpoint rate limiting and audit. Leave it empty unless the ingress path and proxy chain are well understood.
 
 ## Route Model
 

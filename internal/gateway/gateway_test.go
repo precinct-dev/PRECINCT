@@ -445,14 +445,15 @@ func TestConfigFromEnv(t *testing.T) {
 		t.Errorf("Expected GuardAPIKey=explicit-guard-key (GUARD_API_KEY should take precedence), got %s", cfg.GuardAPIKey)
 	}
 
-	// RFA-l6h6.1.6: enforcement profile defaults
+	// RFA-l6h6.1.6: enforcement profile defaults follow SPIFFE mode
+	t.Setenv("SPIFFE_MODE", "")
 	t.Setenv("ENFORCEMENT_PROFILE", "")
 	t.Setenv("ENFORCE_MODEL_MEDIATION_GATE", "")
 	t.Setenv("ENFORCE_HIPAA_PROMPT_SAFETY_GATE", "")
 	t.Setenv("PROFILE_METADATA_EXPORT_PATH", "")
 	cfg = ConfigFromEnv()
-	if cfg.EnforcementProfile != enforcementProfileDev {
-		t.Errorf("Expected default EnforcementProfile=%s, got %s", enforcementProfileDev, cfg.EnforcementProfile)
+	if cfg.EnforcementProfile != enforcementProfileProdStandard {
+		t.Errorf("Expected default EnforcementProfile=%s in prod mode, got %s", enforcementProfileProdStandard, cfg.EnforcementProfile)
 	}
 	if !cfg.EnforceModelMediationGate {
 		t.Error("Expected default EnforceModelMediationGate=true")
@@ -462,6 +463,11 @@ func TestConfigFromEnv(t *testing.T) {
 	}
 	if cfg.ProfileMetadataExportPath != "" {
 		t.Errorf("Expected empty ProfileMetadataExportPath by default, got %q", cfg.ProfileMetadataExportPath)
+	}
+	t.Setenv("SPIFFE_MODE", "dev")
+	cfg = ConfigFromEnv()
+	if cfg.EnforcementProfile != enforcementProfileDev {
+		t.Errorf("Expected default EnforcementProfile=%s in dev mode, got %s", enforcementProfileDev, cfg.EnforcementProfile)
 	}
 
 	// RFA-l6h6.1.6: enforcement profile custom values

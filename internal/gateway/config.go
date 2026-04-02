@@ -117,7 +117,7 @@ type Config struct {
 const (
 	defaultPublicListenPort     = 9090
 	defaultPublicListenHost     = "0.0.0.0"
-	defaultPublicRouteAllowlist = "/,/health,/.well-known/oauth-protected-resource,/v1/auth/token-exchange"
+	defaultPublicRouteAllowlist = "/,/health,/.well-known/oauth-protected-resource"
 )
 
 // ConfigFromEnv loads configuration from environment variables
@@ -292,12 +292,19 @@ func ConfigFromEnv() *Config {
 		}
 	}
 
-	adminAuthzAllowedSPIFFEIDs := parseListEnv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS")
-	enforcementProfile := getEnvOrDefault("ENFORCEMENT_PROFILE", enforcementProfileDev)
 	spiffeMode := strings.ToLower(strings.TrimSpace(getEnvOrDefault("SPIFFE_MODE", "prod")))
 	if spiffeMode == "" {
 		spiffeMode = "prod"
 	}
+	enforcementProfile := strings.ToLower(strings.TrimSpace(os.Getenv("ENFORCEMENT_PROFILE")))
+	if enforcementProfile == "" {
+		if spiffeMode == "prod" {
+			enforcementProfile = enforcementProfileProdStandard
+		} else {
+			enforcementProfile = enforcementProfileDev
+		}
+	}
+	adminAuthzAllowedSPIFFEIDs := parseListEnv("ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS")
 
 	upstreamAuthzAllowedSPIFFEIDs := parseListEnv("UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS")
 	keyDBAuthzAllowedSPIFFEIDs := parseListEnv("KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS")

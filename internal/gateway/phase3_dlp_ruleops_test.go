@@ -63,7 +63,7 @@ func TestDLPRuleOpsStateMachineTransitions(t *testing.T) {
 func TestDLPRuleOpsEndpointsPromoteUnsignedAndSigned(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := gw.ControlHandler()
 
 	createBody := map[string]any{
 		"ruleset_id": "rs-endpoint",

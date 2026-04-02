@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -48,7 +49,16 @@ func newRuleOpsTestServerURLWithKeyDB(t *testing.T, keydbURL string) string {
 	if err != nil {
 		t.Fatalf("new gateway: %v", err)
 	}
-	srv := httptest.NewServer(gw.Handler())
+	controlHandler := gw.ControlHandler()
+	dataHandler := gw.Handler()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/admin", strings.HasPrefix(r.URL.Path, "/admin/"), strings.HasPrefix(r.URL.Path, "/v1/connectors/"):
+			controlHandler.ServeHTTP(w, r)
+		default:
+			dataHandler.ServeHTTP(w, r)
+		}
+	}))
 	t.Cleanup(func() {
 		srv.Close()
 		_ = gw.Close()
