@@ -1,6 +1,6 @@
 # Kustomize resource group for observability manifests (cloud-agnostic)
 # NOTE: AWS-specific audit resources (S3 sink config, IRSA ServiceAccount) are
-# NOT included here. They remain in infra/eks/ as an EKS-specific overlay.
+# NOT included here. They remain in deploy/terraform/ as an EKS-specific overlay.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 

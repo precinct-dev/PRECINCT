@@ -56,7 +56,13 @@ func streamFiltered(src io.Reader, dst io.Writer, done chan<- struct{}) {
 		if shouldSuppressKeeperLog(line) {
 			continue
 		}
-		fmt.Fprintln(dst, line)
+		if _, err := fmt.Fprintln(dst, line); err != nil {
+			fmt.Fprintf(os.Stderr, "spike-keeper-wrapper: log stream write failed: %v\n", err)
+			return
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		fmt.Fprintf(os.Stderr, "spike-keeper-wrapper: log stream read failed: %v\n", err)
 	}
 }
 

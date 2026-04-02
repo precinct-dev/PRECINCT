@@ -32,8 +32,10 @@ spec:
       terminationGracePeriodSeconds: 15
       containers:
         - name: precinct-control
-          image: precinct-control:latest
+          image: precinct-gateway:latest
           imagePullPolicy: IfNotPresent
+          command:
+            - /app/precinct-control
           ports:
             - name: http
               containerPort: 9090

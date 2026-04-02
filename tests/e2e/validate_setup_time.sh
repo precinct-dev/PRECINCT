@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # =============================================================================
 # Validate Setup Time - RFA-t07
-# Validates BUSINESS.md O1: 'Git Clone to Running in Under 30 Minutes'
+# Validates the documented 30-minute git-clone-to-running target
 #
 # Tests both Docker Compose and local K8s deployment flows from fresh state
 # to first successful request through the full middleware chain.
@@ -36,7 +36,7 @@ K8S_GATEWAY_URL="http://localhost:30090"
 usage() {
     echo "Usage: $0 {compose|k8s} [--dry-run]"
     echo ""
-    echo "Validates the 30-minute git-clone-to-running claim (BUSINESS.md O1)."
+    echo "Validates the documented 30-minute git-clone-to-running target."
     echo ""
     echo "Modes:"
     echo "  compose   - Docker Compose deployment (localhost:9090)"
@@ -110,15 +110,15 @@ if [ "$DRY_RUN" = true ]; then
     echo ""
 fi
 
-# Check that we're in the POC directory
+# Check that we're in the repository root
 if [ ! -f "${POC_DIR}/Makefile" ]; then
-    echo -e "${RED}ERROR: Not in POC directory (no Makefile found at ${POC_DIR})${NC}"
+    echo -e "${RED}ERROR: Not in repository root (no Makefile found at ${POC_DIR})${NC}"
     exit 1
 fi
 
 cd "$POC_DIR"
 
-# ---- Pre-pull images (timing exclusion per BUSINESS.md O1) ----
+# ---- Pre-pull images (timing exclusion for the setup-time target) ----
 if [ "$DRY_RUN" = false ]; then
     log_header "Pre-pulling Images (excluded from timing)"
 
@@ -170,7 +170,7 @@ if [ "$DRY_RUN" = true ]; then
 
     elif [ "$MODE" = "k8s" ]; then
         log_info "Validating Kustomize manifests..."
-        if kustomize build infra/eks/overlays/local/ >/dev/null 2>&1; then
+        if kustomize build deploy/terraform/overlays/local/ >/dev/null 2>&1; then
             log_pass "Kustomize manifests are valid"
         else
             log_fail "Kustomize validation" "kustomize build failed"
@@ -179,7 +179,7 @@ if [ "$DRY_RUN" = true ]; then
 
         log_info "Checking kubeconform..."
         if command -v kubeconform >/dev/null 2>&1; then
-            if kustomize build infra/eks/overlays/local/ | kubeconform -summary -strict -ignore-missing-schemas >/dev/null 2>&1; then
+            if kustomize build deploy/terraform/overlays/local/ | kubeconform -summary -strict -ignore-missing-schemas >/dev/null 2>&1; then
                 log_pass "kubeconform validation passed"
             else
                 log_fail "kubeconform validation" "Schema validation failed"

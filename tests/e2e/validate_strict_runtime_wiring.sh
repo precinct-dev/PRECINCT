@@ -40,7 +40,7 @@ require_cmd docker
 echo "[INFO] Validating strict K8s runtime wiring (staging/prod overlays)..."
 for overlay in staging prod; do
   out="${TMP_DIR}/${overlay}.yaml"
-  kustomize build "infra/eks/overlays/${overlay}" >"${out}"
+  kustomize build "deploy/terraform/overlays/${overlay}" >"${out}"
 
   assert_contains "${out}" 'name:[[:space:]]*ENFORCEMENT_PROFILE' "${overlay}: missing ENFORCEMENT_PROFILE env"
   assert_contains "${out}" 'value:[[:space:]]*"?prod_standard"?' "${overlay}: ENFORCEMENT_PROFILE must be prod_standard"

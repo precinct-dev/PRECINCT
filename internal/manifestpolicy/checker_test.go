@@ -38,7 +38,7 @@ func TestCheckRepo_DetectsNonDigestAndLatestProdImage(t *testing.T) {
 func TestCheckRepo_DetectsNodePortOutsideAllowlist(t *testing.T) {
 	root := t.TempDir()
 	writeBaselineProdEnv(t, root)
-	writeFile(t, root, "infra/eks/gateway/bad-nodeport.yaml", `
+	writeFile(t, root, "deploy/terraform/gateway/bad-nodeport.yaml", `
 apiVersion: v1
 kind: Service
 metadata:
@@ -59,7 +59,7 @@ spec:
 func TestCheckRepo_AllowsNodePortInApprovedException(t *testing.T) {
 	root := t.TempDir()
 	writeBaselineProdEnv(t, root)
-	writeFile(t, root, "infra/eks/observability/phoenix/phoenix-service.yaml", `
+	writeFile(t, root, "deploy/k8s/base/observability/phoenix/phoenix-service.yaml", `
 apiVersion: v1
 kind: Service
 metadata:
@@ -82,7 +82,7 @@ spec:
 func TestCheckRepo_DetectsHostPathAndPrivilegedOutsideAllowlist(t *testing.T) {
 	root := t.TempDir()
 	writeBaselineProdEnv(t, root)
-	writeFile(t, root, "infra/eks/gateway/bad-deploy.yaml", `
+	writeFile(t, root, "deploy/terraform/gateway/bad-deploy.yaml", `
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -106,5 +106,31 @@ spec:
 	}
 	if len(result.Violations) < 2 {
 		t.Fatalf("expected hostPath + privileged violations, got %d (%v)", len(result.Violations), result.Violations)
+	}
+}
+
+func TestCheckRepo_SkipsLocalOverlays(t *testing.T) {
+	root := t.TempDir()
+	writeBaselineProdEnv(t, root)
+	writeFile(t, root, "deploy/terraform/overlays/local/bad.yaml", `
+apiVersion: v1
+kind: Service
+metadata:
+  name: local-nodeport
+spec:
+  type: NodePort
+`)
+
+	result, err := CheckRepo(root)
+	if err != nil {
+		t.Fatalf("CheckRepo returned error: %v", err)
+	}
+	if result.CheckedFiles != 0 {
+		t.Fatalf("expected local overlays to be skipped, checked_files=%d", result.CheckedFiles)
+	}
+	for _, v := range result.Violations {
+		if v.Rule == RuleProdNodePortForbidden {
+			t.Fatalf("expected local overlay nodeport to be skipped, got violation: %+v", v)
+		}
 	}
 }

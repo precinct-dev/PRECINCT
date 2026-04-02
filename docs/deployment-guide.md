@@ -103,14 +103,8 @@ make demo-compose
 ```
 
 All services should show status `healthy`. The demo suite exercises all 13 middleware layers with real requests through the gateway.
-
-Latest external-app latest-source validation evidence (2026-02-16 UTC):
-
-- `bash tests/e2e/run_all.sh` -> `105 pass / 0 fail / 3 skip` (`tests/e2e/artifacts/rfa-t1hb-run-all-20260216T185105Z.log`)
-- Targeted case-study campaign rerun -> `4 pass / 0 fail` (latest campaign artifact in `tests/e2e/artifacts/`)
-- `make readiness-state-validate` -> PASS (`tests/e2e/artifacts/rfa-t1hb-readiness-state-20260216T185105Z.log`)
-- Final decision package: latest external-app final decision artifact (**GO**, follow-up bug `RFA-655e` accepted/closed)
-- Separation model: upstream case-study source remains isolated from this repository; security mediation remains in the gateway and control-plane components.
+For current release-readiness state, use `docs/status/production-readiness-state.json`
+and `bash tests/e2e/validate_readiness_state_integrity.sh`.
 
 ### Step 4: View Traces
 

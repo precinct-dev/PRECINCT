@@ -154,46 +154,46 @@ assert_release_profile "docker-compose.prod-intent.yml spike-nexus" "${prod_nexu
 assert_release_profile "docker-compose.prod-intent.yml spike-bootstrap" "${prod_bootstrap_threshold}" "${prod_bootstrap_shares}" "${prod_bootstrap_peers}"
 
 eks_release_yaml="${TMP_DIR}/spike-release.yaml"
-kustomize build infra/eks/spike >"${eks_release_yaml}"
+kustomize build deploy/terraform/spike >"${eks_release_yaml}"
 
 for keeper_name in spike-keeper-1 spike-keeper-2 spike-keeper-3; do
   grep -Eq "name:[[:space:]]*${keeper_name}([[:space:]]|$)" "${eks_release_yaml}" \
-    || fail "infra/eks/spike: missing ${keeper_name} in rendered release manifests"
+    || fail "deploy/terraform/spike: missing ${keeper_name} in rendered release manifests"
 done
 
 eks_release_doc="$(render_doc ConfigMap spike-nexus-config "${eks_release_yaml}")"
-[[ -n "${eks_release_doc}" ]] || fail "infra/eks/spike: rendered spike-nexus-config ConfigMap not found"
+[[ -n "${eks_release_doc}" ]] || fail "deploy/terraform/spike: rendered spike-nexus-config ConfigMap not found"
 eks_release_threshold="$(doc_key_value "${eks_release_doc}" "SPIKE_NEXUS_SHAMIR_THRESHOLD")"
 eks_release_shares="$(doc_key_value "${eks_release_doc}" "SPIKE_NEXUS_SHAMIR_SHARES")"
 eks_release_peers="$(doc_key_value "${eks_release_doc}" "SPIKE_NEXUS_KEEPER_PEERS")"
 
-assert_release_profile "infra/eks/spike ConfigMap" "${eks_release_threshold}" "${eks_release_shares}" "${eks_release_peers}"
+assert_release_profile "deploy/terraform/spike ConfigMap" "${eks_release_threshold}" "${eks_release_shares}" "${eks_release_peers}"
 
-eks_release_bootstrap_threshold="$(job_env_value "infra/eks/spike/bootstrap-job.yaml" "SPIKE_NEXUS_SHAMIR_THRESHOLD")"
-eks_release_bootstrap_shares="$(job_env_value "infra/eks/spike/bootstrap-job.yaml" "SPIKE_NEXUS_SHAMIR_SHARES")"
-eks_release_bootstrap_peers="$(job_env_value "infra/eks/spike/bootstrap-job.yaml" "SPIKE_NEXUS_KEEPER_PEERS")"
-assert_release_profile "infra/eks/spike/bootstrap-job.yaml" "${eks_release_bootstrap_threshold}" "${eks_release_bootstrap_shares}" "${eks_release_bootstrap_peers}"
+eks_release_bootstrap_threshold="$(job_env_value "deploy/terraform/spike/bootstrap-job.yaml" "SPIKE_NEXUS_SHAMIR_THRESHOLD")"
+eks_release_bootstrap_shares="$(job_env_value "deploy/terraform/spike/bootstrap-job.yaml" "SPIKE_NEXUS_SHAMIR_SHARES")"
+eks_release_bootstrap_peers="$(job_env_value "deploy/terraform/spike/bootstrap-job.yaml" "SPIKE_NEXUS_KEEPER_PEERS")"
+assert_release_profile "deploy/terraform/spike/bootstrap-job.yaml" "${eks_release_bootstrap_threshold}" "${eks_release_bootstrap_shares}" "${eks_release_bootstrap_peers}"
 
 local_overlay_yaml="${TMP_DIR}/spike-local.yaml"
-kustomize build infra/eks/overlays/local >"${local_overlay_yaml}"
+kustomize build deploy/terraform/overlays/local >"${local_overlay_yaml}"
 
 local_overlay_doc="$(render_doc ConfigMap spike-nexus-config "${local_overlay_yaml}")"
-[[ -n "${local_overlay_doc}" ]] || fail "infra/eks/overlays/local: rendered spike-nexus-config ConfigMap not found"
+[[ -n "${local_overlay_doc}" ]] || fail "deploy/terraform/overlays/local: rendered spike-nexus-config ConfigMap not found"
 local_overlay_threshold="$(doc_key_value "${local_overlay_doc}" "SPIKE_NEXUS_SHAMIR_THRESHOLD")"
 local_overlay_shares="$(doc_key_value "${local_overlay_doc}" "SPIKE_NEXUS_SHAMIR_SHARES")"
 local_overlay_peers="$(doc_key_value "${local_overlay_doc}" "SPIKE_NEXUS_KEEPER_PEERS")"
-assert_demo_profile "infra/eks/overlays/local spike-nexus-config" "${local_overlay_threshold}" "${local_overlay_shares}" "${local_overlay_peers}"
+assert_demo_profile "deploy/terraform/overlays/local spike-nexus-config" "${local_overlay_threshold}" "${local_overlay_shares}" "${local_overlay_peers}"
 
 if grep -Eq 'name:[[:space:]]*spike-keeper-(2|3)([[:space:]]|$)' "${local_overlay_yaml}"; then
-  fail "infra/eks/overlays/local: release-only keeper-2/3 resources must not render in the local overlay"
+  fail "deploy/terraform/overlays/local: release-only keeper-2/3 resources must not render in the local overlay"
 fi
 
-local_bootstrap_threshold="$(job_env_value "infra/eks/overlays/local/spike-bootstrap-job.yaml" "SPIKE_NEXUS_SHAMIR_THRESHOLD")"
-local_bootstrap_shares="$(job_env_value "infra/eks/overlays/local/spike-bootstrap-job.yaml" "SPIKE_NEXUS_SHAMIR_SHARES")"
-local_bootstrap_peers="$(job_env_value "infra/eks/overlays/local/spike-bootstrap-job.yaml" "SPIKE_NEXUS_KEEPER_PEERS")"
-assert_demo_profile "infra/eks/overlays/local/spike-bootstrap-job.yaml" "${local_bootstrap_threshold}" "${local_bootstrap_shares}" "${local_bootstrap_peers}"
+local_bootstrap_threshold="$(job_env_value "deploy/terraform/overlays/local/spike-bootstrap-job.yaml" "SPIKE_NEXUS_SHAMIR_THRESHOLD")"
+local_bootstrap_shares="$(job_env_value "deploy/terraform/overlays/local/spike-bootstrap-job.yaml" "SPIKE_NEXUS_SHAMIR_SHARES")"
+local_bootstrap_peers="$(job_env_value "deploy/terraform/overlays/local/spike-bootstrap-job.yaml" "SPIKE_NEXUS_KEEPER_PEERS")"
+assert_demo_profile "deploy/terraform/overlays/local/spike-bootstrap-job.yaml" "${local_bootstrap_threshold}" "${local_bootstrap_shares}" "${local_bootstrap_peers}"
 
 echo "[PASS] docker-compose.yml keeps demo bootstrap at 1-of-1 with a single keeper peer"
 echo "[PASS] docker-compose.prod-intent.yml renders multi-share recovery with three keeper peers"
-echo "[PASS] infra/eks/spike renders release-facing multi-share recovery with keeper-1/2/3"
-echo "[PASS] infra/eks/overlays/local keeps the demo/local exception isolated at 1-of-1"
+echo "[PASS] deploy/terraform/spike renders release-facing multi-share recovery with keeper-1/2/3"
+echo "[PASS] deploy/terraform/overlays/local keeps the demo/local exception isolated at 1-of-1"

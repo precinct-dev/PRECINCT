@@ -78,7 +78,7 @@ main() {
   for overlay in "${overlays[@]}"; do
     local rendered="/tmp/precinct-admission-${overlay}.yaml"
     info "Building overlay: ${overlay}"
-    kustomize build "infra/eks/overlays/${overlay}" >"${rendered}"
+    kustomize build "deploy/terraform/overlays/${overlay}" >"${rendered}"
 
     local sig_doc
     sig_doc="$(extract_doc "${rendered}" "RequireImageSignature" "enforce-image-signature")"
@@ -105,7 +105,7 @@ main() {
 
   local local_rendered="/tmp/precinct-admission-local.yaml"
   info "Building overlay: local"
-  kustomize build "infra/eks/overlays/local" >"${local_rendered}"
+  kustomize build "deploy/terraform/overlays/local" >"${local_rendered}"
 
   local local_sig_doc
   local_sig_doc="$(extract_doc "${local_rendered}" "RequireImageSignature" "enforce-image-signature")"

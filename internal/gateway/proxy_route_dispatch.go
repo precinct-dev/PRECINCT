@@ -8,10 +8,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func (g *Gateway) tryInternalProxyRoutes(proxyRW *proxyResponseWriter, r *http.Request, span trace.Span) bool {
-	return g.tryGatewayProxyRoutes(proxyRW, r, span)
-}
-
 func (g *Gateway) tryGatewayProxyRoutes(proxyRW *proxyResponseWriter, r *http.Request, span trace.Span) bool {
 	return precinctcontrol.DispatchInternalProxyRoutes(
 		proxyRW,

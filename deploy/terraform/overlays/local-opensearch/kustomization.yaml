@@ -5,7 +5,7 @@
 # for compliance/forensics operations (Apache-2 stack).
 #
 # Usage:
-#   kustomize build infra/eks/overlays/local-opensearch
+#   kustomize build deploy/terraform/overlays/local-opensearch
 # ------------------------------------------------------------------------------
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

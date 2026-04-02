@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 POC_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 GUIDE="${POC_ROOT}/docs/architecture/k8s-hardening-portability-matrix.md"
-ARCH_DOC="${POC_ROOT}/docs/ARCHITECTURE.md"
+REFERENCE_DOC="${POC_ROOT}/docs/architecture/reference-architecture.md"
 DEPLOY_DOC="${POC_ROOT}/docs/deployment-guide.md"
 
 PASS_COUNT=0
@@ -35,7 +35,7 @@ require_file() {
 echo "validate_k8s_hardening_guide: start"
 
 require_file "${GUIDE}"
-require_file "${ARCH_DOC}"
+require_file "${REFERENCE_DOC}"
 require_file "${DEPLOY_DOC}"
 
 if [ ! -f "${GUIDE}" ]; then
@@ -76,10 +76,10 @@ if [ -n "${compose_rows}" ]; then
   done <<< "${compose_rows}"
 fi
 
-if grep -q "architecture/k8s-hardening-portability-matrix.md" "${ARCH_DOC}"; then
-  pass "ARCHITECTURE.md links hardening guide"
+if grep -q "k8s-hardening-portability-matrix.md" "${REFERENCE_DOC}"; then
+  pass "reference-architecture.md links hardening guide"
 else
-  fail "ARCHITECTURE.md missing hardening guide link"
+  fail "reference-architecture.md missing hardening guide link"
 fi
 
 if grep -q "architecture/k8s-hardening-portability-matrix.md" "${DEPLOY_DOC}"; then

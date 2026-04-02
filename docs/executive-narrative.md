@@ -196,7 +196,7 @@ After the latest hardening pass, the major non-operational architecture gaps are
 
 ## What Has Already Been Proven
 
-From this repository and POC implementation:
+From this repository and reference implementation:
 
 - Multi-layer gateway controls are implemented and tested.
 - SPIFFE identity, embedded OPA authorization, and risk gating are active.

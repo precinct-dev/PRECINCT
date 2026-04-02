@@ -22,7 +22,7 @@ require_cmd kustomize
 echo "[INFO] Validating staging/prod overlay operationalization..."
 for overlay in staging prod; do
   rendered="${TMP_DIR}/${overlay}.yaml"
-  kustomize build "infra/eks/overlays/${overlay}" >"${rendered}"
+  kustomize build "deploy/terraform/overlays/${overlay}" >"${rendered}"
 
   if grep -Eq 'ghcr\.io/OWNER/' "${rendered}"; then
     fail "${overlay}: placeholder image owner ghcr.io/OWNER detected in rendered manifests"
@@ -53,7 +53,7 @@ for overlay in staging prod; do
 done
 
 for overlay in staging prod; do
-  secret_file="infra/eks/overlays/${overlay}/gateway-runtime-secrets.yaml"
+  secret_file="deploy/terraform/overlays/${overlay}/gateway-runtime-secrets.yaml"
   if [ -f "${secret_file}" ]; then
     fail "${overlay}: ${secret_file} must not exist with in-repo literal runtime secrets"
   fi

@@ -20,7 +20,7 @@
 #   3. Copy the output role ARN to s3-mcp-server-rbac.yaml annotation
 #
 # Prerequisites:
-#   - EKS cluster with OIDC provider (from parent infra/eks/main.tf)
+#   - EKS cluster with OIDC provider (from parent deploy/terraform stack)
 #   - tools namespace and s3-mcp-tool ServiceAccount deployed
 # ------------------------------------------------------------------------------
 

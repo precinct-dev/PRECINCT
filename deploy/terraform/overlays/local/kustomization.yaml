@@ -17,7 +17,7 @@
 # Minimum hardware: 4 CPU cores, 8GB RAM allocated to Docker Desktop
 #
 # Usage:
-#   kustomize build infra/eks/overlays/local/
+#   kustomize build deploy/terraform/overlays/local/
 #   make k8s-up
 #   make k8s-down
 # ------------------------------------------------------------------------------
@@ -289,9 +289,11 @@ patches:
                   - name: MCP_TRANSPORT_MODE
                     value: "mcp"
                   - name: SPIFFE_TRUST_DOMAIN
-                    # Local K8s workloads receive SPIFFE identities from the local
-                    # SPIRE trust domain and use the internal mTLS listener.
-                    value: "precinct.poc"
+                    # The public dev listener resolves header-declared demo
+                    # identities against the canonical poc.local trust domain.
+                    # Internal workload SVIDs still come from the local SPIRE
+                    # deployment trust domain via the mounted socket.
+                    value: "poc.local"
                   - name: SPIFFE_LISTEN_PORT
                     value: "9443"
                   - name: SPIFFE_INTERNAL_MTLS_ENABLED
@@ -384,7 +386,7 @@ patches:
                     type: RuntimeDefault
             containers:
               - name: precinct-control
-                image: registry:5000/precinct-control:latest
+                image: registry:5000/precinct-gateway:latest
                 imagePullPolicy: Always
                 env:
                   - name: LOG_LEVEL
