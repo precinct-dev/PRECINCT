@@ -107,7 +107,9 @@ func TestValidateOAuthJWT(t *testing.T) {
 			"exp":   time.Now().Add(5 * time.Minute).Unix(),
 			"scope": "mcp:tools",
 		})
-		token = token[:len(token)-1] + "x"
+		token = tamperJWTClaimsWithoutResigning(t, token, map[string]any{
+			"sub": "tampered-user",
+		})
 
 		if _, err := ValidateOAuthJWT(context.Background(), token, cfg); err == nil {
 			t.Fatal("expected signature validation failure")
@@ -217,6 +219,37 @@ type testOAuthIssuer struct {
 	*httptest.Server
 	kid string
 	key []byte
+}
+
+func tamperJWTClaimsWithoutResigning(t *testing.T, token string, overrides map[string]any) string {
+	t.Helper()
+
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected compact JWT with 3 segments, got %d", len(parts))
+	}
+
+	payload, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+
+	var claims map[string]any
+	if err := json.Unmarshal(payload, &claims); err != nil {
+		t.Fatalf("unmarshal payload: %v", err)
+	}
+
+	for key, value := range overrides {
+		claims[key] = value
+	}
+
+	modifiedPayload, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("marshal modified payload: %v", err)
+	}
+
+	parts[1] = base64.RawURLEncoding.EncodeToString(modifiedPayload)
+	return strings.Join(parts, ".")
 }
 
 func newTestOAuthIssuer(t *testing.T) *testOAuthIssuer {
