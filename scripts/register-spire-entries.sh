@@ -80,6 +80,10 @@ reg "spiffe://$DOMAIN/gateways/precinct-gateway/dev" \
     -selector docker:label:spiffe-id:precinct-gateway \
     -selector docker:label:component:gateway
 
+reg "spiffe://$DOMAIN/gateways/precinct-control/dev" \
+    -selector docker:label:spiffe-id:precinct-control \
+    -selector docker:label:component:control-plane \
+
 reg "spiffe://$DOMAIN/agents/mcp-client/dspy-researcher/dev" \
     -selector docker:label:spiffe-id:dspy-researcher
 

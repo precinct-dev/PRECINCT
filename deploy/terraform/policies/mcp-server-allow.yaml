@@ -8,6 +8,8 @@
 #
 #   INGRESS:
 #     - From gateway namespace on port 8081 (JSON-RPC requests)
+#     - From gateway namespace on port 8080 (mock guard model deep-scan requests)
+#     - From gateway namespace on port 8085 (content-scanner extension requests)
 #       Tool servers can ONLY receive traffic from the gateway -- no direct
 #       access from agents or other namespaces.
 #
@@ -42,14 +44,80 @@ spec:
             matchLabels:
               name: gateway
           podSelector:
-            matchLabels:
-              app.kubernetes.io/name: precinct-gateway
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - precinct-gateway
+                  - precinct-control
       ports:
         - protocol: TCP
           port: 8081
         # NOTE(local overlay): demo mock MCP server listens on :8082
         - protocol: TCP
           port: 8082
+---
+# Allow inbound to content-scanner from gateway namespace only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: content-scanner-allow-ingress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: content-scanner
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - precinct-gateway
+                  - precinct-control
+      ports:
+        - protocol: TCP
+          port: 8085
+---
+# Allow inbound to mock-guard-model from gateway namespace only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mock-guard-model-allow-ingress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mock-guard-model
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - precinct-gateway
+                  - precinct-control
+      ports:
+        - protocol: TCP
+          port: 8080
 ---
 # Allow tool server egress to DNS + private network destinations
 apiVersion: networking.k8s.io/v1

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/precinct-dev/precinct/internal/gateway/middleware"
+	"github.com/precinct-dev/precinct/internal/precinctcontrol"
 )
 
 const (
@@ -201,7 +202,7 @@ func resolveEnforcementProfile(cfg *Config) (*enforcementProfileRuntime, error) 
 		if strings.TrimSpace(cfg.ToolRegistryConfigPath) == "" {
 			violations = append(violations, "tool_registry_config_path must be set in strict profiles")
 		}
-		if len(normalizeAdminAuthzAllowlist(cfg.AdminAuthzAllowedSPIFFEIDs)) == 0 {
+		if len(precinctcontrol.NormalizeAdminAuthzAllowlist(cfg.AdminAuthzAllowedSPIFFEIDs)) == 0 {
 			violations = append(violations, "admin_authz_allowed_spiffe_ids must be set in strict profiles")
 		}
 		if strings.TrimSpace(cfg.KeyDBURL) == "" {

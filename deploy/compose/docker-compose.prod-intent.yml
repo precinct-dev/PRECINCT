@@ -12,6 +12,11 @@ services:
     image: ${PROD_GATEWAY_IMAGE:?PROD_GATEWAY_IMAGE must be set (digest-pinned)}
     pull_policy: always
 
+  precinct-control:
+    build: null
+    image: ${PROD_CONTROL_IMAGE:?PROD_CONTROL_IMAGE must be set (digest-pinned)}
+    pull_policy: always
+
   spire-entry-registrar:
     image: ${PROD_SPIRE_ENTRY_REGISTRAR_IMAGE:?PROD_SPIRE_ENTRY_REGISTRAR_IMAGE must be set (digest-pinned)}
     pull_policy: always

@@ -21,11 +21,14 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -46,10 +49,29 @@ func main() {
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, bootstrapPath, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "bootstrap-guard: stdout pipe failed: %v\n", err)
+		os.Exit(1)
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "bootstrap-guard: stderr pipe failed: %v\n", err)
+		os.Exit(1)
+	}
 
-	err := cmd.Run()
+	if err := cmd.Start(); err != nil {
+		fmt.Fprintf(os.Stderr, "bootstrap-guard: failed to start bootstrap: %v\n", err)
+		os.Exit(1)
+	}
+
+	done := make(chan struct{}, 2)
+	go streamBootstrapLogs(stdout, os.Stdout, done)
+	go streamBootstrapLogs(stderr, os.Stderr, done)
+	<-done
+	<-done
+
+	err = cmd.Wait()
 
 	if err == nil {
 		// Bootstrap completed successfully.
@@ -70,4 +92,34 @@ func main() {
 		os.Exit(exitErr.ExitCode())
 	}
 	os.Exit(1)
+}
+
+func streamBootstrapLogs(src io.Reader, dst io.Writer, done chan<- struct{}) {
+	defer func() { done <- struct{}{} }()
+
+	scanner := bufio.NewScanner(src)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if shouldSuppressBootstrapLog(line) {
+			continue
+		}
+		fmt.Fprintln(dst, line)
+	}
+}
+
+func shouldSuppressBootstrapLog(line string) bool {
+	if strings.Contains(line, `"msg":"VerifyInitialization"`) &&
+		strings.Contains(line, `failed to verify initialization: will retry`) &&
+		strings.Contains(line, `"code":"crypto_cipher_verification_failed"`) {
+		return true
+	}
+	if strings.Contains(line, `"msg":"SPIKE Bootstrap"`) &&
+		strings.Contains(line, `failed to close SPIKE API client`) &&
+		strings.Contains(line, `"code":"fs_stream_close_failed"`) {
+		return true
+	}
+	return false
 }

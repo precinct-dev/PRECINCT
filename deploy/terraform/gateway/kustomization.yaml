@@ -6,6 +6,9 @@ kind: Kustomization
 resources:
   - gateway-namespace.yaml
   - gateway-rbac.yaml
+  - control-rbac.yaml
   - gateway-configmap.yaml
   - gateway-deployment.yaml
+  - control-deployment.yaml
   - gateway-service.yaml
+  - control-service.yaml

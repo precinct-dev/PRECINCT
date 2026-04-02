@@ -87,9 +87,15 @@ func (a *Adapter) RouteAuthorizations() []gateway.PortRouteAuth {
 	}
 }
 
-// OpenClawSPIFFEID is the SPIFFE identity used by the OpenClaw agent.
-// OC-xj4w: Used to register the trusted agent DLP bypass.
-const OpenClawSPIFFEID = "spiffe://poc.local/openclaw"
+const (
+	// OpenClawComposeSPIFFEID is the legacy Compose identity used by the OpenClaw port.
+	OpenClawComposeSPIFFEID = "spiffe://poc.local/openclaw"
+	// OpenClawK8sBridgeSPIFFEID is the local-K8s bridge identity used to preserve
+	// the demo trust-domain while keeping OpenClaw in the agent principal hierarchy.
+	OpenClawK8sBridgeSPIFFEID = "spiffe://poc.local/agents/ports/openclaw/dev"
+	// OpenClawK8sSPIFFEID is the Kubernetes service-account identity used by the OpenClaw port.
+	OpenClawK8sSPIFFEID = "spiffe://precinct.poc/ns/openclaw/sa/openclaw"
+)
 
 // TrustedAgentDLPEntries returns the trusted agent DLP entries for the
 // OpenClaw port. System prompt content (role=system) from OpenClaw bypasses
@@ -97,12 +103,14 @@ const OpenClawSPIFFEID = "spiffe://poc.local/openclaw"
 // (role=user) are always scanned.
 // OC-xj4w: Port-scoped trusted agent DLP bypass.
 func (a *Adapter) TrustedAgentDLPEntries() []middleware.TrustedAgentDLPEntry {
-	return []middleware.TrustedAgentDLPEntry{
-		{
-			SPIFFEID:       OpenClawSPIFFEID,
+	entries := make([]middleware.TrustedAgentDLPEntry, 0, 3)
+	for _, spiffeID := range []string{OpenClawComposeSPIFFEID, OpenClawK8sBridgeSPIFFEID, OpenClawK8sSPIFFEID} {
+		entries = append(entries, middleware.TrustedAgentDLPEntry{
+			SPIFFEID:       spiffeID,
 			DLPBypassScope: "system_prompt",
-		},
+		})
 	}
+	return entries
 }
 
 // Compile-time checks.

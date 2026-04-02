@@ -625,6 +625,97 @@ services:
       retries: 3
       start_period: 45s
 
+  # PRECINCT Control - Administrative and control-plane endpoints extracted from gateway.
+  # Kept with the same enforcement middleware ordering and policy configuration.
+  precinct-control:
+    build:
+      context: ../..
+      dockerfile: deploy/compose/Dockerfile.control
+    image: precinct-control:latest
+    container_name: precinct-control
+    hostname: precinct-control
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+      spike-nexus:
+        condition: service_healthy
+      spike-secret-seeder:
+        condition: service_completed_successfully
+      keydb:
+        condition: service_healthy
+      content-scanner:
+        condition: service_healthy
+    volumes:
+      - ./data/spire-agent-socket:/tmp/spire-agent/public:ro
+      - ../../config:/config:ro
+    ports:
+      - "9091:9090"
+    environment:
+      - PORT=9090
+      - UPSTREAM_URL=${UPSTREAM_URL:-http://mock-mcp-server:8082}
+      - DEMO_RUGPULL_ADMIN_ENABLED=1
+      - OPA_POLICY_DIR=/config/opa
+      - TOOL_REGISTRY_CONFIG_PATH=/config/tool-registry.yaml
+      - TOOL_REGISTRY_PUBLIC_KEY=/config/attestation-ed25519.pub
+      - OPA_POLICY_PUBLIC_KEY=/config/attestation-ed25519.pub
+      - TOKEN_EXCHANGE_SIGNING_KEY=${TOKEN_EXCHANGE_SIGNING_KEY:-}
+      - CAPABILITY_REGISTRY_V2_PATH=/config/capability-registry-v2.yaml
+      - MODEL_PROVIDER_CATALOG_PATH=/config/model-provider-catalog.v2.yaml
+      - MAX_REQUEST_SIZE_BYTES=10485760
+      - SPIFFE_MODE=dev
+      - ALLOW_INSECURE_DEV_MODE=1
+      - DEV_LISTEN_HOST=0.0.0.0
+      - ALLOW_NON_LOOPBACK_DEV_BIND=1
+      - ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS=spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
+      - ENFORCEMENT_PROFILE=dev
+      - SPIFFE_TRUST_DOMAIN=poc.local
+      - SPIFFE_LISTEN_PORT=9443
+      - SPIFFE_ENDPOINT_SOCKET=unix:///tmp/spire-agent/public/api.sock
+      - LOG_LEVEL=info
+      - SPIRE_AGENT_SOCKET=/tmp/spire-agent/public/api.sock
+      - AUDIT_LOG_PATH=/tmp/audit.jsonl
+      - SPIKE_NEXUS_URL=https://spike-nexus:8443
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+      - OTEL_SERVICE_NAME=precinct-control
+      - KEYDB_URL=redis://keydb:6379
+      - MCP_TRANSPORT_MODE=${MCP_TRANSPORT_MODE:-mcp}
+      - DEEP_SCAN_TIMEOUT=${DEEP_SCAN_TIMEOUT:-5}
+      - DEEP_SCAN_FALLBACK=${DEEP_SCAN_FALLBACK:-fail_closed}
+      - GUARD_MODEL_ENDPOINT=${GUARD_MODEL_ENDPOINT:-http://mock-guard-model:8080/openai/v1}
+      - MODEL_PROVIDER_ENDPOINT_GROQ=${MODEL_PROVIDER_ENDPOINT_GROQ:-http://mock-guard-model:8080/openai/v1/chat/completions}
+      - GUARD_MODEL_NAME=${GUARD_MODEL_NAME:-}
+      - GUARD_API_KEY=${GUARD_API_KEY:-demo-guard-key}
+      - DLP_INJECTION_POLICY=${DLP_INJECTION_POLICY:-}
+      - DLP_PII_POLICY=${DLP_PII_POLICY:-block}
+      - RATE_LIMIT_RPM=${RATE_LIMIT_RPM:-60}
+      - RATE_LIMIT_BURST=${RATE_LIMIT_BURST:-10}
+      - MESSAGING_PLATFORM_ENDPOINT_WHATSAPP=http://messaging-sim:8090/v1/messages
+      - EXTENSION_REGISTRY_PATH=/config/extensions-demo.yaml
+      - MODEL_PROVIDER_CATALOG_PUBLIC_KEY=/config/attestation-ed25519.pub
+    networks:
+      - agentic-net
+      - control-plane
+      - tool-plane
+      - secrets-plane
+      - data-plane
+      - phoenix-net
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+    labels:
+      - "spiffe-id=precinct-control"
+      - "component=control-plane"
+    healthcheck:
+      test: ["CMD", "/app/precinct-control", "health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 45s
+
 networks:
   agentic-net:
     driver: bridge

@@ -89,6 +89,12 @@ services:
       tavily-mcp-server:
         condition: service_healthy
 
+  # Control service follows the same real-mode upstream dependency shape.
+  precinct-control:
+    depends_on:
+      tavily-mcp-server:
+        condition: service_healthy
+
 networks:
   # Tavily MCP server needs internet for npm install and Tavily API calls.
   tavily-egress:

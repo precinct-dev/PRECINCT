@@ -24,7 +24,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: spike-bootstrap
-          image: ghcr.io/spiffe/spike-bootstrap:0.8.0
+          image: registry:5000/poc-spike-bootstrap:latest
           args: ['-init']
           env:
             - name: SPIFFE_ENDPOINT_SOCKET

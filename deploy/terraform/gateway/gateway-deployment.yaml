@@ -74,6 +74,9 @@ spec:
             # Tool registry configuration (mounted from ConfigMap)
             - name: TOOL_REGISTRY_CONFIG_PATH
               value: "/config/tool-registry.yaml"
+            # OPA policy reload attestation public key
+            - name: OPA_POLICY_PUBLIC_KEY
+              value: "/config/attestation-ed25519.pub"
             # OAuth resource-server JWT validation config for external bearer auth.
             - name: OAUTH_RESOURCE_SERVER_CONFIG_PATH
               value: "/config/oauth-resource-server.yaml"
@@ -219,18 +222,36 @@ spec:
             items:
               - key: mcp_policy.rego
                 path: mcp_policy.rego
+              - key: mcp_policy.rego.sig
+                path: mcp_policy.rego.sig
               - key: ui_policy.rego
                 path: ui_policy.rego
+              - key: ui_policy.rego.sig
+                path: ui_policy.rego.sig
               - key: ui_csp_policy.rego
                 path: ui_csp_policy.rego
+              - key: ui_csp_policy.rego.sig
+                path: ui_csp_policy.rego.sig
               - key: exfiltration.rego
                 path: exfiltration.rego
+              - key: exfiltration.rego.sig
+                path: exfiltration.rego.sig
               - key: context_policy.rego
                 path: context_policy.rego
+              - key: context_policy.rego.sig
+                path: context_policy.rego.sig
+              - key: principal_policy.rego
+                path: principal_policy.rego
+              - key: principal_policy.rego.sig
+                path: principal_policy.rego.sig
               - key: tool_grants.yaml
                 path: tool_grants.yaml
+              - key: tool_grants.yaml.sig
+                path: tool_grants.yaml.sig
               - key: ui_capability_grants.yaml
                 path: ui_capability_grants.yaml
+              - key: ui_capability_grants.yaml.sig
+                path: ui_capability_grants.yaml.sig
             optional: false
         # Tool registry from ConfigMap
         - name: config-registry

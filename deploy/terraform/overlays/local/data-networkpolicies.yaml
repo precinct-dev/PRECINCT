@@ -52,8 +52,12 @@ spec:
             matchLabels:
               name: gateway
           podSelector:
-            matchLabels:
-              app.kubernetes.io/name: precinct-gateway
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - precinct-gateway
+                  - precinct-control
       ports:
         - protocol: TCP
           port: 6379

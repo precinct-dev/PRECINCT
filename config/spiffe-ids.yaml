@@ -27,6 +27,20 @@ workloads:
       - "docker:label:spiffe-id:precinct-gateway"
       - "docker:label:component:gateway"
 
+  # Control Plane Gateway - authentication/control-plane endpoints extracted
+  # from the core data path while retaining the same OPA policy semantics.
+  - spiffe_id: spiffe://poc.local/gateways/precinct-control/dev
+    description: PRECINCT Control
+    purpose: >
+      Dedicated control-plane service handling admin and control endpoints,
+      including connector authority, model compatibility and phase-3 plane
+      operations with the same enforcement policy set.
+    agent_class: gateways
+    agent_purpose: precinct-control
+    selectors:
+      - "docker:label:spiffe-id:precinct-control"
+      - "docker:label:component:control-plane"
+
   # DSPy research agent - MCP client using DSPy framework
   - spiffe_id: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
     description: DSPy Research Agent

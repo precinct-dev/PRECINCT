@@ -20,13 +20,15 @@
 
 ## What Is This?
 
-This is a **reference implementation of a PRECINCT Gateway** that implements a 13-layer
-middleware chain for securing AI agent tool calls. It validates the
+This is a **reference implementation of the PRECINCT gateway runtime**. The
+latency-sensitive data plane runs in `precinct-gateway`, while admin and
+control-plane endpoints run in `precinct-control`. The shared enforcement stack
+implements the 13-layer middleware chain for securing AI agent tool calls. It validates the
 [PRECINCT v2.5](docs/architecture/reference-architecture.md)
 reference architecture, while the current canonical control-plane contract set
 in this repository remains [v2.4](contracts/v2.4/contract-set.v2.4.md).
 
-The gateway interposes between AI agents and MCP tool servers, enforcing
+The runtime interposes between AI agents and MCP tool servers, enforcing
 authentication, authorization, audit, data-loss prevention, rate limiting,
 and secret management at every layer -- without the agents needing to know
 about any of it.
@@ -40,6 +42,11 @@ Agent --> [1.Size] --> [2.Shape] --> [3.Auth] --> [4.Audit] --> [5.Registry]
 Two deployment modes are supported: **Docker Compose** (local development) and
 **Kubernetes** (EKS-targeted, with a local overlay for Docker Desktop K8s).
 Go and Python SDKs are provided for agent integration.
+
+Current service split:
+
+- `precinct-gateway`: data-plane enforcement, upstream MCP mediation, latency-sensitive request path
+- `precinct-control`: admin and control-plane APIs protected by the same SPIFFE/SPIRE, OPA, and SPIKE zero-trust contracts
 
 
 ## Architecture at a Glance
@@ -117,7 +124,7 @@ Prerequisites: Docker, Docker Compose, Go 1.26.1, make.
 
 ```bash
 make phoenix-up      # Start observability stack (Phoenix + OTel collector)
-make up              # Start all services (SPIRE, SPIKE, KeyDB, gateway, mock MCP server)
+make up              # Start all services (SPIRE, SPIKE, KeyDB, gateway, control, mock MCP server)
 make demo-compose    # Run 43 E2E demo tests (21 Go + 22 Python)
 ```
 
@@ -219,7 +226,7 @@ Website source lives in the private companion repository:
 | `make clean` | Full cleanup (containers, volumes, build artifacts, logs) |
 | `make logs` | Tail gateway logs |
 | **Demo** | |
-| `make demo` | Run E2E demo (Docker Compose + K8s) |
+| `make demo` | Run E2E demo (Docker Compose + K8s) and leave both environments up for observation |
 | `make demo-compose` | Run E2E demo (Docker Compose only) |
 | `make demo-k8s` | Run E2E demo (K8s only) |
 | **Phoenix Observability** | |

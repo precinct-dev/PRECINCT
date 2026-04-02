@@ -48,6 +48,28 @@ spec:
               fi
               echo 'spike-seeder: seeded ref=deadbeef'
 
+              if [ -n "${GROQ_API_KEY:-}" ]; then
+                echo 'spike-seeder: seeding groq-api-key'
+                groq_seeded=0
+                i=1
+                while [ "$i" -le 60 ]; do
+                  if spike secret put groq-api-key "value=${GROQ_API_KEY}" >/dev/null 2>&1; then
+                    groq_seeded=1
+                    break
+                  fi
+                  echo "spike-seeder: retry groq-api-key put ($i/60)" >&2
+                  sleep 5
+                  i=$((i + 1))
+                done
+                if [ "$groq_seeded" -eq 1 ]; then
+                  echo 'spike-seeder: groq-api-key seeded successfully'
+                else
+                  echo 'spike-seeder: warning: failed to seed groq-api-key after retries (step-up guard will degrade to fail-open)' >&2
+                fi
+              else
+                echo 'spike-seeder: GROQ_API_KEY not set, skipping guard model key seeding (step-up guard will degrade to fail-open)'
+              fi
+
               echo 'spike-seeder: creating gateway-read ACL policy'
               policy_ok=0
               i=1
@@ -79,6 +101,8 @@ spec:
               value: 'precinct.poc'
             - name: SPIKE_TRUST_ROOT_PILOT
               value: 'precinct.poc'
+            - name: GROQ_API_KEY
+              value: ''
           volumeMounts:
             - name: spire-agent-socket
               mountPath: /run/spire/sockets

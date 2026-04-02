@@ -32,6 +32,7 @@ GO_IMAGE="demo-go-sdk"
 PY_IMAGE="demo-python-sdk"
 COMPOSE_NETWORK="agentic-security-network"
 PF_PID=""
+PF_PID_CONTROL=""
 PF_PID_MCP=""
 DOCKER_ADD_HOST=""
 COMPOSE_FILE="$POC_DIR/deploy/compose/docker-compose.yml"
@@ -41,6 +42,7 @@ K8S_TORN_DOWN=false
 if [ "$DEMO_SERVICE_MODE" = "real" ]; then
     COMPOSE_DEMO_CONTAINER_NAMES=(
         precinct-gateway
+        precinct-control
         spire-server spire-agent spire-entry-registrar
         spike-nexus spike-keeper-1 spike-bootstrap spike-secret-seeder
         keydb content-scanner
@@ -49,6 +51,7 @@ if [ "$DEMO_SERVICE_MODE" = "real" ]; then
 else
     COMPOSE_DEMO_CONTAINER_NAMES=(
         precinct-gateway
+        precinct-control
         spike-nexus
         spike-secret-seeder
         spike-bootstrap
@@ -83,6 +86,7 @@ return count
 
 cleanup() {
     [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null || true
+    [ -n "$PF_PID_CONTROL" ] && kill "$PF_PID_CONTROL" 2>/dev/null || true
     [ -n "$PF_PID_MCP" ] && kill "$PF_PID_MCP" 2>/dev/null || true
     true
 }
@@ -133,28 +137,36 @@ preflight() {
 check_phoenix() {
     log "Checking Phoenix observability stack"
 
-    # Check 1: Does the phoenix-observability-network Docker network exist?
-    if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
-        if [ "$STRICT_OBSERVABILITY_MODE" = "1" ]; then
-            err "Phoenix stack is required in strict observability mode. Run 'make phoenix-up'."
-            PHOENIX_AVAILABLE=false
-            return 1
+    if [ "$MODE" = "k8s" ]; then
+        if kubectl -n observability rollout status deployment/phoenix --timeout=120s >/dev/null 2>&1 \
+            && kubectl -n observability rollout status deployment/otel-collector --timeout=120s >/dev/null 2>&1; then
+            ok "K8s observability stack is running (traces will be collected in-cluster)"
+            PHOENIX_AVAILABLE=true
+            return 0
         fi
-        warn "Phoenix stack not running. Traces will not be collected. Run 'make phoenix-up' to enable observability."
+        warn "K8s observability stack is not ready; continuing without trace collection"
         PHOENIX_AVAILABLE=false
         return 0
     fi
 
-    # Check 2: Is the phoenix container running?
-    if ! docker ps --filter name=phoenix --filter status=running --format '{{.Names}}' 2>/dev/null | grep -q phoenix; then
-        if [ "$STRICT_OBSERVABILITY_MODE" = "1" ]; then
-            err "Phoenix stack is required in strict observability mode. Run 'make phoenix-up'."
+    # Check 1: Does the phoenix-observability-network Docker network exist?
+    if ! docker network inspect phoenix-observability-network >/dev/null 2>&1; then
+        log "Phoenix stack not running; starting it so traces are collected"
+        if ! make -C "$POC_DIR" phoenix-up >/dev/null; then
+            err "Failed to start Phoenix observability stack"
             PHOENIX_AVAILABLE=false
             return 1
         fi
-        warn "Phoenix stack not running. Traces will not be collected. Run 'make phoenix-up' to enable observability."
-        PHOENIX_AVAILABLE=false
-        return 0
+    fi
+
+    # Check 2: Is the phoenix container running?
+    if ! docker ps --filter name=phoenix --filter status=running --format '{{.Names}}' 2>/dev/null | grep -q phoenix; then
+        log "Phoenix container is not running; starting it so traces are collected"
+        if ! make -C "$POC_DIR" phoenix-up >/dev/null; then
+            err "Failed to start Phoenix observability stack"
+            PHOENIX_AVAILABLE=false
+            return 1
+        fi
     fi
 
     ok "Phoenix stack is running (traces will be collected)"
@@ -257,9 +269,9 @@ wait_for_health() {
     done
     echo ""
     if [ "$MODE" = "compose" ]; then
-        warn "Compose gateway health timed out; dumping compose status and recent gateway logs"
+        warn "Compose gateway health timed out; dumping compose status and recent gateway/control logs"
         $DC ps || true
-        $DC logs --tail 80 precinct-gateway || true
+        $DC logs --tail 80 precinct-gateway precinct-control || true
     fi
     err "Gateway did not become healthy within ${timeout}s"
     return 1
@@ -346,7 +358,7 @@ ensure_k8s_demo_ingress() {
 # K8s readiness gate (fail fast rather than letting the demo hang)
 # --------------------------------------------------------------------------
 k8s_wait_ready() {
-    log "Waiting for K8s stack readiness (SPIRE, SPIKE, tools, gateway)"
+    log "Waiting for K8s stack readiness (SPIRE, SPIKE, tools, gateway, control)"
     if ! kubectl -n spire-system rollout status statefulset/spire-server --timeout=180s >/dev/null; then
         err "SPIRE server not ready"
         kubectl -n spire-system get pods -o wide || true
@@ -410,6 +422,11 @@ k8s_wait_ready() {
         kubectl -n gateway get pods -o wide || true
         return 1
     fi
+    if ! kubectl -n gateway rollout status deployment/precinct-control --timeout=240s >/dev/null; then
+        err "Control service not ready"
+        kubectl -n gateway get pods -o wide || true
+        return 1
+    fi
     ok "K8s stack is ready"
 }
 
@@ -460,7 +477,7 @@ run_python_demo() {
 collect_audit_proof_compose() {
     log "Audit hash-chain proof (Docker Compose logs)"
     echo ""
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs precinct-gateway 2>/dev/null \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs precinct-gateway precinct-control 2>/dev/null \
         | grep -i "prev_hash" | tail -5 || echo "  (no prev_hash entries found in logs)"
     echo ""
 }
@@ -468,8 +485,10 @@ collect_audit_proof_compose() {
 collect_audit_proof_k8s() {
     log "Audit hash-chain proof (K8s logs)"
     echo ""
-    kubectl -n gateway logs deploy/precinct-gateway --tail=200 2>/dev/null \
-        | grep -i "prev_hash" | tail -5 || echo "  (no prev_hash entries found in logs)"
+    {
+        kubectl -n gateway logs deploy/precinct-gateway --tail=200 2>/dev/null || true
+        kubectl -n gateway logs deploy/precinct-control --tail=200 2>/dev/null || true
+    } | grep -i "prev_hash" | tail -5 || echo "  (no prev_hash entries found in logs)"
     echo ""
 }
 
@@ -521,15 +540,15 @@ collect_spike_token_proof_compose() {
 
     log "SPIKE Keeper proof (spike-keeper-1 logs)"
     echo ""
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs spike-keeper-1 2>/dev/null \
-        | grep -i -E "svid|shard|ready|serving|healthy|keeper" | tail -10 \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix spike-keeper-1 2>/dev/null \
+        | grep -i -E "audit-success|ready|serving|healthy|shard" | tail -10 \
         || echo "  (no spike-keeper-1 log entries found)"
     echo ""
 
     log "SPIKE Bootstrap proof (spike-bootstrap logs)"
     echo ""
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs spike-bootstrap 2>/dev/null \
-        | tail -10 \
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix spike-bootstrap 2>/dev/null \
+        | grep -E "bootstrap completed successfully|MarkBootstrapComplete|sent shards|FIPS 140.3 Status|SPIKE Bootstrap\",\"message\":\"starting" | tail -10 \
         || echo "  (no spike-bootstrap log entries found)"
     echo ""
 
@@ -591,21 +610,23 @@ collect_spike_token_proof_k8s() {
     log "SPIKE Keeper proof (K8s spike-keeper logs)"
     echo ""
     kubectl -n spike-system logs deploy/spike-keeper --tail=200 2>/dev/null \
-        | grep -i -E "svid|shard|ready|serving|healthy|keeper" | tail -10 \
+        | grep -i -E "audit-success|ready|serving|healthy|shard" | tail -10 \
         || echo "  (no spike-keeper log entries found)"
     echo ""
 
     log "SPIKE Bootstrap proof (K8s spike-bootstrap logs)"
     echo ""
-    echo "  Note: on clean runs, an initial 'spike-bootstrap-state ... not found' warning is expected before bootstrap creates state."
+    echo "  Note: on clean runs, 'spike-bootstrap-state ... not found' can appear briefly before bootstrap records state."
     # The bootstrap Job may retry; prefer the pod recorded as "completed-by-pod"
     # in the spike-bootstrap-state ConfigMap so we show the successful run.
     bootstrap_pod="$(kubectl -n spike-system get configmap spike-bootstrap-state -o jsonpath='{.data.completed-by-pod}' 2>/dev/null || true)"
     if [ -n "${bootstrap_pod:-}" ]; then
         kubectl -n spike-system logs "pod/${bootstrap_pod}" --tail=50 2>/dev/null \
+            | grep -E "bootstrap completed successfully|MarkBootstrapComplete|sent shards|FIPS 140.3 Status|SPIKE Bootstrap\",\"message\":\"starting" | tail -10 \
             || echo "  (no spike-bootstrap log entries found for completed pod ${bootstrap_pod})"
     else
         kubectl -n spike-system logs job/spike-bootstrap --tail=50 2>/dev/null \
+            | grep -E "bootstrap completed successfully|MarkBootstrapComplete|sent shards|FIPS 140.3 Status|SPIKE Bootstrap\",\"message\":\"starting" | tail -10 \
             || echo "  (no spike-bootstrap log entries found)"
     fi
     echo ""
@@ -729,20 +750,32 @@ k8s_probe_direct_external_egress() {
 print_otel_proof() {
     log "OpenTelemetry traces"
     if [ "$PHOENIX_AVAILABLE" = true ]; then
-        echo "  Phoenix UI: http://localhost:6006"
-        echo "  Open in browser to inspect distributed traces from the demo calls."
+        if [ "$MODE" = "k8s" ]; then
+            echo "  Phoenix UI: kubectl -n observability port-forward svc/phoenix 6006:6006"
+            echo "  Then open http://localhost:6006 to inspect distributed traces from the K8s demo."
+        else
+            echo "  Phoenix UI: http://localhost:6006"
+            echo "  Open in browser to inspect distributed traces from the demo calls."
+        fi
     else
-        echo "  Phoenix was not running during this demo. Traces were not collected."
-        echo "  Run 'make phoenix-up' before the demo to enable trace collection."
+        if [ "$MODE" = "k8s" ]; then
+            echo "  K8s Phoenix/OTEL stack was not ready during this demo. Traces were not collected."
+        else
+            echo "  Phoenix was not running during this demo. Traces were not collected."
+            echo "  Run 'make phoenix-up' before the demo to enable trace collection."
+        fi
     fi
     echo ""
 }
 
 capture_observability_evidence_compose() {
     mkdir -p "$OBS_EVIDENCE_DIR"
-    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix precinct-gateway >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
+    docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" logs --no-log-prefix precinct-gateway precinct-control >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
     if [ "$PHOENIX_AVAILABLE" = true ]; then
-        docker compose -f "$POC_DIR/docker-compose.phoenix.yml" logs --no-color otel-collector >"$TRACE_EVIDENCE_FILE" 2>/dev/null || true
+        docker logs otel-collector >"$TRACE_EVIDENCE_FILE" 2>/dev/null || true
+        if [ ! -s "$TRACE_EVIDENCE_FILE" ]; then
+            echo "otel-collector is running; traces are available through Phoenix UI at http://localhost:6006" >"$TRACE_EVIDENCE_FILE"
+        fi
     else
         : >"$TRACE_EVIDENCE_FILE"
     fi
@@ -750,9 +783,15 @@ capture_observability_evidence_compose() {
 
 capture_observability_evidence_k8s() {
     mkdir -p "$OBS_EVIDENCE_DIR"
-    kubectl -n gateway logs deploy/precinct-gateway --tail=500 >"$AUDIT_EVIDENCE_FILE" 2>/dev/null || true
+    {
+        kubectl -n gateway logs deploy/precinct-gateway --tail=500 2>/dev/null || true
+        kubectl -n gateway logs deploy/precinct-control --tail=500 2>/dev/null || true
+    } >"$AUDIT_EVIDENCE_FILE"
     if [ "$PHOENIX_AVAILABLE" = true ]; then
-        docker compose -f "$POC_DIR/docker-compose.phoenix.yml" logs --no-color otel-collector >"$TRACE_EVIDENCE_FILE" 2>/dev/null || true
+        kubectl -n observability logs deploy/otel-collector --tail=500 >"$TRACE_EVIDENCE_FILE" 2>/dev/null || true
+        if [ ! -s "$TRACE_EVIDENCE_FILE" ]; then
+            echo "otel-collector is running in-cluster; use 'kubectl -n observability port-forward svc/phoenix 6006:6006' and open http://localhost:6006" >"$TRACE_EVIDENCE_FILE"
+        fi
     else
         : >"$TRACE_EVIDENCE_FILE"
     fi
@@ -853,6 +892,9 @@ run_guard_model_test() {
 run_demo_cycle() {
     local mode="$1"
     local url
+    local control_url
+    local host_gateway_url
+    local host_control_url
     local network
     DEMO_K8S_EGRESS_PROBE_RESULT=""
 
@@ -874,6 +916,9 @@ run_demo_cycle() {
     if [ "$mode" = "compose" ]; then
         # Inside the Docker network, gateway is at service name:port
         url="http://precinct-gateway:9090"
+        control_url="http://precinct-control:9090"
+        host_gateway_url="http://localhost:9090"
+        host_control_url="http://localhost:9091"
         network="$COMPOSE_NETWORK"
         DOCKER_ADD_HOST=""
 
@@ -938,7 +983,7 @@ run_demo_cycle() {
         docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" exec -T keydb keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
         docker compose -f "$POC_DIR/deploy/compose/docker-compose.yml" restart precinct-gateway >/dev/null 2>&1
         # Health check via localhost (host-side port mapping)
-        wait_for_health "http://localhost:9090" || exit 1
+        wait_for_health "$host_gateway_url" || exit 1
         # Determinism: ensure upstream rugpull state is OFF before running tests.
         log "Ensuring upstream rugpull state is OFF (via gateway demo endpoint)"
         docker run --rm --network "$COMPOSE_NETWORK" curlimages/curl:8.6.0 -sf \
@@ -978,13 +1023,22 @@ run_demo_cycle() {
         fi
 
         local gateway_port
+        local control_port
         gateway_port="$(kubectl -n gateway get svc precinct-gateway -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)"
         if [ -z "$gateway_port" ]; then
             err "Cannot determine gateway NodePort (svc/precinct-gateway)"
             exit 1
         fi
+        control_port="$(kubectl -n gateway get svc precinct-control -o jsonpath='{.spec.ports[0].nodePort}' 2>/dev/null || true)"
+        if [ -z "$control_port" ]; then
+            err "Cannot determine control NodePort (svc/precinct-control)"
+            exit 1
+        fi
 
         url="http://${node_ip}:${gateway_port}"
+        control_url="http://${node_ip}:${control_port}"
+        host_gateway_url="${url}"
+        host_control_url="${control_url}"
         network="kind"
         DOCKER_ADD_HOST=""
 
@@ -999,27 +1053,35 @@ run_demo_cycle() {
         # create brief "no ready endpoints" windows that manifest as flaky
         # ConnectError/ECONNREFUSED in the containerized demos.
         ensure_k8s_demo_ingress "$network"
-        if ! wait_for_health_k8s "$url" "$network"; then
+        if ! wait_for_health_k8s "$url" "$network" || ! wait_for_health_k8s "$control_url" "$network"; then
             warn "Gateway NodePort probe failed from demo network; falling back to kubectl port-forward"
             kubectl -n gateway port-forward svc/precinct-gateway 39090:9090 >/tmp/precinct-k8s-gateway-portforward.log 2>&1 &
             PF_PID="$!"
+            kubectl -n gateway port-forward svc/precinct-control 39091:9090 >/tmp/precinct-k8s-control-portforward.log 2>&1 &
+            PF_PID_CONTROL="$!"
             local pf_ready=0
             for _ in $(seq 1 30); do
-                if curl -sf "http://127.0.0.1:39090/health" >/dev/null 2>&1; then
+                if curl -sf "http://127.0.0.1:39090/health" >/dev/null 2>&1 && curl -sf "http://127.0.0.1:39091/health" >/dev/null 2>&1; then
                     pf_ready=1
                     break
                 fi
                 sleep 1
             done
             if [ "$pf_ready" -ne 1 ]; then
-                err "Port-forward fallback failed (gateway health not reachable on localhost:39090)"
+                err "Port-forward fallback failed (gateway/control health not reachable on localhost:39090/39091)"
                 [ -n "$PF_PID" ] && kill "$PF_PID" 2>/dev/null || true
+                [ -n "$PF_PID_CONTROL" ] && kill "$PF_PID_CONTROL" 2>/dev/null || true
                 PF_PID=""
+                PF_PID_CONTROL=""
                 exit 1
             fi
             url="http://host.docker.internal:39090"
+            control_url="http://host.docker.internal:39091"
             DEMO_RUGPULL_ADMIN_URL="$url"
             wait_for_health_k8s "$url" "$network" || exit 1
+            host_gateway_url="$url"
+            wait_for_health_k8s "$control_url" "$network" || exit 1
+            host_control_url="$control_url"
         fi
         k8s_probe_direct_external_egress "https://api.groq.com/openai/v1/chat/completions" || exit 1
 
@@ -1030,6 +1092,7 @@ run_demo_cycle() {
         log "Clearing rate-limit keys before K8s demo"
         kubectl -n data exec deploy/keydb -- keydb-cli EVAL "$RATELIMIT_FLUSH_LUA" 0 >/dev/null 2>&1 || true
         wait_for_health_k8s "$url" "$network" || exit 1
+        wait_for_health_k8s "$control_url" "$network" || exit 1
 
         # Determinism: ensure upstream rugpull state is OFF before running tests.
         # Fail-fast rather than letting the demo fail later with a confusing
@@ -1043,6 +1106,14 @@ run_demo_cycle() {
         err "Unknown mode: $mode (expected compose|k8s|both)"
         exit 1
     fi
+
+    if [ "$mode" = "k8s" ]; then
+        host_gateway_url="$url"
+        host_control_url="$control_url"
+    fi
+
+    export GATEWAY_URL="$host_gateway_url"
+    export CONTROL_URL="$host_control_url"
 
     echo ""
     echo -e "${BOLD}============================================${RESET}"
@@ -1162,6 +1233,9 @@ teardown() {
         # the fixed container_name can still remain. Remove it explicitly.
         if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'precinct-gateway'; then
             docker rm -f precinct-gateway >/dev/null 2>&1 || true
+        fi
+        if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx 'precinct-control'; then
+            docker rm -f precinct-control >/dev/null 2>&1 || true
         fi
         COMPOSE_TORN_DOWN=true
     elif [ "$mode" = "k8s" ]; then

@@ -400,12 +400,16 @@ gateway_post "/v1/ingress/submit" "{
     \"action\": \"ingress.admit\",
     \"resource\": \"ingress/event\",
     \"attributes\": {
+      \"connector_type\": \"webhook\",
       \"connector_id\": \"compose-webhook\",
       \"connector_signature\": \"${CONNECTOR_SIG}\",
       \"source_id\": \"compose-webhook\",
       \"source_principal\": \"${SPIFFE_ID}\",
       \"event_id\": \"event-${RUN_ID}-replay\",
-      \"event_timestamp\": \"${NOW_UTC}\"
+      \"nonce\": \"nonce-${RUN_ID}-replay\",
+      \"event_timestamp\": \"${NOW_UTC}\",
+      \"payload\": {\"message\":\"compose replay primer\"},
+      \"requires_step_up\": false
     }
   }
 }" "${SPIFFE_ID}"
@@ -435,12 +439,16 @@ gateway_post "/v1/ingress/submit" "{
     \"action\": \"ingress.admit\",
     \"resource\": \"ingress/event\",
     \"attributes\": {
+      \"connector_type\": \"webhook\",
       \"connector_id\": \"compose-webhook\",
       \"connector_signature\": \"${CONNECTOR_SIG}\",
       \"source_id\": \"compose-webhook\",
       \"source_principal\": \"${SPIFFE_ID}\",
       \"event_id\": \"event-${RUN_ID}-replay\",
-      \"event_timestamp\": \"${NOW_UTC}\"
+      \"nonce\": \"nonce-${RUN_ID}-replay\",
+      \"event_timestamp\": \"${NOW_UTC}\",
+      \"payload\": {\"message\":\"compose replay duplicate\"},
+      \"requires_step_up\": false
     }
   }
 }" "${SPIFFE_ID}"
@@ -476,12 +484,16 @@ gateway_post "/v1/ingress/submit" "{
     \"action\": \"ingress.admit\",
     \"resource\": \"ingress/event\",
     \"attributes\": {
+      \"connector_type\": \"webhook\",
       \"connector_id\": \"compose-webhook\",
       \"connector_signature\": \"${CONNECTOR_SIG}\",
       \"source_id\": \"compose-webhook\",
       \"source_principal\": \"${SPIFFE_ID}\",
       \"event_id\": \"event-${RUN_ID}-stale\",
-      \"event_timestamp\": \"${STALE_UTC}\"
+      \"nonce\": \"nonce-${RUN_ID}-stale\",
+      \"event_timestamp\": \"${STALE_UTC}\",
+      \"payload\": {\"message\":\"compose stale event\"},
+      \"requires_step_up\": false
     }
   }
 }" "${SPIFFE_ID}"
@@ -492,10 +504,10 @@ INGRESS_STALE_DECISION_ID="$(extract_json_field "$RESP_BODY" "decision_id")"
 INGRESS_STALE_TRACE_ID="$(extract_json_field "$RESP_BODY" "trace_id")"
 assert_plane_correlation "Ingress stale deny" "$RESP_BODY" "${SESSION_ID}"
 
-if [ "$RESP_CODE" = "403" ] && [ "$INGRESS_STALE_REASON" = "INGRESS_FRESHNESS_STALE" ]; then
+if [ "$RESP_CODE" = "202" ] && [ "$INGRESS_STALE_REASON" = "INGRESS_FRESHNESS_STALE" ]; then
     log_pass "Ingress stale event denied with deterministic reason code"
 else
-    log_fail "Ingress stale denied path" "Expected 403/INGRESS_FRESHNESS_STALE, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
+    log_fail "Ingress stale denied path" "Expected 202/INGRESS_FRESHNESS_STALE, got code=${RESP_CODE} body=${RESP_BODY:0:240}"
 fi
 
 reset_rate_limit_state "${SPIFFE_ID}"
@@ -1185,7 +1197,7 @@ fi
 
 log_subheader "F4: Conformance report artifact includes audit references"
 
-REPORT_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}/v1/connectors/report" -H "X-SPIFFE-ID: ${SPIFFE_ID}")
+REPORT_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "${CONTROL_URL}/v1/connectors/report" -H "X-SPIFFE-ID: ${SPIFFE_ID}")
 REPORT_CODE=$(echo "$REPORT_RESPONSE" | tail -n1)
 REPORT_BODY=$(echo "$REPORT_RESPONSE" | sed '$d')
 
@@ -1215,7 +1227,7 @@ fi
 
 log_subheader "F4.5: Admin RuleOps endpoint correlation metadata"
 
-RULEOPS_ACTIVE_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "${GATEWAY_URL}/admin/dlp/rulesets/active" -H "X-SPIFFE-ID: ${SPIFFE_ID}")
+RULEOPS_ACTIVE_RESPONSE=$(curl -s -w "\n%{http_code}" -X GET "${CONTROL_URL}/admin/dlp/rulesets/active" -H "X-SPIFFE-ID: ${SPIFFE_ID}")
 RULEOPS_ACTIVE_CODE=$(echo "$RULEOPS_ACTIVE_RESPONSE" | tail -n1)
 RULEOPS_ACTIVE_BODY=$(echo "$RULEOPS_ACTIVE_RESPONSE" | sed '$d')
 RULEOPS_ACTIVE_DECISION_ID="$(extract_json_field "$RULEOPS_ACTIVE_BODY" "decision_id")"
@@ -1230,7 +1242,8 @@ fi
 log_subheader "F5: Audit evidence for multi-plane decisions"
 sleep 1
 
-AUDIT_LINES=$($DC logs --no-log-prefix --tail 400 precinct-gateway 2>/dev/null | grep "${RUN_ID}" || true)
+RECENT_AUDIT_LINES=$($DC logs --no-log-prefix --tail 400 precinct-gateway precinct-control 2>/dev/null || true)
+AUDIT_LINES=$(printf "%s" "$RECENT_AUDIT_LINES" | grep "${RUN_ID}" || true)
 if [ -n "$AUDIT_LINES" ]; then
     log_pass "Audit contains events correlated to Phase 3 run id"
 else
@@ -1245,16 +1258,16 @@ for reason in INGRESS_ALLOW INGRESS_REPLAY_DETECTED INGRESS_FRESHNESS_STALE INGR
     fi
 done
 
-if [ -n "$CONNECTOR_DECISION_ID" ] && $DC logs --no-log-prefix --tail 400 precinct-gateway 2>/dev/null | grep -q "${CONNECTOR_DECISION_ID}"; then
+if [ -n "$CONNECTOR_DECISION_ID" ] && grep -q "${CONNECTOR_DECISION_ID}" <<<"$RECENT_AUDIT_LINES"; then
     log_pass "Audit log contains conformance report decision id"
 else
-    log_fail "Audit linkage for conformance report decision id" "decision id ${CONNECTOR_DECISION_ID:-<empty>} not found in gateway audit logs"
+    log_fail "Audit linkage for conformance report decision id" "decision id ${CONNECTOR_DECISION_ID:-<empty>} not found in gateway/control audit logs"
 fi
 
-if [ -n "$RULEOPS_ACTIVE_DECISION_ID" ] && $DC logs --no-log-prefix --tail 400 precinct-gateway 2>/dev/null | grep -q "${RULEOPS_ACTIVE_DECISION_ID}"; then
+if [ -n "$RULEOPS_ACTIVE_DECISION_ID" ] && grep -q "${RULEOPS_ACTIVE_DECISION_ID}" <<<"$RECENT_AUDIT_LINES"; then
     log_pass "Audit log contains RuleOps active decision id"
 else
-    log_fail "Audit linkage for RuleOps active decision id" "decision id ${RULEOPS_ACTIVE_DECISION_ID:-<empty>} not found in gateway audit logs"
+    log_fail "Audit linkage for RuleOps active decision id" "decision id ${RULEOPS_ACTIVE_DECISION_ID:-<empty>} not found in gateway/control audit logs"
 fi
 
 log_subheader "F6: Machine-readable artifact capture"

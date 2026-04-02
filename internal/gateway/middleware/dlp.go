@@ -320,34 +320,101 @@ func (c *TrustedAgentDLPConfig) IsTrustedAgent(spiffeID string) bool {
 // the full body is returned unchanged so DLP scanning is not bypassed.
 // OC-xj4w.
 func extractUserMessageContent(body []byte) []byte {
-	var payload struct {
-		Messages []struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
-		} `json:"messages"`
-	}
-
-	if err := json.Unmarshal(body, &payload); err != nil || len(payload.Messages) == 0 {
-		// Not a chat completion request or malformed -- scan everything.
+	var envelope map[string]json.RawMessage
+	if err := json.Unmarshal(body, &envelope); err != nil {
 		return body
 	}
 
-	var userContent strings.Builder
-	for _, msg := range payload.Messages {
-		if msg.Role != "system" {
-			if userContent.Len() > 0 {
-				userContent.WriteString("\n")
+	for _, key := range []string{"messages", "input"} {
+		raw, ok := envelope[key]
+		if !ok {
+			continue
+		}
+		extracted, recognized := extractConversationContent(raw)
+		if !recognized {
+			return body
+		}
+		if extracted == "" {
+			return nil
+		}
+		return []byte(extracted)
+	}
+
+	// Not a recognized structured conversation payload -- scan everything.
+	return body
+}
+
+func extractConversationContent(raw json.RawMessage) (string, bool) {
+	var messages []map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &messages); err != nil || len(messages) == 0 {
+		return "", false
+	}
+
+	var content strings.Builder
+	for _, msg := range messages {
+		role := decodeJSONString(msg["role"])
+		if role == "system" {
+			continue
+		}
+
+		text := extractTextPayload(msg["content"])
+		if text == "" {
+			continue
+		}
+		if content.Len() > 0 {
+			content.WriteString("\n")
+		}
+		content.WriteString(text)
+	}
+
+	return content.String(), true
+}
+
+func extractTextPayload(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	if s := decodeJSONString(raw); s != "" {
+		return s
+	}
+
+	var items []json.RawMessage
+	if err := json.Unmarshal(raw, &items); err == nil {
+		parts := make([]string, 0, len(items))
+		for _, item := range items {
+			if part := extractTextPayload(item); part != "" {
+				parts = append(parts, part)
 			}
-			userContent.WriteString(msg.Content)
+		}
+		return strings.Join(parts, "\n")
+	}
+
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil {
+		return ""
+	}
+
+	for _, key := range []string{"text", "input_text", "content", "value"} {
+		if nested, ok := object[key]; ok {
+			if text := extractTextPayload(nested); text != "" {
+				return text
+			}
 		}
 	}
 
-	// If there are no non-system messages, return empty (nothing to scan).
-	if userContent.Len() == 0 {
-		return nil
-	}
+	return ""
+}
 
-	return []byte(userContent.String())
+func decodeJSONString(raw json.RawMessage) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	var value string
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return ""
+	}
+	return value
 }
 
 func shouldSkipDLPScan(r *http.Request) bool {

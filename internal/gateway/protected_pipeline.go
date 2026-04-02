@@ -24,7 +24,7 @@ func (g *Gateway) buildProtectedPipeline(inner http.Handler) http.Handler {
 	handler = middleware.TokenSubstitution(handler, g.spikeRedeemer, g.auditor, middleware.NewToolRegistryScopeResolver(g.registry))
 	handler = middleware.CircuitBreakerMiddleware(handler, g.circuitBreaker)
 	handler = middleware.RateLimitMiddleware(handler, g.rateLimiter)
-	handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig)
+	handler = middleware.DeepScanMiddleware(handler, g.deepScanner, g.riskConfig, g.trustedAgentDLP)
 
 	if g.extensionRegistry != nil {
 		handler = middleware.ExtensionSlot(handler, g.extensionRegistry, middleware.SlotPostAnalysis, g.auditor)

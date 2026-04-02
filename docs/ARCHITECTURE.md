@@ -412,8 +412,12 @@ Both run as admission webhooks. Order does not matter -- both must pass for the 
 
 `UIResourceRegistry` follows the same pattern.
 
-**When attestation is disabled (default for dev):**
+**When attestation is disabled (legacy dev-only path):**
 If `TOOL_REGISTRY_PUBLIC_KEY` is empty, hot-reload works without signature verification but emits a warning at startup and on every reload: "Registry hot-reload is enabled WITHOUT attestation. Unsigned updates will be accepted."
+
+Supported demo and zero-trust runtime profiles now ship attestation enabled by
+default for registry and OPA reload paths. Treat the unattested mode as a
+backward-compatibility fallback, not the recommended operating state.
 
 **Alternatives rejected:**
 - OPA bundle signing model extended to registries: OPA bundles use a different signing format. Reusing it would couple the registry to OPA internals.

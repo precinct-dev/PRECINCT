@@ -1,8 +1,15 @@
 # Known Third-Party Container Warnings
 
 This document catalogs log warnings from third-party components in the PRECINCT
-deployment stack. These are **expected behavior**, not bugs. They are documented
-here so operators and auditors are not surprised during security reviews.
+deployment stack that may still appear in supported environments. These are
+documented so operators and auditors are not surprised during security reviews.
+
+Notes on recently removed noise:
+
+- `GatewayClient sends X-SPIFFE-ID only for dev-mode identity...` was removed from the Python SDK for production-style clients.
+- `opa policy hot-reload enabled WITHOUT attestation...` and `tool-registry hot-reload enabled WITHOUT attestation...` are no longer expected in the supported demo/runtime paths because attestation is wired by default.
+- `stream close failed (fs_stream_close_failed)` is no longer expected from the supported gateway/control startup path.
+- `TLS handshake error from <IP>: EOF` is no longer expected from `spike-nexus` in local K8s because the local overlay uses an mTLS-aware exec probe.
 
 ## SPIRE Server
 
@@ -39,29 +46,16 @@ here so operators and auditors are not surprised during security reviews.
   registration completes. The gateway's SPIKE client retries automatically.
 - **Action:** None required. Self-resolving within 5-10 seconds.
 
-## SPIKE Keeper and SPIKE Nexus
+## SPIKE Keeper
 
-**Warning:** `stream close failed (fs_stream_close_failed)`
-
-- **Source:** SPIKE HTTP request body cleanup
-- **Severity:** Cosmetic
-- **Explanation:** SPIKE logs a warning when HTTP request body streams are
-  closed during normal request processing. This is an artifact of SPIKE's
-  internal stream lifecycle management and does not indicate data loss or
-  failed operations. The audit trail confirms all operations complete
-  successfully.
-- **Action:** None required. Upstream SPIKE issue.
-
-**Error (Keeper only):** `TLS handshake error from <IP>: EOF`
+**Error (Keeper only, local K8s):** `TLS handshake error from <IP>: EOF`
 
 - **Source:** Kubernetes liveness/readiness probes
 - **Severity:** Cosmetic (K8s deployments only)
-- **Explanation:** SPIKE Keeper uses TCP socket probes on port 8443 (its mTLS
-  port). The kubelet opens a TCP connection, receives the TLS ServerHello, then
-  closes without completing the handshake. Keeper logs this as a TLS error.
-  This is by design: Keeper's `PeerCanTalkToKeeper()` rejects its own SVID,
-  making HTTP-based health probes impossible. TCP dial proves the listener is
-  up without requiring mTLS authorization.
+- **Explanation:** SPIKE Keeper still uses a TCP socket probe on port 8443 (its
+  mTLS port). The kubelet opens a TCP connection, then closes without
+  completing an mTLS exchange. Keeper logs this as a TLS error. This is a
+  probe artifact, not an application failure.
 - **Action:** None required. Expected K8s probe behavior.
 
 ## OpenClaw
@@ -102,4 +96,4 @@ indicate a configuration issue:
 | `unsigned updates will be accepted` | Missing attestation keys | Set `TOOL_REGISTRY_PUBLIC_KEY` and `OPA_POLICY_PUBLIC_KEY` env vars |
 | `failed to load guard model API key from SPIKE` | SPIKE Nexus unreachable at startup | Ensure spike-secret-seeder completes before gateway starts |
 | `exporter export timeout` | OTel collector not running | Only set `OTEL_EXPORTER_OTLP_ENDPOINT` when Phoenix stack is active |
-| `token exchange config not loaded` | Missing signing key | Set `TOKEN_EXCHANGE_SIGNING_KEY` env var |
+| `token exchange config not loaded` | Optional token-exchange endpoint disabled | Informational only. Provide `TOKEN_EXCHANGE_SIGNING_KEY` and token-exchange config only if enabling that feature |

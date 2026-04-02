@@ -36,6 +36,13 @@ var principalMappings = []principalMapping{
 	{"external/", 4, "external_user", []string{"read"}},
 }
 
+var kubernetesSystemServiceAccounts = map[string]map[string]struct{}{
+	"gateway": {
+		"precinct-gateway": {},
+		"precinct-control": {},
+	},
+}
+
 // ResolvePrincipalRole resolves a SPIFFE ID to a PrincipalRole based on the
 // path prefix hierarchy. The trustDomain parameter is the expected trust domain;
 // if the SPIFFE ID belongs to a different domain, anonymous is returned.
@@ -95,6 +102,10 @@ func ResolvePrincipalRole(spiffeID string, trustDomain string, authMethod string
 		}
 	}
 
+	if role, ok := resolveKubernetesPrincipal(path, extractedDomain, authMethod); ok {
+		return role
+	}
+
 	// No matching prefix: anonymous.
 	return PrincipalRole{
 		Level:        5,
@@ -103,4 +114,47 @@ func ResolvePrincipalRole(spiffeID string, trustDomain string, authMethod string
 		TrustDomain:  extractedDomain,
 		AuthMethod:   authMethod,
 	}
+}
+
+func resolveKubernetesPrincipal(path string, trustDomain string, authMethod string) (PrincipalRole, bool) {
+	parts := strings.Split(path, "/")
+	if len(parts) != 4 || parts[0] != "ns" || parts[2] != "sa" {
+		return PrincipalRole{}, false
+	}
+
+	namespace := strings.TrimSpace(parts[1])
+	serviceAccount := strings.TrimSpace(parts[3])
+	if namespace == "" || serviceAccount == "" {
+		return PrincipalRole{}, false
+	}
+
+	role := "agent"
+	level := 3
+	capabilities := []string{"read", "write", "execute"}
+	if isKubernetesSystemServiceAccount(namespace, serviceAccount) {
+		role = "system"
+		level = 0
+		capabilities = []string{"admin", "read", "write", "execute", "delegate"}
+	}
+
+	caps := make([]string, len(capabilities))
+	copy(caps, capabilities)
+
+	return PrincipalRole{
+		Level:        level,
+		Role:         role,
+		Capabilities: caps,
+		TrustDomain:  trustDomain,
+		AuthMethod:   authMethod,
+	}, true
+}
+
+func isKubernetesSystemServiceAccount(namespace string, serviceAccount string) bool {
+	serviceAccounts, ok := kubernetesSystemServiceAccounts[namespace]
+	if !ok {
+		return false
+	}
+
+	_, ok = serviceAccounts[serviceAccount]
+	return ok
 }

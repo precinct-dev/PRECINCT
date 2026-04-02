@@ -1,0 +1,16 @@
+# ------------------------------------------------------------------------------
+# Control Service RBAC
+#
+# ServiceAccount for the PRECINCT Control service. Used for SPIFFE identity via
+# the SPIRE Agent k8s workload attestor.
+#
+# SPIFFE ID: spiffe://precinct.poc/ns/gateway/sa/precinct-control
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: precinct-control
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: precinct-control
+    app.kubernetes.io/part-of: precinct-control

@@ -133,7 +133,10 @@ make clean
 
 ## 3. Service Architecture
 
-The Docker Compose stack runs 11 services plus 3 one-shot init containers. Services start in dependency order enforced by health checks and `service_completed_successfully` conditions.
+The Docker Compose stack runs the full local zero-trust runtime: identity,
+secrets, data, the enforcement data plane, and the extracted control plane.
+Services start in dependency order enforced by health checks and
+`service_completed_successfully` conditions.
 
 ### Identity Infrastructure
 
@@ -160,7 +163,8 @@ The Docker Compose stack runs 11 services plus 3 one-shot init containers. Servi
 | `keydb` | Redis-compatible store | Session persistence and distributed rate limiting. Ports 6379 (plain) and 6380 (mTLS) |
 | `keydb-svid-init` | One-shot init (prod profile) | Fetches SPIRE SVID and writes PEM files for KeyDB mTLS on port 6380. Only runs in `prod` profile |
 | `mock-mcp-server` | Simulated MCP tool server | Speaks MCP Streamable HTTP. Returns canned results for `tavily_search` and `echo` tools. Port 8082 |
-| `precinct-gateway` | 13-layer security gateway | The core security enforcement point. Port 9090 (HTTP) and 9443 (mTLS) |
+| `precinct-gateway` | 13-layer security gateway | Data-plane enforcement path for agent/tool traffic. Port 9090 (HTTP) and 9443 (mTLS) |
+| `precinct-control` | Control-plane service | Admin and governance APIs extracted from the gateway while preserving the same SPIFFE/SPIRE, OPA, and SPIKE trust chain. Port 9091 (host) / 9090 (container) |
 
 ### Service Startup Order
 
@@ -175,14 +179,18 @@ spire-server (healthy)
             -> spike-bootstrap (completed)
               -> spike-secret-seeder (completed)
                 -> precinct-gateway
+                -> precinct-control
 keydb (healthy) -> precinct-gateway
+keydb (healthy) -> precinct-control
 mock-mcp-server (healthy) -> precinct-gateway
+mock-mcp-server (healthy) -> precinct-control
 ```
 
-The gateway is the last service to start because it requires all identity, secret,
-session, and upstream services to be operational. The startup chain above shows
-the local/demo single-keeper path; the production-intent compose overlay expands
-the keeper stage to `spike-keeper-1`, `spike-keeper-2`, and `spike-keeper-3`.
+The PRECINCT runtime starts last because both `precinct-gateway` and
+`precinct-control` require identity, secret, session, and upstream services to
+be operational. The startup chain above shows the local/demo single-keeper
+path; the production-intent compose overlay expands the keeper stage to
+`spike-keeper-1`, `spike-keeper-2`, and `spike-keeper-3`.
 
 ---
 
@@ -487,7 +495,11 @@ the network is missing.
 
 ## 8. Environment Variables Quick Reference
 
-The gateway is configured via environment variables. The most commonly needed ones are listed here. For the full list, see the `precinct-gateway` service definition in `docker-compose.yml`.
+The runtime is configured via environment variables. The most commonly needed
+ones are listed here. `precinct-control` intentionally mirrors the gateway's
+zero-trust configuration surface where applicable (SPIFFE/SPIRE, SPIKE, OPA,
+attestation, tracing). For the full list, see the `precinct-gateway` and
+`precinct-control` service definitions in `docker-compose.yml`.
 
 ### Gateway Core
 

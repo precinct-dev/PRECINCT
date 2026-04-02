@@ -120,12 +120,15 @@ gateway_post "/v1/ingress/submit" "{
     \"action\":\"ingress.admit\",
     \"resource\":\"ingress/event\",
     \"attributes\":{
+      \"connector_type\":\"webhook\",
       \"connector_id\":\"openclaw-webhook\",
       \"connector_signature\":\"${CONNECTOR_SIG}\",
       \"source_id\":\"openclaw-webhook\",
       \"source_principal\":\"${SPIFFE_ID}\",
       \"event_id\":\"evt-${RUN_ID}-ingress\",
-      \"event_timestamp\":\"${NOW_UTC}\"
+      \"nonce\":\"nonce-${RUN_ID}-ingress\",
+      \"event_timestamp\":\"${NOW_UTC}\",
+      \"payload\":{\"channel\":\"openclaw\",\"message\":\"walking skeleton ingress allow\"}
     }
   }
 }" "${SPIFFE_ID}"

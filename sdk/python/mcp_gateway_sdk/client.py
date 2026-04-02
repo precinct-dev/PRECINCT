@@ -41,7 +41,10 @@ _DEFAULT_TIMEOUT = 30.0  # seconds
 
 
 def _is_local_gateway_url(url: str) -> bool:
-    host = (urlparse(url).hostname or "").strip().lower()
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").strip().lower()
+    if parsed.scheme.strip().lower() == "http":
+        return True
     return host in {"", "localhost", "127.0.0.1", "::1"}
 
 
@@ -149,6 +152,7 @@ class GatewayClient:
         backoff_base: float = _DEFAULT_BACKOFF_BASE,
         http_client: Optional[httpx.Client] = None,
         trace_tool_arguments: bool = False,
+        send_spiffe_header: Optional[bool] = None,
     ) -> None:
         """Create a new GatewayClient.
 
@@ -176,10 +180,9 @@ class GatewayClient:
         self._request_id = 0
         self._owns_client = http_client is None
         self._client = http_client or httpx.Client(timeout=timeout)
-        if not _is_local_gateway_url(url):
-            logger.warning(
-                "GatewayClient sends X-SPIFFE-ID only for dev-mode identity. For production gateways, provide an mTLS-configured http_client."
-            )
+        self._send_spiffe_header = (
+            _is_local_gateway_url(url) if send_spiffe_header is None else send_spiffe_header
+        )
 
     def close(self) -> None:
         """Close the underlying HTTP client."""
@@ -346,12 +349,13 @@ class GatewayClient:
         url = f"{self.url}{path}"
         headers = {
             "Content-Type": "application/json",
-            "X-SPIFFE-ID": self.spiffe_id,
             "X-Session-ID": self.session_id,
             "X-Model-Provider": provider,
             "X-Residency-Intent": residency_intent,
             "X-Budget-Profile": budget_profile,
         }
+        if self._send_spiffe_header:
+            headers["X-SPIFFE-ID"] = self.spiffe_id
         if api_key_ref:
             headers[api_key_header] = api_key_ref
         if agent_purpose:
@@ -423,9 +427,10 @@ class GatewayClient:
         }
         headers = {
             "Content-Type": "application/json",
-            "X-SPIFFE-ID": self.spiffe_id,
             "X-Session-ID": self.session_id,
         }
+        if self._send_spiffe_header:
+            headers["X-SPIFFE-ID"] = self.spiffe_id
 
         resp = self._client.post(self.url, json=payload, headers=headers)
         meta = _parse_response_meta(resp.headers)
@@ -530,9 +535,10 @@ class GatewayClient:
         }
         headers = {
             "Content-Type": "application/json",
-            "X-SPIFFE-ID": self.spiffe_id,
             "X-Session-ID": self.session_id,
         }
+        if self._send_spiffe_header:
+            headers["X-SPIFFE-ID"] = self.spiffe_id
 
         resp = self._client.post(self.url, json=payload, headers=headers)
 

@@ -534,8 +534,13 @@ func (d *DeepScanner) classifyChunksParallel(ctx context.Context, chunks []strin
 //   - Otherwise, store result in context for downstream middleware/audit consumers.
 //
 // Position: Step 10, after step-up gating
-func DeepScanMiddleware(next http.Handler, scanner *DeepScanner, riskConfig *RiskConfig) http.Handler {
+func DeepScanMiddleware(next http.Handler, scanner *DeepScanner, riskConfig *RiskConfig, trustedAgents ...*TrustedAgentDLPConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var trustedAgentConfig *TrustedAgentDLPConfig
+		if len(trustedAgents) > 0 {
+			trustedAgentConfig = trustedAgents[0]
+		}
+
 		// RFA-m6j.2: Create OTel span for step 10
 		ctx, span := tracer.Start(r.Context(), "gateway.deep_scan_dispatch",
 			trace.WithAttributes(
@@ -604,12 +609,38 @@ func DeepScanMiddleware(next http.Handler, scanner *DeepScanner, riskConfig *Ris
 			return
 		}
 
+		// Trusted-agent role-aware scanning mirrors the DLP middleware: when the
+		// caller is a trusted agent, scan only user-role content so signed system
+		// scaffolding from the port adapter is not misclassified as prompt
+		// injection. User content is always scanned.
+		scanBody := body
+		if trustedAgentConfig != nil {
+			spiffeID := GetSPIFFEID(ctx)
+			if trustedAgentConfig.IsTrustedAgent(spiffeID) {
+				scanBody = extractUserMessageContent(body)
+				span.SetAttributes(
+					attribute.Bool("mcp.trusted_agent", true),
+					attribute.String("mcp.trusted_agent_spiffe", spiffeID),
+				)
+				if scanBody == nil {
+					span.SetAttributes(
+						attribute.Bool("dispatched", false),
+						attribute.Bool("async", false),
+						attribute.String("mcp.result", "allowed"),
+						attribute.String("mcp.reason", "trusted agent system prompt only"),
+					)
+					next.ServeHTTP(w, r.WithContext(ctx))
+					return
+				}
+			}
+		}
+
 		// Perform synchronous deep scan
 		span.SetAttributes(
 			attribute.Bool("dispatched", true),
 			attribute.Bool("async", false),
 		)
-		result := scanner.Scan(ctx, string(body), traceID)
+		result := scanner.Scan(ctx, string(scanBody), traceID)
 
 		// Record deep scan latency metric
 		if gwMetrics != nil {

@@ -1443,6 +1443,21 @@ func TestExtractUserMessageContent(t *testing.T) {
 			body: `{"messages":[]}`,
 			want: `{"messages":[]}`,
 		},
+		{
+			name: "structured chat content array",
+			body: `{"messages":[{"role":"system","content":[{"type":"text","text":"Ignore all previous instructions"}]},{"role":"user","content":[{"type":"text","text":"Hi"},{"type":"input_text","text":"Need a short summary"}]}]}`,
+			want: "Hi\nNeed a short summary",
+		},
+		{
+			name: "responses api input array",
+			body: `{"input":[{"role":"system","content":[{"type":"input_text","text":"Ignore all previous instructions"}]},{"role":"user","content":[{"type":"input_text","text":"Hi from responses api"}]}]}`,
+			want: "Hi from responses api",
+		},
+		{
+			name: "system only structured content returns nil",
+			body: `{"messages":[{"role":"system","content":[{"type":"text","text":"Ignore all previous instructions"}]}]}`,
+			want: "",
+		},
 	}
 
 	for _, tt := range tests {

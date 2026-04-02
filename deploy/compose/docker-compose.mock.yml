@@ -11,3 +11,10 @@ services:
         condition: service_healthy
       mock-guard-model:
         condition: service_healthy
+
+  precinct-control:
+    depends_on:
+      mock-mcp-server:
+        condition: service_healthy
+      mock-guard-model:
+        condition: service_healthy

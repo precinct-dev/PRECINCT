@@ -13,7 +13,8 @@
   "models": {
     "providers": {
       "openai": {
-        "baseUrl": "http://precinct-gateway:9090/openai/v1",
+        "baseUrl": "http://precinct-gateway:9090/v1",
+        "api": "openai-completions",
         "apiKey": "${OPENAI_API_KEY}",
         "headers": {
           "X-SPIFFE-ID": "spiffe://poc.local/openclaw",
