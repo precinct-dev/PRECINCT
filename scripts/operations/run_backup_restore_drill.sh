@@ -134,6 +134,8 @@ jq -n \
   --arg generated_at "${NOW_UTC}" \
   --arg date "${DATE_UTC}" \
   --arg status "pass" \
+  --arg latest_json "docs/operations/artifacts/backup-restore-drill-latest.json" \
+  --arg latest_md "docs/operations/artifacts/backup-restore-drill-latest.md" \
   --arg keydb_backup "docs/operations/artifacts/backups/${TS_UTC}/keydb-dump.rdb" \
   --arg spike_backup_dir "docs/operations/artifacts/backups/${TS_UTC}/spike-nexus-data" \
   --arg audit_backup "docs/operations/artifacts/backups/${TS_UTC}/audit.jsonl" \
@@ -169,10 +171,16 @@ jq -n \
       }
     ],
     artifacts: [
+      $latest_json,
+      $latest_md
+    ],
+    runtime_artifacts: [
       $keydb_backup,
       $spike_backup_dir,
       $audit_backup
-    ]
+    ],
+    runtime_artifacts_tracked: false,
+    runtime_artifacts_note: "Runtime backup dumps are generated locally under docs/operations/artifacts/backups/ and are intentionally ignored by git."
   }' > "${LATEST_JSON}"
 
 cp "${LATEST_JSON}" "${STAMPED_JSON}"
@@ -199,12 +207,19 @@ docker compose restart keydb
 docker cp <container>:/tmp/audit.jsonl <backup>
 \`\`\`
 
-## Artifacts
+## Tracked Report Files
+
+- docs/operations/artifacts/backup-restore-drill-latest.json
+- docs/operations/artifacts/backup-restore-drill-latest.md
+
+## Local Runtime Artifacts
+
+These backups are generated in the operator workspace and are intentionally
+ignored by git. They are not part of the checked-in repository surface.
 
 - docs/operations/artifacts/backups/${TS_UTC}/keydb-dump.rdb
 - docs/operations/artifacts/backups/${TS_UTC}/spike-nexus-data
 - docs/operations/artifacts/backups/${TS_UTC}/audit.jsonl
-- docs/operations/artifacts/backup-restore-drill-latest.json
 EOF
 
 cp "${LATEST_MD}" "${STAMPED_MD}"

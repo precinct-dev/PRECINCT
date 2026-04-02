@@ -15,7 +15,7 @@ import (
 func TestV24AdminEndpointsEnforceSPIFFEAuth(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := gw.ControlHandler()
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets/create", bytes.NewBufferString(`{"ruleset_id":"rs-auth"}`))
 	req.Header.Set("Content-Type", "application/json")
@@ -40,7 +40,7 @@ func TestV24AdminEndpointsEnforceSPIFFEAuth(t *testing.T) {
 func TestV24ConnectorErrorsUseUnifiedGatewayEnvelope(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := gw.ControlHandler()
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/connectors/status", nil)
 	req.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
@@ -71,7 +71,7 @@ func TestV24ConnectorErrorsUseUnifiedGatewayEnvelope(t *testing.T) {
 func TestV24RuleOpsErrorsUseUnifiedGatewayEnvelope(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := gw.ControlHandler()
 
 	req := httptest.NewRequest(http.MethodPost, "/admin/dlp/rulesets/create", bytes.NewBufferString("{invalid json"))
 	req.Header.Set("Content-Type", "application/json")
@@ -100,7 +100,7 @@ func TestV24ProxySpanAttributesForEndpointEntries(t *testing.T) {
 
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := gw.ControlHandler()
 
 	req1 := httptest.NewRequest(http.MethodGet, "/v1/connectors/report", nil)
 	req1.Header.Set("X-SPIFFE-ID", "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev")
@@ -161,7 +161,7 @@ func stringField(v any) string {
 func findGatewayProxySpanByEndpoint(spans tracetest.SpanStubs, endpoint string) *tracetest.SpanStub {
 	for i := len(spans) - 1; i >= 0; i-- {
 		s := spans[i]
-		if s.Name != "gateway.proxy" {
+		if s.Name != "gateway.proxy" && s.Name != "gateway.control" {
 			continue
 		}
 		if got, ok := spanAttrString(s.Attributes, "mcp.v24.endpoint"); ok && got == endpoint {

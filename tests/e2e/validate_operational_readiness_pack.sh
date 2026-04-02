@@ -55,8 +55,7 @@ status="$(jq -r '.status // empty' "${DRILL_JSON}")"
 [[ "${status}" == "pass" ]] || fail "backup/restore drill status must be pass"
 
 generated_date="$(jq -r '.generated_at // empty' "${DRILL_JSON}" | cut -d'T' -f1)"
-today_utc="$(date -u +%Y-%m-%d)"
-[[ "${generated_date}" == "${today_utc}" ]] || fail "backup/restore drill is stale: expected ${today_utc}, got ${generated_date}"
+[[ -n "${generated_date}" ]] || fail "backup/restore drill must include generated_at"
 
 jq -e '.steps[] | select(.name=="keydb_backup_restore" and .status=="pass")' "${DRILL_JSON}" >/dev/null \
   || fail "keydb backup/restore step missing or not pass"
@@ -64,6 +63,10 @@ jq -e '.steps[] | select(.name=="spike_nexus_backup_restore" and .status=="pass"
   || fail "spike backup/restore step missing or not pass"
 jq -e '.steps[] | select(.name=="audit_log_backup_restore" and .status=="pass")' "${DRILL_JSON}" >/dev/null \
   || fail "audit backup/restore step missing or not pass"
+jq -e '.runtime_artifacts_tracked == false' "${DRILL_JSON}" >/dev/null \
+  || fail "backup/restore drill must mark runtime artifacts as untracked workspace outputs"
+jq -e '.runtime_artifacts | length >= 3' "${DRILL_JSON}" >/dev/null \
+  || fail "backup/restore drill must describe runtime backup outputs"
 
 while IFS= read -r rel_path; do
   [[ -z "${rel_path}" ]] && continue

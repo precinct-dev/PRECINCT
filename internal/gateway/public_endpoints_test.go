@@ -156,6 +156,33 @@ func TestExtractClientIP(t *testing.T) {
 	}
 }
 
+func TestExtractTrustedClientIP(t *testing.T) {
+	trusted, err := parseTrustedProxyCIDRs("10.0.0.0/8,192.168.0.0/16")
+	if err != nil {
+		t.Fatalf("parseTrustedProxyCIDRs: %v", err)
+	}
+
+	t.Run("untrusted remote ignores forwarded headers", func(t *testing.T) {
+		req := &http.Request{
+			RemoteAddr: "203.0.113.10:443",
+			Header:     http.Header{"X-Forwarded-For": []string{"198.51.100.7"}},
+		}
+		if got := extractTrustedClientIP(req, trusted); got != "203.0.113.10" {
+			t.Fatalf("extractTrustedClientIP() = %q, want %q", got, "203.0.113.10")
+		}
+	})
+
+	t.Run("trusted proxy returns first non-proxy address", func(t *testing.T) {
+		req := &http.Request{
+			RemoteAddr: "10.0.0.20:443",
+			Header:     http.Header{"X-Forwarded-For": []string{"198.51.100.7, 10.1.1.3"}},
+		}
+		if got := extractTrustedClientIP(req, trusted); got != "198.51.100.7" {
+			t.Fatalf("extractTrustedClientIP() = %q, want %q", got, "198.51.100.7")
+		}
+	})
+}
+
 // ---------------------------------------------------------------------------
 // Unit tests: publicEndpointWrapper
 // ---------------------------------------------------------------------------

@@ -119,6 +119,17 @@ func TestPublicHandler_AllowlistRouting(t *testing.T) {
 			t.Fatalf("status = %d, want 404", rec.Code)
 		}
 	})
+
+	t.Run("token exchange is not reachable by default", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/v1/auth/token-exchange", bytes.NewBufferString(`{}`))
+		rec := httptest.NewRecorder()
+
+		handler.ServeHTTP(rec, req)
+
+		if rec.Code != http.StatusNotFound {
+			t.Fatalf("status = %d, want 404", rec.Code)
+		}
+	})
 }
 
 func newProdPublicGatewayForTest(t *testing.T, allowlist string) *Gateway {

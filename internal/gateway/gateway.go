@@ -75,6 +75,7 @@ type Gateway struct {
 	trustedAgentDLP            *middleware.TrustedAgentDLPConfig // OC-xj4w: port-scoped trusted agent DLP overrides
 	rlmEngine                  *rlmGovernanceEngine              // OC-tjtj: RLM multi-agent lineage governance engine
 	tokenExchangeConfig        *TokenExchangeConfig              // OC-xkkc: token exchange credential mapping
+	publicTrustedProxies       []*net.IPNet                      // trusted proxy CIDRs for public endpoint client IP extraction
 }
 
 // New creates a new gateway instance
@@ -545,6 +546,10 @@ func New(cfg *Config) (*Gateway, error) {
 			slog.Info("token exchange endpoint enabled", "credentials", len(txCfg.Credentials))
 		}
 	}
+	publicTrustedProxies, err := parseTrustedProxyCIDRs(cfg.PublicTrustedProxyCIDRs)
+	if err != nil {
+		return nil, fmt.Errorf("invalid PUBLIC_TRUSTED_PROXY_CIDRS: %w", err)
+	}
 
 	return &Gateway{
 		config:                     cfg,
@@ -584,7 +589,18 @@ func New(cfg *Config) (*Gateway, error) {
 		adminAuthzAllowedSPIFFEIDs: precinctcontrol.NormalizeAdminAuthzAllowlist(cfg.AdminAuthzAllowedSPIFFEIDs),
 		rlmEngine:                  newRLMGovernanceEngine(),
 		tokenExchangeConfig:        tokenExchangeCfg,
+		publicTrustedProxies:       publicTrustedProxies,
 	}, nil
+}
+
+func (g *Gateway) publicEndpointConfig() PublicEndpointConfig {
+	cfg := DefaultPublicEndpointConfig()
+	if g != nil && len(g.publicTrustedProxies) > 0 {
+		cfg.ClientIPResolver = func(r *http.Request) string {
+			return extractTrustedClientIP(r, g.publicTrustedProxies)
+		}
+	}
+	return cfg
 }
 
 // Handler returns the HTTP handler with middleware chain
@@ -604,7 +620,7 @@ func (g *Gateway) Handler() http.Handler {
 		mux.Handle("/v1/auth/token-exchange",
 			publicEndpointWrapper(
 				tokenExchangeHandler(g.tokenExchangeConfig),
-				DefaultPublicEndpointConfig()))
+				g.publicEndpointConfig()))
 	}
 	mux.Handle("/", protected)
 
@@ -627,7 +643,7 @@ func (g *Gateway) ControlHandler() http.Handler {
 		mux.Handle("/v1/auth/token-exchange",
 			publicEndpointWrapper(
 				tokenExchangeHandler(g.tokenExchangeConfig),
-				DefaultPublicEndpointConfig()))
+				g.publicEndpointConfig()))
 	}
 
 	controlProxyTracer := otel.Tracer("precinct-gateway", trace.WithInstrumentationVersion("2.0.0"))
@@ -694,7 +710,7 @@ func (g *Gateway) PublicHandler() http.Handler {
 				exactPathHandler("/v1/auth/token-exchange",
 					publicEndpointWrapper(
 						tokenExchangeHandler(g.tokenExchangeConfig),
-						DefaultPublicEndpointConfig())))
+						g.publicEndpointConfig())))
 		}
 	}
 	if _, ok := allowlist["/"]; ok {

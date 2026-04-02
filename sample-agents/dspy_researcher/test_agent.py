@@ -37,18 +37,32 @@ from mcp_gateway_sdk import (
 )
 
 # Import agent-specific types
-from agent import (
-    GatewayWebSearch,
-    GatewayFileRead,
-    ResearchAgent,
-    ResearchPlan,
-    SearchSynthesis,
-    FileSynthesis,
-    ReportSynthesis,
-    format_report,
-    run_research,
-    SPIFFE_ID,
-)
+try:
+    from .agent import (
+        GatewayWebSearch,
+        GatewayFileRead,
+        ResearchAgent,
+        ResearchPlan,
+        SearchSynthesis,
+        FileSynthesis,
+        ReportSynthesis,
+        format_report,
+        run_research,
+        SPIFFE_ID,
+    )
+except ImportError:
+    from agent import (
+        GatewayWebSearch,
+        GatewayFileRead,
+        ResearchAgent,
+        ResearchPlan,
+        SearchSynthesis,
+        FileSynthesis,
+        ReportSynthesis,
+        format_report,
+        run_research,
+        SPIFFE_ID,
+    )
 import dspy
 
 logger = logging.getLogger("test_dspy_researcher")

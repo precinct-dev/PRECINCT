@@ -164,7 +164,7 @@ func TestGatewayStartsWithoutSeededConnectorAcrossProfiles(t *testing.T) {
 func TestConnectorEndpointsAndIngressEnforcement(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := newPhase3CompositeHandler(gw)
 
 	manifest := connectorManifest{
 		ConnectorID:     "connector-e2e",
@@ -271,7 +271,7 @@ func TestConnectorEndpointsAndIngressEnforcement(t *testing.T) {
 func TestConnectorMutationEndpointsRequireAdminAuthorization(t *testing.T) {
 	gw, _ := newPhase3TestGateway(t)
 	gw.rateLimiter = middleware.NewRateLimiter(100000, 100000, middleware.NewInMemoryRateLimitStore())
-	h := gw.Handler()
+	h := newPhase3CompositeHandler(gw)
 
 	manifest := connectorManifest{
 		ConnectorID:     "connector-admin-authz",
