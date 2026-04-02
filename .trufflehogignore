@@ -1,0 +1,15 @@
+(^|/)\.cache(/|$)
+(^|/)\.git(/|$)
+(^|/)\.terraform(/|$)
+(^|/)\.venv(/|$)
+(^|/)build(/|$)
+(^|/)data(/|$)
+(^|/)sample-agents/[^/]+/\.venv(/|$)
+(^|/)tests/e2e/artifacts(/|$)
+(^|/)use_case_specific(/|$)
+(^|/)\.vault(/|$)
+(^|/)\.env$
+(^|/)\.env\.local$
+(^|/)\.env\.[^.]+\.local$
+(^|/)gateway$
+(^|/)precinct-control$

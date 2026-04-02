@@ -20,7 +20,7 @@ sha256_file() {
 
 [ -f "${MANIFEST_PATH}" ] || fail "missing manifest: ${MANIFEST_PATH}"
 
-for scan in gosec trivy_fs trivy_image; do
+for scan in gosec trivy_fs trivy_image trufflehog; do
   status="$(jq -r ".scans.${scan}.status" "${MANIFEST_PATH}")"
   [ "${status}" = "pass" ] || fail "scan ${scan} status=${status}; expected pass"
 done
@@ -31,9 +31,11 @@ required_artifacts=(
   "raw/trivy-fs-results.json"
   "raw/trivy-image-results.sarif"
   "raw/trivy-image-results.json"
+  "raw/trufflehog-results.jsonl"
   "summaries/gosec-summary.json"
   "summaries/trivy-fs-summary.json"
   "summaries/trivy-image-summary.json"
+  "summaries/trufflehog-summary.json"
 )
 
 for rel in "${required_artifacts[@]}"; do

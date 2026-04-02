@@ -15,7 +15,7 @@
 #        sh /opt/spire/conf/server/register.sh
 #
 #   2. Makefile target (wraps kubectl exec):
-#      make -C infra/eks/spire deploy-entries
+#      make -C deploy/terraform/spire deploy-entries
 #      # or from POC root:
 #      make k8s-register-spire
 #
@@ -48,7 +48,7 @@ data:
     # SPIRE workload registration script (EKS / k8s_psat attestation).
     #
     # Usage (two options):
-    #   1. Makefile:  make -C infra/eks/spire deploy-entries
+    #   1. Makefile:  make -C deploy/terraform/spire deploy-entries
     #                 make k8s-register-spire   (from POC root)
     #   2. Manual:    kubectl -n spire-system exec spire-server-0 -- \
     #                   sh -c "$(cat register.sh)"

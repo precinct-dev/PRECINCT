@@ -51,7 +51,6 @@ func main() {
 	}
 
 	proxy := httputil.NewSingleHostReverseProxy(upstream)
-	baseDirector := proxy.Director
 	proxy.Transport = transport
 	proxy.ModifyResponse = func(resp *http.Response) error {
 		if !isStreamingChatCompletionResponse(resp) {
@@ -81,18 +80,19 @@ func main() {
 		log.Printf("bridge proxy error: %v", err)
 		http.Error(w, "upstream bridge error", http.StatusBadGateway)
 	}
-	proxy.Director = func(req *http.Request) {
-		baseDirector(req)
-		req.Host = upstream.Host
-		req.URL.Path = rewriteOpenAICompatPath(req.URL.Path)
-		if req.URL.RawPath != "" {
-			req.URL.RawPath = rewriteOpenAICompatPath(req.URL.RawPath)
+	proxy.Rewrite = func(req *httputil.ProxyRequest) {
+		req.SetURL(upstream)
+		req.SetXForwarded()
+		req.Out.Host = upstream.Host
+		req.Out.URL.Path = rewriteOpenAICompatPath(req.Out.URL.Path)
+		if req.Out.URL.RawPath != "" {
+			req.Out.URL.RawPath = rewriteOpenAICompatPath(req.Out.URL.RawPath)
 		}
-		if err := normalizeModelAlias(req, cfg.ModelAliases); err != nil {
+		if err := normalizeModelAlias(req.Out, cfg.ModelAliases); err != nil {
 			log.Printf("bridge request normalization skipped: %v", err)
 		}
 		if mode == "header" && strings.TrimSpace(cfg.SPIFFEIDHeader) != "" {
-			req.Header.Set("X-SPIFFE-ID", cfg.SPIFFEIDHeader)
+			req.Out.Header.Set("X-SPIFFE-ID", cfg.SPIFFEIDHeader)
 		}
 	}
 
@@ -177,7 +177,7 @@ func buildTransport(cfg *config, upstream *url.URL) (http.RoundTripper, func(), 
 			for _, raw := range cfg.UpstreamAllowedSPIFFEIDs {
 				id, err := spiffeid.FromString(raw)
 				if err != nil {
-					source.Close()
+					closeX509Source(source)
 					cancel()
 					return nil, nil, "", err
 				}
@@ -189,13 +189,22 @@ func buildTransport(cfg *config, upstream *url.URL) (http.RoundTripper, func(), 
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		transport.TLSClientConfig = tlsCfg
 		return transport, func() {
-			source.Close()
+			closeX509Source(source)
 			cancel()
 		}, mode, nil
 	case "header", "none":
 		return http.DefaultTransport.(*http.Transport).Clone(), nil, mode, nil
 	default:
 		return nil, nil, "", errors.New("unsupported bridge mode")
+	}
+}
+
+func closeX509Source(source *workloadapi.X509Source) {
+	if source == nil {
+		return
+	}
+	if err := source.Close(); err != nil {
+		log.Printf("bridge source close error: %v", err)
 	}
 }
 
@@ -225,7 +234,7 @@ type openAIChatCompletionResponse struct {
 	Created int64  `json:"created"`
 	Model   string `json:"model"`
 	Choices []struct {
-		Index        int `json:"index"`
+		Index        int    `json:"index"`
 		FinishReason string `json:"finish_reason"`
 		Message      struct {
 			Role    string `json:"role"`
@@ -240,8 +249,8 @@ type openAIChatCompletionChunk struct {
 	Created int64  `json:"created"`
 	Model   string `json:"model"`
 	Choices []struct {
-		Index        int `json:"index"`
-		Delta        struct {
+		Index int `json:"index"`
+		Delta struct {
 			Role    string `json:"role,omitempty"`
 			Content string `json:"content,omitempty"`
 		} `json:"delta"`
@@ -329,8 +338,8 @@ func synthesizeChatCompletionStream(body []byte) ([]byte, error) {
 		Model:   completion.Model,
 	}
 	firstChunk.Choices = append(firstChunk.Choices, struct {
-		Index        int `json:"index"`
-		Delta        struct {
+		Index int `json:"index"`
+		Delta struct {
 			Role    string `json:"role,omitempty"`
 			Content string `json:"content,omitempty"`
 		} `json:"delta"`
@@ -354,14 +363,14 @@ func synthesizeChatCompletionStream(body []byte) ([]byte, error) {
 		Model:   completion.Model,
 	}
 	finalChunk.Choices = append(finalChunk.Choices, struct {
-		Index        int `json:"index"`
-		Delta        struct {
+		Index int `json:"index"`
+		Delta struct {
 			Role    string `json:"role,omitempty"`
 			Content string `json:"content,omitempty"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	}{
-		Index: choice.Index,
+		Index:        choice.Index,
 		FinishReason: &finishReason,
 	})
 

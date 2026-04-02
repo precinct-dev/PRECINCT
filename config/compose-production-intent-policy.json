@@ -13,6 +13,13 @@
         "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
       }
     },
+    "precinct-control": {
+      "image_env": "PROD_CONTROL_IMAGE",
+      "cosign": {
+        "certificate_identity_regex": "^https://github.com/precinct-dev/PRECINCT/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$",
+        "certificate_oidc_issuer": "https://token.actions.githubusercontent.com"
+      }
+    },
     "spire-entry-registrar": {
       "image_env": "PROD_SPIRE_ENTRY_REGISTRAR_IMAGE",
       "cosign": {

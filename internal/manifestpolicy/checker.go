@@ -33,20 +33,44 @@ type Result struct {
 
 var (
 	allowedNodePortPaths = map[string]string{
-		"infra/eks/observability/phoenix/phoenix-service.yaml": "operator diagnostics UI exception",
+		"deploy/k8s/base/observability/phoenix/phoenix-service.yaml":  "operator diagnostics UI exception",
+		"deploy/terraform/observability/phoenix/phoenix-service.yaml": "operator diagnostics UI exception",
+		"infra/eks/observability/phoenix/phoenix-service.yaml":        "operator diagnostics UI exception",
 	}
 	allowedHostPathPaths = map[string]string{
-		"infra/eks/gateway/gateway-deployment.yaml":             "spire workload socket mount",
-		"infra/eks/mcp-server/mcp-server-deployment.yaml":       "spire workload socket mount",
-		"infra/eks/s3-mcp-server/s3-mcp-server-deployment.yaml": "spire workload socket mount",
-		"infra/eks/spike/keeper-deployment.yaml":                "spire workload socket mount",
-		"infra/eks/spike/nexus-deployment.yaml":                 "spire workload socket mount",
-		"infra/eks/spike/seeder-job.yaml":                       "spire workload socket mount",
-		"infra/eks/spike/bootstrap-job.yaml":                    "spire workload socket mount",
-		"infra/eks/spire/agent-daemonset.yaml":                  "spire agent socket exposure",
+		"deploy/k8s/base/gateway/gateway-deployment.yaml":                                      "spire workload socket mount",
+		"deploy/k8s/base/mcp-server/mcp-server-deployment.yaml":                                "spire workload socket mount",
+		"deploy/terraform/gateway/control-deployment.yaml":                                     "spire workload socket mount",
+		"deploy/terraform/gateway/gateway-deployment.yaml":                                     "spire workload socket mount",
+		"deploy/terraform/mcp-server/mcp-server-deployment.yaml":                               "spire workload socket mount",
+		"deploy/terraform/observability/opensearch/opensearch-audit-forwarder-deployment.yaml": "audit forwarder host log access and SPIRE socket mount",
+		"deploy/terraform/observability/opensearch/opensearch-dashboards-deployment.yaml":      "spire workload socket mount",
+		"deploy/terraform/observability/opensearch/opensearch-statefulset.yaml":                "spire workload socket mount",
+		"deploy/terraform/s3-mcp-server/s3-mcp-server-deployment.yaml":                         "spire workload socket mount",
+		"deploy/terraform/spike/bootstrap-job.yaml":                                            "spire workload socket mount",
+		"deploy/terraform/spike/keeper-2-deployment.yaml":                                      "spire workload socket mount",
+		"deploy/terraform/spike/keeper-3-deployment.yaml":                                      "spire workload socket mount",
+		"deploy/terraform/spike/keeper-deployment.yaml":                                        "spire workload socket mount",
+		"deploy/terraform/spike/nexus-deployment.yaml":                                         "spire workload socket mount",
+		"deploy/terraform/spike/seeder-job.yaml":                                               "spire workload socket mount",
+		"deploy/terraform/spire/agent-daemonset.yaml":                                          "spire agent socket exposure",
+		"infra/eks/gateway/gateway-deployment.yaml":                                            "spire workload socket mount",
+		"infra/eks/mcp-server/mcp-server-deployment.yaml":                                      "spire workload socket mount",
+		"infra/eks/s3-mcp-server/s3-mcp-server-deployment.yaml":                                "spire workload socket mount",
+		"infra/eks/spike/keeper-deployment.yaml":                                               "spire workload socket mount",
+		"infra/eks/spike/nexus-deployment.yaml":                                                "spire workload socket mount",
+		"infra/eks/spike/seeder-job.yaml":                                                      "spire workload socket mount",
+		"infra/eks/spike/bootstrap-job.yaml":                                                   "spire workload socket mount",
+		"infra/eks/spire/agent-daemonset.yaml":                                                 "spire agent socket exposure",
 	}
 	allowedPrivilegedPaths = map[string]string{}
 )
+
+var manifestRoots = []string{
+	"deploy/k8s",
+	"deploy/terraform",
+	"infra/eks",
+}
 
 // CheckRepo validates production-intent manifest hardening controls.
 func CheckRepo(root string) (Result, error) {
@@ -62,9 +86,14 @@ func CheckRepo(root string) (Result, error) {
 	}
 	result.Violations = append(result.Violations, envViolations...)
 
-	eksRoot := filepath.Join(root, "infra", "eks")
-	if _, err := os.Stat(eksRoot); err == nil {
-		if err := filepath.WalkDir(eksRoot, func(path string, d fs.DirEntry, walkErr error) error {
+	for _, manifestRoot := range manifestRoots {
+		scanRoot := filepath.Join(root, filepath.FromSlash(manifestRoot))
+		if _, err := os.Stat(scanRoot); os.IsNotExist(err) {
+			continue
+		} else if err != nil {
+			return result, err
+		}
+		if err := filepath.WalkDir(scanRoot, func(path string, d fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
 			}
@@ -75,7 +104,7 @@ func CheckRepo(root string) (Result, error) {
 				return nil
 			}
 			rel := slash(filepath.ToSlash(mustRel(root, path)))
-			if strings.Contains(rel, "infra/eks/overlays/local/") {
+			if shouldSkipManifestPath(rel) {
 				return nil
 			}
 			result.CheckedFiles++
@@ -89,11 +118,24 @@ func CheckRepo(root string) (Result, error) {
 		}); err != nil {
 			return result, err
 		}
-	} else if !os.IsNotExist(err) {
-		return result, err
 	}
 
 	return result, nil
+}
+
+func shouldSkipManifestPath(rel string) bool {
+	switch {
+	case strings.Contains(rel, "deploy/k8s/overlays/local/"):
+		return true
+	case strings.Contains(rel, "deploy/k8s/overlays/dev/"):
+		return true
+	case strings.Contains(rel, "deploy/terraform/overlays/local/"):
+		return true
+	case strings.Contains(rel, "infra/eks/overlays/local/"):
+		return true
+	default:
+		return false
+	}
 }
 
 func checkProductionIntentEnv(path string) ([]Violation, error) {

@@ -100,7 +100,7 @@ cat > "${OUTPUT_PATH}" <<EOF
 {
   "schema_version": "audit.immutable_sink.v1",
   "generated_at": "${generated_at}",
-  "kustomize_target": "infra/eks/observability",
+  "kustomize_target": "deploy/terraform/observability",
   "immutable_sink_verification": {
     "configmap_present": ${configmap_present},
     "object_lock_mode": "${object_lock_mode}",

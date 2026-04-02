@@ -1058,7 +1058,7 @@ func (s *SessionContext) detectsExfiltrationPattern(session *AgentSession) bool 
 ### 7.5 DLP Engine (Provider-Agnostic)
 
 The gateway uses a provider-agnostic DLP interface so teams can use:
-- The built-in scanner included in this POC (default)
+- The built-in scanner included in this reference implementation (default)
 - A third-party embedded DLP library
 - A customer-managed external DLP service
 
@@ -1068,7 +1068,7 @@ type DLPScanner interface {
 }
 ```
 
-Current POC base (production starting point): `BuiltInScanner` with Go regex and checksum/context-aware rules for credentials, PII, and suspicious patterns. This behavior is implemented in `internal/gateway/middleware/dlp.go`.
+Current reference implementation base (production starting point): `BuiltInScanner` with Go regex and checksum/context-aware rules for credentials, PII, and suspicious patterns. This behavior is implemented in `internal/gateway/middleware/dlp.go`.
 
 All providers must map to normalized gateway outcomes so policy behavior is stable:
 - `blocked_content` (hard block path)
@@ -4006,7 +4006,7 @@ Normative intent of this addendum:
 
 **Phase 3 implementation status (as of March 2026):**
 
-The following Phase 3 control planes are implemented with reason-code-complete enforcement in the POC:
+The following Phase 3 control planes are implemented with reason-code-complete enforcement in the reference implementation:
 
 | Control Plane | Implementation | Key Capabilities |
 |--------------|----------------|------------------|
@@ -4024,6 +4024,12 @@ The following Phase 3 control planes are implemented with reason-code-complete e
 Remaining gaps are operational (sustained verification, connector certification, 24x7 support model, SOC 2 Type 2 evidence cadence) rather than architectural.
 
 Use the addendum artifacts as the source for backlog decomposition and delivery sequencing.
+
+Operational follow-on references:
+
+- [Kubernetes-First Hardening Guide](k8s-hardening-portability-matrix.md)
+- [K8s Runtime Validation Campaign](k8s-runtime-validation-campaign.md)
+- [Compose Backport Decision Ledger](compose-backport-decision-ledger.md)
 
 ---
 
@@ -4061,7 +4067,7 @@ Use the addendum artifacts as the source for backlog decomposition and delivery 
 - [SEP-1865: MCP Apps Pull Request](https://github.com/modelcontextprotocol/modelcontextprotocol/pull/1865)
 
 ### Implementation
-- [POC Built-In DLP Scanner (`dlp.go`)](internal/gateway/middleware/dlp.go)
+- [Built-In DLP Scanner (`dlp.go`)](../../internal/gateway/middleware/dlp.go)
 - [DLP Provider-Agnostic Architecture Section](#75-dlp-engine-provider-agnostic)
 - [Groq Guard Models](https://console.groq.com/docs/content-moderation)
 - [Llama Prompt Guard 2](https://huggingface.co/meta-llama/Llama-Prompt-Guard-2-86M)

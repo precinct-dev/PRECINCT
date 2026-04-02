@@ -40,7 +40,7 @@ data:
   # The deploy target replaces this with real data.
   _placeholder: |
     # This ConfigMap is populated at deploy time by the Makefile.
-    # Run: make -C infra/eks/gateway deploy
+    # Run: make -C deploy/terraform/gateway deploy
   # Extension registry for content-scanner sidecar (K8s variant).
   # Source: config/extensions-demo-k8s.yaml
   extensions-demo-k8s.yaml: |

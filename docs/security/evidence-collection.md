@@ -61,19 +61,19 @@ Production-intent validation requires all scan statuses to be `pass`.
 
 ## CI Collection
 
-Workflow: `.github/workflows/security-scan.yml`
+Workflow: `.github/workflows/ci.yaml` (`security` job)
 
-Manual workflow uploads (when explicitly run):
+Uploaded artifacts:
 
 - per-scan artifacts (`gosec-results`, `trivy-fs-results`, `trivy-image-results`)
 - consolidated evidence bundle (`security-scan-evidence-bundle`)
 
-The summary job validates required files before publishing the consolidated bundle.
+The `security` job validates required files before publishing the consolidated bundle.
 
 Policy note:
 
-- GitHub workflows are configured as `workflow_dispatch` only to avoid automatic CI spend.
-- Production-readiness evidence for this repository is collected primarily via local make/demo gates.
+- CI runs on pull requests to protected branches, pushes to `main`/`codex/**`, tags, and manual dispatch.
+- Production-readiness evidence can still be collected locally with the same make targets used by CI.
 
 ## CI Readiness Gate Policy (RFA-l6h6.8.4)
 
@@ -101,7 +101,6 @@ Rationale:
 
 - Workflows are manual-only to prevent automatic runner usage.
 - Equivalent quality/safety gates are executed locally via make targets and demo scripts.
-- `readiness-state-validate` remains an operator control because it requires live `nd` state access.
 
 ## Failure Semantics
 

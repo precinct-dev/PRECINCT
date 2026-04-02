@@ -12,10 +12,6 @@ func isAdminPath(path string) bool {
 	return precinctcontrol.IsAdminPath(path)
 }
 
-func normalizeAdminAuthzAllowlist(ids []string) map[string]struct{} {
-	return precinctcontrol.NormalizeAdminAuthzAllowlist(ids)
-}
-
 func (g *Gateway) isAdminPrincipalAuthorized(spiffeID string) bool {
 	if g == nil {
 		return false

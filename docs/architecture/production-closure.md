@@ -4,7 +4,7 @@ PRECINCT -- Policy-driven Runtime Enforcement & Cryptographic Identity for Netwo
 
 **Status:** Proposed architecture extension for implementation  
 **Date:** 2026-02-13  
-**Baseline:** `precinct-reference-architecture.md` (v2.3)  
+**Baseline:** [Reference Architecture](reference-architecture.md) (v2.5)  
 ---
 
 ## 1. Design Intent

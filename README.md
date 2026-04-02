@@ -7,8 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/precinct-dev/PRECINCT/actions/workflows/ci.yml"><img src="https://github.com/precinct-dev/PRECINCT/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://github.com/precinct-dev/PRECINCT/actions/workflows/security-scan.yml"><img src="https://github.com/precinct-dev/PRECINCT/actions/workflows/security-scan.yml/badge.svg?branch=main" alt="Security Scan"></a>
+  <a href="https://github.com/precinct-dev/PRECINCT/actions/workflows/ci.yaml"><img src="https://github.com/precinct-dev/PRECINCT/actions/workflows/ci.yaml/badge.svg?branch=main" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg" alt="License: Apache 2.0"></a>
   <a href="https://pkg.go.dev/github.com/precinct-dev/precinct"><img src="https://pkg.go.dev/badge/github.com/precinct-dev/precinct.svg" alt="Go Reference"></a>
   <a href="https://precinct.dev"><img src="https://img.shields.io/badge/docs-precinct.dev-00d4aa" alt="Docs"></a>
@@ -265,10 +264,8 @@ Website source lives in the private companion repository:
 
 | Document | Description |
 |----------|-------------|
-| [docs/BUSINESS.md](docs/BUSINESS.md) | Business outcomes and goals |
-| [docs/DESIGN.md](docs/DESIGN.md) | User needs, UX/DX design |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Full technical architecture |
-| [docs/current-state-and-roadmap.md](docs/current-state-and-roadmap.md) | Project status and roadmap |
+| [docs/README.md](docs/README.md) | Documentation index and navigation hub |
+| [docs/architecture/reference-architecture.md](docs/architecture/reference-architecture.md) | Canonical public reference architecture |
 | [docs/spiffe-setup.md](docs/spiffe-setup.md) | SPIFFE/SPIRE identity setup |
 | [docs/spike-token-substitution.md](docs/spike-token-substitution.md) | SPIKE late-binding secrets |
 | [docs/operations/performance.md](docs/operations/performance.md) | Performance benchmarks |
@@ -296,5 +293,5 @@ This is a **reference implementation** validating
 It demonstrates that a 13-layer security middleware chain can be implemented,
 deployed, and tested end-to-end with real infrastructure (SPIRE, SPIKE, KeyDB,
 OPA, Phoenix, optional OpenSearch) in both Docker Compose and Kubernetes environments.
-
-All 233 backlog stories have been completed and verified.
+Release-readiness evidence is generated from CI and the repository's validation
+artifacts, including the security evidence bundle under `build/security-scan/latest/`.
