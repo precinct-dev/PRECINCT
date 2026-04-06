@@ -1,0 +1,20 @@
+# NOTICE
+
+PRECINCT
+Copyright 2024-2026 The PRECINCT Authors
+
+This product is licensed under the Apache License, Version 2.0.
+See [LICENSE](LICENSE) for the full license text.
+
+## Third-Party Software
+
+This project includes the following third-party software:
+
+### DSPy
+
+- **Location:** `third_party/python/dspy/`
+- **Copyright:** Copyright (c) 2023 Stanford Future Data Systems
+- **License:** MIT License
+- **Source:** https://github.com/stanfordnlp/dspy
+
+See `third_party/python/dspy/LICENSE` for the full license text.

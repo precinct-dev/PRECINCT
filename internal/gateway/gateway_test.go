@@ -2722,13 +2722,16 @@ func newMockLegacySSEMCPServer(t *testing.T) (*httptest.Server, *mcpServerLog) {
 			w.Header().Set("Connection", "keep-alive")
 			w.WriteHeader(http.StatusOK)
 
-			// Send the endpoint event
-			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
-			flusher.Flush()
-
-			// Register this SSE connection with its context for liveness checks
+			// Register the connection and flush the endpoint event while
+			// holding mu. This achieves two things:
+			//  1. The connection is registered before the client can POST,
+			//     so the broadcast loop will find it.
+			//  2. The endpoint flush completes before mu is released, so
+			//     the broadcast loop cannot race on the same writer.
 			mu.Lock()
 			sseConns = append(sseConns, sseConn{w: w, f: flusher, done: r.Context().Done()})
+			_, _ = fmt.Fprintf(w, "event: endpoint\ndata: /message\n\n")
+			flusher.Flush()
 			mu.Unlock()
 
 			// Keep connection open until client disconnects
