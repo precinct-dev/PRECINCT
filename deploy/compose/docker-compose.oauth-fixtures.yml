@@ -1,0 +1,51 @@
+# OAuth fixture overlay -- adds deterministic OAuth token issuer/introspection endpoints.
+# Used by:
+#   go test -tags=integration ./tests/integration -run OAuthExternal
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.oauth-fixtures.yml up -d --wait
+
+services:
+  mock-oauth-issuer:
+    build:
+      context: ../../examples/mock-oauth-issuer
+      dockerfile: Dockerfile
+    image: mock-oauth-issuer:latest
+    hostname: mock-oauth-issuer
+    ports:
+      - "18083:8088"
+    environment:
+      - MOCK_OAUTH_ISSUER=http://mock-oauth-issuer:8088
+      - MOCK_OAUTH_ISSUER_PORT=8088
+      - MOCK_OAUTH_KEY_ID=mock-oauth-issuer-key
+    networks:
+      - agentic-net
+    healthcheck:
+      test: ["CMD", "/mock-oauth-issuer", "-healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp
+
+  precinct-gateway:
+    depends_on:
+      mock-oauth-issuer:
+        condition: service_healthy
+    environment:
+      - OAUTH_RESOURCE_SERVER_CONFIG_PATH=/config/oauth-resource-server.yaml
+      - MCP_TRANSPORT_MODE=proxy
+
+  precinct-control:
+    depends_on:
+      mock-oauth-issuer:
+        condition: service_healthy
+    environment:
+      - OAUTH_RESOURCE_SERVER_CONFIG_PATH=/config/oauth-resource-server.yaml
+      - MCP_TRANSPORT_MODE=proxy

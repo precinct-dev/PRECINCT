@@ -1,0 +1,27 @@
+# ------------------------------------------------------------------------------
+# Content Scanner Service
+# Story: RFA-hyk
+#
+# ClusterIP service exposing the content-scanner on port 8085 (HTTP).
+# The gateway extension registry calls this service at:
+#   http://content-scanner.tools.svc.cluster.local:8085/scan
+#
+# This matches the endpoint configured in extensions-demo-k8s.yaml.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: content-scanner
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: content-scanner
+    app.kubernetes.io/component: extension-sidecar
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8085
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app.kubernetes.io/name: content-scanner

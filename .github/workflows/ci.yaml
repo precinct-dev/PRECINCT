@@ -1,0 +1,251 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+      - "epic/**"
+  push:
+    branches:
+      - main
+      - "codex/**"
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: read
+
+env:
+  GOLANGCI_LINT_VERSION: v2.11.4
+  GOSEC_VERSION: v2.25.0
+  KUSTOMIZE_VERSION: kustomize/v5.8.1
+  KUBECONFORM_VERSION: v0.7.0
+  OPA_VERSION: v1.15.1
+  TRIVY_VERSION: v0.69.3
+  TRUFFLEHOG_VERSION: "3.94.2"
+  HADOLINT_VERSION: v2.12.0
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install validation toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          curl -sSfL "https://github.com/golangci/golangci-lint/releases/download/${GOLANGCI_LINT_VERSION}/golangci-lint-${GOLANGCI_LINT_VERSION#v}-linux-amd64.tar.gz" \
+            | tar -xz
+          sudo install "golangci-lint-${GOLANGCI_LINT_VERSION#v}-linux-amd64/golangci-lint" /usr/local/bin/golangci-lint
+          rm -rf "golangci-lint-${GOLANGCI_LINT_VERSION#v}-linux-amd64"
+
+          curl -sSfL "https://openpolicyagent.org/downloads/${OPA_VERSION}/opa_linux_amd64_static" -o opa
+          chmod +x opa
+          sudo install opa /usr/local/bin/opa
+          rm -f opa
+
+          curl -sSfL "https://github.com/kubernetes-sigs/kustomize/releases/download/${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION#kustomize/}_linux_amd64.tar.gz" \
+            | tar -xz
+          sudo install kustomize /usr/local/bin/kustomize
+          rm -f kustomize
+
+          curl -sSfL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar -xz
+          sudo install kubeconform /usr/local/bin/kubeconform
+          rm -f kubeconform LICENSE
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Lint
+        run: make lint
+
+      - name: Test
+        run: go test -race -count=1 -timeout 300s ./...
+
+      - name: OPA policy tests
+        run: make test-opa
+
+      - name: Manifest and control gates
+        run: |
+          make manifest-policy-check
+          make k8s-validate
+
+      - name: Consistency validators
+        run: |
+          make tracker-surface-validate
+          bash tests/e2e/validate_app_integration_strategy_docs.sh
+          bash tests/e2e/validate_k8s_hardening_guide.sh
+          bash tests/e2e/validate_strict_runtime_wiring.sh
+          bash tests/e2e/validate_strict_overlay_operationalization.sh
+          bash tests/e2e/validate_spike_shamir_profiles.sh
+          bash tests/e2e/validate_immutable_audit_sink.sh
+          bash tests/e2e/admission/verify-admission-manifest-wiring.sh
+          bash tests/e2e/admission/verify-overlay-image-digests.sh staging prod
+          bash tests/e2e/network-policy/verify-network-policy-manifest-wiring.sh
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install security scanners
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          GOBIN="$(go env GOPATH)/bin"
+          go install "github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION}"
+          echo "${GOBIN}" >> "${GITHUB_PATH}"
+
+          curl -sSfL "https://github.com/aquasecurity/trivy/releases/download/${TRIVY_VERSION}/trivy_${TRIVY_VERSION#v}_Linux-64bit.tar.gz" \
+            | tar -xz
+          sudo install trivy /usr/local/bin/trivy
+          rm -f trivy LICENSE README.md contrib/asff.tpl contrib/gitlab.tpl contrib/html.tpl contrib/junit.tpl || true
+
+          curl -sSfL "https://github.com/hadolint/hadolint/releases/download/${HADOLINT_VERSION}/hadolint-Linux-x86_64" \
+            -o hadolint
+          sudo install hadolint /usr/local/bin/hadolint
+          rm -f hadolint
+
+      - name: Production readiness gate
+        run: make production-readiness-validate
+
+      - name: Upload security evidence bundle
+        uses: actions/upload-artifact@v7.0.0
+        with:
+          name: security-scan-evidence-bundle
+          path: build/security-scan/latest/
+          retention-days: 30
+
+  release-image:
+    name: Release Image
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - validate
+      - security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.0.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v7.0.0
+        with:
+          context: .
+          file: deploy/compose/Dockerfile.gateway
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/precinct-gateway:${{ github.ref_name }}
+            ghcr.io/${{ github.repository }}/precinct-gateway:${{ github.sha }}
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.1
+
+      - name: Sign image
+        env:
+          COSIGN_EXPERIMENTAL: "1"
+        run: cosign sign --yes "ghcr.io/${{ github.repository }}/precinct-gateway@${{ steps.build.outputs.digest }}"
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0.18.0
+        with:
+          image: "ghcr.io/${{ github.repository }}/precinct-gateway@${{ steps.build.outputs.digest }}"
+          format: spdx-json
+          output-file: precinct-gateway.spdx.json
+
+      - name: Attach SBOM to image
+        run: cosign attach sbom --sbom precinct-gateway.spdx.json "ghcr.io/${{ github.repository }}/precinct-gateway@${{ steps.build.outputs.digest }}"
+
+  release-binaries:
+    name: Release Binaries
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs:
+      - validate
+      - security
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@v6.4.0
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build release archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+
+          for platform in linux/amd64 linux/arm64 darwin/arm64; do
+            GOOS="${platform%/*}"
+            GOARCH="${platform#*/}"
+            suffix="${GOOS}-${GOARCH}"
+            bundle="precinct_${GITHUB_REF_NAME}_${suffix}"
+            outdir="dist/${bundle}/bin"
+            mkdir -p "${outdir}"
+
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -trimpath -ldflags="-s -w" -o "${outdir}/precinct-gateway" ./cmd/gateway
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -trimpath -ldflags="-s -w" -o "${outdir}/precinct-control" ./cmd/precinct-control
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -trimpath -ldflags="-s -w" -o "${outdir}/precinct-agent-bridge" ./cmd/precinct-agent-bridge
+            CGO_ENABLED=0 GOOS="${GOOS}" GOARCH="${GOARCH}" go build -trimpath -ldflags="-s -w" -o "${outdir}/precinct" ./cli/precinct
+
+            tar -C dist -czf "dist/${bundle}.tar.gz" "${bundle}"
+            rm -rf "dist/${bundle}"
+          done
+
+          sha256sum dist/*.tar.gz > dist/sha256sums.txt
+
+      - name: Publish GitHub release assets
+        uses: softprops/action-gh-release@v2.6.1
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/sha256sums.txt

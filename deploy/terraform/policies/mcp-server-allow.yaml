@@ -1,0 +1,163 @@
+# ------------------------------------------------------------------------------
+# MCP Server Allow NetworkPolicies
+# Story: RFA-9fv.4
+#
+# Explicit allow rules for the MCP tool server (tools namespace).
+# These rules layer on top of the default-deny policy to permit only the
+# traffic flows required for tool servers to function:
+#
+#   INGRESS:
+#     - From gateway namespace on port 8081 (JSON-RPC requests)
+#     - From gateway namespace on port 8080 (mock guard model deep-scan requests)
+#     - From gateway namespace on port 8085 (content-scanner extension requests)
+#       Tool servers can ONLY receive traffic from the gateway -- no direct
+#       access from agents or other namespaces.
+#
+#   EGRESS:
+#     - To kube-dns on port 53 (DNS resolution)
+#     - To private RFC1918 CIDRs only (in-cluster/VPC dependencies)
+#     - Public internet denied by default
+#
+# Reference Architecture Section 9.4:
+#   "Tool pods can ONLY receive traffic from the gateway namespace"
+# ------------------------------------------------------------------------------
+
+# Allow inbound from gateway namespace only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-server-allow-ingress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server
+  policyTypes:
+    - Ingress
+  ingress:
+    # Allow inbound ONLY from gateway namespace pods on port 8081
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - precinct-gateway
+                  - precinct-control
+      ports:
+        - protocol: TCP
+          port: 8081
+        # NOTE(local overlay): demo mock MCP server listens on :8082
+        - protocol: TCP
+          port: 8082
+---
+# Allow inbound to content-scanner from gateway namespace only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: content-scanner-allow-ingress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: content-scanner
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - precinct-gateway
+                  - precinct-control
+      ports:
+        - protocol: TCP
+          port: 8085
+---
+# Allow inbound to mock-guard-model from gateway namespace only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mock-guard-model-allow-ingress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mock-guard-model
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - precinct-gateway
+                  - precinct-control
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow tool server egress to DNS + private network destinations
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mcp-server-allow-egress
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server
+  policyTypes:
+    - Egress
+  egress:
+    # Allow egress to kube-dns for DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # Allow private-network egress only (cluster/VPC dependencies).
+    #
+    # Allowlist strategy:
+    #   - Default deny for public internet.
+    #   - Permit RFC1918 ranges for current known in-cluster/private dependencies.
+    #   - Any required public endpoint must be added as a separate explicit rule
+    #     (ideally via egress proxy + DNS/FQDN policy), reviewed as a security change.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16

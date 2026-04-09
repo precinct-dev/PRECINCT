@@ -1,0 +1,194 @@
+{
+  "cluster_context": "docker-desktop",
+  "controls": [
+    {
+      "checks": [
+        {
+          "actual_reason_code": "INGRESS_ALLOW",
+          "actual_status": 200,
+          "check_id": "phase3.ingress.allow",
+          "decision_id": "887785e6-ca7e-4174-a558-3b00eb532623",
+          "expected_reason_code": "INGRESS_ALLOW",
+          "expected_status": 200,
+          "pass_check": true,
+          "plane": "ingress",
+          "response_excerpt": "{\"decision\":\"allow\",\"reason_code\":\"INGRESS_ALLOW\",\"envelope\":{\"run_id\":\"k8s-v24-ingress-allow\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"ingress\"},\"trace_id\":\"4464cc54-a1c9-4957-b9b8-5e12d52773b9\",\"decision_id\":\"887785e6-ca7e-4174-a558-3b00eb532623\",\"metadata\":{\"action\":\"ingress.adm",
+          "run_id": "k8s-v24-ingress-allow",
+          "scenario": "allow",
+          "trace_id": "4464cc54-a1c9-4957-b9b8-5e12d52773b9"
+        },
+        {
+          "actual_reason_code": "INGRESS_SOURCE_UNAUTHENTICATED",
+          "actual_status": 403,
+          "check_id": "phase3.ingress.deny",
+          "decision_id": "7e297824-b6e9-4a30-b9bc-984ed0fd1a1b",
+          "expected_reason_code": "INGRESS_SOURCE_UNAUTHENTICATED",
+          "expected_status": 403,
+          "pass_check": true,
+          "plane": "ingress",
+          "response_excerpt": "{\"decision\":\"deny\",\"reason_code\":\"INGRESS_SOURCE_UNAUTHENTICATED\",\"envelope\":{\"run_id\":\"k8s-v24-ingress-deny\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"ingress\"},\"trace_id\":\"b582d055-311f-43ae-8968-c20429e2eed7\",\"decision_id\":\"7e297824-b6e9-4a30-b9bc-984ed0fd1a1b\",\"metadata\":{\"conne",
+          "run_id": "k8s-v24-ingress-deny",
+          "scenario": "deny",
+          "trace_id": "b582d055-311f-43ae-8968-c20429e2eed7"
+        }
+      ],
+      "control_id": "phase3.ingress",
+      "plane": "ingress",
+      "status": "pass"
+    },
+    {
+      "checks": [
+        {
+          "actual_reason_code": "CONTEXT_ALLOW",
+          "actual_status": 200,
+          "check_id": "phase3.context.allow",
+          "decision_id": "5d589d75-dff0-4f0f-9d2a-630d5b3b2af8",
+          "expected_reason_code": "CONTEXT_ALLOW",
+          "expected_status": 200,
+          "pass_check": true,
+          "plane": "context",
+          "response_excerpt": "{\"decision\":\"allow\",\"reason_code\":\"CONTEXT_ALLOW\",\"envelope\":{\"run_id\":\"k8s-v24-context-allow\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"context\"},\"trace_id\":\"84be381f-e584-4b01-973b-bf0539306906\",\"decision_id\":\"5d589d75-dff0-4f0f-9d2a-630d5b3b2af8\",\"metadata\":{\"action\":\"context.adm",
+          "run_id": "k8s-v24-context-allow",
+          "scenario": "allow",
+          "trace_id": "84be381f-e584-4b01-973b-bf0539306906"
+        },
+        {
+          "actual_reason_code": "CONTEXT_NO_SCAN_NO_SEND",
+          "actual_status": 403,
+          "check_id": "phase3.context.deny",
+          "decision_id": "3c558e47-8da1-4f8f-b95b-cfe6c1fe4755",
+          "expected_reason_code": "CONTEXT_NO_SCAN_NO_SEND",
+          "expected_status": 403,
+          "pass_check": true,
+          "plane": "context",
+          "response_excerpt": "{\"decision\":\"deny\",\"reason_code\":\"CONTEXT_NO_SCAN_NO_SEND\",\"envelope\":{\"run_id\":\"k8s-v24-context-deny\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"context\"},\"trace_id\":\"a8a4a558-af49-40c4-a9ee-f6fb620fdd4c\",\"decision_id\":\"3c558e47-8da1-4f8f-b95b-cfe6c1fe4755\",\"metadata\":{\"invariant\":\"",
+          "run_id": "k8s-v24-context-deny",
+          "scenario": "deny",
+          "trace_id": "a8a4a558-af49-40c4-a9ee-f6fb620fdd4c"
+        }
+      ],
+      "control_id": "phase3.context",
+      "plane": "context",
+      "status": "pass"
+    },
+    {
+      "checks": [
+        {
+          "actual_reason_code": "MODEL_ALLOW",
+          "actual_status": 200,
+          "check_id": "phase3.model.allow",
+          "decision_id": "4943f023-3a42-4ec2-a36c-730fa06c7aa1",
+          "expected_reason_code": "MODEL_ALLOW",
+          "expected_status": 200,
+          "pass_check": true,
+          "plane": "model",
+          "response_excerpt": "{\"decision\":\"allow\",\"reason_code\":\"MODEL_ALLOW\",\"envelope\":{\"run_id\":\"k8s-v24-model-allow\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"model\"},\"trace_id\":\"101c4584-9a76-407b-8a88-cecbeb9ca6b7\",\"decision_id\":\"4943f023-3a42-4ec2-a36c-730fa06c7aa1\",\"metadata\":{\"budget_profile\":\"standard\"",
+          "run_id": "k8s-v24-model-allow",
+          "scenario": "allow",
+          "trace_id": "101c4584-9a76-407b-8a88-cecbeb9ca6b7"
+        },
+        {
+          "actual_reason_code": "MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED",
+          "actual_status": 403,
+          "check_id": "phase3.model.deny",
+          "decision_id": "7009cf70-e201-4d1c-98a6-64ad44f882a1",
+          "expected_reason_code": "MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED",
+          "expected_status": 403,
+          "pass_check": true,
+          "plane": "model",
+          "response_excerpt": "{\"decision\":\"deny\",\"reason_code\":\"MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED\",\"envelope\":{\"run_id\":\"k8s-v24-model-deny\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"model\"},\"trace_id\":\"a3ab50e3-14f6-4155-bdbb-4af04305aa84\",\"decision_id\":\"7009cf70-e201-4d1c-98a6-64ad44f882a1\",\"metadata\":{\"pol",
+          "run_id": "k8s-v24-model-deny",
+          "scenario": "deny",
+          "trace_id": "a3ab50e3-14f6-4155-bdbb-4af04305aa84"
+        }
+      ],
+      "control_id": "phase3.model",
+      "plane": "model",
+      "status": "pass"
+    },
+    {
+      "checks": [
+        {
+          "actual_reason_code": "TOOL_ALLOW",
+          "actual_status": 200,
+          "check_id": "phase3.tool.allow",
+          "decision_id": "a59e9bc9-4001-4025-a40e-64e5dfe98957",
+          "expected_reason_code": "TOOL_ALLOW",
+          "expected_status": 200,
+          "pass_check": true,
+          "plane": "tool",
+          "response_excerpt": "{\"decision\":\"allow\",\"reason_code\":\"TOOL_ALLOW\",\"envelope\":{\"run_id\":\"k8s-v24-tool-allow\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"tool\"},\"trace_id\":\"c64a5e98-aa8b-4bae-9b6d-24ae941eefa7\",\"decision_id\":\"a59e9bc9-4001-4025-a40e-64e5dfe98957\",\"metadata\":{\"action\":\"tool.execute\",\"adapt",
+          "run_id": "k8s-v24-tool-allow",
+          "scenario": "allow",
+          "trace_id": "c64a5e98-aa8b-4bae-9b6d-24ae941eefa7"
+        },
+        {
+          "actual_reason_code": "TOOL_CAPABILITY_DENIED",
+          "actual_status": 403,
+          "check_id": "phase3.tool.deny",
+          "decision_id": "626c280e-9b37-44de-8bd1-582cbe8983bd",
+          "expected_reason_code": "TOOL_CAPABILITY_DENIED",
+          "expected_status": 403,
+          "pass_check": true,
+          "plane": "tool",
+          "response_excerpt": "{\"decision\":\"deny\",\"reason_code\":\"TOOL_CAPABILITY_DENIED\",\"envelope\":{\"run_id\":\"k8s-v24-tool-deny\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"tool\"},\"trace_id\":\"ccab9ead-9a9a-48d2-9a9c-3f5267ccb383\",\"decision_id\":\"626c280e-9b37-44de-8bd1-582cbe8983bd\",\"metadata\":{\"action\":\"tool.execu",
+          "run_id": "k8s-v24-tool-deny",
+          "scenario": "deny",
+          "trace_id": "ccab9ead-9a9a-48d2-9a9c-3f5267ccb383"
+        }
+      ],
+      "control_id": "phase3.tool",
+      "plane": "tool",
+      "status": "pass"
+    },
+    {
+      "checks": [
+        {
+          "actual_reason_code": "LOOP_ALLOW",
+          "actual_status": 200,
+          "check_id": "phase3.loop.allow",
+          "decision_id": "b54a42c4-6ab6-42d4-bf6a-e9e38f44d98f",
+          "expected_reason_code": "LOOP_ALLOW",
+          "expected_status": 200,
+          "pass_check": true,
+          "plane": "loop",
+          "response_excerpt": "{\"decision\":\"allow\",\"reason_code\":\"LOOP_ALLOW\",\"envelope\":{\"run_id\":\"k8s-v24-loop-allow\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"loop\"},\"trace_id\":\"0f5720de-7dd9-46e4-807a-87c367eceeb5\",\"decision_id\":\"b54a42c4-6ab6-42d4-bf6a-e9e38f44d98f\",\"metadata\":{\"current_usage\":{\"egress_bytes",
+          "run_id": "k8s-v24-loop-allow",
+          "scenario": "allow",
+          "trace_id": "0f5720de-7dd9-46e4-807a-87c367eceeb5"
+        },
+        {
+          "actual_reason_code": "LOOP_HALT_MAX_STEPS",
+          "actual_status": 429,
+          "check_id": "phase3.loop.deny",
+          "decision_id": "e4fdf57b-9ed4-4f24-aad1-f17b1c7afcbb",
+          "expected_reason_code": "LOOP_HALT_MAX_STEPS",
+          "expected_status": 429,
+          "pass_check": true,
+          "plane": "loop",
+          "response_excerpt": "{\"decision\":\"deny\",\"reason_code\":\"LOOP_HALT_MAX_STEPS\",\"envelope\":{\"run_id\":\"k8s-v24-loop-deny\",\"session_id\":\"k8s-v24-validation-session-1770986465\",\"tenant\":\"tenant-a\",\"actor_spiffe_id\":\"spiffe://poc.local/agents/mcp-client/dspy-researcher/dev\",\"plane\":\"loop\"},\"trace_id\":\"603f661c-6798-4c97-aa09-cf63b7593af7\",\"decision_id\":\"e4fdf57b-9ed4-4f24-aad1-f17b1c7afcbb\",\"metadata\":{\"current_usage\":{\"egres",
+          "run_id": "k8s-v24-loop-deny",
+          "scenario": "deny",
+          "trace_id": "603f661c-6798-4c97-aa09-cf63b7593af7"
+        }
+      ],
+      "control_id": "phase3.loop",
+      "plane": "loop",
+      "status": "pass"
+    }
+  ],
+  "executed_at": "2026-02-13T12:41:07Z",
+  "gateway_url": "http://localhost:39090",
+  "schema_version": "k8s.runtime.validation.v1",
+  "session_id": "k8s-v24-validation-session-1770986465",
+  "story_id": "RFA-l6h6.4.3",
+  "summary": {
+    "checks_failed": 0,
+    "checks_passed": 10,
+    "checks_total": 10,
+    "controls_failed": 0,
+    "controls_passed": 5,
+    "controls_total": 5,
+    "status": "pass"
+  }
+}

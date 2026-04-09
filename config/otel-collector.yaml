@@ -1,0 +1,62 @@
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  # Add resource attributes for better observability
+  resource:
+    attributes:
+      - key: service.namespace
+        value: agentic-security-poc
+        action: upsert
+
+exporters:
+  # Export to Phoenix for trace visualization.
+  # WARNING: insecure: true disables TLS on the gRPC connection to Phoenix.
+  # This is acceptable for the local Docker Compose network where Phoenix
+  # is reachable by container name. For production, configure TLS certificates
+  # and set insecure: false.
+  otlp/phoenix:
+    endpoint: phoenix:4317
+    tls:
+      insecure: true
+
+  # Debug logging for development
+  debug:
+    verbosity: detailed
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlp/phoenix, debug]
+
+    # Phoenix supports OTLP traces only (not metrics/logs via gRPC).
+    # Route metrics and logs to debug exporter until a dedicated backend is added.
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [debug]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [debug]
+
+  telemetry:
+    logs:
+      level: info

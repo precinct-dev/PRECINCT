@@ -1,0 +1,60 @@
+# MCP-UI Configuration - RFA-j2d.9 (Reference Architecture Section 7.9.10)
+#
+# Configuration hierarchy principle:
+# Hard constraints (set by security team, checked into policy) CANNOT be
+# overridden by capability grants. Capability grants can only ENABLE
+# capabilities within the boundaries of hard constraints.
+#
+# Environment variable overrides (take precedence over this file):
+#   UI_ENABLED                          (bool)
+#   UI_DEFAULT_MODE                     (string: deny | audit-only | allow)
+#   UI_MAX_RESOURCE_SIZE_BYTES          (int)
+#   UI_RESOURCE_FETCH_TIMEOUT_SECONDS   (int)
+#   UI_SCAN_ENABLED                     (bool)
+#   UI_HASH_VERIFICATION_ENABLED        (bool)
+
+ui:
+  # Global kill switch: if false, all UI is stripped regardless of grants
+  enabled: false
+
+  # Default mode for servers without explicit grants
+  # deny:       Block all UI content (safest)
+  # audit-only: Allow UI but log all actions for review
+  # allow:      Allow UI content (requires explicit security review)
+  default_mode: "deny"
+
+  # Global resource limits
+  max_resource_size_bytes: 2097152        # 2 MB
+  resource_fetch_timeout_seconds: 10
+  resource_cache_ttl_seconds: 300
+
+  # Content scanning
+  scan_enabled: true
+  block_on_dangerous_patterns: true
+
+  # Hash verification (extends tool registry pattern)
+  hash_verification_enabled: true
+
+  # CSP hard constraints (cannot be overridden by grants)
+  csp_hard_constraints:
+    frame_domains_allowed: false          # Nested iframes always denied
+    base_uri_domains_allowed: false       # Always same-origin
+    max_connect_domains: 5                # Maximum external origins per app
+    max_resource_domains: 10              # Maximum static resource origins
+
+  # Permissions hard constraints
+  permissions_hard_constraints:
+    camera_allowed: false                 # Deny by default
+    microphone_allowed: false
+    geolocation_allowed: false
+    clipboard_write_allowed: false
+
+  # App-driven tool call controls
+  app_tool_calls:
+    separate_rate_limit: true
+    requests_per_minute: 20
+    burst: 5
+    force_step_up_for_high_risk: true
+
+  # Host compatibility
+  strip_ui_for_incompatible_hosts: true   # Downgrade for older clients

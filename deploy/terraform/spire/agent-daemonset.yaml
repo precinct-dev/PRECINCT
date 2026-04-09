@@ -1,0 +1,136 @@
+# ------------------------------------------------------------------------------
+# SPIRE Agent DaemonSet
+# Story: RFA-9fv.3
+#
+# Runs a SPIRE Agent on every node to provide the Workload API to all pods.
+# The agent socket is exposed via hostPath so workload pods can mount it.
+#
+# Key design decisions:
+#   - DaemonSet: one agent per node, as required by SPIRE architecture
+#   - hostPath for socket: allows any pod on the node to access the Workload API
+#   - Projected service account token: mounted for k8s_psat attestation
+#   - Trust bundle: mounted from ConfigMap managed by the server's k8sbundle notifier
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-agent
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/part-of: spire
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spire-agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spire-agent
+        app.kubernetes.io/part-of: spire
+    spec:
+      serviceAccountName: spire-agent
+      hostPID: true
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: 30
+      initContainers:
+        # Ensure the socket directory exists on the host
+        - name: init-socket-dir
+          image: ghcr.io/spiffe/spire-agent:1.10.0
+          command: ["sh", "-c", "mkdir -p /run/spire/sockets && chown 1000:1000 /run/spire/sockets"]
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - DAC_OVERRIDE
+      containers:
+        - name: spire-agent
+          image: ghcr.io/spiffe/spire-agent:1.10.0
+          args:
+            - "-config"
+            - "/opt/spire/conf/agent/agent.conf"
+          ports:
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: health
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: spire-agent-config
+              mountPath: /opt/spire/conf/agent
+              readOnly: true
+            - name: spire-agent-data
+              mountPath: /opt/spire/data/agent
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+            - name: spire-bundle
+              mountPath: /run/spire/bundle
+              readOnly: true
+            - name: spire-agent-token
+              mountPath: /var/run/secrets/tokens
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: spire-agent-config
+          configMap:
+            name: spire-agent-config
+        - name: spire-agent-data
+          hostPath:
+            path: /var/lib/spire/agent
+            type: DirectoryOrCreate
+        # Socket directory shared with workload pods via hostPath
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+        # Trust bundle from SPIRE Server's k8sbundle notifier
+        - name: spire-bundle
+          configMap:
+            name: spire-bundle
+            optional: true
+        # Projected service account token for k8s_psat attestation
+        - name: spire-agent-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: spire-server
+                  expirationSeconds: 3600
+                  path: spire-agent

@@ -1,0 +1,154 @@
+# SPIFFE ID Schema for POC Workloads
+# Based on Reference Architecture Section 4.5
+#
+# Schema: spiffe://<trust-domain>/<agent-class>/<agent-purpose>/<environment>
+#
+# Components:
+#   - trust-domain: Organization identifier (poc.local for this POC)
+#   - agent-class: mcp-client, autonomous, orchestrator, gateways, tools, infrastructure
+#   - agent-purpose: Functional identifier describing the workload
+#   - environment: Deployment environment (dev, staging, prod)
+
+trust_domain: poc.local
+environment: dev
+
+# SPIFFE IDs for POC workloads
+workloads:
+  # Gateway component - the PRECINCT Gateway that enforces all security controls
+  - spiffe_id: spiffe://poc.local/gateways/precinct-gateway/dev
+    description: PRECINCT Gateway
+    purpose: >
+      Enforces identity verification, authorization, content inspection,
+      tool verification, secret substitution, and audit logging for all
+      agent-to-tool communication.
+    agent_class: gateways
+    agent_purpose: precinct-gateway
+    selectors:
+      - "docker:label:spiffe-id:precinct-gateway"
+      - "docker:label:component:gateway"
+
+  # Control Plane Gateway - authentication/control-plane endpoints extracted
+  # from the core data path while retaining the same OPA policy semantics.
+  - spiffe_id: spiffe://poc.local/gateways/precinct-control/dev
+    description: PRECINCT Control
+    purpose: >
+      Dedicated control-plane service handling admin and control endpoints,
+      including connector authority, model compatibility and phase-3 plane
+      operations with the same enforcement policy set.
+    agent_class: gateways
+    agent_purpose: precinct-control
+    selectors:
+      - "docker:label:spiffe-id:precinct-control"
+      - "docker:label:component:control-plane"
+
+  # DSPy research agent - MCP client using DSPy framework
+  - spiffe_id: spiffe://poc.local/agents/mcp-client/dspy-researcher/dev
+    description: DSPy Research Agent
+    purpose: >
+      Autonomous research agent built with DSPy framework. Performs
+      document analysis and knowledge synthesis using MCP tools.
+    agent_class: agents/mcp-client
+    agent_purpose: dspy-researcher
+    selectors:
+      - "docker:label:spiffe-id:dspy-researcher"
+      - "docker:label:agent-type:mcp-client"
+      - "docker:label:framework:dspy"
+
+  # PydanticAI research agent - MCP client using PydanticAI framework
+  - spiffe_id: spiffe://poc.local/agents/mcp-client/pydantic-researcher/dev
+    description: PydanticAI Research Agent
+    purpose: >
+      Autonomous research agent built with PydanticAI framework. Performs
+      structured data extraction and analysis using MCP tools.
+    agent_class: agents/mcp-client
+    agent_purpose: pydantic-researcher
+    selectors:
+      - "docker:label:spiffe-id:pydantic-researcher"
+      - "docker:label:agent-type:mcp-client"
+      - "docker:label:framework:pydantic-ai"
+
+  # Docker MCP tool server - provides containerized tools
+  - spiffe_id: spiffe://poc.local/tools/docker-mcp-server/dev
+    description: Docker MCP Tool Server
+    purpose: >
+      MCP server providing containerized tool capabilities including
+      file operations, database queries, and HTTP requests.
+    agent_class: tools
+    agent_purpose: docker-mcp-server
+    selectors:
+      - "docker:label:spiffe-id:docker-mcp-server"
+      - "docker:label:component:mcp-server"
+      - "docker:label:tool-type:docker"
+
+  # SPIKE Nexus - SPIFFE-native secrets management
+  # SPIFFE ID matches register-spire-entries.sh (line 60-61).
+  # SPIKE Nexus IsNexus() validation requires the path /spike/nexus.
+  - spiffe_id: spiffe://poc.local/spike/nexus
+    description: SPIKE Nexus Secrets Server
+    purpose: >
+      SPIFFE-native secrets management service providing late-binding
+      tokens and credential substitution for agents.
+    agent_class: spike
+    agent_purpose: nexus
+    selectors:
+      - "docker:label:spiffe-id:spike-nexus"
+
+  # SPIKE Keeper 1 - Shamir key shard holder for root key recovery (RFA-oyg)
+  # Single Keeper deployment for POC. Production would use 3+ Keepers with threshold=2.
+  - spiffe_id: spiffe://poc.local/spike/keeper/1
+    description: SPIKE Keeper 1 (Shamir Key Shard)
+    purpose: >
+      Holds one Shamir shard of the SPIKE Nexus root encryption key.
+      Nexus contacts Keepers on startup to reconstruct the root key
+      for AES-256-GCM SQLite backend encryption. Single Keeper with
+      threshold=1 for POC; production would use 3+ Keepers.
+    agent_class: spike/keeper
+    agent_purpose: "1"
+    selectors:
+      - "docker:label:spiffe-id:spike-keeper-1"
+
+  # SPIKE Bootstrap - One-shot init container for root key delivery (RFA-oyg)
+  # Generates a root key, splits via Shamir Secret Sharing, and broadcasts shards
+  # to Keeper(s). Nexus recovers shards on startup to initialize AES-256-GCM encryption.
+  # Uses ghcr.io/spiffe/spike-bootstrap:0.8.0 with the dedicated 'bootstrap' binary.
+  - spiffe_id: spiffe://poc.local/spike/bootstrap
+    description: SPIKE Bootstrap (Root Key Delivery)
+    purpose: >
+      One-shot init container that generates a root encryption key, splits it
+      via Shamir Secret Sharing, and broadcasts shards to Keeper(s) via SPIRE
+      mTLS. SPIKE Nexus recovers shards from Keepers on startup to initialize
+      the AES-256-GCM encrypted SQLite backing store.
+    agent_class: spike
+    agent_purpose: bootstrap
+    selectors:
+      - "docker:label:spiffe-id:spike-bootstrap"
+
+  # SPIKE Secret Seeder - Init container that pre-seeds test secrets using SPIKE Pilot CLI
+  # Uses the official SPIKE Pilot CLI ('spike secret put' / 'spike policy create')
+  # from the ghcr.io/spiffe/spike-pilot:0.8.0 image (RFA-1l2).
+  # Uses Pilot superuser SPIFFE ID pattern so SPIKE Nexus authorizes writes.
+  # SPIKE's IsPilotOperator() allows /spike/pilot/role/superuser + suffix.
+  - spiffe_id: spiffe://poc.local/spike/pilot/role/superuser/seeder
+    description: SPIKE Secret Seeder (SPIKE Pilot CLI init container)
+    purpose: >
+      One-shot init container that seeds test secrets into SPIKE Nexus
+      using the official SPIKE Pilot CLI. Uses Pilot superuser SPIFFE ID
+      for write authorization via SPIRE mTLS.
+    agent_class: spike/pilot/role
+    agent_purpose: superuser/seeder
+    selectors:
+      - "docker:label:spiffe-id:spike-seeder"
+
+# Pattern matching for OPA policies
+# These patterns allow wildcard matching in SPIFFE IDs for authorization
+policy_patterns:
+  all_gateways: "spiffe://poc.local/gateways/*/dev"
+  all_mcp_clients: "spiffe://poc.local/agents/mcp-client/*/dev"
+  all_autonomous_agents: "spiffe://poc.local/agents/autonomous/*/dev"
+  all_tools: "spiffe://poc.local/tools/*/dev"
+  all_infrastructure: "spiffe://poc.local/infrastructure/*/dev"
+
+  # Specific agent type patterns
+  research_agents: "spiffe://poc.local/agents/mcp-client/*-researcher/dev"
+  financial_agents: "spiffe://poc.local/agents/mcp-client/financial-*/dev"
+  document_agents: "spiffe://poc.local/agents/mcp-client/document-*/dev"

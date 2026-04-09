@@ -1,0 +1,29 @@
+# ------------------------------------------------------------------------------
+# S3 MCP Tool Server ServiceAccount
+# Story: RFA-9fv.5
+#
+# ServiceAccount for the S3 MCP tool server in the tools namespace.
+# Uses IRSA (IAM Roles for Service Accounts) for AWS S3 access.
+# The annotation eks.amazonaws.com/role-arn binds this ServiceAccount to
+# an IAM role that grants read-only S3 access to specific buckets/prefixes.
+#
+# SPIFFE ID (shared with other tool servers):
+#   spiffe://precinct.poc/ns/tools/sa/mcp-tool
+#
+# For production, consider a dedicated ServiceAccount per tool server for
+# finer-grained IAM permissions. In the POC, all tool servers share the
+# mcp-tool ServiceAccount for SPIFFE identity but this one gets its own
+# for IRSA since S3 access is unique to this server.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: s3-mcp-tool
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: s3-mcp-server
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: tool-server
+  annotations:
+    # IRSA: Replace <ACCOUNT_ID> with the actual IAM role ARN from iam.tf output
+    eks.amazonaws.com/role-arn: "arn:aws:iam::<ACCOUNT_ID>:role/s3-mcp-tool-role"

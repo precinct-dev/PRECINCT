@@ -1,0 +1,128 @@
+{
+  "schema_version": "control_verification_matrix.v1",
+  "title": "Threat-model-backed control verification matrix",
+  "signal_catalogs": [
+    "docs/security/artifacts/mitre-atlas-signal-mapping.v1.json",
+    "docs/security/artifacts/owasp-agentic-top10-signal-mapping.v1.json"
+  ],
+  "controls": [
+    {
+      "id": "CTRL-SEC-001",
+      "domain": "security",
+      "description": "Supply-chain scan evidence is collected and validated with immutable artifact hashes.",
+      "threat_refs": [
+        "TM-SUPPLYCHAIN-001",
+        "TM-DEPENDENCY-001"
+      ],
+      "test_evidence": [
+        {
+          "path": "tests/e2e/validate_security_scan_artifacts.sh",
+          "command": "make security-scan-validate"
+        },
+        {
+          "path": "scripts/security/collect-security-scan-artifacts.sh",
+          "command": "make security-scan"
+        }
+      ],
+      "runtime_signals": [
+        "content.blocked",
+        "policy.authorization_denied"
+      ],
+      "artifacts": [
+        {
+          "path": "build/security-scan/latest/security-scan-manifest.json",
+          "max_age_hours": 24
+        },
+        {
+          "path": "build/security-scan/latest/summaries/trivy-fs-summary.json",
+          "max_age_hours": 24
+        }
+      ]
+    },
+    {
+      "id": "CTRL-SEC-002",
+      "domain": "security",
+      "description": "Bypass controls are deny-by-default and identity constrained in strict startup paths.",
+      "threat_refs": [
+        "TM-BYPASS-001",
+        "TM-IDENTITY-001"
+      ],
+      "test_evidence": [
+        {
+          "path": "tests/integration/opa_bypass_contract_integration_test.go",
+          "command": "go test ./tests/integration -run 'TestStrictStartupFailsWhenOPABypassContractMissingChecks|TestOPABypassRoutes_DenyByDefaultForMissingOrInvalidIdentity' -count=1"
+        },
+        {
+          "path": "internal/gateway/middleware/opa_bypass_contracts_test.go",
+          "command": "go test ./internal/gateway/middleware -run TestBypassContract -count=1"
+        }
+      ],
+      "runtime_signals": [
+        "policy.step_up_blocked",
+        "tool.hash_unverified"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/security/manifest-policy-controls.md",
+          "max_age_hours": 0
+        }
+      ]
+    },
+    {
+      "id": "CTRL-USAB-001",
+      "domain": "usability",
+      "description": "Operator startup diagnostics and fallback messaging are explicit in strict and development profiles.",
+      "threat_refs": [
+        "TM-OPERATOR-UX-001"
+      ],
+      "test_evidence": [
+        {
+          "path": "internal/gateway/enforcement_profile_integration_test.go",
+          "command": "go test ./internal/gateway -run 'TestEnforcementProfile_StrictStartupFailsWhenDestinationAllowlistFallbackWouldBeUsed|TestEnforcementProfile_DevAllowsFallbackToDefaults' -count=1"
+        },
+        {
+          "path": "scripts/setup.sh",
+          "command": "bash scripts/setup.sh --help"
+        }
+      ],
+      "runtime_signals": [
+        "availability.rate_limited"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/security/enforcement-profile-selection.md",
+          "max_age_hours": 0
+        }
+      ]
+    },
+    {
+      "id": "CTRL-BLIND-001",
+      "domain": "blindspot",
+      "description": "Middleware ordering and taxonomy mappings keep non-obvious enforcement blind spots observable and test-backed.",
+      "threat_refs": [
+        "TM-BLINDSPOT-001",
+        "TM-SIGNAL-COVERAGE-001"
+      ],
+      "test_evidence": [
+        {
+          "path": "tests/integration/middleware_ordering_security_test.go",
+          "command": "go test ./tests/integration -run TestGatewayMiddlewareOrdering_RejectsUIResponseFailureWhenSecurityFeaturesEnabled -count=1"
+        },
+        {
+          "path": "tests/e2e/validate_framework_taxonomy_mappings.sh",
+          "command": "bash tests/e2e/validate_framework_taxonomy_mappings.sh"
+        }
+      ],
+      "runtime_signals": [
+        "prompt.injection_detected",
+        "prompt.injection_blocked"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/security/framework-taxonomy-signal-mappings.md",
+          "max_age_hours": 0
+        }
+      ]
+    }
+  ]
+}

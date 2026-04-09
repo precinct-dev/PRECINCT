@@ -1,0 +1,174 @@
+# ------------------------------------------------------------------------------
+# PRECINCT Helm Chart - Default Values (local environment)
+#
+# This file provides sensible defaults matching the local kustomize overlay
+# (deploy/k8s/overlays/local/). Override per-environment values using
+# values-dev.yaml, values-staging.yaml, or values-prod.yaml.
+# ------------------------------------------------------------------------------
+
+# -- Global settings applied across all sub-charts and components
+global:
+  # Target environment: local, dev, staging, prod
+  # Selects the corresponding kustomize overlay
+  environment: local
+
+  # SPIFFE trust domain for all workload identities
+  trustDomain: precinct.poc
+
+  # Container registry prefix (empty = use image names as-is)
+  # Example: ghcr.io/precinct-dev/precinct
+  imageRegistry: ""
+
+# -- Gateway (precinct-gateway) configuration
+gateway:
+  # Number of gateway pod replicas
+  replicas: 1
+
+  image:
+    repository: precinct-gateway
+    tag: latest
+    pullPolicy: IfNotPresent
+
+  # Kubernetes resource requests and limits
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+  # Environment variable overrides
+  env:
+    # Log verbosity: debug, info, warn, error
+    logLevel: debug
+    # SPIFFE mode: dev (header-based) or prod (mTLS SVID)
+    spiffeMode: dev
+    # Enforcement profile: dev, prod_standard, prod_regulated_hipaa
+    enforcementProfile: dev
+    # MCP transport mode: mcp (Streamable HTTP) or proxy (reverse proxy)
+    mcpTransportMode: mcp
+    # Rate limiting
+    rateLimitRPM: 600
+    rateLimitBurst: 100
+    # Deep scan guard model
+    deepScanTimeout: 5
+    deepScanFallback: fail_closed
+    # Upstream MCP server URL
+    upstreamURL: "http://mcp-server.tools.svc.cluster.local:8081"
+    # KeyDB URL
+    keydbURL: "redis://keydb.data.svc.cluster.local:6379"
+    # SPIKE Nexus URL
+    spikeNexusURL: "https://spike-nexus.spike-system.svc.cluster.local:8443"
+    # OTEL exporter endpoint
+    otelEndpoint: "host.docker.internal:4317"
+
+  # Service configuration
+  service:
+    type: NodePort
+    port: 9090
+    nodePort: 30090
+
+# -- SPIRE identity infrastructure
+spire:
+  server:
+    # StatefulSet replicas
+    replicas: 1
+    # PVC size for server data
+    storageSize: 1Gi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+  agent:
+    # Node attestation method: join_token (local/dev) or k8s_psat (EKS/GKE/AKS)
+    nodeAttestor: join_token
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 100m
+        memory: 128Mi
+
+# -- SPIKE secret management
+spike:
+  nexus:
+    replicas: 1
+    # Backend store: memory (no persistence), sqlite (AES-256-GCM), lite
+    backendStore: sqlite
+    # PVC size for SQLite data
+    storageSize: 1Gi
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+
+  keeper:
+    # Shamir secret sharing parameters
+    shamirThreshold: 1
+    shamirShares: 1
+    resources:
+      requests:
+        cpu: 25m
+        memory: 64Mi
+      limits:
+        cpu: 100m
+        memory: 256Mi
+
+# -- Observability configuration
+observability:
+  phoenix:
+    enabled: true
+  opensearch:
+    enabled: false
+  otelEndpoint: "host.docker.internal:4317"
+  otelServiceName: precinct-gateway
+
+# -- Dependent services
+services:
+  keydb:
+    enabled: true
+    storageSize: 1Gi
+  mcpServer:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 25m
+        memory: 32Mi
+      limits:
+        cpu: 50m
+        memory: 64Mi
+
+# -- Network policies
+networkPolicies:
+  # Deploy default-deny NetworkPolicies for all PRECINCT namespaces
+  enabled: true
+
+# -- Storage configuration
+storage:
+  # StorageClass name (empty = cluster default, e.g., hostpath on Docker Desktop)
+  storageClass: ""
+
+# -- Security configuration
+security:
+  # Pod Security Standards enforcement level: privileged, baseline, restricted
+  podSecurityStandards: privileged
+
+# -- Admission control
+admissionControl:
+  # OPA Gatekeeper
+  gatekeeper:
+    enabled: true
+    # Enforcement action: deny, dryrun, warn
+    enforcementAction: dryrun
+  # sigstore/policy-controller for image signature verification
+  sigstore:
+    enabled: false

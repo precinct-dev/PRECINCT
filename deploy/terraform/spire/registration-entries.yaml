@@ -1,0 +1,170 @@
+# ------------------------------------------------------------------------------
+# SPIRE Registration Entries (ConfigMap + kubectl exec)
+# Stories: RFA-9fv.3, RFA-38s
+#
+# Creates workload registration entries in the SPIRE Server using the CLI.
+#
+# DESIGN NOTE (RFA-38s): A standalone Kubernetes Job CANNOT access the SPIRE
+# Server's Unix socket because each pod gets its own filesystem namespace.
+# The spire-server CLI only supports -socketPath (Unix socket), not TCP/gRPC
+# addresses. Therefore, registration MUST be performed from within the SPIRE
+# Server pod itself, using one of these approaches:
+#
+#   1. kubectl exec (recommended for POC):
+#      kubectl exec -n spire-system spire-server-0 -- \
+#        sh /opt/spire/conf/server/register.sh
+#
+#   2. Makefile target (wraps kubectl exec):
+#      make -C deploy/terraform/spire deploy-entries
+#      # or from POC root:
+#      make k8s-register-spire
+#
+#   3. Production alternative: use spire-controller-manager for automatic
+#      CRD-based registration (out of scope for this POC).
+#
+# SPIFFE ID Scheme:
+#   spiffe://precinct.poc/ns/<namespace>/sa/<service-account>
+#
+# Registered workloads:
+#   1. precinct-gateway -- the security enforcement gateway
+#   2. precinct-control -- the control-plane service
+#   3. tools/* -- MCP tool server workloads (wildcard-like via namespace selector)
+#   4. spike-nexus -- SPIKE token service
+#
+# Re-running is idempotent: SPIRE deduplicates entries by SPIFFE ID.
+# ------------------------------------------------------------------------------
+# ConfigMap with registration script for kubectl exec approach
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-registration-script
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-register
+    app.kubernetes.io/part-of: spire
+data:
+  register.sh: |
+    #!/bin/sh
+    # SPIRE workload registration script (EKS / k8s_psat attestation).
+    #
+    # Usage (two options):
+    #   1. Makefile:  make -C deploy/terraform/spire deploy-entries
+    #                 make k8s-register-spire   (from POC root)
+    #   2. Manual:    kubectl -n spire-system exec spire-server-0 -- \
+    #                   sh -c "$(cat register.sh)"
+    #
+    # This script runs inside the SPIRE Server pod where the Unix socket
+    # is available. It cannot run in a standalone Job because the SPIRE
+    # CLI only supports -socketPath (Unix socket), not TCP addresses.
+    #
+    # Idempotent: SPIRE deduplicates entries by SPIFFE ID.
+
+    set -eu
+    SOCK="/tmp/spire-server/private/api.sock"
+
+    echo "=== Waiting for SPIRE Server ==="
+    until /opt/spire/bin/spire-server healthcheck -socketPath "$SOCK" 2>/dev/null; do
+      echo "  Server not ready, retrying in 5s..."
+      sleep 5
+    done
+    echo "SPIRE Server is ready."
+
+    echo ""
+    echo "=== Registering SPIRE entries ==="
+
+    # Node entry for k8s_psat agents
+    echo "  Node entry: k8s-psat agent..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -node \
+      -spiffeID spiffe://precinct.poc/agent/k8s-psat \
+      -selector k8s_psat:cluster:precinct-poc \
+      -selector k8s_psat:agent_ns:spire-system \
+      -selector k8s_psat:agent_sa:spire-agent \
+    || echo "  (entry may already exist, continuing)"
+
+    # Gateway workload
+    echo "  Workload: precinct-gateway..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://precinct.poc/agent/k8s-psat \
+      -spiffeID spiffe://precinct.poc/ns/gateway/sa/precinct-gateway \
+      -selector k8s:ns:gateway \
+      -selector k8s:sa:precinct-gateway \
+      -dns precinct-gateway \
+      -dns precinct-gateway.gateway.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
+    # Control workload
+    echo "  Workload: precinct-control..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://precinct.poc/agent/k8s-psat \
+      -spiffeID spiffe://precinct.poc/ns/gateway/sa/precinct-control \
+      -selector k8s:ns:gateway \
+      -selector k8s:sa:precinct-control \
+      -dns precinct-control \
+      -dns precinct-control.gateway.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
+    # Tool server workloads
+    echo "  Workload: mcp-tool (tools namespace)..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://precinct.poc/agent/k8s-psat \
+      -spiffeID spiffe://precinct.poc/ns/tools/sa/mcp-tool \
+      -selector k8s:ns:tools \
+      -selector k8s:sa:mcp-tool \
+    || echo "  (entry may already exist, continuing)"
+
+    # SPIKE Nexus workload
+    echo "  Workload: spike-nexus..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://precinct.poc/agent/k8s-psat \
+      -spiffeID spiffe://precinct.poc/spike/nexus \
+      -selector k8s:ns:spike-system \
+      -selector k8s:sa:spike-nexus \
+      -dns spike-nexus \
+      -dns spike-nexus.spike-system.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
+    # OpenSearch workload
+    echo "  Workload: opensearch..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://precinct.poc/agent/k8s-psat \
+      -spiffeID spiffe://precinct.poc/ns/observability/sa/opensearch \
+      -selector k8s:ns:observability \
+      -selector k8s:sa:opensearch \
+      -dns opensearch \
+      -dns opensearch.observability.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
+    # OpenSearch Dashboards workload
+    echo "  Workload: opensearch-dashboards..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://precinct.poc/agent/k8s-psat \
+      -spiffeID spiffe://precinct.poc/ns/observability/sa/opensearch-dashboards \
+      -selector k8s:ns:observability \
+      -selector k8s:sa:opensearch-dashboards \
+      -dns opensearch-dashboards \
+      -dns opensearch-dashboards.observability.svc.cluster.local \
+    || echo "  (entry may already exist, continuing)"
+
+    # OpenSearch audit forwarder workload
+    echo "  Workload: opensearch-audit-forwarder..."
+    /opt/spire/bin/spire-server entry create \
+      -socketPath "$SOCK" \
+      -parentID spiffe://precinct.poc/agent/k8s-psat \
+      -spiffeID spiffe://precinct.poc/ns/observability/sa/opensearch-audit-forwarder \
+      -selector k8s:ns:observability \
+      -selector k8s:sa:opensearch-audit-forwarder \
+    || echo "  (entry may already exist, continuing)"
+
+    echo ""
+    echo "=== Current entries ==="
+    /opt/spire/bin/spire-server entry show -socketPath "$SOCK"
+    echo ""
+    echo "Registration complete."

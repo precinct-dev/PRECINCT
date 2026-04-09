@@ -1,0 +1,8 @@
+# Kustomize resource group for content-scanner manifests
+# Story: RFA-hyk
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: tools
+resources:
+  - content-scanner-deployment.yaml
+  - content-scanner-service.yaml

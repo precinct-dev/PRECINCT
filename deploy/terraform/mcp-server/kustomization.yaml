@@ -1,0 +1,10 @@
+# Kustomize resource group for MCP server manifests
+# Added by RFA-9fv.6 to support Kustomize overlay references
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - mcp-server-namespace.yaml
+  - mcp-server-rbac.yaml
+  - mcp-server-deployment.yaml
+  - mcp-server-service.yaml

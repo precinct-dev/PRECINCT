@@ -1,0 +1,13 @@
+# CODEOWNERS -- requires review from maintainers for critical paths.
+#
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Default: all changes require maintainer review
+* @RamXX
+
+# Security-critical paths
+config/opa/                     @RamXX
+config/spire/                   @RamXX
+internal/gateway/middleware/    @RamXX
+.github/workflows/              @RamXX
+deploy/terraform/               @RamXX

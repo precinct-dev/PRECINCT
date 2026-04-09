@@ -1,0 +1,21 @@
+# ------------------------------------------------------------------------------
+# Gateway RBAC
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# ServiceAccount for the PRECINCT Gateway. Used for SPIFFE identity via
+# the SPIRE Agent k8s workload attestor (matches namespace + service account
+# to issue the correct SVID).
+#
+# SPIFFE ID: spiffe://precinct.poc/ns/gateway/sa/precinct-gateway
+#
+# The gateway does not need Kubernetes API access beyond its own identity,
+# so no ClusterRole or RoleBinding is required.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: precinct-gateway
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: precinct-gateway
+    app.kubernetes.io/part-of: precinct-gateway

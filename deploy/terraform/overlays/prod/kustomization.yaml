@@ -1,0 +1,155 @@
+# ------------------------------------------------------------------------------
+# Kustomize Production Overlay
+# Stories: RFA-9fv.6, RFA-tv9
+#
+# Production environment configuration:
+#   - 3 replicas for gateway (HA)
+#   - 2 replicas for MCP server
+#   - Structured logging with audit enabled
+#   - Production image digests (promoted from staging via promote.yaml)
+#   - Increased resource limits
+#   - Pod disruption budgets for availability
+#   - Admission control with cert-manager TLS for policy-controller
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../base
+  # Production-only resources
+  - gateway-pdb.yaml
+  - mcp-server-pdb.yaml
+  # Admission control (OPA Gatekeeper + sigstore/policy-controller)
+  - ../../admission
+  # cert-manager TLS auto-generation for policy-controller webhook (RFA-tv9)
+  - ../../admission/policy-controller/cert-manager
+
+images:
+  - name: precinct-gateway
+    newName: ghcr.io/precinct-dev/precinct/precinct-gateway
+    digest: sha256:abaa43d59681dfb78ee948f87c11cc34d3017ad55e3c68345a5010b3b08ca388  # managed by promote.yaml
+  - name: python
+    newName: ghcr.io/precinct-dev/precinct/s3-mcp-server
+    digest: sha256:aa82e523c90ddfc16fb41abd928a3850cfc1706eba60aea5a63ce06536b1ec8e  # managed by promote.yaml
+
+patches:
+  # --------------------------------------------------------------------------
+  # cert-manager CA injection for policy-controller webhook TLS (RFA-tv9)
+  # cert-manager's CA injector reads this annotation and populates caBundle
+  # with the CA that signed the Certificate in cosign-system.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ValidatingWebhookConfiguration
+      name: policy-controller-validating
+    patch: |
+      apiVersion: admissionregistration.k8s.io/v1
+      kind: ValidatingWebhookConfiguration
+      metadata:
+        name: policy-controller-validating
+        annotations:
+          cert-manager.io/inject-ca-from: cosign-system/policy-controller-webhook-cert
+
+  # Gateway: 3 replicas, structured logging, audit, higher resources
+  - target:
+      kind: Deployment
+      name: precinct-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: precinct-gateway
+        namespace: gateway
+      spec:
+        replicas: 3
+        template:
+          spec:
+            containers:
+              - name: precinct-gateway
+                env:
+                  - name: LOG_LEVEL
+                    value: "info"
+                  - name: LOG_FORMAT
+                    value: "json"
+                  - name: AUDIT_ENABLED
+                    value: "true"
+                  - name: ENFORCEMENT_PROFILE
+                    value: "prod_standard"
+                  - name: MCP_TRANSPORT_MODE
+                    value: "mcp"
+                  - name: ENFORCE_MODEL_MEDIATION_GATE
+                    value: "true"
+                  - name: MODEL_POLICY_INTENT_PREPEND_ENABLED
+                    value: "true"
+                  - name: SPIFFE_MODE
+                    value: "prod"
+                  - name: UPSTREAM_URL
+                    value: "https://mcp-server.tools.svc.cluster.local:8081/mcp"
+                  - name: APPROVAL_SIGNING_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: gateway-runtime-secrets
+                        key: approval_signing_key
+                  - name: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://precinct.poc/ns/ops/sa/gateway-admin"
+                  - name: TOOL_REGISTRY_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                  - name: MODEL_PROVIDER_CATALOG_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                  - name: GUARD_ARTIFACT_PATH
+                    value: "/config/guard-artifact.bin"
+                  - name: GUARD_ARTIFACT_SHA256
+                    value: "8232540100ebde3b5682c2b47d1eee50764f6dadca3842400157061656fc95a3"
+                  - name: GUARD_ARTIFACT_SIGNATURE_PATH
+                    value: "/config/guard-artifact.bin.sig"
+                  - name: GUARD_ARTIFACT_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                  - name: UPSTREAM_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://precinct.poc/ns/tools/sa/mcp-tool"
+                  - name: KEYDB_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://precinct.poc/ns/data/sa/keydb"
+                resources:
+                  requests:
+                    cpu: 250m
+                    memory: 256Mi
+                  limits:
+                    cpu: "1"
+                    memory: 512Mi
+
+  # MCP Server: 2 replicas, higher resources
+  - target:
+      kind: Deployment
+      name: mcp-server
+      namespace: tools
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: mcp-server
+        namespace: tools
+      spec:
+        replicas: 2
+        template:
+          spec:
+            containers:
+              - name: mcp-server
+                command:
+                  - /app/s3-mcp-server
+                args: []
+                env:
+                  - name: PORT
+                    value: "8081"
+                  - name: AWS_REGION
+                    value: "us-west-2"
+                  - name: ALLOWED_BUCKETS
+                    value: "precinct-prod:gateway/"
+                resources:
+                  requests:
+                    cpu: 200m
+                    memory: 256Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+
+commonAnnotations:
+  app.kubernetes.io/environment: production

@@ -1,0 +1,237 @@
+# ------------------------------------------------------------------------------
+# PRECINCT Control Deployment
+#
+# Deploys the PRECINCT Control service into the "gateway" namespace.
+# The control service owns control-plane and admin surfaces while preserving the
+# same SPIFFE, OPA, and runtime hardening posture as the data-plane gateway.
+#
+# SPIFFE ID: spiffe://precinct.poc/ns/gateway/sa/precinct-control
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: precinct-control
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: precinct-control
+    app.kubernetes.io/part-of: precinct-control
+    app.kubernetes.io/component: control
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: precinct-control
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: precinct-control
+        app.kubernetes.io/part-of: precinct-control
+        app.kubernetes.io/component: control
+    spec:
+      serviceAccountName: precinct-control
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: precinct-control
+          image: precinct-gateway:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - /app/precinct-control
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: PORT
+              value: "9090"
+            - name: SPIFFE_LISTEN_PORT
+              value: "9090"
+            - name: UPSTREAM_URL
+              value: "http://mcp-server.tools.svc.cluster.local:8081/mcp"
+            - name: ENFORCEMENT_PROFILE
+              value: "dev"
+            - name: OPA_POLICY_DIR
+              value: "/config/opa"
+            - name: TOOL_REGISTRY_CONFIG_PATH
+              value: "/config/tool-registry.yaml"
+            - name: OPA_POLICY_PUBLIC_KEY
+              value: "/config/attestation-ed25519.pub"
+            - name: OAUTH_RESOURCE_SERVER_CONFIG_PATH
+              value: "/config/oauth-resource-server.yaml"
+            - name: CAPABILITY_REGISTRY_V2_PATH
+              value: "/config/capability-registry-v2.yaml"
+            - name: MODEL_PROVIDER_CATALOG_PATH
+              value: "/config/model-provider-catalog.v2.yaml"
+            - name: MAX_REQUEST_SIZE_BYTES
+              value: "10485760"
+            - name: SPIFFE_MODE
+              value: "prod"
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: "unix:///run/spire/sockets/agent.sock"
+            - name: SPIRE_AGENT_SOCKET
+              value: "/run/spire/sockets/agent.sock"
+            - name: AUDIT_LOG_PATH
+              value: "/tmp/audit.jsonl"
+            - name: EXTENSION_REGISTRY_PATH
+              value: "/config/extensions-demo-k8s.yaml"
+            - name: LOG_LEVEL
+              value: "info"
+          livenessProbe:
+            exec:
+              command:
+                - /app/precinct-control
+                - health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /app/precinct-control
+                - health
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            - name: config-opa
+              mountPath: /config/opa
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/tool-registry.yaml
+              subPath: tool-registry.yaml
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/tool-registry.yaml.sig
+              subPath: tool-registry.yaml.sig
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/oauth-resource-server.yaml
+              subPath: oauth-resource-server.yaml
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/capability-registry-v2.yaml
+              subPath: capability-registry-v2.yaml
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/model-provider-catalog.v2.yaml
+              subPath: model-provider-catalog.v2.yaml
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/model-provider-catalog.v2.yaml.sig
+              subPath: model-provider-catalog.v2.yaml.sig
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/attestation-ed25519.pub
+              subPath: attestation-ed25519.pub
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/guard-artifact.bin
+              subPath: guard-artifact.bin
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/guard-artifact.bin.sig
+              subPath: guard-artifact.bin.sig
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/extensions-demo-k8s.yaml
+              subPath: extensions-demo-k8s.yaml
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/risk_thresholds.yaml
+              subPath: risk_thresholds.yaml
+              readOnly: true
+            - name: gateway-tmp
+              mountPath: /tmp
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+        - name: config-opa
+          configMap:
+            name: gateway-config
+            items:
+              - key: mcp_policy.rego
+                path: mcp_policy.rego
+              - key: mcp_policy.rego.sig
+                path: mcp_policy.rego.sig
+              - key: ui_policy.rego
+                path: ui_policy.rego
+              - key: ui_policy.rego.sig
+                path: ui_policy.rego.sig
+              - key: ui_csp_policy.rego
+                path: ui_csp_policy.rego
+              - key: ui_csp_policy.rego.sig
+                path: ui_csp_policy.rego.sig
+              - key: exfiltration.rego
+                path: exfiltration.rego
+              - key: exfiltration.rego.sig
+                path: exfiltration.rego.sig
+              - key: context_policy.rego
+                path: context_policy.rego
+              - key: context_policy.rego.sig
+                path: context_policy.rego.sig
+              - key: principal_policy.rego
+                path: principal_policy.rego
+              - key: principal_policy.rego.sig
+                path: principal_policy.rego.sig
+              - key: tool_grants.yaml
+                path: tool_grants.yaml
+              - key: tool_grants.yaml.sig
+                path: tool_grants.yaml.sig
+              - key: ui_capability_grants.yaml
+                path: ui_capability_grants.yaml
+              - key: ui_capability_grants.yaml.sig
+                path: ui_capability_grants.yaml.sig
+            optional: false
+        - name: config-registry
+          configMap:
+            name: gateway-config
+            items:
+              - key: tool-registry.yaml
+                path: tool-registry.yaml
+              - key: tool-registry.yaml.sig
+                path: tool-registry.yaml.sig
+              - key: oauth-resource-server.yaml
+                path: oauth-resource-server.yaml
+              - key: capability-registry-v2.yaml
+                path: capability-registry-v2.yaml
+              - key: model-provider-catalog.v2.yaml
+                path: model-provider-catalog.v2.yaml
+              - key: model-provider-catalog.v2.yaml.sig
+                path: model-provider-catalog.v2.yaml.sig
+              - key: attestation-ed25519.pub
+                path: attestation-ed25519.pub
+              - key: guard-artifact.bin
+                path: guard-artifact.bin
+              - key: guard-artifact.bin.sig
+                path: guard-artifact.bin.sig
+              - key: extensions-demo-k8s.yaml
+                path: extensions-demo-k8s.yaml
+              - key: risk_thresholds.yaml
+                path: risk_thresholds.yaml
+            optional: false
+        - name: gateway-tmp
+          emptyDir: {}

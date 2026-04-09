@@ -1,0 +1,16 @@
+# ------------------------------------------------------------------------------
+# SPIKE System Namespace
+# Story: RFA-9fv.3
+#
+# Dedicated namespace for SPIKE Nexus and related components.
+# Separated from SPIRE for clean RBAC boundaries and SPIFFE ID namespacing.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spike-system
+  labels:
+    app.kubernetes.io/part-of: spike
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

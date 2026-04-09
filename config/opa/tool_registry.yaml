@@ -1,0 +1,67 @@
+# Tool Registry Data for OPA Policy
+# This is loaded by OPA at startup and made available as data.tool_registry
+
+tool_registry:
+  tools:
+    # Tavily - Web search API
+    - name: "tavily_search"
+      description: "Search the web using Tavily API"
+      hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      risk_level: "medium"
+      requires_step_up: false
+      allowed_destinations:
+        - "api.tavily.com"
+        - "*.tavily.com"
+
+    # Read - File system read operations
+    # RFA-2jl: allowed_paths now derived from ALLOWED_BASE_PATH env var at runtime
+    - name: "read"
+      description: "Read file contents from filesystem"
+      hash: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+      risk_level: "low"
+      requires_step_up: false
+      allowed_paths: []  # Enforced by OPA policy via data.config.allowed_base_path
+
+    # Grep - Content search
+    - name: "grep"
+      description: "Search for patterns in files"
+      hash: "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8"
+      risk_level: "low"
+      requires_step_up: false
+      allowed_paths: []  # Enforced by OPA policy via data.config.allowed_base_path
+
+    # Messaging Send - External messaging platform egress (RFA-1fui, RFA-np7t)
+    - name: "messaging_send"
+      description: "Send a message to an external messaging platform"
+      hash: "1dc9c71022964b63ff5b47c255027b261c65b6372a8fb0fb96936790052e7520"
+      risk_level: "high"
+      requires_step_up: true
+      allowed_destinations:
+        - "graph.facebook.com"
+        - "*.facebook.com"
+        - "api.telegram.org"
+        - "slack.com"
+        - "*.slack.com"
+        - "messaging-sim"
+
+    # Messaging Status - Check delivery status (RFA-np7t)
+    - name: "messaging_status"
+      description: "Check delivery status of a previously sent message"
+      hash: "8e1c7daf8ea3082bb96522f8158c80ea4aa077f8148d3452132c10ef6d18f759"
+      risk_level: "low"
+      requires_step_up: false
+      allowed_destinations:
+        - "graph.facebook.com"
+        - "*.facebook.com"
+        - "api.telegram.org"
+        - "slack.com"
+        - "*.slack.com"
+        - "messaging-sim"
+
+    # Bash - Shell command execution (HIGH RISK)
+    - name: "bash"
+      description: "Execute shell commands"
+      hash: "2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae"
+      risk_level: "critical"
+      requires_step_up: true  # MUST have step-up authentication
+      allowed_paths: []  # Enforced by OPA policy via data.config.allowed_base_path

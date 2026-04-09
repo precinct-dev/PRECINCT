@@ -1,0 +1,92 @@
+# ------------------------------------------------------------------------------
+# Data Namespace NetworkPolicies (Local Overlay)
+# Story: RFA-6lk
+#
+# Implements default-deny and explicit allow rules for the data namespace,
+# which contains KeyDB (Redis-compatible cache for rate limiting and sessions).
+#
+# The data namespace only exists in the local overlay (keydb.yaml). In
+# production (EKS), KeyDB is replaced by ElastiCache (not a K8s resource),
+# so these policies are local-overlay-specific.
+#
+# Traffic flows:
+#   INGRESS: gateway -> keydb on port 6379 (rate limiting + sessions)
+#   EGRESS:  keydb -> kube-dns on port 53 (DNS resolution only)
+# ------------------------------------------------------------------------------
+
+# Default deny all traffic in the data namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: mcp-data
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow ingress to KeyDB from the gateway namespace only.
+# Only the PRECINCT Gateway pod needs access to KeyDB for rate limiting
+# and session storage.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keydb-allow-ingress
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: mcp-data
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keydb
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - precinct-gateway
+                  - precinct-control
+      ports:
+        - protocol: TCP
+          port: 6379
+---
+# Allow KeyDB egress to DNS only.
+# KeyDB does not initiate outbound connections to other services.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keydb-allow-egress
+  namespace: data
+  labels:
+    app.kubernetes.io/part-of: mcp-data
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: keydb
+  policyTypes:
+    - Egress
+  egress:
+    # DNS resolution (kube-dns)
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

@@ -1,0 +1,97 @@
+# docker-compose.mcpserver-test.yml -- Minimal SPIRE stack for mcpserver
+# integration tests (AC 10-11).
+#
+# Reuses the base SPIRE services (spire-server, spire-agent) from
+# docker-compose.yml. This overlay:
+#   1. Adds a spire-entry-registrar-test init that registers a workload
+#      entry for the host-side Go test binary.
+#   2. Bind-mounts the agent socket to a host-accessible path so the
+#      Go test can connect via SPIRE_AGENT_SOCKET env var.
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.mcpserver-test.yml \
+#     up -d --build --wait spire-agent spire-entry-registrar-test
+#
+# The Go test then runs on the host with:
+#   SPIRE_AGENT_SOCKET=<socket-path> go test ./pkg/mcpserver/... -tags integration -v
+
+services:
+  # Override: only start SPIRE core (server + agent).
+  # No spike-nexus, gateway, keydb, etc.
+  spire-server:
+    profiles: []  # Always start (no profile restriction)
+
+  spire-agent:
+    profiles: []
+
+  # Test-specific entry registrar: registers a Unix-attested workload entry
+  # for the Go test binary running on the host. The Unix workload attestor
+  # matches any UID, so the test process can obtain an SVID.
+  spire-entry-registrar-test:
+    image: spire-tools:latest
+    container_name: spire-entry-registrar-test
+    depends_on:
+      spire-agent:
+        condition: service_healthy
+    volumes:
+      - spire-server-socket:/tmp/spire-server:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        SOCK="/tmp/spire-server/private/api.sock"
+        DOMAIN="poc.local"
+        SPIRE=/opt/spire/bin/spire-server
+        MAX_WAIT=60
+        ELAPSED=0
+
+        echo "mcpserver-test registrar: waiting for attested agent..."
+
+        PARENT_ID=""
+        while [ $$ELAPSED -lt $$MAX_WAIT ]; do
+            AGENT_LIST="$$($$SPIRE agent list -socketPath "$$SOCK" 2>/dev/null || true)"
+            if [ -n "$$AGENT_LIST" ]; then
+                PARENT_ID="$$(printf '%s\n' "$$AGENT_LIST" | grep 'SPIFFE ID' | tail -1 | awk '{print $$NF}')"
+            fi
+            if [ -n "$$PARENT_ID" ]; then
+                break
+            fi
+            sleep 2
+            ELAPSED=$$((ELAPSED + 2))
+        done
+
+        if [ -z "$$PARENT_ID" ]; then
+            echo "ERROR: No attested SPIRE agent found within $${MAX_WAIT}s"
+            exit 1
+        fi
+
+        echo "Agent SPIFFE ID: $$PARENT_ID"
+
+        echo "Registering mcpserver-test workload entry..."
+        $$SPIRE entry create \
+            -socketPath "$$SOCK" \
+            -parentID "$$PARENT_ID" \
+            -spiffeID "spiffe://$$DOMAIN/mcpserver/integration-test" \
+            -selector unix:uid:0 \
+            2>/dev/null || true
+
+        # Also register with current user UID (non-root) for host-side tests
+        $$SPIRE entry create \
+            -socketPath "$$SOCK" \
+            -parentID "$$PARENT_ID" \
+            -spiffeID "spiffe://$$DOMAIN/mcpserver/integration-test" \
+            -selector unix:uid:1000 \
+            2>/dev/null || true
+
+        # Register with a wildcard-like approach: UID 501 (macOS default)
+        $$SPIRE entry create \
+            -socketPath "$$SOCK" \
+            -parentID "$$PARENT_ID" \
+            -spiffeID "spiffe://$$DOMAIN/mcpserver/integration-test" \
+            -selector unix:uid:501 \
+            2>/dev/null || true
+
+        echo "mcpserver-test workload entries registered."
+    networks:
+      - control-plane
+    restart: "no"

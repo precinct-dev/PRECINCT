@@ -1,0 +1,17 @@
+apiVersion: v2
+name: precinct
+description: PRECINCT - Policy-driven Runtime Enforcement and Cryptographic Identity for Networked Compute and Tools
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - agentic-ai
+  - security
+  - zero-trust
+  - spiffe
+  - opa
+home: https://precinct.dev
+sources:
+  - https://github.com/precinct-dev/PRECINCT
+maintainers:
+  - name: PRECINCT Contributors

@@ -1,0 +1,108 @@
+.firecrawl/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE files
+.idea/
+.vscode/
+.vault/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+.envrc
+.wrangler/
+
+# Logs and runtime temp files
+*.log
+*.tmp
+*.cache
+*.pid
+
+# Runtime operations artifacts
+docs/operations/artifacts/
+docs/upgrades/
+docs/ARCHITECTURE.md
+docs/BUSINESS.md
+docs/DESIGN.md
+config/upgrade-snapshots/
+make-*.log
+tests/e2e/*.log
+
+# Local binaries/build outputs
+bin/
+build/
+openclaw-ws-smoke
+precinct
+
+# SPIRE data
+data/
+
+# Compiled Go binaries (platform-specific, never commit)
+/gateway
+/service
+/gdpr-delete
+/tool_register
+/s3-mcp-server
+/precinct
+/openclaw-ws-smoke
+/mtls-healthcheck
+/tcp-healthcheck
+/spike-seeder
+/messaging-sim
+/ws-e2e-client
+demo/go/demo
+demo/mock-mcp-server/mock-mcp-server
+*.exe
+*.out
+*.test
+
+# Build artifacts (entire directory is ephemeral)
+coverage.out
+
+# Generated reports
+reports/
+
+# Private key material (blanket rules as defense-in-depth)
+*.pem
+*.key
+!deploy/compose/data/x509pop/*.key
+config/attestation-ed25519.key
+
+# Dependency vendoring (if ever used)
+vendor/
+node_modules/
+
+# Upgrade workflow artifacts (runtime only, never commit)
+config/versions.yaml.snapshot.*
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+uv.lock
+
+# Repave workflow state (runtime artifact)
+.repave-state.json
+
+# OpenTofu / Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# E2E test artifacts (runtime only)
+tests/e2e/artifacts/
+
+# Relocated use-case-specific files (local reference only)
+use_case_specific/

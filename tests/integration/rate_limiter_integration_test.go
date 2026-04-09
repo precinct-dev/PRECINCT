@@ -1,0 +1,201 @@
+// Copyright 2024-2026 The PRECINCT Authors
+// SPDX-License-Identifier: Apache-2.0
+
+//go:build integration
+// +build integration
+
+package integration
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"testing"
+	"time"
+)
+
+// TestRateLimiterIntegration verifies rate limiting behavior against running compose stack
+// This test exercises rate limiting with real API calls, no mocks
+func TestRateLimiterIntegration(t *testing.T) {
+	// Wait for gateway to be ready
+	if err := waitForService(gatewayURL+"/health", 30*time.Second); err != nil {
+		t.Fatalf("Gateway not ready: %v", err)
+	}
+
+	// Define agents for testing
+	researcher := "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+	gateway := "spiffe://poc.local/gateways/precinct-gateway/dev"
+
+	t.Run("RateLimitHeadersPresent", func(t *testing.T) {
+		// Use an allowed method so the request reaches step-11 rate limiting.
+		mcpReq := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"method":  "tools/list",
+			"params":  map[string]interface{}{},
+			"id":      1,
+		}
+		reqBody, _ := json.Marshal(mcpReq)
+
+		req, err := http.NewRequest("POST", gatewayURL, bytes.NewBuffer(reqBody))
+		if err != nil {
+			t.Fatalf("Failed to create request: %v", err)
+		}
+		req.Header.Set("X-Spiffe-Id", researcher)
+		req.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			t.Fatalf("Failed to send request: %v", err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("expected tools/list to succeed, got %d", resp.StatusCode)
+		}
+
+		// Verify rate limit headers are present
+		if limit := resp.Header.Get("X-RateLimit-Limit"); limit == "" {
+			t.Error("Expected X-RateLimit-Limit header to be present")
+		}
+		if remaining := resp.Header.Get("X-RateLimit-Remaining"); remaining == "" {
+			t.Error("Expected X-RateLimit-Remaining header to be present")
+		}
+		if reset := resp.Header.Get("X-RateLimit-Reset"); reset == "" {
+			t.Error("Expected X-RateLimit-Reset header to be present")
+		} else {
+			// Verify reset timestamp is valid
+			if resetInt, err := strconv.ParseInt(reset, 10, 64); err != nil || resetInt <= 0 {
+				t.Errorf("Expected valid X-RateLimit-Reset unix timestamp, got %s", reset)
+			}
+		}
+	})
+
+	t.Run("IndependentAgentLimits", func(t *testing.T) {
+		// Verify different agents have independent rate limits with an allowed request.
+		mcpReq := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"method":  "tools/list",
+			"params":  map[string]interface{}{},
+			"id":      1,
+		}
+		reqBody, _ := json.Marshal(mcpReq)
+
+		// Agent 1 (researcher) makes a request
+		req1, _ := http.NewRequest("POST", gatewayURL, bytes.NewBuffer(reqBody))
+		req1.Header.Set("X-Spiffe-Id", researcher)
+		req1.Header.Set("Content-Type", "application/json")
+
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp1, err := client.Do(req1)
+		if err != nil {
+			t.Fatalf("Failed to send researcher request: %v", err)
+		}
+		resp1.Body.Close()
+
+		// Agent 2 (gateway) should still be able to make requests (independent bucket)
+		req2, _ := http.NewRequest("POST", gatewayURL, bytes.NewBuffer(reqBody))
+		req2.Header.Set("X-Spiffe-Id", gateway)
+		req2.Header.Set("Content-Type", "application/json")
+
+		resp2, err := client.Do(req2)
+		if err != nil {
+			t.Fatalf("Failed to send gateway request: %v", err)
+		}
+		defer resp2.Body.Close()
+
+		// Both agents should succeed and receive independent header state.
+		if resp1.StatusCode != http.StatusOK {
+			t.Errorf("Expected researcher request to succeed, got %d", resp1.StatusCode)
+		}
+		if resp2.StatusCode != http.StatusOK {
+			t.Errorf("Expected gateway request to succeed with independent limit, got %d", resp2.StatusCode)
+		}
+		if resp1.Header.Get("X-RateLimit-Remaining") == "" || resp2.Header.Get("X-RateLimit-Remaining") == "" {
+			t.Fatalf("expected rate-limit headers for both agents")
+		}
+	})
+
+	t.Run("RateLimitExceededWithRetryAfter", func(t *testing.T) {
+		mcpReq := map[string]interface{}{
+			"jsonrpc": "2.0",
+			"method":  "tools/list",
+			"params":  map[string]interface{}{},
+			"id":      1,
+		}
+		reqBody, _ := json.Marshal(mcpReq)
+
+		// Use a unique agent for this test to avoid interference
+		testAgent := "spiffe://poc.local/agents/mcp-client/ratelimit-researcher/dev"
+
+		var lastResp *http.Response
+		client := &http.Client{Timeout: 5 * time.Second}
+		saw429 := false
+
+		for i := 0; i < 90; i++ {
+			req, _ := http.NewRequest("POST", gatewayURL, bytes.NewBuffer(reqBody))
+			req.Header.Set("X-Spiffe-Id", testAgent)
+			req.Header.Set("Content-Type", "application/json")
+
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("Failed to send request %d: %v", i+1, err)
+			}
+
+			if lastResp != nil {
+				lastResp.Body.Close()
+			}
+			lastResp = resp
+
+			if resp.StatusCode == http.StatusTooManyRequests {
+				saw429 = true
+
+				// Verify 429 response has proper structure.
+				var respBody map[string]interface{}
+				if err := json.NewDecoder(resp.Body).Decode(&respBody); err != nil {
+					t.Fatalf("Failed to decode 429 response body: %v", err)
+				}
+
+				if respBody["code"] != "ratelimit_exceeded" {
+					t.Errorf("Expected code=ratelimit_exceeded, got %v", respBody["code"])
+				}
+
+				details, ok := respBody["details"].(map[string]interface{})
+				if !ok {
+					t.Fatalf("Expected details object in 429 response, got %v", respBody["details"])
+				}
+				if _, exists := details["retry_after_seconds"]; !exists {
+					t.Error("Expected retry_after_seconds in 429 response details")
+				}
+
+				// Verify rate limit headers are present even in 429
+				if limit := resp.Header.Get("X-RateLimit-Limit"); limit == "" {
+					t.Error("Expected X-RateLimit-Limit header in 429 response")
+				}
+				break
+			}
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("request %d: expected 200 or 429, got %d", i+1, resp.StatusCode)
+			}
+
+			if limit := resp.Header.Get("X-RateLimit-Limit"); limit == "" {
+				t.Errorf("Request %d: Expected X-RateLimit-Limit header", i+1)
+			}
+			if remaining := resp.Header.Get("X-RateLimit-Remaining"); remaining == "" {
+				t.Errorf("Request %d: Expected X-RateLimit-Remaining header", i+1)
+			}
+			if reset := resp.Header.Get("X-RateLimit-Reset"); reset == "" {
+				t.Errorf("Request %d: Expected X-RateLimit-Reset header", i+1)
+			}
+		}
+
+		if lastResp != nil {
+			lastResp.Body.Close()
+		}
+		if !saw429 {
+			t.Fatalf("expected to hit 429 within the configured local rate limit window")
+		}
+	})
+}

@@ -1,0 +1,70 @@
+name: Promote Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_digest:
+        description: "Image digest to promote (sha256:...)"
+        required: true
+      target_env:
+        description: "Target environment (staging or prod)"
+        required: true
+        default: staging
+
+permissions:
+  contents: read
+  id-token: write
+  packages: read
+
+env:
+  SOURCE_CERT_IDENTITY_REGEX: ^https://github.com/${{ github.repository }}/.github/workflows/ci.yaml@refs/heads/(main|epic/.+)$
+  SOURCE_CERT_OIDC_ISSUER: https://token.actions.githubusercontent.com
+
+jobs:
+  verify-provenance:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v4.1.1
+
+      - name: Verify image signature and provenance
+        env:
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          REPO: ${{ github.repository }}
+        run: |
+          cosign verify \
+            --certificate-identity-regexp="${SOURCE_CERT_IDENTITY_REGEX}" \
+            --certificate-oidc-issuer="${SOURCE_CERT_OIDC_ISSUER}" \
+            "ghcr.io/${REPO}/precinct-gateway@${IMAGE_DIGEST}"
+
+  promote:
+    needs: verify-provenance
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6.0.2
+
+      - name: Update overlay digest
+        env:
+          IMAGE_DIGEST: ${{ inputs.image_digest }}
+          TARGET_ENV: ${{ inputs.target_env }}
+          REPO: ${{ github.repository }}
+        run: |
+          cd "deploy/terraform/overlays/${TARGET_ENV}"
+          kustomize edit set image "ghcr.io/${REPO}/precinct-gateway@${IMAGE_DIGEST}"
+
+      - name: Validate overlay
+        env:
+          TARGET_ENV: ${{ inputs.target_env }}
+        run: |
+          kustomize build "deploy/terraform/overlays/${TARGET_ENV}" | kubeconform -summary -strict -ignore-missing-schemas
+
+      - name: Create promotion PR
+        uses: peter-evans/create-pull-request@v8.1.0
+        with:
+          title: "promote: ${{ inputs.target_env }} <- ${{ inputs.image_digest }}"
+          branch: promote/${{ inputs.target_env }}/${{ github.run_id }}
+          commit-message: "chore: promote ${{ inputs.target_env }} to ${{ inputs.image_digest }}"

@@ -1,0 +1,157 @@
+# ------------------------------------------------------------------------------
+# OpenSearch Audit Forwarder (DaemonSet)
+#
+# Reads gateway container logs from /var/log/containers and forwards audit
+# events into OpenSearch with TLS client certificates and credential secrets.
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: opensearch-audit-forwarder
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: opensearch-audit-forwarder
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: audit-forwarder
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: opensearch-audit-forwarder
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: opensearch-audit-forwarder
+        app.kubernetes.io/part-of: mcp-observability
+        app.kubernetes.io/component: audit-forwarder
+    spec:
+      serviceAccountName: opensearch-audit-forwarder
+      terminationGracePeriodSeconds: 10
+      initContainers:
+        - name: wait-for-spire-socket
+          image: busybox:1.36
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              i=1
+              while [ "$i" -le 60 ]; do
+                if [ -S /run/spire/sockets/agent.sock ]; then
+                  exit 0
+                fi
+                sleep 1
+                i=$((i + 1))
+              done
+              echo "SPIRE Workload API socket not found after 60s" >&2
+              exit 1
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      containers:
+        - name: fluent-bit
+          image: cr.fluentbit.io/fluent/fluent-bit:3.1.10
+          imagePullPolicy: IfNotPresent
+          args:
+            - /fluent-bit/bin/fluent-bit
+            - -c
+            - /fluent-bit/etc/fluent-bit.conf
+          ports:
+            - name: metrics
+              containerPort: 2020
+              protocol: TCP
+          env:
+            - name: OS_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-admin-credentials
+                  key: username
+                  optional: false
+            - name: OS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: opensearch-admin-credentials
+                  key: password
+                  optional: false
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: "unix:///run/spire/sockets/agent.sock"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: metrics
+            initialDelaySeconds: 20
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: metrics
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            - name: fluent-bit-config
+              mountPath: /fluent-bit/etc/fluent-bit.conf
+              subPath: fluent-bit.conf
+              readOnly: true
+            - name: opensearch-client-tls
+              mountPath: /fluent-bit/certs
+              readOnly: true
+            - name: container-logs
+              mountPath: /var/log
+              readOnly: true
+            - name: fluent-bit-state
+              mountPath: /fluent-bit/state
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: fluent-bit-config
+          configMap:
+            name: opensearch-audit-forwarder-config
+            items:
+              - key: fluent-bit.conf
+                path: fluent-bit.conf
+            optional: false
+        - name: opensearch-client-tls
+          secret:
+            secretName: opensearch-client-tls
+            optional: false
+        - name: container-logs
+          hostPath:
+            path: /var/log
+            type: Directory
+        - name: fluent-bit-state
+          emptyDir:
+            sizeLimit: 256Mi
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate

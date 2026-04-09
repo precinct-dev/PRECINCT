@@ -1,0 +1,20 @@
+# SPIRE Tools - Shell + spire-server binary for entry registration commands
+# Provides the admin CLI for spire-server entry create/list operations.
+
+FROM ghcr.io/spiffe/spire-server:1.10.0@sha256:26daa394b3bfbc9dcadc734e9b110ce7ac5f2e1fe16050eb4418772280748b5e AS spire
+FROM alpine:3.21@sha256:c3f8e73fdb79deaebaa2037150150191b9dcbfba68b4a46d70103204c53f4709
+
+# Create non-root user
+RUN addgroup -g 1000 spire && \
+    adduser -D -u 1000 -G spire -s /sbin/nologin spire
+
+# Copy SPIRE server binary for entry registration commands
+COPY --from=spire /opt/spire/bin/spire-server /opt/spire/bin/spire-server
+
+# Create required directories owned by non-root user
+RUN mkdir -p /opt/spire && \
+    chown -R spire:spire /opt/spire
+
+USER spire
+
+ENTRYPOINT ["/bin/sh"]

@@ -1,0 +1,102 @@
+# ------------------------------------------------------------------------------
+# SPIRE Token Generator Job -- Local K8s Only
+# Story: RFA-7bh.1
+#
+# Creates a SPIRE join token at deploy time using kubectl exec into the
+# SPIRE Server pod (the only way to access the server's unix socket).
+# The token is printed to stdout for the SPIRE Agent to consume.
+#
+# This replaces the k8s_psat attestation flow used in EKS, which requires
+# an OIDC provider not available in Docker Desktop kubeadm.
+# ------------------------------------------------------------------------------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spire-token-generator
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-token-generator
+    app.kubernetes.io/part-of: spire
+    app.kubernetes.io/component: local-setup
+spec:
+  backoffLimit: 10
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spire-token-generator
+    spec:
+      serviceAccountName: spire-server
+      restartPolicy: OnFailure
+      containers:
+        - name: token-generator
+          image: bitnami/kubectl@sha256:d80c09afa570a14cf6d32ca09ca610b5701eb0a08c655b5bb820194b218078eb
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+
+              echo "=== SPIRE Join Token Generator (Local K8s) ==="
+
+              # Wait for SPIRE Server pod to be ready
+              echo "Waiting for SPIRE Server pod..."
+              RETRIES=0
+              MAX_RETRIES=60
+              until kubectl -n spire-system get pod spire-server-0 -o jsonpath='{.status.phase}' 2>/dev/null | grep -q Running; do
+                RETRIES=$((RETRIES + 1))
+                if [ $RETRIES -ge $MAX_RETRIES ]; then
+                  echo "ERROR: SPIRE Server pod not ready after ${MAX_RETRIES} attempts"
+                  exit 1
+                fi
+                echo "  Not ready (attempt ${RETRIES}/${MAX_RETRIES}), retrying in 2s..."
+                sleep 2
+              done
+              echo "SPIRE Server pod is running."
+
+              # Wait for SPIRE Server health
+              echo "Checking SPIRE Server health..."
+              RETRIES=0
+              until kubectl -n spire-system exec spire-server-0 -- \
+                /opt/spire/bin/spire-server healthcheck \
+                -socketPath /tmp/spire-server/private/api.sock 2>/dev/null; do
+                RETRIES=$((RETRIES + 1))
+                if [ $RETRIES -ge $MAX_RETRIES ]; then
+                  echo "ERROR: SPIRE Server health check failed after ${MAX_RETRIES} attempts"
+                  exit 1
+                fi
+                sleep 2
+              done
+              echo "SPIRE Server is healthy."
+
+              # Generate join token via kubectl exec
+              echo "Generating join token..."
+              TOKEN_OUTPUT=$(kubectl -n spire-system exec spire-server-0 -- \
+                /opt/spire/bin/spire-server token generate \
+                -socketPath /tmp/spire-server/private/api.sock \
+                -spiffeID spiffe://precinct.poc/agent/local \
+                -ttl 86400 2>&1)
+              echo "Join token command completed."
+
+              TOKEN=$(echo "${TOKEN_OUTPUT}" | awk '/Token:/ {print $2}')
+              if [ -z "${TOKEN}" ]; then
+                echo "ERROR: Failed to extract join token"
+                exit 1
+              fi
+              echo "Join token generated successfully."
+
+              # Store token in a K8s secret for the agent to read
+              kubectl -n spire-system create secret generic spire-join-token \
+                --from-literal=token="${TOKEN}" \
+                --dry-run=client -o yaml | kubectl apply -f -
+              echo "Token stored in secret spire-system/spire-join-token"
+              echo "=== Token generation complete ==="
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL

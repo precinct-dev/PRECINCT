@@ -1,0 +1,18 @@
+# ------------------------------------------------------------------------------
+# OpenTelemetry Collector ServiceAccount
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# ServiceAccount for the OTEL Collector. No cloud-specific annotations needed
+# since the collector only routes telemetry data internally (to Phoenix).
+# If future exporters require cloud access (CloudWatch, Stackdriver, etc.),
+# add appropriate annotations via a cloud-specific overlay.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: collector

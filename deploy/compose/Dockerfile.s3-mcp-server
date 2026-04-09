@@ -1,0 +1,58 @@
+# Multi-Stage Dockerfile for S3 MCP Tool Server
+# Story: RFA-9fv.5
+# Reference: docs/supply-chain-images.md
+
+# ============================================================================
+# Stage 1: Builder
+# ============================================================================
+FROM golang:1.26.2-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    git
+
+# Set working directory
+WORKDIR /build
+
+# Copy go.mod and go.sum first for layer caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY . .
+
+# Build the S3 MCP server
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/s3-mcp-server \
+    ./cmd/s3-mcp-server
+
+# ============================================================================
+# Stage 2: Runtime (Distroless)
+# ============================================================================
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
+
+# Set working directory
+WORKDIR /app
+
+# Copy CA certificates from builder (required for HTTPS to AWS S3 endpoints)
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy the compiled binary from builder
+COPY --from=builder /build/s3-mcp-server /app/s3-mcp-server
+
+# Expose MCP server port
+EXPOSE 8082
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD ["/app/s3-mcp-server", "health"]
+
+# Run the S3 MCP server
+ENTRYPOINT ["/app/s3-mcp-server"]
+CMD []

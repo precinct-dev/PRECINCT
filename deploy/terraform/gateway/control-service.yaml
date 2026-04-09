@@ -1,0 +1,23 @@
+# ------------------------------------------------------------------------------
+# PRECINCT Control Service
+#
+# ClusterIP service exposing the PRECINCT Control service on port 9090.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: precinct-control
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: precinct-control
+    app.kubernetes.io/part-of: precinct-control
+    app.kubernetes.io/component: control
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: precinct-control
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+      protocol: TCP

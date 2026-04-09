@@ -1,0 +1,287 @@
+# ------------------------------------------------------------------------------
+# PRECINCT Gateway Deployment
+# Story: RFA-9fv.4
+#
+# Deploys the PRECINCT Gateway into the "gateway" namespace.
+# The gateway enforces a 13-middleware security chain on all MCP JSON-RPC
+# requests before proxying to tool servers in the "tools" namespace.
+#
+# Key design decisions:
+#   - Single replica for POC (HPA can be added for production)
+#   - hostPath mount for SPIRE agent socket (matches DaemonSet socket path)
+#   - ConfigMap mount for OPA policies and tool registry
+#   - Non-root, read-only root filesystem, restricted security context
+#   - Environment variables match docker-compose.yml configuration
+#   - UPSTREAM_URL points to mcp-server service in the tools namespace
+#   - Resource limits appropriate for POC workloads
+#
+# SPIFFE ID: spiffe://precinct.poc/ns/gateway/sa/precinct-gateway
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: precinct-gateway
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: precinct-gateway
+    app.kubernetes.io/part-of: precinct-gateway
+    app.kubernetes.io/component: gateway
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: precinct-gateway
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: precinct-gateway
+        app.kubernetes.io/part-of: precinct-gateway
+        app.kubernetes.io/component: gateway
+    spec:
+      serviceAccountName: precinct-gateway
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: precinct-gateway
+          # Built from deploy/compose/Dockerfile.gateway
+          # In EKS, push to ECR and reference the registry path:
+          #   <account-id>.dkr.ecr.<region>.amazonaws.com/precinct-gateway:<tag>
+          # For local development/testing, use the local image name.
+          image: precinct-gateway:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 9090
+              protocol: TCP
+          env:
+            # Gateway listen port
+            - name: PORT
+              value: "9090"
+            # In prod mode the gateway serves HTTPS on SPIFFE_LISTEN_PORT.
+            # Keep this aligned with PORT so probes and Service wiring remain consistent.
+            - name: SPIFFE_LISTEN_PORT
+              value: "9090"
+            # Upstream MCP tool server (in tools namespace)
+            # Strict profiles require an https:// upstream URL with SPIFFE mTLS transport.
+            - name: UPSTREAM_URL
+              value: "http://mcp-server.tools.svc.cluster.local:8081/mcp"
+            # Keep dev/permissive profile explicit in this base manifest.
+            # Production overlays should set prod_standard/prod_regulated_hipaa.
+            - name: ENFORCEMENT_PROFILE
+              value: "dev"
+            # OPA policy directory (mounted from ConfigMap)
+            - name: OPA_POLICY_DIR
+              value: "/config/opa"
+            # Tool registry configuration (mounted from ConfigMap)
+            - name: TOOL_REGISTRY_CONFIG_PATH
+              value: "/config/tool-registry.yaml"
+            # OPA policy reload attestation public key
+            - name: OPA_POLICY_PUBLIC_KEY
+              value: "/config/attestation-ed25519.pub"
+            # OAuth resource-server JWT validation config for external bearer auth.
+            - name: OAUTH_RESOURCE_SERVER_CONFIG_PATH
+              value: "/config/oauth-resource-server.yaml"
+            # Unified capability registry v2 (Phase 3 tool/model governance)
+            - name: CAPABILITY_REGISTRY_V2_PATH
+              value: "/config/capability-registry-v2.yaml"
+            # Signed provider catalog v2 for model trust policy
+            - name: MODEL_PROVIDER_CATALOG_PATH
+              value: "/config/model-provider-catalog.v2.yaml"
+            # Maximum request body size (10 MB)
+            - name: MAX_REQUEST_SIZE_BYTES
+              value: "10485760"
+            # SPIFFE mode: "dev" for POC, "prod" for production with mTLS
+            - name: SPIFFE_MODE
+              value: "prod"
+            # SPIRE Workload API socket (required by go-spiffe)
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: "unix:///run/spire/sockets/agent.sock"
+            # SPIRE Agent Workload API socket path
+            - name: SPIRE_AGENT_SOCKET
+              value: "/run/spire/sockets/agent.sock"
+            # Audit log output path
+            - name: AUDIT_LOG_PATH
+              value: "/tmp/audit.jsonl"
+            # Extension registry for content-scanner sidecar (K8s variant)
+            - name: EXTENSION_REGISTRY_PATH
+              value: "/config/extensions-demo-k8s.yaml"
+            # Log level
+            - name: LOG_LEVEL
+              value: "info"
+          livenessProbe:
+            exec:
+              command:
+                - /app/gateway
+                - health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - /app/gateway
+                - health
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          volumeMounts:
+            # SPIRE Agent Workload API socket (from host via DaemonSet)
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            # OPA policies (from ConfigMap)
+            - name: config-opa
+              mountPath: /config/opa
+              readOnly: true
+            # Tool registry (from ConfigMap)
+            - name: config-registry
+              mountPath: /config/tool-registry.yaml
+              subPath: tool-registry.yaml
+              readOnly: true
+            # Tool registry signature (strict attestation)
+            - name: config-registry
+              mountPath: /config/tool-registry.yaml.sig
+              subPath: tool-registry.yaml.sig
+              readOnly: true
+            # OAuth resource-server config (external bearer-token validation)
+            - name: config-registry
+              mountPath: /config/oauth-resource-server.yaml
+              subPath: oauth-resource-server.yaml
+              readOnly: true
+            # Capability registry v2 (from ConfigMap)
+            - name: config-registry
+              mountPath: /config/capability-registry-v2.yaml
+              subPath: capability-registry-v2.yaml
+              readOnly: true
+            # Provider catalog v2 (from ConfigMap)
+            - name: config-registry
+              mountPath: /config/model-provider-catalog.v2.yaml
+              subPath: model-provider-catalog.v2.yaml
+              readOnly: true
+            # Provider catalog signature (strict attestation)
+            - name: config-registry
+              mountPath: /config/model-provider-catalog.v2.yaml.sig
+              subPath: model-provider-catalog.v2.yaml.sig
+              readOnly: true
+            # Shared attestation public key for strict artifact verification
+            - name: config-registry
+              mountPath: /config/attestation-ed25519.pub
+              subPath: attestation-ed25519.pub
+              readOnly: true
+            # Guard artifact and signature for strict startup integrity checks
+            - name: config-registry
+              mountPath: /config/guard-artifact.bin
+              subPath: guard-artifact.bin
+              readOnly: true
+            - name: config-registry
+              mountPath: /config/guard-artifact.bin.sig
+              subPath: guard-artifact.bin.sig
+              readOnly: true
+            # Extension registry for content-scanner sidecar (K8s variant)
+            - name: config-registry
+              mountPath: /config/extensions-demo-k8s.yaml
+              subPath: extensions-demo-k8s.yaml
+              readOnly: true
+            # Risk thresholds for step-up gating rubric
+            - name: config-registry
+              mountPath: /config/risk_thresholds.yaml
+              subPath: risk_thresholds.yaml
+              readOnly: true
+            # Writable tmp directory for audit logs and runtime data
+            - name: gateway-tmp
+              mountPath: /tmp
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        # SPIRE Agent socket from the host (populated by SPIRE Agent DaemonSet)
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+        # OPA policy files from ConfigMap
+        - name: config-opa
+          configMap:
+            name: gateway-config
+            items:
+              - key: mcp_policy.rego
+                path: mcp_policy.rego
+              - key: mcp_policy.rego.sig
+                path: mcp_policy.rego.sig
+              - key: ui_policy.rego
+                path: ui_policy.rego
+              - key: ui_policy.rego.sig
+                path: ui_policy.rego.sig
+              - key: ui_csp_policy.rego
+                path: ui_csp_policy.rego
+              - key: ui_csp_policy.rego.sig
+                path: ui_csp_policy.rego.sig
+              - key: exfiltration.rego
+                path: exfiltration.rego
+              - key: exfiltration.rego.sig
+                path: exfiltration.rego.sig
+              - key: context_policy.rego
+                path: context_policy.rego
+              - key: context_policy.rego.sig
+                path: context_policy.rego.sig
+              - key: principal_policy.rego
+                path: principal_policy.rego
+              - key: principal_policy.rego.sig
+                path: principal_policy.rego.sig
+              - key: tool_grants.yaml
+                path: tool_grants.yaml
+              - key: tool_grants.yaml.sig
+                path: tool_grants.yaml.sig
+              - key: ui_capability_grants.yaml
+                path: ui_capability_grants.yaml
+              - key: ui_capability_grants.yaml.sig
+                path: ui_capability_grants.yaml.sig
+            optional: false
+        # Tool registry from ConfigMap
+        - name: config-registry
+          configMap:
+            name: gateway-config
+            items:
+              - key: tool-registry.yaml
+                path: tool-registry.yaml
+              - key: tool-registry.yaml.sig
+                path: tool-registry.yaml.sig
+              - key: oauth-resource-server.yaml
+                path: oauth-resource-server.yaml
+              - key: capability-registry-v2.yaml
+                path: capability-registry-v2.yaml
+              - key: model-provider-catalog.v2.yaml
+                path: model-provider-catalog.v2.yaml
+              - key: model-provider-catalog.v2.yaml.sig
+                path: model-provider-catalog.v2.yaml.sig
+              - key: attestation-ed25519.pub
+                path: attestation-ed25519.pub
+              - key: guard-artifact.bin
+                path: guard-artifact.bin
+              - key: guard-artifact.bin.sig
+                path: guard-artifact.bin.sig
+              - key: extensions-demo-k8s.yaml
+                path: extensions-demo-k8s.yaml
+              - key: risk_thresholds.yaml
+                path: risk_thresholds.yaml
+            optional: false
+        # Writable tmp for audit logs and runtime data
+        - name: gateway-tmp
+          emptyDir:
+            sizeLimit: 50Mi

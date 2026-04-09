@@ -1,0 +1,57 @@
+# Multi-Stage Dockerfile for Go Services
+# Template for: PRECINCT Gateway, precinct CLI, Context Fetcher
+# Reference: docs/supply-chain-images.md
+
+# ============================================================================
+# Stage 1: Builder
+# ============================================================================
+FROM golang:1.26.2-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    git
+
+# Set working directory
+WORKDIR /build
+
+# Copy go.mod and go.sum first for layer caching
+COPY go.mod go.sum ./
+
+# Download dependencies
+RUN go mod download && go mod verify
+
+# Copy source code
+COPY . .
+
+# Build the application
+# CGO_ENABLED=0: Creates statically linked binary (required for distroless)
+# -ldflags="-s -w": Strip debug info and symbol table (smaller binary)
+# -trimpath: Remove file system paths from binary (reproducible builds)
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/app \
+    ./cmd/service
+
+# ============================================================================
+# Stage 2: Runtime (Distroless)
+# ============================================================================
+FROM gcr.io/distroless/static-debian12:nonroot@sha256:a9329520abc449e3b14d5bc3a6ffae065bdde0f02667fa10880c49b35c109fd1
+
+# Set working directory
+WORKDIR /app
+
+# Copy CA certificates from builder (required for HTTPS)
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy the compiled binary from builder
+COPY --from=builder /build/app /app/service
+
+# Expose port
+EXPOSE 8080
+
+# Run the application
+ENTRYPOINT ["/app/service"]
+CMD []

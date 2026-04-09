@@ -1,0 +1,44 @@
+# ------------------------------------------------------------------------------
+# Default Deny NetworkPolicies
+# Story: RFA-9fv.4
+#
+# Implements default-deny for both ingress and egress in the gateway and tools
+# namespaces. All traffic is blocked unless explicitly allowed by companion
+# NetworkPolicy resources (gateway-allow.yaml, mcp-server-allow.yaml).
+#
+# This follows the principle of least privilege: workloads can only communicate
+# with explicitly approved peers.
+#
+# Requires a NetworkPolicy-capable CNI (Calico, Cilium, etc.) in EKS.
+# The EKS baseline (RFA-9fv.2) provisions the VPC CNI with Calico overlay.
+# ------------------------------------------------------------------------------
+
+# Default deny all traffic in the gateway namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: gateway
+  labels:
+    app.kubernetes.io/part-of: precinct-gateway
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Default deny all traffic in the tools namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: tools
+  labels:
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress

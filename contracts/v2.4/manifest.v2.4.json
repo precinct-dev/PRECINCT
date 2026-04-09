@@ -1,0 +1,83 @@
+{
+  "contract_version": "2.4.0",
+  "status": "active",
+  "released_on": "2026-02-13",
+  "version_policy": {
+    "major": "breaking endpoint/syntax/semantic changes",
+    "minor": "backward-compatible endpoint and field additions",
+    "patch": "documentation clarifications and non-breaking metadata updates"
+  },
+  "schemas": {
+    "plane_request_v2": "schemas/plane_request_v2.schema.json",
+    "plane_decision_v2": "schemas/plane_decision_v2.schema.json",
+    "connector_manifest_v1": "schemas/connector_manifest_v1.schema.json"
+  },
+  "governance_docs": {
+    "connector_conformance_authority": "connector-conformance-authority.v2.4.md",
+    "dlp_ruleops_lifecycle": "ruleops-lifecycle.v2.4.md"
+  },
+  "reason_code_catalog": "reason-code-catalog.v2.4.json",
+  "endpoints": [
+    {
+      "plane": "ingress",
+      "canonical_path": "/v1/ingress/submit",
+      "compatibility_aliases": [
+        "/v1/ingress/admit"
+      ],
+      "request_schema": "schemas/plane_request_v2.schema.json",
+      "response_schema": "schemas/plane_decision_v2.schema.json",
+      "status": "canonical_with_legacy_alias"
+    },
+    {
+      "plane": "context",
+      "canonical_path": "/v1/context/admit",
+      "compatibility_aliases": [],
+      "request_schema": "schemas/plane_request_v2.schema.json",
+      "response_schema": "schemas/plane_decision_v2.schema.json",
+      "status": "canonical"
+    },
+    {
+      "plane": "model",
+      "canonical_path": "/v1/model/call",
+      "compatibility_aliases": [
+        "/v1/chat/completions"
+      ],
+      "request_schema": "schemas/plane_request_v2.schema.json",
+      "response_schema": "schemas/plane_decision_v2.schema.json",
+      "status": "canonical_with_legacy_alias"
+    },
+    {
+      "plane": "tool",
+      "canonical_path": "/v1/tool/execute",
+      "compatibility_aliases": [],
+      "request_schema": "schemas/plane_request_v2.schema.json",
+      "response_schema": "schemas/plane_decision_v2.schema.json",
+      "status": "canonical"
+    },
+    {
+      "plane": "loop",
+      "canonical_path": "/v1/loop/check",
+      "compatibility_aliases": [],
+      "request_schema": "schemas/plane_request_v2.schema.json",
+      "response_schema": "schemas/plane_decision_v2.schema.json",
+      "status": "canonical"
+    }
+  ],
+  "governance_endpoints": [
+    "/v1/connectors/register",
+    "/v1/connectors/validate",
+    "/v1/connectors/approve",
+    "/v1/connectors/activate",
+    "/v1/connectors/revoke",
+    "/v1/connectors/status",
+    "/v1/connectors/report",
+    "/admin/dlp/rulesets",
+    "/admin/dlp/rulesets/active",
+    "/admin/dlp/rulesets/create",
+    "/admin/dlp/rulesets/validate",
+    "/admin/dlp/rulesets/approve",
+    "/admin/dlp/rulesets/sign",
+    "/admin/dlp/rulesets/promote",
+    "/admin/dlp/rulesets/rollback"
+  ]
+}

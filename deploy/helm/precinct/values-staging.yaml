@@ -1,0 +1,54 @@
+# ------------------------------------------------------------------------------
+# Staging Environment Values
+#
+# Two gateway replicas for HA testing, prod_standard enforcement,
+# mTLS SPIFFE mode, info logging, cert-manager TLS for admission.
+# Matches deploy/k8s/overlays/staging/ kustomize overlay.
+# ------------------------------------------------------------------------------
+
+global:
+  environment: staging
+  trustDomain: precinct.poc
+  imageRegistry: ghcr.io/precinct-dev/precinct
+
+gateway:
+  replicas: 2
+  image:
+    repository: ghcr.io/precinct-dev/precinct/precinct-gateway
+    tag: staging
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  env:
+    logLevel: info
+    spiffeMode: prod
+    enforcementProfile: prod_standard
+    mcpTransportMode: mcp
+    upstreamURL: "https://mcp-server.tools.svc.cluster.local:8081/mcp"
+  service:
+    type: ClusterIP
+    port: 9090
+
+services:
+  mcpServer:
+    replicas: 1
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 300m
+        memory: 256Mi
+
+security:
+  podSecurityStandards: baseline
+
+admissionControl:
+  gatekeeper:
+    enforcementAction: deny
+  sigstore:
+    enabled: true

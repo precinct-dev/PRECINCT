@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.com/schemas/evidence.bundle.v2.json",
+  "title": "Compliance Evidence Bundle v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "generated_at",
+    "record_count",
+    "records"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "evidence.bundle.v2"
+    },
+    "generated_at": {
+      "type": "string",
+      "description": "UTC timestamp (ISO 8601) when bundle was generated."
+    },
+    "record_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "control_id",
+          "framework",
+          "framework_requirement",
+          "status",
+          "source",
+          "timestamp",
+          "artifact_reference",
+          "control_name"
+        ],
+        "properties": {
+          "control_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "framework": {
+            "type": "string",
+            "minLength": 1
+          },
+          "framework_requirement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "Implemented",
+              "Partial",
+              "Documented Only"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "description": "Evidence source category (audit_log, configuration, test_result, etc.)."
+          },
+          "timestamp": {
+            "type": "string",
+            "description": "Timestamp associated with collected evidence."
+          },
+          "artifact_reference": {
+            "type": "string",
+            "description": "Path or logical reference to evidence artifact."
+          },
+          "control_name": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}

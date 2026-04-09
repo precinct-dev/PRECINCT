@@ -1,0 +1,1156 @@
+# ------------------------------------------------------------------------------
+# Kustomize Local Overlay -- Docker Desktop kubeadm K8s
+# Stories: RFA-7bh.1, RFA-7bh.2
+#
+# Adapts EKS manifests for Docker Desktop's single-node kubeadm cluster.
+# Patches applied:
+#   - ALB Ingress -> NodePort Service (port 30090)
+#   - IRSA -> Hardcoded credentials in K8s Secrets (dev only)
+#   - EBS CSI StorageClass -> Default hostpath StorageClass
+#   - Route53 DNS -> localhost / *.local
+#   - 3-AZ topology -> Single node (1 replica)
+#   - SPIRE k8s_psat node attestor -> join_token attestor
+#   - Reduced resource limits to fit 4 CPU / 8GB RAM
+#   - sigstore/policy-controller for cosign signature verification
+#   - Development namespaces exempt from signature enforcement
+#
+# Minimum hardware: 4 CPU cores, 8GB RAM allocated to Docker Desktop
+#
+# Usage:
+#   kustomize build deploy/terraform/overlays/local/
+#   make k8s-up
+#   make k8s-down
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Reference all service groups (local overlay deploys the full stack)
+resources:
+  # Core services (via base overlay)
+  - ../base
+  # SPIRE identity infrastructure
+  - ../../spire
+  # SPIKE Nexus secret management
+  - ../../spike
+  # Observability stack (namespace + network policies)
+  - ../../observability
+  # Admission control (OPA Gatekeeper + sigstore/policy-controller)
+  - ../../admission
+  # NetworkPolicies (default-deny + explicit allow for gateway and tools)
+  - ../../policies
+  # Local-only resources
+  - keydb.yaml
+  - data-networkpolicies.yaml
+  - spire-token-generator.yaml
+  - gateway-secrets.yaml
+  - mock-oauth-issuer.yaml
+  - mock-guard-model.yaml
+  - mock-guard-model-alias.yaml
+  - openclaw.yaml
+  - openclaw-networkpolicies.yaml
+  # Development namespace with policy-controller exemption
+  - namespace-dev-exempt.yaml
+
+# Override the placeholder gateway-config with actual policy and registry files
+configMapGenerator:
+  - name: gateway-config
+    namespace: gateway
+    behavior: replace
+    files:
+      - tool-registry.yaml=gateway-config/tool-registry.yaml
+      - tool-registry.yaml.sig=gateway-config/tool-registry.yaml.sig
+      - oauth-resource-server.yaml=gateway-config/oauth-resource-server.yaml
+      - destinations.yaml=gateway-config/destinations.yaml
+      - capability-registry-v2.yaml=gateway-config/capability-registry-v2.yaml
+      - model-provider-catalog.v2.yaml=gateway-config/model-provider-catalog.v2.yaml
+      - model-provider-catalog.v2.yaml.sig=gateway-config/model-provider-catalog.v2.yaml.sig
+      - attestation-ed25519.pub=gateway-config/attestation-ed25519.pub
+      - guard-artifact.bin=gateway-config/guard-artifact.bin
+      - guard-artifact.bin.sig=gateway-config/guard-artifact.bin.sig
+      - mcp_policy.rego=gateway-config/mcp_policy.rego
+      - mcp_policy.rego.sig=gateway-config/mcp_policy.rego.sig
+      - ui_policy.rego=gateway-config/ui_policy.rego
+      - ui_policy.rego.sig=gateway-config/ui_policy.rego.sig
+      - ui_csp_policy.rego=gateway-config/ui_csp_policy.rego
+      - ui_csp_policy.rego.sig=gateway-config/ui_csp_policy.rego.sig
+      - exfiltration.rego=gateway-config/exfiltration.rego
+      - exfiltration.rego.sig=gateway-config/exfiltration.rego.sig
+      - context_policy.rego=gateway-config/context_policy.rego
+      - context_policy.rego.sig=gateway-config/context_policy.rego.sig
+      - principal_policy.rego=gateway-config/principal_policy.rego
+      - principal_policy.rego.sig=gateway-config/principal_policy.rego.sig
+      - tool_grants.yaml=gateway-config/tool_grants.yaml
+      - tool_grants.yaml.sig=gateway-config/tool_grants.yaml.sig
+      - ui_capability_grants.yaml=gateway-config/ui_capability_grants.yaml
+      - ui_capability_grants.yaml.sig=gateway-config/ui_capability_grants.yaml.sig
+      - risk_thresholds.yaml=gateway-config/risk_thresholds.yaml
+      - extensions-demo-k8s.yaml=gateway-config/extensions-demo-k8s.yaml
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+patches:
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: spike-nexus
+      namespace: spike-system
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: registry:5000/spike-nexus:latest
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/mtls-healthcheck"]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 5
+          failureThreshold: 6
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/mtls-healthcheck"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 6
+
+  # --------------------------------------------------------------------------
+  # Gateway: NodePort on 30090, reduced resources, debug logging
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Service
+      name: precinct-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: precinct-gateway
+        namespace: gateway
+      spec:
+        type: NodePort
+        ports:
+          - name: http
+            port: 9090
+            targetPort: http
+            nodePort: 30090
+            protocol: TCP
+          - name: mtls
+            port: 9443
+            targetPort: mtls
+            protocol: TCP
+
+  - target:
+      kind: Service
+      name: precinct-control
+      namespace: gateway
+    patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: precinct-control
+        namespace: gateway
+      spec:
+        type: NodePort
+        ports:
+          - name: http
+            port: 9090
+            targetPort: http
+            nodePort: 30091
+            protocol: TCP
+
+  - target:
+      kind: Service
+      name: spike-nexus
+      namespace: spike-system
+    patch: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: spike-nexus
+        namespace: spike-system
+      spec:
+        publishNotReadyAddresses: true
+
+  - target:
+      kind: Deployment
+      name: precinct-gateway
+      namespace: gateway
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: precinct-gateway
+        namespace: gateway
+      spec:
+        replicas: 1
+        template:
+          spec:
+            initContainers:
+              - name: wait-for-spire-socket
+                image: busybox:1.36
+                command: ["sh", "-c"]
+                args:
+                  - |
+                    set -eu
+                    i=1
+                    while [ "$i" -le 60 ]; do
+                      if [ -S /run/spire/sockets/agent.sock ]; then
+                        exit 0
+                      fi
+                      echo "waiting for SPIRE Workload API socket: /run/spire/sockets/agent.sock" >&2
+                      sleep 1
+                      i=$((i + 1))
+                    done
+                    echo "SPIRE Workload API socket not found after 60s" >&2
+                    exit 1
+                volumeMounts:
+                  - name: spire-agent-socket
+                    mountPath: /run/spire/sockets
+                    readOnly: true
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  runAsGroup: 1000
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
+            containers:
+              - name: precinct-gateway
+                ports:
+                  - name: mtls
+                    containerPort: 9443
+                    protocol: TCP
+                image: registry:5000/precinct-gateway:latest
+                imagePullPolicy: Always
+                env:
+                  - name: LOG_LEVEL
+                    value: "debug"
+                  - name: SPIFFE_MODE
+                    value: "dev"
+                  - name: ALLOW_INSECURE_DEV_MODE
+                    value: "1"
+                  - name: DEV_LISTEN_HOST
+                    value: "0.0.0.0"
+                  - name: ALLOW_NON_LOOPBACK_DEV_BIND
+                    value: "1"
+                  - name: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+                  # go-spiffe Workload API socket (used for SPIKE Nexus mTLS, KeyDB mTLS, etc.)
+                  - name: SPIFFE_ENDPOINT_SOCKET
+                    value: "unix:///run/spire/sockets/agent.sock"
+                  - name: KEYDB_URL
+                    value: "redis://keydb.data.svc.cluster.local:6379"
+                  - name: UPSTREAM_URL
+                    value: "http://mcp-server.tools.svc.cluster.local:8081"
+                  - name: DEMO_RUGPULL_ADMIN_ENABLED
+                    value: "1"
+                  - name: SPIKE_NEXUS_URL
+                    value: "https://spike-nexus.spike-system.svc.cluster.local:8443"
+                  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                    value: "otel-collector.observability.svc.cluster.local:4317"
+                  - name: OTEL_SERVICE_NAME
+                    value: "precinct-gateway"
+                  - name: GROQ_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: gateway-secrets
+                        key: groq-api-key
+                        optional: true
+                  - name: DEEP_SCAN_TIMEOUT
+                    value: "5"
+                  - name: DEEP_SCAN_FALLBACK
+                    value: "fail_closed"
+                  - name: GUARD_MODEL_ENDPOINT
+                    value: "http://mock-guard-model.tools.svc.cluster.local:8080/openai/v1"
+                  - name: MODEL_PROVIDER_ENDPOINT_GROQ
+                    value: "http://mock-guard-model:8080/openai/v1/chat/completions"
+                  - name: GUARD_MODEL_NAME
+                    value: "llama-prompt-guard-2-86m"
+                  - name: GUARD_API_KEY
+                    value: "demo-guard-key"
+                  - name: DLP_INJECTION_POLICY
+                    value: ""
+                  - name: RATE_LIMIT_RPM
+                    # Demo-friendly: avoid incidental 429s while keeping the explicit burst test meaningful.
+                    value: "600"
+                  - name: RATE_LIMIT_BURST
+                    value: "100"
+                  - name: MCP_TRANSPORT_MODE
+                    value: "mcp"
+                  - name: SPIFFE_TRUST_DOMAIN
+                    # The public dev listener resolves header-declared demo
+                    # identities against the canonical poc.local trust domain.
+                    # Internal workload SVIDs still come from the local SPIRE
+                    # deployment trust domain via the mounted socket.
+                    value: "poc.local"
+                  - name: SPIFFE_LISTEN_PORT
+                    value: "9443"
+                  - name: SPIFFE_INTERNAL_MTLS_ENABLED
+                    value: "1"
+                  - name: DESTINATIONS_CONFIG_PATH
+                    value: "/config/destinations/destinations.yaml"
+                  - name: EXTENSION_REGISTRY_PATH
+                    value: "/config/extensions-demo-k8s.yaml"
+                  - name: TOOL_REGISTRY_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                  - name: MODEL_PROVIDER_CATALOG_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                volumeMounts:
+                  - name: config-destinations
+                    mountPath: /config/destinations
+                    readOnly: true
+                readinessProbe:
+                  exec:
+                    command: ["/app/gateway", "health"]
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  timeoutSeconds: 5
+                  failureThreshold: 6
+                livenessProbe:
+                  exec:
+                    command: ["/app/gateway", "health"]
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 6
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+            volumes:
+              - name: config-destinations
+                configMap:
+                  name: gateway-config
+                  items:
+                    - key: destinations.yaml
+                      path: destinations.yaml
+
+  - target:
+      kind: Deployment
+      name: precinct-control
+      namespace: gateway
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: precinct-control
+        namespace: gateway
+      spec:
+        replicas: 1
+        template:
+          spec:
+            initContainers:
+              - name: wait-for-spire-socket
+                image: busybox:1.36
+                command: ["sh", "-c"]
+                args:
+                  - |
+                    set -eu
+                    i=1
+                    while [ "$i" -le 60 ]; do
+                      if [ -S /run/spire/sockets/agent.sock ]; then
+                        exit 0
+                      fi
+                      echo "waiting for SPIRE Workload API socket: /run/spire/sockets/agent.sock" >&2
+                      sleep 1
+                      i=$((i + 1))
+                    done
+                    echo "SPIRE Workload API socket not found after 60s" >&2
+                    exit 1
+                volumeMounts:
+                  - name: spire-agent-socket
+                    mountPath: /run/spire/sockets
+                    readOnly: true
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  runAsGroup: 1000
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                  seccompProfile:
+                    type: RuntimeDefault
+            containers:
+              - name: precinct-control
+                image: registry:5000/precinct-gateway:latest
+                imagePullPolicy: Always
+                env:
+                  - name: LOG_LEVEL
+                    value: "debug"
+                  - name: SPIFFE_MODE
+                    value: "dev"
+                  - name: ALLOW_INSECURE_DEV_MODE
+                    value: "1"
+                  - name: DEV_LISTEN_HOST
+                    value: "0.0.0.0"
+                  - name: ALLOW_NON_LOOPBACK_DEV_BIND
+                    value: "1"
+                  - name: ADMIN_AUTHZ_ALLOWED_SPIFFE_IDS
+                    value: "spiffe://poc.local/agents/mcp-client/dspy-researcher/dev"
+                  - name: SPIFFE_ENDPOINT_SOCKET
+                    value: "unix:///run/spire/sockets/agent.sock"
+                  - name: KEYDB_URL
+                    value: "redis://keydb.data.svc.cluster.local:6379"
+                  - name: UPSTREAM_URL
+                    value: "http://mcp-server.tools.svc.cluster.local:8081"
+                  - name: SPIKE_NEXUS_URL
+                    value: "https://spike-nexus.spike-system.svc.cluster.local:8443"
+                  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                    value: "otel-collector.observability.svc.cluster.local:4317"
+                  - name: OTEL_SERVICE_NAME
+                    value: "precinct-control"
+                  - name: GROQ_API_KEY
+                    valueFrom:
+                      secretKeyRef:
+                        name: gateway-secrets
+                        key: groq-api-key
+                        optional: true
+                  - name: DEEP_SCAN_TIMEOUT
+                    value: "5"
+                  - name: DEEP_SCAN_FALLBACK
+                    value: "fail_closed"
+                  - name: GUARD_MODEL_ENDPOINT
+                    value: "http://mock-guard-model.tools.svc.cluster.local:8080/openai/v1"
+                  - name: MODEL_PROVIDER_ENDPOINT_GROQ
+                    value: "http://mock-guard-model:8080/openai/v1/chat/completions"
+                  - name: GUARD_MODEL_NAME
+                    value: "llama-prompt-guard-2-86m"
+                  - name: GUARD_API_KEY
+                    value: "demo-guard-key"
+                  - name: DLP_INJECTION_POLICY
+                    value: ""
+                  - name: RATE_LIMIT_RPM
+                    value: "600"
+                  - name: RATE_LIMIT_BURST
+                    value: "100"
+                  - name: MCP_TRANSPORT_MODE
+                    value: "mcp"
+                  - name: SPIFFE_TRUST_DOMAIN
+                    value: "poc.local"
+                  - name: DESTINATIONS_CONFIG_PATH
+                    value: "/config/destinations/destinations.yaml"
+                  - name: EXTENSION_REGISTRY_PATH
+                    value: "/config/extensions-demo-k8s.yaml"
+                  - name: TOOL_REGISTRY_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                  - name: MODEL_PROVIDER_CATALOG_PUBLIC_KEY
+                    value: "/config/attestation-ed25519.pub"
+                volumeMounts:
+                  - name: config-destinations
+                    mountPath: /config/destinations
+                    readOnly: true
+                readinessProbe:
+                  exec:
+                    command: ["/app/precinct-control", "health"]
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  timeoutSeconds: 5
+                  failureThreshold: 6
+                livenessProbe:
+                  exec:
+                    command: ["/app/precinct-control", "health"]
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 6
+                resources:
+                  requests:
+                    cpu: 100m
+                    memory: 128Mi
+                  limits:
+                    cpu: 500m
+                    memory: 512Mi
+            volumes:
+              - name: config-destinations
+                configMap:
+                  name: gateway-config
+                  items:
+                    - key: destinations.yaml
+                      path: destinations.yaml
+
+  # --------------------------------------------------------------------------
+  # MCP Server: use mock-mcp-server for local dev (Streamable HTTP transport)
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Deployment
+      name: mcp-server
+      namespace: tools
+    patch: |
+      - op: replace
+        path: /spec/replicas
+        value: 1
+      - op: replace
+        path: /spec/template/spec/containers/0/image
+        value: registry:5000/poc-mock-mcp-server:latest
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always
+      - op: replace
+        path: /spec/template/spec/containers/0/command
+        value: ["/mock-mcp-server"]
+      - op: replace
+        path: /spec/template/spec/containers/0/ports
+        value:
+          - name: jsonrpc
+            containerPort: 8082
+            protocol: TCP
+      - op: replace
+        path: /spec/template/spec/containers/0/resources
+        value:
+          requests:
+            cpu: 25m
+            memory: 32Mi
+          limits:
+            cpu: 50m
+            memory: 64Mi
+
+  # --------------------------------------------------------------------------
+  # SPIRE Server: single replica, join_token attestor, hostpath storage
+  # --------------------------------------------------------------------------
+  - target:
+      kind: StatefulSet
+      name: spire-server
+      namespace: spire-system
+    patch: |
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: spire-server
+        namespace: spire-system
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: spire-server
+                resources:
+                  requests:
+                    cpu: 50m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+        volumeClaimTemplates:
+          - metadata:
+              name: spire-server-data
+              labels:
+                app.kubernetes.io/name: spire-server
+            spec:
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 1Gi
+              # Use default StorageClass (hostpath on Docker Desktop)
+              # instead of EBS gp2
+
+  # SPIRE Server config: replace k8s_psat with join_token attestor
+  - target:
+      kind: ConfigMap
+      name: spire-server-config
+      namespace: spire-system
+    path: patch-spire-server-config.yaml
+
+  # --------------------------------------------------------------------------
+  # SPIRE Agent: reduced resources, join_token attestor
+  # --------------------------------------------------------------------------
+  - target:
+      kind: DaemonSet
+      name: spire-agent
+      namespace: spire-system
+    patch: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: spire-agent
+        namespace: spire-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: spire-agent
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 32Mi
+                  limits:
+                    cpu: 100m
+                    memory: 128Mi
+
+  # SPIRE Agent: use custom wrapper image (spire-agent:1.10.0 is distroless/no shell)
+  # The wrapper reads join token from /token/join-token and starts the agent.
+  - target:
+      kind: DaemonSet
+      name: spire-agent
+      namespace: spire-system
+    patch: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: spire-agent
+        namespace: spire-system
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: init-socket-dir
+                image: busybox:1.36
+                command:
+                  - sh
+                  - -c
+                  - |
+                    mkdir -p /run/spire/sockets
+                    chown 1000:1000 /run/spire/sockets
+                    mkdir -p /opt/spire/data/agent
+                    chown 1000:1000 /opt/spire/data/agent
+                volumeMounts:
+                  - name: spire-agent-data
+                    mountPath: /opt/spire/data/agent
+                securityContext:
+                  runAsUser: 0
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+                    add: ["CHOWN", "DAC_OVERRIDE"]
+              - name: wait-for-token
+                image: bitnami/kubectl@sha256:d80c09afa570a14cf6d32ca09ca610b5701eb0a08c655b5bb820194b218078eb
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    echo "Waiting for SPIRE join token secret..."
+                    RETRIES=0
+                    MAX=120
+                    until kubectl -n spire-system get secret spire-join-token 2>/dev/null; do
+                      RETRIES=$((RETRIES + 1))
+                      if [ $RETRIES -ge $MAX ]; then
+                        echo "ERROR: Join token secret not found after ${MAX} attempts"
+                        exit 1
+                      fi
+                      echo "  Attempt ${RETRIES}/${MAX}..."
+                      sleep 2
+                    done
+                    # Extract token and write to shared volume
+                    TOKEN=$(kubectl -n spire-system get secret spire-join-token -o jsonpath='{.data.token}' | base64 -d)
+                    echo "${TOKEN}" > /token/join-token
+                    echo "Join token written to /token/join-token"
+                securityContext:
+                  runAsNonRoot: true
+                  runAsUser: 1000
+                  runAsGroup: 1000
+                  allowPrivilegeEscalation: false
+                  readOnlyRootFilesystem: false
+                  capabilities:
+                    drop: ["ALL"]
+                volumeMounts:
+                  - name: join-token
+                    mountPath: /token
+            containers:
+              - name: spire-agent
+                image: registry:5000/spire-agent-wrapper:latest
+                imagePullPolicy: Always
+                command: ["/entrypoint-wrapper.sh"]
+                args: []
+                volumeMounts:
+                  - name: join-token
+                    mountPath: /token
+                    readOnly: true
+            volumes:
+              - name: join-token
+                emptyDir: {}
+
+  # SPIRE Agent config: replace k8s_psat with join_token attestor
+  - target:
+      kind: ConfigMap
+      name: spire-agent-config
+      namespace: spire-system
+    path: patch-spire-agent-config.yaml
+
+  # --------------------------------------------------------------------------
+  # SPIRE namespace: relax PSS for agent (needs hostPID/hostNetwork)
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Namespace
+      name: spire-system
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: spire-system
+        labels:
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
+
+  # --------------------------------------------------------------------------
+  # SPIKE Nexus: reduced resources + debug flags (local only)
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Deployment
+      name: spike-nexus
+      namespace: spike-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: spike-nexus
+        namespace: spike-system
+      spec:
+        replicas: 1
+        template:
+          spec:
+            containers:
+              - name: spike-nexus
+                env:
+                  - name: SPIKE_SYSTEM_LOG_LEVEL
+                    value: "DEBUG"
+                  - name: SPIKE_STACK_TRACES_ON_LOG_FATAL
+                    value: "1"
+                  - name: HEALTHCHECK_URL
+                    value: "https://127.0.0.1:8443/healthz"
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 256Mi
+                readinessProbe:
+                  exec:
+                    command: ["/usr/local/bin/tcp-healthcheck"]
+                  initialDelaySeconds: 10
+                  periodSeconds: 5
+                  timeoutSeconds: 3
+                  failureThreshold: 3
+                livenessProbe:
+                  exec:
+                    command: ["/usr/local/bin/tcp-healthcheck"]
+                  initialDelaySeconds: 30
+                  periodSeconds: 10
+                  timeoutSeconds: 5
+                  failureThreshold: 3
+
+  - target:
+      kind: ConfigMap
+      name: spike-nexus-config
+      namespace: spike-system
+    patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: spike-nexus-config
+        namespace: spike-system
+      data:
+        SPIKE_NEXUS_KEEPER_PEERS: "https://spike-keeper-1.spike-system.svc.cluster.local:8443"
+        SPIKE_NEXUS_SHAMIR_THRESHOLD: "1"
+        SPIKE_NEXUS_SHAMIR_SHARES: "1"
+
+  # --------------------------------------------------------------------------
+  # SPIKE Keeper: local registry image, reduced resources + debug flags (local only)
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Deployment
+      name: spike-keeper
+      namespace: spike-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: spike-keeper
+        namespace: spike-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: spike-keeper
+                image: registry:5000/spike-keeper:latest
+                imagePullPolicy: Always
+                env:
+                  - name: SPIKE_SYSTEM_LOG_LEVEL
+                    value: "DEBUG"
+                  - name: SPIKE_STACK_TRACES_ON_LOG_FATAL
+                    value: "1"
+                resources:
+                  requests:
+                    cpu: 25m
+                    memory: 64Mi
+                  limits:
+                    cpu: 100m
+                    memory: 256Mi
+
+  - target:
+      kind: Deployment
+      name: spike-keeper
+      namespace: spike-system
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/tcp-healthcheck"]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/tcp-healthcheck"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+
+  - target:
+      kind: Deployment
+      name: spike-keeper-2
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: spike-keeper-2
+        namespace: spike-system
+
+  - target:
+      kind: Deployment
+      name: spike-keeper-3
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: spike-keeper-3
+        namespace: spike-system
+
+  - target:
+      kind: Service
+      name: spike-keeper-2
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: spike-keeper-2
+        namespace: spike-system
+
+  - target:
+      kind: Service
+      name: spike-keeper-3
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: spike-keeper-3
+        namespace: spike-system
+
+  # --------------------------------------------------------------------------
+  # SPIKE Jobs: delete from local overlay output (applied by `make k8s-up` only
+  # after SPIRE workload registration, to avoid transient bootstrap Error pods).
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Job
+      name: spike-bootstrap
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: spike-bootstrap
+        namespace: spike-system
+
+  - target:
+      kind: Job
+      name: spike-secret-seeder
+      namespace: spike-system
+    patch: |
+      $patch: delete
+      apiVersion: batch/v1
+      kind: Job
+      metadata:
+        name: spike-secret-seeder
+        namespace: spike-system
+
+  # SPIKE Nexus: use in-container mTLS healthcheck to avoid kubelet TLS EOF spam.
+  - target:
+      kind: Deployment
+      name: spike-nexus
+      namespace: spike-system
+    patch: |
+      - op: replace
+        path: /spec/template/spec/containers/0/livenessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/mtls-healthcheck"]
+          # Nexus performs shard recovery on startup; allow time for Keeper/Bootstrap.
+          initialDelaySeconds: 90
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 12
+      - op: replace
+        path: /spec/template/spec/containers/0/readinessProbe
+        value:
+          exec:
+            command: ["/usr/local/bin/mtls-healthcheck"]
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+
+  # --------------------------------------------------------------------------
+  # --------------------------------------------------------------------------
+  # SPIRE Server RBAC: add exec and secrets for token generator job
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ClusterRole
+      name: spire-server
+    patch: |
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: spire-server
+      rules:
+        - apiGroups: ["authentication.k8s.io"]
+          resources: ["tokenreviews"]
+          verbs: ["create"]
+        - apiGroups: [""]
+          resources: ["pods", "nodes"]
+          verbs: ["get", "list", "watch"]
+        - apiGroups: [""]
+          resources: ["pods/exec"]
+          verbs: ["create"]
+        - apiGroups: [""]
+          resources: ["secrets"]
+          verbs: ["create", "get", "update", "patch"]
+
+  # --------------------------------------------------------------------------
+  # SPIRE Agent RBAC: add secrets read for join token retrieval
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ClusterRole
+      name: spire-agent
+    patch: |
+      apiVersion: rbac.authorization.k8s.io/v1
+      kind: ClusterRole
+      metadata:
+        name: spire-agent
+      rules:
+        - apiGroups: [""]
+          resources: ["pods"]
+          verbs: ["get", "list"]
+        - apiGroups: [""]
+          resources: ["nodes"]
+          verbs: ["get"]
+        - apiGroups: [""]
+          resources: ["nodes/proxy"]
+          verbs: ["get"]
+        - apiGroups: [""]
+          resources: ["secrets"]
+          verbs: ["get"]
+
+  # Registration entries: replace k8s_psat selectors with join_token (RFA-38s)
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ConfigMap
+      name: spire-registration-script
+      namespace: spire-system
+    path: patch-spire-registration.yaml
+
+  # --------------------------------------------------------------------------
+  # sigstore/policy-controller: disabled for local dev (RFA-7bh.2)
+  #
+  # The policy-controller requires Helm-managed resources (auto-TLS rotation,
+  # Knative ConfigMaps, extended RBAC) that are complex to replicate manually.
+  # Scale to 0 for local dev; use the Helm chart in production:
+  #   helm install policy-controller sigstore/policy-controller -n cosign-system
+  #
+  # The ValidatingWebhookConfiguration still exists (failurePolicy: Ignore)
+  # so pods are admitted normally when the webhook is unavailable.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Deployment
+      name: policy-controller-webhook
+      namespace: cosign-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: policy-controller-webhook
+        namespace: cosign-system
+      spec:
+        replicas: 0
+
+  # --------------------------------------------------------------------------
+  # policy-controller webhook: Ignore failures for local dev (RFA-7bh.2)
+  #
+  # In production, failurePolicy is Fail (reject if webhook unavailable).
+  # For local dev, set to Ignore so locally-built unsigned images can deploy
+  # when the webhook is starting up or unhealthy.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: ValidatingWebhookConfiguration
+      name: policy-controller-validating
+    patch: |
+      apiVersion: admissionregistration.k8s.io/v1
+      kind: ValidatingWebhookConfiguration
+      metadata:
+        name: policy-controller-validating
+      webhooks:
+        - name: policy.sigstore.dev
+          failurePolicy: Ignore
+
+  # --------------------------------------------------------------------------
+  # Namespace labels: opt enforcement namespaces into policy-controller
+  # (RFA-7bh.2)
+  #
+  # The policy-controller webhook only intercepts pods in namespaces
+  # labeled with policy.sigstore.dev/include: "true".
+  #
+  # For local development: enforcement namespaces get the label so the
+  # policy works when signed images are deployed. The "dev" namespace
+  # is excluded so locally-built unsigned images can deploy without
+  # signature verification.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: Namespace
+      name: gateway
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: gateway
+        labels:
+          policy.sigstore.dev/include: "true"
+          # Relax PSS from restricted -> privileged for local dev.
+          # Gateway needs hostPath volume for SPIRE agent socket.
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
+
+  - target:
+      kind: Namespace
+      name: tools
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: tools
+        labels:
+          policy.sigstore.dev/include: "true"
+          # Relax PSS for local dev (hostPath for SPIRE agent socket)
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
+
+  - target:
+      kind: Namespace
+      name: spike-system
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: spike-system
+        labels:
+          policy.sigstore.dev/include: "true"
+          # Relax PSS for local dev (hostPath for SPIRE agent socket)
+          pod-security.kubernetes.io/enforce: privileged
+          pod-security.kubernetes.io/audit: privileged
+          pod-security.kubernetes.io/warn: privileged
+
+  # cosign-system namespace: relax PSS for local dev
+  # (policy-controller webhook container runs as non-root but the
+  # restricted PSS may conflict with seccomp profile on Docker Desktop)
+  - target:
+      kind: Namespace
+      name: cosign-system
+    patch: |
+      apiVersion: v1
+      kind: Namespace
+      metadata:
+        name: cosign-system
+        labels:
+          pod-security.kubernetes.io/enforce: baseline
+          pod-security.kubernetes.io/audit: baseline
+          pod-security.kubernetes.io/warn: baseline
+
+  # Gatekeeper excluded namespaces: add cosign-system and dev
+  - target:
+      kind: ConfigMap
+      name: gatekeeper-config
+      namespace: gatekeeper-system
+    patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: gatekeeper-config
+        namespace: gatekeeper-system
+      data:
+        excluded-namespaces: |
+          kube-system
+          kube-public
+          kube-node-lease
+          gatekeeper-system
+          cosign-system
+          dev
+
+  # --------------------------------------------------------------------------
+  # Gatekeeper constraints: remap namespaces + dryrun for local dev
+  # Non-local overlays enforce gateway/tools; local keeps dryrun behavior.
+  # enforcementAction: dryrun -- audit violations without blocking pods.
+  # This lets locally-built unsigned images deploy while still demonstrating
+  # the Gatekeeper constraint architecture.
+  # --------------------------------------------------------------------------
+  - target:
+      kind: RequireImageDigest
+      name: enforce-image-digest
+    patch: |
+      - op: replace
+        path: /spec/match/namespaces
+        value:
+          - gateway
+          - tools
+          - spike-system
+          - spire-system
+      - op: add
+        path: /spec/enforcementAction
+        value: dryrun
+
+  - target:
+      kind: RequireImageSignature
+      name: enforce-image-signature
+    patch: |
+      - op: replace
+        path: /spec/match/namespaces
+        value:
+          - gateway
+          - tools
+          - spike-system
+          - spire-system
+      - op: add
+        path: /spec/enforcementAction
+        value: dryrun
+
+commonAnnotations:
+  app.kubernetes.io/environment: local
+  app.kubernetes.io/managed-by: kustomize-local-overlay

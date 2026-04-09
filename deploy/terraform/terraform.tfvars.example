@@ -1,0 +1,16 @@
+# Example variable overrides for the EKS cluster.
+# Copy this file to terraform.tfvars and adjust values as needed:
+#   cp terraform.tfvars.example terraform.tfvars
+
+cluster_name    = "precinct-poc"
+region          = "us-west-2"
+environment     = "poc"
+
+# Node sizing -- adjust for your workload
+# node_instance_type = "t3.medium"
+# node_min_size      = 2
+# node_max_size      = 4
+# node_desired_size  = 2
+
+# Kubernetes version
+# kubernetes_version = "1.29"

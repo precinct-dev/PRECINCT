@@ -1,0 +1,60 @@
+# ------------------------------------------------------------------------------
+# SPIRE Agent Config Patch -- Local K8s (join_token attestor)
+# Story: RFA-7bh.1
+#
+# Replaces k8s_psat NodeAttestor with join_token for Docker Desktop kubeadm.
+# The join token is read from a file mounted as a Secret volume. The
+# spire-token-generator Job creates this token and stores it in a K8s Secret.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-config
+  namespace: spire-system
+data:
+  agent.conf: |
+    agent {
+        data_dir = "/opt/spire/data/agent"
+        log_level = "DEBUG"
+        server_address = "spire-server-api"
+        server_port = "8081"
+        socket_path = "/run/spire/sockets/agent.sock"
+        trust_domain = "precinct.poc"
+
+        # Secure bootstrap: trust the server-published bundle (populated by
+        # spire-server's k8sbundle notifier into ConfigMap/spire-bundle).
+        trust_bundle_path = "/run/spire/bundle/bundle.crt"
+    }
+
+    plugins {
+        # join_token attestor for local K8s (replaces k8s_psat).
+        NodeAttestor "join_token" {
+            plugin_data {}
+        }
+
+        KeyManager "disk" {
+            plugin_data {
+                directory = "/opt/spire/data/agent"
+            }
+        }
+
+        # Kubernetes workload attestor for pod identity
+        WorkloadAttestor "k8s" {
+            plugin_data {
+                skip_kubelet_verification = true
+            }
+        }
+
+        # Unix workload attestor for process-level identity
+        WorkloadAttestor "unix" {
+            plugin_data {}
+        }
+    }
+
+    health_checks {
+        listener_enabled = true
+        bind_address = "0.0.0.0"
+        bind_port = "8080"
+        live_path = "/live"
+        ready_path = "/ready"
+    }

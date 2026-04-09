@@ -1,0 +1,31 @@
+# OPA Policy Data: Data Source Access Grants
+# OC-4zrf: Controls which SPIFFE IDs can access which registered data source URIs.
+# Grant matching uses glob patterns for both SPIFFE IDs and data source URIs.
+
+data_source_grants:
+  # Gateway has full access to all data sources for inspection/forwarding.
+  # URI pattern "**" matches any URI including dots and colons (OPA glob treats
+  # "." as a default separator, so "*" alone would not cross domain segments).
+  - spiffe_pattern: "spiffe://poc.local/gateways/precinct-gateway/dev"
+    uri_pattern: "**"
+    description: "PRECINCT Gateway - enforcement point with full data source access"
+
+  # Research agents can access GitHub gists and public knowledge bases.
+  # "**" suffix crosses dot-separated domain segments in the URI.
+  - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/*-researcher/dev"
+    uri_pattern: "https://gist.github.com/**"
+    description: "Research agents - access to GitHub gists"
+
+  - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/*-researcher/dev"
+    uri_pattern: "https://raw.githubusercontent.com/**"
+    description: "Research agents - access to raw GitHub content"
+
+  # Admin identities have access to all data sources
+  - spiffe_pattern: "spiffe://poc.local/admin/*"
+    uri_pattern: "**"
+    description: "Admin identities - full data source access"
+
+  # Financial agents can access market data feeds
+  - spiffe_pattern: "spiffe://poc.local/agents/mcp-client/financial-*/dev"
+    uri_pattern: "https://api.market-data.example.com/**"
+    description: "Financial agents - market data feed access"

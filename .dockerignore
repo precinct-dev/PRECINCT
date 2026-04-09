@@ -1,0 +1,240 @@
+# .dockerignore
+# Prevents unnecessary files from being included in Docker build context
+# Reference: POC/docs/supply-chain-images.md
+
+# ============================================================================
+# Version Control
+# ============================================================================
+.git
+.gitignore
+.gitattributes
+.github
+
+# ============================================================================
+# Development Tools
+# ============================================================================
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ============================================================================
+# Documentation (not needed in container)
+# ============================================================================
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+LICENSE
+docs/
+*.md
+
+# ============================================================================
+# Build Artifacts (Go)
+# ============================================================================
+# Binary outputs
+bin/
+dist/
+build/bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# ============================================================================
+# Python Artifacts
+# ============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+.env/
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre
+.pyre/
+
+# ============================================================================
+# Dependencies (will be installed in container)
+# ============================================================================
+node_modules/
+vendor/
+
+# ============================================================================
+# Secrets & Environment (CRITICAL - never include in images)
+# ============================================================================
+.env
+.env.*
+*.key
+*.pem
+*.p12
+*.pfx
+secrets/
+credentials/
+*.crt
+*.csr
+
+# Specific secret patterns (scoped to avoid matching Go source files)
+**/secrets.yaml
+**/secrets.yml
+**/api_key*
+
+# ============================================================================
+# CI/CD
+# ============================================================================
+.travis.yml
+.circleci/
+.gitlab-ci.yml
+azure-pipelines.yml
+Jenkinsfile
+.drone.yml
+
+# ============================================================================
+# Docker
+# ============================================================================
+Dockerfile*
+docker-compose*.yml
+.dockerignore
+
+# ============================================================================
+# Testing & Quality
+# ============================================================================
+.coveragerc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+test/
+tests/
+*_test.go
+test_*.py
+
+# ============================================================================
+# Deployment & Infrastructure
+# ============================================================================
+terraform/
+.terraform/
+*.tfstate
+*.tfstate.backup
+k8s/
+helm/
+deploy/
+infra/
+agents/
+
+# ============================================================================
+# Logs & Temporary Files
+# ============================================================================
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+
+# ============================================================================
+# Database & Data Files (usually mounted as volumes)
+# ============================================================================
+*.db
+*.sqlite
+*.sqlite3
+data/
+*.csv
+*.json
+*.xml
+
+# ============================================================================
+# Project Specific
+# ============================================================================
+# Beads tracking (issue tracking system)
+.beads/
+
+# Claude AI development
+.claude/
+.agents/
+AGENTS.md
+CLAUDE.md
+
+# ============================================================================
+# Include Exceptions
+# ============================================================================
+# If you need to include specific files that match patterns above,
+# use the ! prefix to negate the ignore:
+# !important-file.key  # WARNING: Never include actual secrets!
+
+# ============================================================================
+# Best Practices Notes
+# ============================================================================
+# 1. Always exclude secrets and credentials
+# 2. Exclude development tools and artifacts
+# 3. Exclude tests unless running in container
+# 4. Keep build context small for faster builds
+# 5. Review this file when adding new file types
+# 6. Use specific patterns to avoid accidental inclusion
+# 7. Test build context size: docker build --no-cache . 2>&1 | grep "Sending build context"

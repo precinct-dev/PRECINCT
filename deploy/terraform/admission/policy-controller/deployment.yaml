@@ -1,0 +1,127 @@
+# ------------------------------------------------------------------------------
+# Deployment: sigstore/policy-controller
+# Story: RFA-7bh.2
+#
+# Runs the policy-controller webhook server that intercepts pod admission
+# requests and verifies cosign image signatures against ClusterImagePolicy.
+#
+# The policy-controller validates that container images have valid cosign
+# signatures before allowing pod creation. This is complementary to OPA
+# Gatekeeper's digest-pinning and registry-allowlist checks:
+#   - OPA Gatekeeper: format validation (digest pinned, allowed registry)
+#   - policy-controller: cryptographic signature verification (cosign)
+#
+# Both webhooks must pass for a pod to be admitted. They run independently
+# as ValidatingAdmissionWebhooks with no ordering dependency.
+#
+# Image: ghcr.io/sigstore/policy-controller/policy-webhook
+# Docs: https://docs.sigstore.dev/policy-controller/overview/
+#
+# Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-controller-webhook
+  namespace: cosign-system
+  labels:
+    app.kubernetes.io/name: policy-controller
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: sigstore-policy-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: policy-controller
+      app.kubernetes.io/component: webhook
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: policy-controller
+        app.kubernetes.io/component: webhook
+        app.kubernetes.io/part-of: sigstore-policy-controller
+    spec:
+      serviceAccountName: policy-controller
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: policy-webhook
+          # Digest-pinned image for supply chain integrity.
+          # policy-controller v0.14.0 (latest stable as of 2026-02).
+          image: ghcr.io/sigstore/policy-controller/policy-controller@sha256:1d6b7614cb22f6a6f423e09e8d7f4237bfe01d5e4dc02541969972b1e8ad5535
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
+          env:
+            - name: SYSTEM_NAMESPACE
+              value: cosign-system
+            - name: CONFIG_SIGNING_GIT
+              value: config-signing-git
+            - name: METRICS_DOMAIN
+              value: sigstore.dev/policy
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /readiness
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: https
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /etc/policy-controller/tls
+              readOnly: true
+            - name: sigstore-cache
+              mountPath: /home/nonroot/.sigstore
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: policy-controller-webhook-tls
+        - name: sigstore-cache
+          emptyDir:
+            sizeLimit: 50Mi
+---
+# Service: expose webhook endpoint for K8s API server to call
+apiVersion: v1
+kind: Service
+metadata:
+  name: policy-controller-webhook
+  namespace: cosign-system
+  labels:
+    app.kubernetes.io/name: policy-controller
+    app.kubernetes.io/component: webhook
+    app.kubernetes.io/part-of: sigstore-policy-controller
+spec:
+  selector:
+    app.kubernetes.io/name: policy-controller
+    app.kubernetes.io/component: webhook
+  ports:
+    - name: https
+      port: 443
+      targetPort: https
+      protocol: TCP

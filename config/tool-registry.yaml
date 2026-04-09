@@ -1,0 +1,403 @@
+# NOTE: Modifying this file requires running 'make attestation-resign' to update signature files.
+# Tool Registry Configuration - RFA-qq0.5, RFA-qq0.6
+# Defines MCP tools with SHA-256 hashes for poisoning detection
+# Each tool is identified by name and verified via SHA-256 hash
+# Hash is computed over: tool description + input schema (canonical JSON)
+#
+# NOTE (RFA-n6g): allowed_paths uses a placeholder. At runtime, path-based
+# access control is enforced by the OPA policy engine using the ALLOWED_BASE_PATH
+# environment variable (see config.go and mcp_policy.rego). The allowed_paths
+# field here is declarative metadata; it is not consumed by the Go tool registry
+# loader. When the POC is deployed, set ALLOWED_BASE_PATH to the repository root.
+
+tools:
+  # Tavily MCP tools (tavily-mcp@0.2.18 via supergateway@3.4.3)
+  # Hashes computed from live tools/list response, matching Go json.Marshal key ordering.
+  - name: "tavily_search"
+    description: "Search the web for current information on any topic. Use for news, facts, or data beyond your knowledge cutoff. Returns snippets and source URLs."
+    hash: "e1979929179ef60c6b4c93efcd4cc65e413487dd4e6fccb35f2743968f148ff0"  # SHA-256 (RFA-qq0.6)
+    input_schema:
+      type: "object"
+      required: ["query"]
+      properties:
+        query:
+          type: "string"
+          description: "Search query"
+        search_depth:
+          type: "string"
+          enum: ["basic", "advanced", "fast", "ultra-fast"]
+        max_results:
+          type: "number"
+          description: "The maximum number of search results to return"
+          default: 5
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "medium"
+    requires_step_up: false
+    required_scope: "tools.tavily.search"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  - name: "tavily_extract"
+    description: "Extract content from URLs. Returns raw page content in markdown or text format."
+    hash: "2724df08758ed4f2df828c45bddb69e914b11d14956656b4e77df308314f81a3"  # SHA-256
+    input_schema:
+      type: "object"
+      required: ["urls"]
+      properties:
+        urls:
+          type: "array"
+          items:
+            type: "string"
+          description: "List of URLs to extract content from"
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "medium"
+    requires_step_up: false
+    required_scope: "tools.tavily.extract"
+
+  - name: "tavily_crawl"
+    description: "Crawl a website starting from a URL. Extracts content from pages with configurable depth and breadth."
+    hash: "90ff64313cddd3f03aa0097446e1ae28457406a8a44e7493ff01b7285df9c896"  # SHA-256
+    input_schema:
+      type: "object"
+      required: ["url"]
+      properties:
+        url:
+          type: "string"
+          description: "The root URL to begin the crawl"
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "medium"
+    requires_step_up: false
+    required_scope: "tools.tavily.crawl"
+
+  - name: "tavily_map"
+    description: "Map a website's structure. Returns a list of URLs found starting from the base URL."
+    hash: "621ff149cd338592e60adf8da1c1a0f73eea0dfccb23b7d928e33ec2b0b944e1"  # SHA-256
+    input_schema:
+      type: "object"
+      required: ["url"]
+      properties:
+        url:
+          type: "string"
+          description: "The root URL to begin the mapping"
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.tavily.map"
+
+  - name: "tavily_research"
+    description: "Perform comprehensive research on a given topic or question. Use this tool when you need to gather information from multiple sources to answer a question or complete a task. Returns a detailed response based on the research findings. Rate limit: 20 requests per minute."
+    hash: "6ccf37f1e14f62fc1d76874611be8d4b2a431bc5e6b76c525269edf62f67b6dd"  # SHA-256
+    input_schema:
+      type: "object"
+      required: ["input"]
+      properties:
+        input:
+          type: "string"
+          description: "A comprehensive description of the research task"
+    allowed_destinations:
+      - "api.tavily.com"
+      - "*.tavily.com"
+    risk_level: "high"
+    requires_step_up: false
+    required_scope: "tools.tavily.research"
+
+  # Read - File system read operations
+  - name: "read"
+    description: "Read file contents from filesystem"
+    hash: "c4fbe869591f047985cd812915ed87d2c9c77de445089dcbc507416a86491453"  # SHA-256 (RFA-qq0.6)
+    input_schema:
+      type: "object"
+      required: ["file_path"]
+      properties:
+        file_path:
+          type: "string"
+          description: "Absolute path to file"
+        offset:
+          type: "integer"
+          description: "Line number to start reading"
+        limit:
+          type: "integer"
+          description: "Number of lines to read"
+    allowed_paths:
+      - "${ALLOWED_BASE_PATH}/**"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.filesystem.read"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  # Grep - Content search
+  - name: "grep"
+    description: "Search for patterns in files"
+    hash: "8bf71be3abae46b7ac610d92913c20e5f8d46bdbde9144c1c7e9798d92518cec"  # SHA-256 (RFA-qq0.6)
+    input_schema:
+      type: "object"
+      required: ["pattern", "path"]
+      properties:
+        pattern:
+          type: "string"
+          description: "Regular expression pattern"
+        path:
+          type: "string"
+          description: "Directory or file path to search"
+        glob:
+          type: "string"
+          description: "Glob pattern to filter files"
+        output_mode:
+          type: "string"
+          enum: ["content", "files_with_matches", "count"]
+    allowed_paths:
+      - "${ALLOWED_BASE_PATH}/**"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.filesystem.read"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  # Bash - Shell command execution (HIGH RISK)
+  - name: "bash"
+    description: "Execute shell commands"
+    hash: "ada241bb834f0737fd259606208f5d8ba2aeb2adbefa5ddc9df8f59b7c152c9f"  # SHA-256 (RFA-qq0.6)
+    input_schema:
+      type: "object"
+      required: ["command"]
+      properties:
+        command:
+          type: "string"
+          description: "Shell command to execute"
+        timeout:
+          type: "integer"
+          description: "Timeout in milliseconds"
+        run_in_background:
+          type: "boolean"
+          description: "Run command in background"
+    risk_level: "critical"
+    requires_step_up: true  # MUST have step-up authentication
+    required_scope: "tools.shell.execute"  # RFA-0gr: dynamic scope for SPIKE tokens
+    allowed_paths:
+      - "${ALLOWED_BASE_PATH}/**"
+
+  # S3 List Objects - S3 bucket listing (RFA-9fv.5)
+  - name: "s3_list_objects"
+    description: "List objects in an S3 bucket with allowed prefix"
+    hash: "8e007a4ef7ffb625b72e43f04febb0f7409435f9551018b6dbb3d3858fcef0ea"  # SHA-256 (RFA-9fv.5)
+    input_schema:
+      type: "object"
+      required: ["bucket", "prefix"]
+      properties:
+        bucket:
+          type: "string"
+          description: "S3 bucket name"
+        prefix:
+          type: "string"
+          description: "Object key prefix"
+        max_keys:
+          type: "integer"
+          description: "Max objects to return"
+          default: 100
+    allowed_destinations:
+      - "*.s3.amazonaws.com"
+      - "*.s3.*.amazonaws.com"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.s3.list"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  # S3 Get Object - S3 object read (RFA-9fv.5)
+  - name: "s3_get_object"
+    description: "Read an object from an S3 bucket with allowed prefix"
+    hash: "c2fd4dfceb57d856cdf0bdf9d50d64798dae998d5e107b28220f2fea76c7f7f4"  # SHA-256 (RFA-9fv.5)
+    input_schema:
+      type: "object"
+      required: ["bucket", "key"]
+      properties:
+        bucket:
+          type: "string"
+          description: "S3 bucket name"
+        key:
+          type: "string"
+          description: "Object key"
+    allowed_destinations:
+      - "*.s3.amazonaws.com"
+      - "*.s3.*.amazonaws.com"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.s3.read"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+  # Messaging Send - External messaging platform egress (RFA-1fui, RFA-np7t)
+  - name: "messaging_send"
+    description: "Send a message to an external messaging platform"
+    hash: "1dc9c71022964b63ff5b47c255027b261c65b6372a8fb0fb96936790052e7520"  # SHA-256 (RFA-1fui)
+    input_schema:
+      type: "object"
+      required: ["platform", "recipient", "message"]
+      properties:
+        platform:
+          type: "string"
+          enum: ["whatsapp", "telegram", "slack"]
+        recipient:
+          type: "string"
+        message:
+          type: "string"
+    allowed_destinations:
+      - "graph.facebook.com"
+      - "*.facebook.com"
+      - "api.telegram.org"
+      - "slack.com"
+      - "*.slack.com"
+      - "messaging-sim"
+    risk_level: "high"
+    requires_step_up: true
+    required_scope: "tools.messaging.send"
+
+  # Messaging Status - Check delivery status (RFA-np7t)
+  - name: "messaging_status"
+    description: "Check delivery status of a previously sent message"
+    hash: "8e1c7daf8ea3082bb96522f8158c80ea4aa077f8148d3452132c10ef6d18f759"  # SHA-256 (RFA-np7t)
+    input_schema:
+      type: "object"
+      required: ["platform", "message_id"]
+      properties:
+        platform:
+          type: "string"
+          enum: ["whatsapp", "telegram", "slack"]
+        message_id:
+          type: "string"
+    allowed_destinations:
+      - "graph.facebook.com"
+      - "*.facebook.com"
+      - "api.telegram.org"
+      - "slack.com"
+      - "*.slack.com"
+      - "messaging-sim"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.messaging.status"
+
+  # Rug-pull demo tool - used only to prove gateway-owned hash verification works
+  # by intentionally serving a mismatched tools/list definition from the demo MCP server.
+  - name: "rugpull_demo_tool"
+    description: "Rug-pull demo tool (approved baseline)"
+    hash: "9aa4392ccf90373738659b1f427d4919d85093999fe190ff075c521a4d6c513e"  # SHA-256 (RFA-6fse.4)
+    input_schema:
+      type: "object"
+      required: ["msg"]
+      properties:
+        msg:
+          type: "string"
+          description: "Message to echo"
+    risk_level: "low"
+    requires_step_up: false
+    required_scope: "tools.demo.rugpull"  # RFA-0gr: dynamic scope for SPIKE tokens
+
+# Hash computation reference:
+# For each tool, the hash is computed as:
+# SHA-256(description + canonical_json(input_schema))
+#
+# Example (pseudo-code):
+# content = tool.description + json.dumps(tool.input_schema, sort_keys=True, separators=(',', ':'))
+# hash = sha256(content.encode('utf-8')).hexdigest()
+#
+# Hashes computed in RFA-qq0.6 using scripts/compute_tool_hashes.go
+
+# RFA-j2d.5: UI Resource Registry
+# Every ui:// resource must be registered with a content hash baseline.
+# On each read, the gateway verifies the content hash matches the registered baseline.
+# Hash mismatches are treated as rug-pull attacks (critical severity).
+#
+# UI resource hash computation:
+# SHA-256(raw HTML/resource content bytes)
+#
+# Onboarding workflow (Section 7.9.6):
+# 1. Server declares a tool with _meta.ui.resourceUri
+# 2. Gateway in audit-only mode logs resource content and metadata
+# 3. Security review: static analysis, CSP review, permissions review
+# 4. Upon approval: register (server, resourceUri, contentHash, approvedCSP, approvedPerms)
+# 5. Switch server to allow mode for this tool
+# 6. Ongoing: gateway verifies content hash on every resource read
+
+ui_resources:
+  # Analytics Dashboard - Example approved UI resource
+  - server: "dashboard-server"
+    resource_uri: "ui://dashboard/analytics.html"
+    content_hash: "944c21cc4f8c2cf5f9e9cb7662e14d271638dce52d0c86cec6afb483a5cacbaf"
+    version: "1.0.0"
+    approved_at: "2026-01-15T10:00:00Z"
+    approved_by: "security-team@example.com"
+    max_size_bytes: 524288  # 512 KB
+    declared_csp:
+      default_src: ["'self'"]
+      script_src: ["'self'"]
+      style_src: ["'self'", "'unsafe-inline'"]
+      connect_src: ["'self'", "https://api.example.com"]
+      img_src: ["'self'", "data:"]
+    declared_perms:
+      camera: false
+      microphone: false
+      geolocation: false
+      clipboard_write: false
+    scan_result:
+      scanned_at: "2026-01-15T09:55:00Z"
+      dangerous_pattern: false
+      script_count: 2
+      external_refs: 1
+
+  # Settings Panel - Example approved UI resource with minimal permissions
+  - server: "settings-server"
+    resource_uri: "ui://settings/panel.html"
+    content_hash: "cbb13550dd79cfda09926810f63d66e60e8e8841fdf5179df41a067ae2dc47de"
+    version: "2.1.0"
+    approved_at: "2026-01-20T14:30:00Z"
+    approved_by: "security-team@example.com"
+    max_size_bytes: 262144  # 256 KB
+    declared_csp:
+      default_src: ["'self'"]
+      script_src: ["'self'"]
+      style_src: ["'self'"]
+      connect_src: ["'self'"]
+      img_src: ["'self'"]
+    declared_perms:
+      camera: false
+      microphone: false
+      geolocation: false
+      clipboard_write: false
+    scan_result:
+      scanned_at: "2026-01-20T14:25:00Z"
+      dangerous_pattern: false
+      script_count: 1
+      external_refs: 0
+
+# OC-cqj0: Data Source Integrity Registry
+# Every external data source must be registered with a content hash baseline.
+# The gateway verifies content hashes to detect rug-pull attacks on data sources
+# (Case Study #10 of 'Agents of Chaos', arXiv:2602.20021v1).
+#
+# Data source hash computation:
+# "sha256:" + hex(SHA-256(raw content bytes))
+#
+# mutable_policy values:
+#   "block_on_change" -- block access when content hash changes (default, most secure)
+#   "flag_on_change"  -- allow access but emit critical audit event on hash change
+#   "allow"           -- no hash verification (for truly dynamic content)
+#
+# refresh_ttl: how often the gateway should re-verify the data source content hash.
+
+data_sources:
+  # Example: External knowledge base document
+  - uri: "https://gist.github.com/example/abc123/raw"
+    content_hash: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    approved_at: "2026-03-01T00:00:00Z"
+    approved_by: "spiffe://poc.local/admin/security"
+    max_size_bytes: 1048576
+    mutable_policy: "block_on_change"
+    refresh_ttl: 1h
+
+  # Example: Shared configuration endpoint
+  - uri: "https://config.internal.example.com/agent-policies.json"
+    content_hash: "sha256:a948904f2f0f479b8f8564e9e89dfdd84b6b0e57f32ead2bda6c507b0fc98933"
+    approved_at: "2026-02-15T08:30:00Z"
+    approved_by: "spiffe://poc.local/admin/ops"
+    max_size_bytes: 524288
+    mutable_policy: "flag_on_change"
+    refresh_ttl: 30m

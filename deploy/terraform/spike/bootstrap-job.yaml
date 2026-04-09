@@ -1,0 +1,84 @@
+# ------------------------------------------------------------------------------
+# SPIKE Bootstrap Job
+# Story: RFA-9k2
+#
+# One-shot Job that initializes Shamir Secret Sharing by delivering root key
+# shards to SPIKE Keepers. Must run AFTER Keeper is healthy and AFTER SPIRE
+# registration is complete.
+#
+# Key design decisions:
+#   - Job (not Deployment): runs once to completion, then stops
+#   - backoffLimit 3: retry on transient failures (Keeper not ready yet)
+#   - ttlSecondsAfterFinished 3600: keep logs long enough for demo proof collection
+#   - restartPolicy Never: failed pods create new pods (backoffLimit controls)
+#   - Shamir config: threshold=2, shares=3 for release-facing multi-share recovery
+#   - Bootstrap depends on Keeper (not Nexus) for shard delivery
+# ------------------------------------------------------------------------------
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spike-bootstrap
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-bootstrap
+    app.kubernetes.io/part-of: spike
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spike-bootstrap
+        app.kubernetes.io/part-of: spike
+    spec:
+      serviceAccountName: spike-bootstrap
+      restartPolicy: Never
+      containers:
+        - name: spike-bootstrap
+          image: ghcr.io/spiffe/spike-bootstrap:0.8.0
+          args: ['-init']
+          env:
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: 'unix:///run/spire/sockets/agent.sock'
+            - name: SPIKE_NEXUS_API_URL
+              value: 'https://spike-nexus.spike-system.svc.cluster.local:8443'
+            - name: SPIKE_NEXUS_KEEPER_PEERS
+              value: 'https://spike-keeper-1.spike-system.svc.cluster.local:8443,https://spike-keeper-2.spike-system.svc.cluster.local:8443,https://spike-keeper-3.spike-system.svc.cluster.local:8443'
+            - name: SPIKE_NEXUS_SHAMIR_THRESHOLD
+              value: '2'
+            - name: SPIKE_NEXUS_SHAMIR_SHARES
+              value: '3'
+            - name: SPIKE_TRUST_ROOT
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_NEXUS
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_PILOT
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_BOOTSTRAP
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_KEEPER
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_LITE_WORKLOAD
+              value: 'precinct.poc'
+            - name: SPIKE_SYSTEM_LOG_LEVEL
+              value: 'DEBUG'
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate

@@ -1,0 +1,49 @@
+# Dockerfile for spike-keeper with TCP healthcheck (RFA-oyg)
+# Layers a small TCP healthcheck binary onto the distroless spike-keeper image.
+#
+# Why TCP instead of mTLS (unlike Dockerfile.spike-nexus)?
+# The Keeper's TLS authorizer (PeerCanTalkToKeeper) only allows Nexus and
+# Bootstrap SPIFFE IDs. The mTLS healthcheck runs inside the same container
+# and presents the Keeper's own SVID, which the authorizer rejects. A plain
+# TCP dial proves the TLS listener is up without requiring authorization.
+
+# ============================================================================
+# Stage 1: Build the helper binaries
+# ============================================================================
+FROM golang:1.26.2-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
+
+RUN apk add --no-cache ca-certificates git
+
+WORKDIR /build
+
+# Cache dependency download
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+COPY . .
+
+# Static binary -- spike-keeper image is distroless (no libc)
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/tcp-healthcheck \
+    ./cmd/tcp-healthcheck \
+    && CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/spike-keeper-wrapper \
+    ./cmd/spike-keeper-wrapper
+
+# ============================================================================
+# Stage 2: Runtime -- spike-keeper + healthcheck sidecar binary
+# ============================================================================
+FROM ghcr.io/spiffe/spike-keeper:0.8.0@sha256:ff6515ee37aabd1ace606a8d95129b716dc7ced2976de5a30dae7dc80f5b2c83
+
+COPY --from=builder /build/tcp-healthcheck /usr/local/bin/tcp-healthcheck
+COPY --from=builder /build/spike-keeper-wrapper /usr/local/bin/spike-keeper-wrapper
+
+HEALTHCHECK --interval=5s --timeout=15s --start-period=15s --retries=12 \
+    CMD ["/usr/local/bin/tcp-healthcheck"]
+
+ENTRYPOINT ["/usr/local/bin/spike-keeper-wrapper"]

@@ -1,0 +1,27 @@
+# ------------------------------------------------------------------------------
+# Gateway Namespace
+# Story: RFA-9fv.4
+#
+# Dedicated namespace for the PRECINCT Gateway.
+# Pod security standards enforce restricted profile (non-root, no privilege
+# escalation, read-only root filesystem, etc.).
+#
+# The gateway receives all inbound MCP JSON-RPC requests and enforces the
+# 13-middleware security chain before proxying to tool servers in the "tools"
+# namespace.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gateway
+  labels:
+    app.kubernetes.io/part-of: precinct-gateway
+    # Opt-in namespace for sigstore/policy-controller admission interception.
+    policy.sigstore.dev/include: "true"
+    # NetworkPolicy ingress allowlist marker for gateway consumers.
+    networking.agentic.io/gateway-ingress-allowed: "true"
+    # Label used by NetworkPolicy namespaceSelector to allow traffic FROM gateway
+    name: gateway
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

@@ -1,0 +1,67 @@
+# OpenTelemetry Collector config for the standalone Phoenix stack (RFA-80d)
+#
+# This config is used by the otel-collector in docker-compose.phoenix.yml.
+# It resolves "phoenix" within the phoenix-observability-network.
+# The main stack's gateway sends OTLP to otel-collector:4317 via the shared network.
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 1024
+
+  # Add resource attributes for better observability
+  resource:
+    attributes:
+      - key: service.namespace
+        value: agentic-security-poc
+        action: upsert
+
+exporters:
+  # Export to Phoenix for trace visualization.
+  # WARNING: insecure: true disables TLS on the gRPC connection to Phoenix.
+  # This is acceptable for the local Docker Compose network where Phoenix
+  # is reachable by container name. For production, configure TLS certificates
+  # and set insecure: false.
+  otlp/phoenix:
+    endpoint: phoenix:4317
+    tls:
+      insecure: true
+
+  # Debug logging for development
+  debug:
+    verbosity: detailed
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [otlp/phoenix, debug]
+
+    # Phoenix accepts OTLP traces; keep metrics/logs local for debugging.
+    metrics:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [debug]
+
+    logs:
+      receivers: [otlp]
+      processors: [batch, resource]
+      exporters: [debug]
+
+  telemetry:
+    logs:
+      level: info

@@ -1,0 +1,38 @@
+# ------------------------------------------------------------------------------
+# Namespace: dev -- Development Exemption
+# Story: RFA-7bh.2
+#
+# A development namespace that is EXEMPT from sigstore/policy-controller
+# cosign signature verification. Locally-built images (without cosign
+# signatures) can be deployed here during development.
+#
+# How exemption works:
+#   - The policy-controller webhook only intercepts namespaces with
+#     label: policy.sigstore.dev/include: "true"
+#   - This namespace does NOT have that label, so policy-controller
+#     ignores pods created here
+#   - The Gatekeeper config also excludes this namespace
+#
+# This namespace is local-overlay-only. It does not exist in EKS overlays
+# (dev/staging/prod) where all images must be signed.
+#
+# Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dev
+  labels:
+    app.kubernetes.io/part-of: local-development
+    app.kubernetes.io/managed-by: kustomize-local-overlay
+    # Explicitly NOT labeled with policy.sigstore.dev/include: "true"
+    # This means policy-controller will NOT intercept pods in this namespace.
+    # Unsigned, locally-built images can deploy here.
+    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/audit: baseline
+    pod-security.kubernetes.io/warn: baseline
+  annotations:
+    description: >-
+      Development namespace exempt from cosign signature verification.
+      Deploy locally-built unsigned images here during development.
+      NOT present in production overlays.

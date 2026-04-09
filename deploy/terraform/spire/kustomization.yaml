@@ -1,0 +1,17 @@
+# Kustomize resource group for SPIRE manifests
+# Added by RFA-7bh.1 to support Kustomize overlay references
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - namespace.yaml
+  - bundle-configmap.yaml
+  - server-rbac.yaml
+  - server-configmap.yaml
+  - server-service.yaml
+  - server-statefulset.yaml
+  - agent-rbac.yaml
+  - agent-configmap.yaml
+  - agent-daemonset.yaml
+  - registration-entries.yaml
+  - spire-networkpolicies.yaml

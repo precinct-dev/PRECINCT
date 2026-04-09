@@ -1,0 +1,135 @@
+{
+  "schema_version": "app.integration.pack.v1",
+  "pack_id": "reference-app",
+  "pack_version": "2026-02-16",
+  "upstream": {
+    "repo": "<upstream-reference-app-repo>",
+    "branch": "main",
+    "commit": "reference-baseline-commit"
+  },
+  "ownership": {
+    "model": "sdk_plus_pack",
+    "core_policy": "gateway_core"
+  },
+  "routes": {
+    "http": [
+      "/v1/responses",
+      "/tools/invoke"
+    ],
+    "ws": [
+      "/external/ws"
+    ]
+  },
+  "adapter_contract": {
+    "model_routing": {
+      "default_provider": "gateway_mediated",
+      "strategy": "allowlist",
+      "allowed_models": [
+        "llama-3.3-70b-versatile"
+      ],
+      "provider_env_hints": [
+        "GROQ_API_KEY"
+      ],
+      "fallback_behavior": "gateway_policy_controlled"
+    },
+    "tool_registration": {
+      "registry_source": "gateway_registry",
+      "required_tools": [
+        "tavily_search",
+        "read",
+        "bash"
+      ],
+      "forbid_unregistered_tools": true,
+      "hash_verification": "required"
+    },
+    "gateway_guardrails": {
+      "prompt_injection_protection": "dlp_flag_plus_guard_model",
+      "mission_boundary": {
+        "agent_purpose": "restaurant_order_support",
+        "default_mode": "enforce",
+        "allowed_intents": [
+          "place_order",
+          "order_status",
+          "cancel_order",
+          "refund_request",
+          "menu_help",
+          "store_hours"
+        ],
+        "allowed_topics": [
+          "order",
+          "pickup",
+          "delivery",
+          "menu",
+          "burrito",
+          "bowl",
+          "refund",
+          "store hours"
+        ],
+        "blocked_topics": [
+          "python",
+          "linked list",
+          "javascript",
+          "algorithm",
+          "software engineering"
+        ],
+        "out_of_scope_action": "rewrite"
+      },
+      "enforced_controls": [
+        "spiffe_auth",
+        "opa_policy",
+        "tool_registry_verify",
+        "dlp_scan",
+        "step_up_gating",
+        "audit_chain"
+      ],
+      "decision_contract": {
+        "deny_codes": [
+          "registry_tool_unknown",
+          "registry_hash_mismatch",
+          "deepscan_blocked",
+          "dlp_credentials_detected"
+        ],
+        "timeout_behavior_non_strict": "accept_case26_gateway_timeout_variance",
+        "timeout_behavior_strict": "fail_closed"
+      }
+    },
+    "runtime_profile_hints": {
+      "compose": {
+        "strict_deepscan": true,
+        "preferred_validation": [
+          "make demo-compose"
+        ]
+      },
+      "k8s": {
+        "strict_deepscan": false,
+        "preferred_validation": [
+          "make demo-k8s"
+        ],
+        "known_variance": [
+          "case26_model_route_timeout_non_strict"
+        ]
+      }
+    }
+  },
+  "security_expectations": {
+    "no_upstream_source_modification": true,
+    "no_direct_model_bypass": true,
+    "no_direct_tool_bypass": true,
+    "required_controls": [
+      "spiffe_auth",
+      "opa_policy",
+      "tool_registry_verify",
+      "dlp_scan",
+      "step_up_gating",
+      "audit_chain"
+    ]
+  },
+  "runtime_validation": {
+    "compose": [
+      "make demo-compose"
+    ],
+    "k8s": [
+      "make demo-k8s"
+    ]
+  }
+}

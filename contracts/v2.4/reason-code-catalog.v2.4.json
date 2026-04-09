@@ -1,0 +1,601 @@
+{
+  "contract_version": "2.4.0",
+  "generated_from": "POC/internal/gateway/phase3_contracts.go",
+  "generated_on": "2026-02-13",
+  "codes": [
+    {
+      "code": "INGRESS_ALLOW",
+      "plane": "ingress",
+      "decision": "allow",
+      "semantic_meaning": "ingress allow",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "INGRESS_SCHEMA_INVALID",
+      "plane": "ingress",
+      "decision": "deny",
+      "semantic_meaning": "ingress schema invalid",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "INGRESS_REPLAY_DETECTED",
+      "plane": "ingress",
+      "decision": "deny",
+      "semantic_meaning": "ingress replay detected",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "INGRESS_FRESHNESS_STALE",
+      "plane": "ingress",
+      "decision": "deny",
+      "semantic_meaning": "ingress freshness stale",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "INGRESS_SOURCE_UNAUTHENTICATED",
+      "plane": "ingress",
+      "decision": "deny",
+      "semantic_meaning": "ingress source unauthenticated",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "INGRESS_STEP_UP_REQUIRED",
+      "plane": "ingress",
+      "decision": "step_up",
+      "semantic_meaning": "ingress step up required",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_ALLOW",
+      "plane": "model",
+      "decision": "allow",
+      "semantic_meaning": "model allow",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_CALLER_UNAUTHENTICATED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model caller unauthenticated",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_DENIED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_RESIDENCY_DENIED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider residency denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_RISK_MODE_DENIED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider risk mode denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_BUDGET_NEAR_LIMIT",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider budget near limit",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_BUDGET_EXHAUSTED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider budget exhausted",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_FALLBACK_APPLIED",
+      "plane": "model",
+      "decision": "quarantine",
+      "semantic_meaning": "model provider fallback applied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_DEGRADED_NO_APPROVED_FALLBACK",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider degraded no approved fallback",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_DIRECT_EGRESS_BLOCKED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider direct egress blocked",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_DESTINATION_DENIED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider destination denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_UNAVAILABLE",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider unavailable",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_PROVIDER_UPSTREAM_ERROR",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model provider upstream error",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_MISSION_SCOPE_DENIED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model mission scope denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "MODEL_MISSION_SCOPE_SAFE_FALLBACK_APPLIED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "model mission scope safe fallback applied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "PROMPT_SAFETY_RAW_REGULATED_CONTENT_DENIED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "prompt safety raw regulated content denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "PROMPT_SAFETY_REDACTION_APPLIED",
+      "plane": "model",
+      "decision": "quarantine",
+      "semantic_meaning": "prompt safety redaction applied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "PROMPT_SAFETY_TOKENIZATION_APPLIED",
+      "plane": "model",
+      "decision": "quarantine",
+      "semantic_meaning": "prompt safety tokenization applied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "PROMPT_SAFETY_OVERRIDE_APPROVED",
+      "plane": "model",
+      "decision": "deny",
+      "semantic_meaning": "prompt safety override approved",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "PROMPT_SAFETY_OVERRIDE_APPROVAL_REQUIRED",
+      "plane": "model",
+      "decision": "step_up",
+      "semantic_meaning": "prompt safety override approval required",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTEXT_ALLOW",
+      "plane": "context",
+      "decision": "allow",
+      "semantic_meaning": "context allow",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTEXT_SCHEMA_INVALID",
+      "plane": "context",
+      "decision": "deny",
+      "semantic_meaning": "context schema invalid",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTEXT_NO_SCAN_NO_SEND",
+      "plane": "context",
+      "decision": "deny",
+      "semantic_meaning": "context no scan no send",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTEXT_PROMPT_INJECTION_UNSAFE",
+      "plane": "context",
+      "decision": "deny",
+      "semantic_meaning": "context prompt injection unsafe",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTEXT_DLP_CLASSIFICATION_REQUIRED",
+      "plane": "context",
+      "decision": "step_up",
+      "semantic_meaning": "context dlp classification required",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTEXT_DLP_CLASSIFICATION_DENIED",
+      "plane": "context",
+      "decision": "deny",
+      "semantic_meaning": "context dlp classification denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTEXT_MEMORY_READ_STEP_UP_REQUIRED",
+      "plane": "context",
+      "decision": "step_up",
+      "semantic_meaning": "context memory read step up required",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTEXT_MEMORY_WRITE_DENIED",
+      "plane": "context",
+      "decision": "deny",
+      "semantic_meaning": "context memory write denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_ALLOW",
+      "plane": "loop",
+      "decision": "allow",
+      "semantic_meaning": "loop allow",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_SCHEMA_INVALID",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop schema invalid",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_LIMITS_IMMUTABLE_VIOLATION",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop limits immutable violation",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_MAX_STEPS",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt max steps",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_MAX_TOOL_CALLS",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt max tool calls",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_MAX_MODEL_CALLS",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt max model calls",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_MAX_WALL_TIME",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt max wall time",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_MAX_EGRESS_BYTES",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt max egress bytes",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_MAX_MODEL_COST",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt max model cost",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_MAX_PROVIDER_FAILOVERS",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt max provider failovers",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_MAX_RISK_SCORE",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt max risk score",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_PROVIDER_UNAVAILABLE",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt provider unavailable",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_HALT_OPERATOR",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop halt operator",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_STEP_UP_REQUIRED",
+      "plane": "loop",
+      "decision": "step_up",
+      "semantic_meaning": "loop step up required",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_COMPLETED",
+      "plane": "loop",
+      "decision": "allow",
+      "semantic_meaning": "loop completed",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "LOOP_RUN_ALREADY_TERMINATED",
+      "plane": "loop",
+      "decision": "deny",
+      "semantic_meaning": "loop run already terminated",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "TOOL_ALLOW",
+      "plane": "tool",
+      "decision": "allow",
+      "semantic_meaning": "tool allow",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "TOOL_SCHEMA_INVALID",
+      "plane": "tool",
+      "decision": "deny",
+      "semantic_meaning": "tool schema invalid",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "TOOL_CAPABILITY_DENIED",
+      "plane": "tool",
+      "decision": "deny",
+      "semantic_meaning": "tool capability denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "TOOL_ADAPTER_UNSUPPORTED",
+      "plane": "tool",
+      "decision": "deny",
+      "semantic_meaning": "tool adapter unsupported",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "TOOL_ACTION_DENIED",
+      "plane": "tool",
+      "decision": "deny",
+      "semantic_meaning": "tool action denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "TOOL_CLI_COMMAND_DENIED",
+      "plane": "tool",
+      "decision": "deny",
+      "semantic_meaning": "tool cli command denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "TOOL_CLI_ARGS_DENIED",
+      "plane": "tool",
+      "decision": "deny",
+      "semantic_meaning": "tool cli args denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "TOOL_STEP_UP_REQUIRED",
+      "plane": "tool",
+      "decision": "step_up",
+      "semantic_meaning": "tool step up required",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "RLM_ALLOW",
+      "plane": "rlm",
+      "decision": "allow",
+      "semantic_meaning": "rlm allow",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "RLM_SCHEMA_INVALID",
+      "plane": "rlm",
+      "decision": "deny",
+      "semantic_meaning": "rlm schema invalid",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "RLM_BYPASS_DENIED",
+      "plane": "rlm",
+      "decision": "deny",
+      "semantic_meaning": "rlm bypass denied",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "RLM_HALT_MAX_DEPTH",
+      "plane": "rlm",
+      "decision": "deny",
+      "semantic_meaning": "rlm halt max depth",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "RLM_HALT_MAX_SUBCALLS",
+      "plane": "rlm",
+      "decision": "deny",
+      "semantic_meaning": "rlm halt max subcalls",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "RLM_HALT_MAX_SUBCALL_BUDGET",
+      "plane": "rlm",
+      "decision": "deny",
+      "semantic_meaning": "rlm halt max subcall budget",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTRACT_INVALID",
+      "plane": "contract",
+      "decision": "deny",
+      "semantic_meaning": "contract invalid",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    },
+    {
+      "code": "CONTRACT_PLANE_MISMATCH",
+      "plane": "contract",
+      "decision": "deny",
+      "semantic_meaning": "contract plane mismatch",
+      "status": "active",
+      "deprecated_in": null,
+      "replacement_code": null
+    }
+  ]
+}

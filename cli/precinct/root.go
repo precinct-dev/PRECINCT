@@ -1,0 +1,72 @@
+// Copyright 2024-2026 The PRECINCT Authors
+// SPDX-License-Identifier: Apache-2.0
+
+package main
+
+import (
+	"strings"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
+)
+
+const (
+	cfgGatewayURL       = "gateway_url"
+	cfgKeyDBURL         = "keydb_url"
+	cfgPhoenixURL       = "phoenix_url"
+	cfgOtelURL          = "otel_health_url"
+	cfgOPAPolicyDir     = "opa_policy_dir"
+	cfgToolRegistryPath = "tool_registry"
+	cfgAuditSource      = "audit_source"
+	cfgAuditLogPath     = "audit_log_path"
+	cfgFormat           = "format"
+)
+
+func newRootCmd() *cobra.Command {
+	rootCmd := &cobra.Command{
+		Use:           "precinct",
+		Short:         "PRECINCT platform operator CLI",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+	}
+
+	rootCmd.PersistentFlags().String("gateway-url", "http://localhost:9090", "Gateway base URL")
+	rootCmd.PersistentFlags().String("keydb-url", "redis://127.0.0.1:6379", "KeyDB URL (redis://... or compose://keydb)")
+	rootCmd.PersistentFlags().String("phoenix-url", "http://localhost:6006", "Phoenix base URL")
+	rootCmd.PersistentFlags().String("otel-health-url", "http://localhost:13133", "OpenTelemetry Collector health URL")
+	rootCmd.PersistentFlags().String("opa-policy-dir", "config/opa", "Path to OPA policy directory")
+	rootCmd.PersistentFlags().String("tool-registry", "config/tool-registry.yaml", "Path to tool registry YAML")
+	rootCmd.PersistentFlags().String("format", "table", "Output format: json|table")
+
+	// Config via flags + env.
+	viper.SetEnvPrefix("PRECINCT")
+	viper.SetEnvKeyReplacer(strings.NewReplacer("-", "_"))
+	viper.AutomaticEnv()
+	_ = viper.BindEnv(cfgGatewayURL, "PRECINCT_GATEWAY_URL")
+	_ = viper.BindEnv(cfgKeyDBURL, "PRECINCT_KEYDB_URL")
+	_ = viper.BindEnv(cfgPhoenixURL, "PRECINCT_PHOENIX_URL")
+	_ = viper.BindEnv(cfgOtelURL, "PRECINCT_OTEL_HEALTH_URL")
+	_ = viper.BindEnv(cfgOPAPolicyDir, "PRECINCT_OPA_POLICY_DIR")
+	_ = viper.BindEnv(cfgToolRegistryPath, "PRECINCT_TOOL_REGISTRY")
+	_ = viper.BindEnv(cfgAuditSource, "PRECINCT_AUDIT_SOURCE")
+	_ = viper.BindEnv(cfgAuditLogPath, "PRECINCT_AUDIT_LOG_PATH")
+	_ = viper.BindPFlag(cfgGatewayURL, rootCmd.PersistentFlags().Lookup("gateway-url"))
+	_ = viper.BindPFlag(cfgKeyDBURL, rootCmd.PersistentFlags().Lookup("keydb-url"))
+	_ = viper.BindPFlag(cfgPhoenixURL, rootCmd.PersistentFlags().Lookup("phoenix-url"))
+	_ = viper.BindPFlag(cfgOtelURL, rootCmd.PersistentFlags().Lookup("otel-health-url"))
+	_ = viper.BindPFlag(cfgOPAPolicyDir, rootCmd.PersistentFlags().Lookup("opa-policy-dir"))
+	_ = viper.BindPFlag(cfgToolRegistryPath, rootCmd.PersistentFlags().Lookup("tool-registry"))
+	_ = viper.BindPFlag(cfgFormat, rootCmd.PersistentFlags().Lookup("format"))
+
+	rootCmd.AddCommand(newStatusCmd())
+	rootCmd.AddCommand(newComplianceCmd())
+	rootCmd.AddCommand(newInspectCmd())
+	rootCmd.AddCommand(newAuditCmd())
+	rootCmd.AddCommand(newIdentityCmd())
+	rootCmd.AddCommand(newPolicyCmd())
+	rootCmd.AddCommand(newResetCmd())
+	rootCmd.AddCommand(newSecretCmd())
+	rootCmd.AddCommand(newGDPRCmd())
+	rootCmd.AddCommand(newRepaveCmd())
+	return rootCmd
+}

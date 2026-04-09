@@ -1,0 +1,20 @@
+# Mock overlay -- adds mock service dependencies to the gateway.
+# Used by: make demo-compose-mock (deterministic, no external APIs)
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.mock.yml --profile mock up -d
+
+services:
+  precinct-gateway:
+    depends_on:
+      mock-mcp-server:
+        condition: service_healthy
+      mock-guard-model:
+        condition: service_healthy
+
+  precinct-control:
+    depends_on:
+      mock-mcp-server:
+        condition: service_healthy
+      mock-guard-model:
+        condition: service_healthy

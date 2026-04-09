@@ -1,0 +1,91 @@
+# ------------------------------------------------------------------------------
+# ClusterImagePolicy: require-cosign-signatures
+# Story: RFA-7bh.2
+#
+# Defines the cosign signature verification policy for the cluster.
+# The policy-controller webhook evaluates this policy when intercepting
+# pod admission requests in labeled namespaces.
+#
+# What is verified:
+#   1. Container images from ghcr.io/spiffe/* (SPIKE Nexus, SPIRE) must have
+#      valid cosign signatures
+#   2. Custom-built images (gateway, MCP server) signed during CI must have
+#      valid cosign signatures
+#   3. Signatures must be from the expected OIDC issuer (GitHub Actions)
+#
+# Signing model (from ADR-005):
+#   - CI pipeline uses cosign keyless mode (Fulcio + Rekor)
+#   - OIDC issuer: https://token.actions.githubusercontent.com
+#   - OIDC subject: workflow identity from GitHub Actions
+#   - Signatures are stored in Rekor transparency log
+#
+# ClusterImagePolicy API: https://docs.sigstore.dev/policy-controller/overview/
+# Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
+# ------------------------------------------------------------------------------
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata:
+  name: require-cosign-signatures
+  labels:
+    app.kubernetes.io/part-of: sigstore-policy-controller
+    app.kubernetes.io/component: supply-chain-security
+  annotations:
+    description: >-
+      Requires all container images in enforcement namespaces to have valid
+      cosign signatures from the GitHub Actions CI pipeline (keyless OIDC).
+spec:
+  # Match images from our trusted registries that must be signed
+  images:
+    # GHCR images: SPIFFE/SPIKE ecosystem and custom-built images
+    - glob: "ghcr.io/spiffe/**"
+    - glob: "ghcr.io/spiffe/*"
+    # Custom-built images signed during CI
+    - glob: "ghcr.io/*/precinct/**"
+  authorities:
+    # Keyless OIDC verification via Fulcio + Rekor (GitHub Actions)
+    - keyless:
+        # Fulcio CA root (sigstore public instance)
+        url: https://fulcio.sigstore.dev
+        identities:
+          # GitHub Actions OIDC issuer
+          - issuer: https://token.actions.githubusercontent.com
+            # Subject pattern tightened to this repository's workflow identities.
+            # Example subject format:
+            #   https://github.com/precinct-dev/PRECINCT/.github/workflows/<workflow>@refs/heads/<branch>
+            subjectRegExp: "^https://github.com/precinct-dev/PRECINCT/.github/workflows/[^@]+@refs/heads/.+$"
+      # Verify signatures against Rekor transparency log
+      ctlog:
+        url: https://rekor.sigstore.dev
+---
+# ClusterImagePolicy: allow-system-images
+# Exempts Kubernetes system images and policy infrastructure from
+# signature verification (they are not signed by our CI pipeline).
+apiVersion: policy.sigstore.dev/v1beta1
+kind: ClusterImagePolicy
+metadata:
+  name: allow-system-images
+  labels:
+    app.kubernetes.io/part-of: sigstore-policy-controller
+    app.kubernetes.io/component: supply-chain-security
+  annotations:
+    description: >-
+      Exempts Kubernetes system images and policy infrastructure images
+      from cosign signature verification. These images are not signed
+      by our CI pipeline.
+spec:
+  images:
+    # Kubernetes system images
+    - glob: "registry.k8s.io/**"
+    - glob: "registry.k8s.io/*"
+    # AWS EKS system images
+    - glob: "602401143452.dkr.ecr.*.amazonaws.com/**"
+    # sigstore policy-controller itself
+    - glob: "ghcr.io/sigstore/**"
+    - glob: "ghcr.io/sigstore/*"
+    # OPA Gatekeeper
+    - glob: "openpolicyagent/**"
+    - glob: "openpolicyagent/*"
+  authorities:
+    # Static policy: always allow these images (they are verified by other means)
+    - static:
+        action: pass

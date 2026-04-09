@@ -1,0 +1,32 @@
+# ------------------------------------------------------------------------------
+# Gateway ConfigMap
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# Contains OPA policies and tool registry configuration for the MCP Security
+# Gateway. These files are mounted into the gateway pod at /config/.
+#
+# In production, these would be managed by a CI/CD pipeline that updates the
+# ConfigMap from the source of truth in config/opa/ and config/tool-registry.yaml.
+#
+# This manifest is a TEMPLATE. The deploy target generates the actual
+# ConfigMap from the source files using:
+#   kubectl create configmap gateway-config --from-file=...
+#
+# The declarative version below shows the structure; the deploy approach
+# ensures the ConfigMap always matches the committed policy files.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: precinct-gateway
+    app.kubernetes.io/part-of: precinct-gateway
+    app.kubernetes.io/component: config
+data:
+  # OPA policies and data files are loaded from config/opa/ at deploy time.
+  # Placeholder entry to make this a valid ConfigMap for kubeconform validation.
+  # The deploy target replaces this with real data.
+  _placeholder: |
+    # This ConfigMap is populated at deploy time.

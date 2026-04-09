@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://example.local/precinct/contracts/v2.4/schemas/plane_request_v2.schema.json",
+  "title": "PRECINCT Gateway Plane Request V2",
+  "type": "object",
+  "required": [
+    "envelope",
+    "policy"
+  ],
+  "properties": {
+    "envelope": {
+      "$ref": "#/$defs/runEnvelope"
+    },
+    "policy": {
+      "type": "object",
+      "required": [
+        "envelope",
+        "action",
+        "resource"
+      ],
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/runEnvelope"
+        },
+        "action": {
+          "type": "string",
+          "minLength": 1
+        },
+        "resource": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attributes": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "runEnvelope": {
+      "type": "object",
+      "required": [
+        "run_id",
+        "session_id",
+        "tenant",
+        "actor_spiffe_id",
+        "plane"
+      ],
+      "properties": {
+        "run_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "session_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "tenant": {
+          "type": "string",
+          "minLength": 1
+        },
+        "actor_spiffe_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "plane": {
+          "type": "string",
+          "enum": [
+            "ingress",
+            "context",
+            "model",
+            "tool",
+            "loop"
+          ]
+        },
+        "execution_mode": {
+          "type": "string",
+          "enum": [
+            "standard",
+            "rlm"
+          ]
+        },
+        "lineage_id": {
+          "type": "string"
+        },
+        "parent_run_id": {
+          "type": "string"
+        },
+        "parent_decision_id": {
+          "type": "string"
+        },
+        "trace_id": {
+          "type": "string"
+        },
+        "decision_id": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

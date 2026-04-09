@@ -1,0 +1,72 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mock-guard-model
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: mock-guard-model
+    app.kubernetes.io/component: guard-model
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mock-guard-model
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mock-guard-model
+        app.kubernetes.io/component: guard-model
+    spec:
+      serviceAccountName: mcp-tool
+      containers:
+        - name: mock-guard-model
+          image: registry:5000/poc-mock-guard-model:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: http
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 65532
+            capabilities:
+              drop: ["ALL"]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mock-guard-model
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: mock-guard-model
+    app.kubernetes.io/component: guard-model
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mock-guard-model
+  ports:
+    - name: http
+      port: 8080
+      targetPort: http
+      protocol: TCP

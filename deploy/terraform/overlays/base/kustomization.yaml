@@ -1,0 +1,22 @@
+# ------------------------------------------------------------------------------
+# Kustomize Base - Shared Configuration
+# Story: RFA-9fv.6
+#
+# References gateway and MCP server resource groups. Environment-specific
+# overlays (dev, staging, prod) patch this base with appropriate replicas,
+# image tags, resource limits, and logging.
+#
+# Each resource group (gateway/, mcp-server/) has its own kustomization.yaml
+# to satisfy Kustomize's path security restrictions.
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../gateway
+  - ../../mcp-server
+  - ../../content-scanner
+
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize

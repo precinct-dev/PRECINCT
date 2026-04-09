@@ -1,0 +1,63 @@
+# ------------------------------------------------------------------------------
+# SPIKE Bootstrap RBAC
+# Story: RFA-9k2
+#
+# SPIKE Bootstrap ServiceAccount: used for SPIFFE identity (k8s workload
+# attestor matches namespace + service account to issue the correct SVID).
+#
+# Bootstrap is a one-shot Job that delivers Shamir key shards to Keepers.
+# It does not need Kubernetes API access beyond its own identity.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spike-bootstrap
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-bootstrap
+    app.kubernetes.io/part-of: spike
+---
+# ------------------------------------------------------------------------------
+# SPIKE Bootstrap minimal Kubernetes API access (required for local determinism)
+#
+# The SPIKE bootstrap binary uses a ConfigMap (e.g. "spike-bootstrap-state") to
+# determine whether bootstrap is already complete and to persist completion.
+# Without this RBAC, the job can loop/retry and never reach condition=complete.
+#
+# Security: keep permissions namespace-scoped and as narrow as possible:
+# - allow create of ConfigMaps (cannot be name-restricted)
+# - allow get/update/patch only for the single state ConfigMap
+# ------------------------------------------------------------------------------
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: spike-bootstrap-configmap
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-bootstrap
+    app.kubernetes.io/part-of: spike
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["spike-bootstrap-state"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: spike-bootstrap-configmap
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-bootstrap
+    app.kubernetes.io/part-of: spike
+subjects:
+  - kind: ServiceAccount
+    name: spike-bootstrap
+    namespace: spike-system
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: spike-bootstrap-configmap

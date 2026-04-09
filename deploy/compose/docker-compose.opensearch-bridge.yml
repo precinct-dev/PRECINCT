@@ -1,0 +1,18 @@
+# OpenSearch bridge override.
+#
+# Use this file together with docker-compose.yml to route gateway audit JSONL
+# to a shared volume consumed by the OpenSearch forwarder stack.
+#
+# Example:
+#   docker compose -f docker-compose.yml -f docker-compose.opensearch-bridge.yml up -d precinct-gateway
+
+services:
+  precinct-gateway:
+    environment:
+      - AUDIT_LOG_PATH=/var/log/gateway/audit.jsonl
+    volumes:
+      - gateway-audit-logs:/var/log/gateway
+
+volumes:
+  gateway-audit-logs:
+    name: gateway-audit-logs

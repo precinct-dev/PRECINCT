@@ -1,0 +1,22 @@
+# ------------------------------------------------------------------------------
+# MCP Tool Server RBAC
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# ServiceAccount for MCP tool servers in the tools namespace.
+# Used for SPIFFE identity via the SPIRE Agent k8s workload attestor
+# (matches namespace "tools" + service account "mcp-tool" to issue the SVID).
+#
+# SPIFFE ID: spiffe://precinct.poc/ns/tools/sa/mcp-tool
+#
+# All tool servers in this namespace share the same ServiceAccount and SPIFFE
+# ID. For production, consider per-tool ServiceAccounts for finer-grained
+# identity and authorization.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mcp-tool
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: mcp-tool
+    app.kubernetes.io/part-of: mcp-tools

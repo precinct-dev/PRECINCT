@@ -1,0 +1,99 @@
+# ------------------------------------------------------------------------------
+# SPIKE Keeper 2 Deployment
+# Release-facing multi-share recovery deployment for keeper instance 2.
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spike-keeper-2
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-keeper
+    app.kubernetes.io/part-of: spike
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spike-keeper
+      app.kubernetes.io/instance: keeper-2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spike-keeper
+        app.kubernetes.io/instance: keeper-2
+        app.kubernetes.io/part-of: spike
+    spec:
+      serviceAccountName: spike-keeper
+      terminationGracePeriodSeconds: 15
+      containers:
+        - name: spike-keeper
+          image: ghcr.io/spiffe/spike-keeper:0.8.0
+          ports:
+            - name: https
+              containerPort: 8443
+              protocol: TCP
+          env:
+            - name: SPIKE_KEEPER_TLS_PORT
+              value: ':8443'
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: 'unix:///run/spire/sockets/agent.sock'
+            - name: SPIKE_TRUST_ROOT
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_KEEPER
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_NEXUS
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_PILOT
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_BOOTSTRAP
+              value: 'precinct.poc'
+            - name: SPIKE_TRUST_ROOT_LITE_WORKLOAD
+              value: 'precinct.poc'
+            - name: SPIKE_SYSTEM_LOG_LEVEL
+              value: 'INFO'
+          livenessProbe:
+            tcpSocket:
+              port: 8443
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 8443
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          volumeMounts:
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+            - name: spike-tmp
+              mountPath: /tmp
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+        - name: spike-tmp
+          emptyDir:
+            sizeLimit: 10Mi

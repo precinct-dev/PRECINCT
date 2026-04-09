@@ -1,0 +1,30 @@
+components:
+  spire-server:
+    image: ghcr.io/spiffe/spire-server
+    version: "1.10.0"
+    pinned: true
+  spire-agent:
+    image: ghcr.io/spiffe/spire-agent
+    version: "1.10.0"
+    pinned: true
+  spike-nexus:
+    image: ghcr.io/spiffe/spike-nexus
+    version: "0.8.0"
+    pinned: true
+  spike-keeper:
+    image: ghcr.io/spiffe/spike-keeper
+    version: "0.8.0"
+    pinned: true
+  keydb:
+    image: eqalpha/keydb
+    # Keep in sync with docker-compose.yml digest pin.
+    version: "sha256:6537505c42355ca1f571276bddf83f5b750f760f07b2a185a676481791e388ac"
+    pinned: true
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib
+    version: "0.146.1"
+    pinned: false
+  phoenix:
+    image: arizephoenix/phoenix
+    version: "13.3.0"
+    pinned: false

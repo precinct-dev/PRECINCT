@@ -1,0 +1,25 @@
+# ------------------------------------------------------------------------------
+# SPIKE Nexus PVC -- Persistent storage for SQLite backend
+# Story: RFA-1qx
+#
+# The SQLite database stores secrets encrypted with AES-256-GCM.
+# The root encryption key is recovered via Shamir secret sharing from Keeper.
+# This PVC ensures secret data survives pod restarts.
+#
+# On EKS: uses gp2/gp3 EBS StorageClass (default).
+# On Docker Desktop: uses hostpath StorageClass (default).
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: spike-nexus-data
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-nexus
+    app.kubernetes.io/part-of: spike
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi

@@ -1,0 +1,32 @@
+# ------------------------------------------------------------------------------
+# OpenTelemetry Collector Service
+# Story: RFA-9fv.7
+#
+# ClusterIP service exposing the OTEL Collector on ports 4317 (gRPC) and
+# 4318 (HTTP). The gateway sends traces to this service via OTLP.
+#
+# DNS name: otel-collector.observability.svc.cluster.local
+# Used by: gateway (OTEL_EXPORTER_OTLP_ENDPOINT env var)
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: otel-collector
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: collector
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: otel-collector
+  ports:
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+    - name: otlp-http
+      port: 4318
+      targetPort: otlp-http
+      protocol: TCP

@@ -1,0 +1,66 @@
+# ------------------------------------------------------------------------------
+# OpenSearch Audit Forwarder Config
+#
+# Collects gateway audit JSON lines from Kubernetes container logs and forwards
+# them to OpenSearch over mTLS.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: opensearch-audit-forwarder-config
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: opensearch-audit-forwarder
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: audit-forwarder
+
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush                 1
+        Daemon                Off
+        Log_Level             info
+        Parsers_File          parsers.conf
+        HTTP_Server           On
+        HTTP_Listen           0.0.0.0
+        HTTP_Port             2020
+
+    [INPUT]
+        Name                  tail
+        Path                  /var/log/containers/*precinct-gateway*.log
+        Parser                cri
+        Tag                   gateway.audit
+        Refresh_Interval      5
+        Mem_Buf_Limit         16MB
+        Skip_Long_Lines       On
+        DB                    /fluent-bit/state/audit.db
+
+    [FILTER]
+        Name                  parser
+        Match                 gateway.audit
+        Key_Name              log
+        Parser                json
+        Reserve_Data          On
+
+    [FILTER]
+        Name                  grep
+        Match                 gateway.audit
+        Regex                 log .*\"decision_id\".*
+
+    [OUTPUT]
+        Name                  opensearch
+        Match                 gateway.audit
+        Host                  opensearch.observability.svc.cluster.local
+        Port                  9200
+        TLS                   On
+        TLS.Verify            On
+        TLS.ca_file           /fluent-bit/certs/ca.crt
+        TLS.crt_file          /fluent-bit/certs/tls.crt
+        TLS.key_file          /fluent-bit/certs/tls.key
+        HTTP_User             ${OS_USERNAME}
+        HTTP_Passwd           ${OS_PASSWORD}
+        Logstash_Format       On
+        Logstash_Prefix       precinct-audit
+        Suppress_Type_Name    On
+        Generate_ID           On
+        Retry_Limit           False

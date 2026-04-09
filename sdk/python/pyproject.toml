@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=70.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mcp-gateway-sdk"
+version = "0.1.0"
+description = "Python SDK for agent-gateway integration via MCP JSON-RPC"
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+license = {text = "Apache-2.0"}
+
+dependencies = [
+    "httpx>=0.28.0",
+]
+
+[project.optional-dependencies]
+env = [
+    "python-dotenv>=1.0.1",
+]
+otel = [
+    "opentelemetry-api>=1.39.0",
+]
+dev = [
+    "pytest>=9.0.0",
+    "httpx>=0.28.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["mcp_gateway_sdk*"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.2",
+]

@@ -1,0 +1,16 @@
+# ------------------------------------------------------------------------------
+# Phoenix ServiceAccount
+# Story: RFA-9fv.7
+#
+# ServiceAccount for the Phoenix trace viewer. No special IRSA annotations
+# needed since Phoenix only receives and stores traces internally.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: phoenix
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: phoenix
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: trace-viewer

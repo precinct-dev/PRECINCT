@@ -1,0 +1,7 @@
+{
+  "schema_version": "conformance.fixture.v1",
+  "suite": "profiles",
+  "name": "dev profile boot success",
+  "case_id": "dev_profile_boot",
+  "expect": "pass"
+}

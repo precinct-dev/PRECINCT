@@ -1,0 +1,21 @@
+# ------------------------------------------------------------------------------
+# Observability Namespace
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# Dedicated namespace for the observability stack:
+#   - OpenTelemetry Collector (trace/metric/log pipeline)
+#   - Phoenix (trace visualization and analysis)
+#
+# Pod security standards enforce restricted profile.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: observability
+  labels:
+    app.kubernetes.io/part-of: mcp-observability
+    # Label used by NetworkPolicy namespaceSelector to allow traffic TO observability
+    name: observability
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted

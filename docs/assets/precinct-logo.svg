@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 140" fill="none">
+  <!-- Shield icon -->
+  <g transform="translate(20, 10)">
+    <!-- Outer shield -->
+    <path d="M60 8 L110 28 L110 68 C110 95 88 115 60 125 C32 115 10 95 10 68 L10 28 Z"
+          fill="#1a1a2e" stroke="#00d4aa" stroke-width="3"/>
+    <!-- Inner shield accent -->
+    <path d="M60 20 L100 36 L100 68 C100 89 82 105 60 113 C38 105 20 89 20 68 L20 36 Z"
+          fill="#16213e" stroke="#00d4aa" stroke-width="1.5" stroke-opacity="0.5"/>
+    <!-- Lock/key symbol -->
+    <circle cx="60" cy="55" r="14" fill="none" stroke="#00d4aa" stroke-width="2.5"/>
+    <rect x="50" y="65" width="20" height="18" rx="3" fill="#00d4aa" opacity="0.9"/>
+    <rect x="57" y="70" width="6" height="8" rx="1" fill="#1a1a2e"/>
+    <!-- Network nodes -->
+    <circle cx="35" cy="38" r="3" fill="#00d4aa" opacity="0.7"/>
+    <circle cx="85" cy="38" r="3" fill="#00d4aa" opacity="0.7"/>
+    <circle cx="60" cy="95" r="3" fill="#00d4aa" opacity="0.7"/>
+    <line x1="35" y1="38" x2="50" y2="50" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
+    <line x1="85" y1="38" x2="70" y2="50" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
+    <line x1="60" y1="82" x2="60" y2="95" stroke="#00d4aa" stroke-width="1" opacity="0.4"/>
+  </g>
+  <!-- Text -->
+  <text x="150" y="82" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"
+        font-size="56" font-weight="700" fill="#e0e0e0" letter-spacing="6">PRECINCT</text>
+  <text x="152" y="112" font-family="system-ui, -apple-system, 'Segoe UI', sans-serif"
+        font-size="14" font-weight="400" fill="#00d4aa" letter-spacing="4">SECURE AGENTIC AI</text>
+</svg>

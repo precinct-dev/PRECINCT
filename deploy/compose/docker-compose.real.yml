@@ -1,0 +1,102 @@
+# Real services overlay -- replaces mock services with real external APIs.
+# Used by: make demo-compose (real OpenClaw, real Tavily, real Groq guard model)
+#
+# Prerequisites:
+#   .env must contain: TAVILY_API_KEY
+#   GROQ_API_KEY is resolved via SPIKE Nexus at runtime (not needed in .env for OpenClaw)
+#
+# The base docker-compose.yml uses ${VAR:-default} substitution for gateway env vars
+# (UPSTREAM_URL, GUARD_MODEL_ENDPOINT, etc.). The Makefile/run.sh sets these env vars
+# when starting in real mode, so no environment override is needed here.
+#
+# Usage:
+#   UPSTREAM_URL=http://tavily-mcp-server:8082 \
+#   GUARD_MODEL_ENDPOINT=https://api.groq.com/openai/v1 \
+#   docker compose -f docker-compose.yml -f docker-compose.real.yml up -d
+
+services:
+  # Tavily MCP Server -- vendor-provided (https://github.com/tavily-ai/tavily-mcp).
+  # Official Docker image (mcp/tavily) speaks stdio. Supergateway bridges
+  # stdio -> Streamable HTTP so the PRECINCT gateway can connect at UPSTREAM_URL.
+  # Endpoint: http://tavily-mcp-server:8082/mcp
+  tavily-mcp-server:
+    image: node:22-alpine
+    container_name: tavily-mcp-server
+    hostname: tavily-mcp-server
+    networks:
+      - tool-plane
+      - tavily-egress  # Needs internet for npm install and Tavily API calls
+    environment:
+      - TAVILY_API_KEY=${TAVILY_API_KEY:?TAVILY_API_KEY must be set in .env for real mode}
+    command:
+      - sh
+      - -c
+      - |
+        npm install -g supergateway@3.4.3 2>&1
+        npx supergateway --stdio "npx -y tavily-mcp@0.2.18" --outputTransport streamableHttp --port 8082 --host 0.0.0.0
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- --post-data='{\"jsonrpc\":\"2.0\",\"method\":\"ping\",\"id\":1}' --header='Content-Type: application/json' --header='Accept: application/json, text/event-stream' http://127.0.0.1:8082/mcp || exit 0"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+
+  # OpenClaw -- real AI gateway service, built from source, unmodified.
+  # Connects to the PRECINCT gateway as a client via the openclaw port adapter.
+  openclaw:
+    build:
+      context: ../../../openclaw
+      dockerfile: Dockerfile
+    container_name: openclaw
+    hostname: openclaw
+    networks:
+      - agentic-net
+      # Fail closed: agentic-net is internal=true. No internet egress.
+      # All LLM calls route through the PRECINCT gateway's model proxy.
+      # UI not exposed to host (internal network blocks port publishing).
+      # Access via: docker exec openclaw node openclaw.mjs <command>
+    command: ["node", "openclaw.mjs", "gateway", "--allow-unconfigured", "--bind", "lan", "--port", "18789"]
+    environment:
+      # SPIKE reference tokens -- OpenClaw never sees raw API keys.
+      # The PRECINCT gateway intercepts these Bearer tokens in the model proxy
+      # flow and redeems them via SPIKE Nexus to get the real API key.
+      # Fail closed: agentic-net is internal=true, no internet egress.
+      # All LLM calls route through the PRECINCT gateway's model proxy.
+      - GROQ_API_KEY=spike:ref:groq-api-key
+      - OPENAI_API_KEY=spike:ref:groq-api-key
+    volumes:
+      - ./data/openclaw-config:/home/node/.openclaw
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:18789/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # OpenClaw needs to write config state -- can't use read_only.
+    tmpfs:
+      - /tmp
+    labels:
+      - "spiffe-id=openclaw"
+      - "component=agent"
+
+  # Gateway: add tavily-mcp-server dependency (replaces mock-mcp-server)
+  precinct-gateway:
+    depends_on:
+      tavily-mcp-server:
+        condition: service_healthy
+
+  # Control service follows the same real-mode upstream dependency shape.
+  precinct-control:
+    depends_on:
+      tavily-mcp-server:
+        condition: service_healthy
+
+networks:
+  # Tavily MCP server needs internet for npm install and Tavily API calls.
+  tavily-egress:
+    driver: bridge
+    name: tavily-egress-network

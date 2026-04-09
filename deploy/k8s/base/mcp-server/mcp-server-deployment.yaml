@@ -1,0 +1,148 @@
+# ------------------------------------------------------------------------------
+# MCP Tool Server Deployment
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# Deploys a placeholder MCP tool server in the "tools" namespace.
+#
+# Deployment options:
+#   1. Placeholder/mock: Use a simple HTTP echo server (default for testing)
+#   2. Docker MCP Gateway: Use docker/mcp-gateway image with streaming mode
+#   3. Custom MCP server: Deploy any JSON-RPC compliant MCP server
+#
+# For the POC, we use a lightweight HTTP server that responds to health checks
+# and echoes JSON-RPC requests. Replace the image with a real MCP server when
+# available.
+#
+# Key design decisions:
+#   - Single replica for POC
+#   - hostPath mount for SPIRE agent socket
+#   - Non-root, read-only root filesystem
+#   - Listens on port 8081
+#
+# SPIFFE ID: spiffe://precinct.poc/ns/tools/sa/mcp-tool
+# ------------------------------------------------------------------------------
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-server
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: tool-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: mcp-server
+        app.kubernetes.io/part-of: mcp-tools
+        app.kubernetes.io/component: tool-server
+    spec:
+      serviceAccountName: mcp-tool
+      terminationGracePeriodSeconds: 10
+      containers:
+        - name: mcp-server
+          # Placeholder: lightweight Python HTTP server for testing.
+          # Replace with an actual MCP server image for production.
+          # Override via Kustomize images transformer to point to your
+          # container registry.
+          image: python:3.12-slim
+          command:
+            - python3
+            - -c
+            - |
+              import http.server
+              import json
+              import sys
+
+              class MCPHandler(http.server.BaseHTTPRequestHandler):
+                  def do_GET(self):
+                      # Health check endpoint
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps({"status": "ok"}).encode())
+
+                  def do_POST(self):
+                      # MCP JSON-RPC endpoint (placeholder echo)
+                      content_length = int(self.headers.get('Content-Length', 0))
+                      body = self.rfile.read(content_length)
+                      try:
+                          req = json.loads(body)
+                          resp = {
+                              "jsonrpc": "2.0",
+                              "id": req.get("id"),
+                              "result": {
+                                  "content": [{"type": "text", "text": "placeholder response"}]
+                              }
+                          }
+                      except Exception:
+                          resp = {
+                              "jsonrpc": "2.0",
+                              "id": None,
+                              "error": {"code": -32700, "message": "Parse error"}
+                          }
+                      self.send_response(200)
+                      self.send_header('Content-Type', 'application/json')
+                      self.end_headers()
+                      self.wfile.write(json.dumps(resp).encode())
+
+                  def log_message(self, format, *args):
+                      sys.stderr.write("[mcp-server] %s\n" % (format % args))
+
+              server = http.server.HTTPServer(('0.0.0.0', 8081), MCPHandler)
+              print("MCP placeholder server listening on :8081", flush=True)
+              server.serve_forever()
+          ports:
+            - name: jsonrpc
+              containerPort: 8081
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: jsonrpc
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: jsonrpc
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          volumeMounts:
+            # SPIRE Agent Workload API socket (from host via DaemonSet)
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        # SPIRE Agent socket from the host (populated by SPIRE Agent DaemonSet)
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate

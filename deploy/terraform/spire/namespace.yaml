@@ -1,0 +1,34 @@
+# ------------------------------------------------------------------------------
+# SPIRE System Namespace
+# Story: RFA-9fv.3 | Bug fix: RFA-3ja
+#
+# Dedicated namespace for SPIRE Server and Agent components.
+# Labels enable pod security standards enforcement.
+#
+# PSS Policy: privileged (enforce + audit), restricted (warn)
+#
+#   SPIRE Agent inherently requires privileged access for node attestation:
+#     - hostPID: true    -- needed to inspect node processes for attestation
+#     - hostNetwork: true -- needed for node-level identity and Workload API
+#     - hostPath volumes  -- needed for agent socket shared with workload pods
+#     - init container runs as root (UID 0) to create socket directory
+#
+#   These requirements are architectural (not optional) per the SPIFFE/SPIRE
+#   specification. The "restricted" PSS level rejects all of the above, making
+#   SPIRE Agent undeployable. Setting enforce/audit to "privileged" is the
+#   correct and intentional security boundary for this namespace.
+#
+#   The "warn: restricted" label is kept so that operators see PSS warnings in
+#   API server logs, maintaining visibility without blocking deployment.
+#
+#   Reference: https://spiffe.io/docs/latest/deploying/spire_agent/
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire-system
+  labels:
+    app.kubernetes.io/part-of: spire
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: restricted

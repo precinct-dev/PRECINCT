@@ -1,0 +1,7 @@
+{
+  "schema_version": "conformance.fixture.v1",
+  "suite": "ruleops",
+  "name": "ruleops signed promotion success",
+  "case_id": "signed_promotion_success",
+  "expect": "pass"
+}

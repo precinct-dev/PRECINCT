@@ -1,0 +1,26 @@
+# ------------------------------------------------------------------------------
+# SPIKE Keeper Service
+# Story: RFA-9k2
+#
+# ClusterIP service exposing SPIKE Keeper HTTPS API on port 8443.
+# Keeper receives Shamir key shards from Bootstrap and serves root key
+# material to Nexus for SQLite encryption.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: spike-keeper-1
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/name: spike-keeper
+    app.kubernetes.io/part-of: spike
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: spike-keeper
+    app.kubernetes.io/instance: keeper-1
+  ports:
+    - name: https
+      port: 8443
+      targetPort: https
+      protocol: TCP

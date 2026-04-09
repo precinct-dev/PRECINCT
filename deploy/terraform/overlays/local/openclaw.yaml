@@ -1,0 +1,304 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: openclaw
+  labels:
+    app.kubernetes.io/part-of: openclaw
+    app.kubernetes.io/managed-by: kustomize-local-overlay
+    name: openclaw
+    networking.agentic.io/gateway-ingress-allowed: "true"
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+  annotations:
+    precinct.dev/local-pss-exception: "SPIFFE Workload API unix socket mount required for mTLS bridge"
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openclaw
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/part-of: openclaw
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: openclaw-secrets
+  namespace: openclaw
+type: Opaque
+stringData:
+  OPENCLAW_GATEWAY_TOKEN: openclaw-local-demo-token
+  OPENAI_API_KEY: spike:ref:groq-api-key
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openclaw-config
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/part-of: openclaw
+data:
+  openclaw.json: |
+    {
+      "gateway": {
+        "mode": "local",
+        "bind": "lan",
+        "port": 18789,
+        "auth": {
+          "mode": "token"
+        },
+        "http": {
+          "endpoints": {
+            "chatCompletions": {
+              "enabled": true
+            }
+          }
+        },
+        "controlUi": {
+          "enabled": true,
+          "allowedOrigins": [
+            "http://127.0.0.1:38789",
+            "http://localhost:38789"
+          ]
+        }
+      },
+      "agents": {
+        "defaults": {
+          "model": "openai/gpt-oss-120b",
+          "workspace": "~/.openclaw/workspace"
+        },
+        "list": [
+          {
+            "id": "default",
+            "name": "OpenClaw Assistant",
+            "workspace": "~/.openclaw/workspace"
+          }
+        ]
+      },
+      "models": {
+        "providers": {
+          "openai": {
+            "baseUrl": "http://127.0.0.1:9080/v1",
+            "api": "openai-completions",
+            "apiKey": "${OPENAI_API_KEY}",
+            "headers": {
+              "X-Model-Provider": "groq"
+            },
+            "models": []
+          }
+        }
+      },
+      "cron": {
+        "enabled": false
+      }
+    }
+  AGENTS.md: |
+    # OpenClaw Assistant
+
+    You are a helpful AI assistant operating behind the PRECINCT gateway.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openclaw-home-pvc
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/part-of: openclaw
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openclaw
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/part-of: openclaw
+    app.kubernetes.io/component: agent-runtime
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openclaw
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openclaw
+        app.kubernetes.io/part-of: openclaw
+        app.kubernetes.io/component: agent-runtime
+    spec:
+      serviceAccountName: openclaw
+      automountServiceAccountToken: false
+      securityContext:
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: openclaw
+          image: openclaw:latest
+          imagePullPolicy: Never
+          command:
+            - node
+            - /app/dist/index.js
+            - gateway
+            - run
+          ports:
+            - name: http
+              containerPort: 18789
+              protocol: TCP
+          env:
+            - name: HOME
+              value: /home/node
+            - name: OPENCLAW_CONFIG_DIR
+              value: /home/node/.openclaw
+            - name: NODE_ENV
+              value: production
+            - name: OPENCLAW_GATEWAY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: OPENCLAW_GATEWAY_TOKEN
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: openclaw-secrets
+                  key: OPENAI_API_KEY
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 2Gi
+          livenessProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - "require('http').get('http://127.0.0.1:18789/healthz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            exec:
+              command:
+                - node
+                - -e
+                - "require('http').get('http://127.0.0.1:18789/readyz', r => process.exit(r.statusCode < 400 ? 0 : 1)).on('error', () => process.exit(1))"
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: openclaw-home
+              mountPath: /home/node/.openclaw
+            - name: config
+              mountPath: /home/node/.openclaw/openclaw.json
+              subPath: openclaw.json
+              readOnly: true
+            - name: config
+              mountPath: /home/node/.openclaw/AGENTS.md
+              subPath: AGENTS.md
+              readOnly: true
+            - name: tmp-volume
+              mountPath: /tmp
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+        - name: precinct-agent-bridge
+          image: registry:5000/precinct-agent-bridge:latest
+          imagePullPolicy: Never
+          env:
+            - name: BRIDGE_LISTEN_ADDR
+              value: 0.0.0.0:9080
+            - name: BRIDGE_UPSTREAM_URL
+              value: https://precinct-gateway.gateway.svc.cluster.local:9443
+            - name: BRIDGE_IDENTITY_MODE
+              value: mtls
+            - name: SPIFFE_ENDPOINT_SOCKET
+              value: unix:///run/spire/sockets/agent.sock
+            - name: BRIDGE_UPSTREAM_ALLOWED_SPIFFE_IDS
+              value: spiffe://precinct.poc/ns/gateway/sa/precinct-gateway
+            - name: BRIDGE_MODEL_ALIAS_MAP
+              value: gpt-oss-120b=openai/gpt-oss-120b
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 9080
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 9080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp
+            - name: spire-agent-socket
+              mountPath: /run/spire/sockets
+              readOnly: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            runAsGroup: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: openclaw-home
+          persistentVolumeClaim:
+            claimName: openclaw-home-pvc
+        - name: config
+          configMap:
+            name: openclaw-config
+        - name: tmp-volume
+          emptyDir: {}
+        - name: spire-agent-socket
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openclaw
+  namespace: openclaw
+  labels:
+    app.kubernetes.io/name: openclaw
+    app.kubernetes.io/part-of: openclaw
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: openclaw
+  ports:
+    - name: http
+      port: 18789
+      targetPort: http
+      protocol: TCP

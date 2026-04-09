@@ -1,0 +1,261 @@
+# ------------------------------------------------------------------------------
+# SPIKE System NetworkPolicies
+# Story: RFA-09s
+#
+# Comprehensive network policies for the spike-system namespace covering all
+# 4 workload types: spike-nexus (Deployment), spike-keeper (Deployment),
+# spike-bootstrap (Job), and spike-seeder (Job).
+#
+# Architecture:
+#   spike-nexus (8443):
+#     Ingress FROM: gateway (token ops), seeder (secret writes), bootstrap (init)
+#     Egress TO: keeper (shard recovery on 8443), DNS
+#
+#   spike-keeper (8443):
+#     Ingress FROM: nexus (shard recovery), bootstrap (shard delivery)
+#     Egress TO: DNS only
+#
+#   spike-bootstrap (Job):
+#     No ingress (outbound-only init job)
+#     Egress TO: keeper on 8443, DNS
+#
+#   spike-seeder (Job):
+#     No ingress (outbound-only init job)
+#     Egress TO: nexus on 8443, DNS
+#
+# SPIRE agent socket is hostPath filesystem access (not network), so no
+# NetworkPolicy rules are needed for SPIRE communication.
+#
+# Reference Architecture Section 9.4: NetworkPolicy enforcement
+# ------------------------------------------------------------------------------
+
+# Policy 1: Default-deny all traffic in spike-system namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/part-of: spike
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Policy 2: spike-nexus ingress -- gateway (cross-namespace), seeder, bootstrap
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spike-nexus-allow-ingress
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/part-of: spike
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spike-nexus
+  policyTypes:
+    - Ingress
+  ingress:
+    # From gateway namespace (token operations)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: gateway
+          podSelector:
+            matchExpressions:
+              - key: app.kubernetes.io/name
+                operator: In
+                values:
+                  - precinct-gateway
+                  - precinct-control
+      ports:
+        - protocol: TCP
+          port: 8443
+    # From spike-seeder (secret writes) and spike-bootstrap (init)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-seeder
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-bootstrap
+      ports:
+        - protocol: TCP
+          port: 8443
+---
+# Policy 3: spike-nexus egress -- keeper (shard recovery) + DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spike-nexus-allow-egress
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/part-of: spike
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spike-nexus
+  policyTypes:
+    - Egress
+  egress:
+    # To spike-keeper (shard recovery on startup)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-keeper
+      ports:
+        - protocol: TCP
+          port: 8443
+    # DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Policy 4: spike-keeper ingress -- nexus (shard recovery) + bootstrap (shard delivery)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spike-keeper-allow-ingress
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/part-of: spike
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spike-keeper
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-nexus
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-bootstrap
+      ports:
+        - protocol: TCP
+          port: 8443
+---
+# Policy 5: spike-keeper egress -- DNS only
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spike-keeper-allow-egress
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/part-of: spike
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spike-keeper
+  policyTypes:
+    - Egress
+  egress:
+    # DNS only
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Policy 6: spike-bootstrap egress -- keeper (shard delivery) + DNS
+# No ingress needed (outbound-only init job)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spike-bootstrap-allow-egress
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/part-of: spike
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spike-bootstrap
+  policyTypes:
+    - Egress
+  egress:
+    # To spike-keeper (shard delivery)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-keeper
+      ports:
+        - protocol: TCP
+          port: 8443
+    # To spike-nexus (bootstrap verify / initialization check)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-nexus
+      ports:
+        - protocol: TCP
+          port: 8443
+    # DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Policy 7: spike-seeder egress -- nexus (secret writes) + DNS
+# No ingress needed (outbound-only init job)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: spike-seeder-allow-egress
+  namespace: spike-system
+  labels:
+    app.kubernetes.io/part-of: spike
+    app.kubernetes.io/component: network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: spike-seeder
+  policyTypes:
+    - Egress
+  egress:
+    # To spike-nexus (secret writes)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: spike-nexus
+      ports:
+        - protocol: TCP
+          port: 8443
+    # DNS resolution
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

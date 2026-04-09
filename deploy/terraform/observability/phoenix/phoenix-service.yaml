@@ -1,0 +1,41 @@
+# ------------------------------------------------------------------------------
+# Phoenix Service
+# Story: RFA-9fv.7
+#
+# Exposes Phoenix with two service types:
+#   1. ClusterIP for internal gRPC ingestion (otel-collector -> phoenix:4317)
+#   2. NodePort for UI access (operator browses to phoenix:6006)
+#
+# DNS name: phoenix.observability.svc.cluster.local
+# Used by: otel-collector (otlp/phoenix exporter endpoint)
+#
+# For production, replace NodePort with:
+#   - LoadBalancer (ALB/NLB via AWS LB Controller)
+#   - Ingress resource (with TLS termination)
+# NodePort is used here for POC simplicity and direct access.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: phoenix
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: phoenix
+    app.kubernetes.io/part-of: mcp-observability
+    app.kubernetes.io/component: trace-viewer
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: phoenix
+  ports:
+    # gRPC port for trace ingestion (from otel-collector)
+    - name: otlp-grpc
+      port: 4317
+      targetPort: otlp-grpc
+      protocol: TCP
+    # HTTP port for Phoenix UI
+    - name: http-ui
+      port: 6006
+      targetPort: http-ui
+      protocol: TCP
+      # NodePort auto-assigned in 30000-32767 range unless specified

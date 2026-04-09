@@ -1,0 +1,26 @@
+# ------------------------------------------------------------------------------
+# OpenSearch Observability Extension (Optional)
+#
+# Adds OpenSearch + OpenSearch Dashboards + audit log forwarder to the
+# observability namespace. This extension is intentionally optional and is
+# consumed by dedicated overlays (for example local-opensearch).
+#
+# Security model:
+#   - Credentials only via Kubernetes Secret references
+#   - TLS/mTLS cert material only via Kubernetes Secret volume mounts
+#   - Workload identity via ServiceAccount + SPIRE registration entries
+#   - Least-privilege NetworkPolicies for all OpenSearch components
+# ------------------------------------------------------------------------------
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - opensearch-rbac.yaml
+  - opensearch-configmap.yaml
+  - opensearch-service.yaml
+  - opensearch-statefulset.yaml
+  - opensearch-dashboards-deployment.yaml
+  - opensearch-dashboards-service.yaml
+  - opensearch-audit-forwarder-configmap.yaml
+  - opensearch-audit-forwarder-deployment.yaml
+  - opensearch-policies.yaml

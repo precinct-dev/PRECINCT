@@ -1,0 +1,20 @@
+# ------------------------------------------------------------------------------
+# MCP Server Pod Disruption Budget (Production)
+# Story: RFA-9fv.6
+#
+# Ensures at least 1 MCP server replica is available during voluntary
+# disruptions (node drains, upgrades, etc.).
+# ------------------------------------------------------------------------------
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: mcp-server
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: mcp-tools
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: mcp-server

@@ -1,0 +1,45 @@
+# Dockerfile for spike-nexus with mTLS healthcheck
+# Layers a small Go binary onto the distroless spike-nexus image so Docker
+# can perform HEALTHCHECK via the SPIRE Workload API (mTLS required).
+
+# ============================================================================
+# Stage 1: Build the mTLS healthcheck binary
+# ============================================================================
+FROM golang:1.26.2-alpine@sha256:c2a1f7b2095d046ae14b286b18413a05bb82c9bca9b25fe7ff5efef0f0826166 AS builder
+
+RUN apk add --no-cache ca-certificates git
+
+WORKDIR /build
+
+# Cache dependency download
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+COPY . .
+
+# Static binary -- spike-nexus image is distroless (no libc)
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build \
+    -ldflags="-s -w" \
+    -trimpath \
+    -o /build/mtls-healthcheck \
+    ./cmd/mtls-healthcheck
+
+# RFA-oyg: Create data directory owned by UID 1000 for SQLite backend persistence.
+# Builder stage has shell; create here and COPY --chown to distroless stage.
+RUN mkdir -p /spike-data && chown 1000:1000 /spike-data
+
+# ============================================================================
+# Stage 2: Runtime -- spike-nexus + healthcheck sidecar binary
+# ============================================================================
+FROM ghcr.io/spiffe/spike-nexus:0.8.0@sha256:564f32a4952cc0a9a93276f2c6d96f906f1de0085abb01c8d4937ac10519233d
+
+COPY --from=builder /build/mtls-healthcheck /usr/local/bin/mtls-healthcheck
+
+# RFA-oyg: Create /opt/spike/data writable by non-root user (UID 1000).
+# spike-nexus runs as UID 1000 (distroless convention) and SPIKE_NEXUS_DATA_DIR
+# must be writable for SQLite backend persistence.
+COPY --from=builder --chown=1000:1000 /spike-data /opt/spike/data
+
+HEALTHCHECK --interval=5s --timeout=15s --start-period=15s --retries=12 \
+    CMD ["/usr/local/bin/mtls-healthcheck"]

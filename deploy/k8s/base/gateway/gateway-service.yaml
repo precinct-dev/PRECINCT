@@ -1,0 +1,30 @@
+# ------------------------------------------------------------------------------
+# PRECINCT Gateway Service
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# ClusterIP service exposing the PRECINCT Gateway on port 9090.
+# Other workloads (agents, tools, operators) connect to this service to:
+#   - Submit MCP JSON-RPC requests through the security middleware chain
+#   - Perform health checks
+#
+# For external access, add an Ingress or LoadBalancer in front of this service.
+# The gateway handles its own TLS via SPIFFE/mTLS when SPIFFE_MODE=prod.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: precinct-gateway
+  namespace: gateway
+  labels:
+    app.kubernetes.io/name: precinct-gateway
+    app.kubernetes.io/part-of: precinct-gateway
+    app.kubernetes.io/component: gateway
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: precinct-gateway
+  ports:
+    - name: http
+      port: 9090
+      targetPort: http
+      protocol: TCP

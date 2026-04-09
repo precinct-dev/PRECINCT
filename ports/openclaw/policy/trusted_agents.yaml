@@ -1,0 +1,23 @@
+# Port-scoped trusted agent configuration for OpenClaw.
+# OC-xj4w: Defines SPIFFE IDs that receive DLP bypass for system prompt
+# content only. User messages continue to be scanned normally.
+#
+# This file is loaded as an OPA data overlay by the OpenClaw port adapter
+# at registration time. It does NOT modify core config/opa/ policies.
+
+trusted_agents:
+  - spiffe_id: "spiffe://poc.local/openclaw"
+    # DLP bypass applies only to messages with role=system.
+    # User messages (role=user) are always scanned.
+    dlp_bypass_scope: "system_prompt"
+    # Trust tier: port-scoped (not core gateway trust)
+    trust_tier: "port_scoped"
+    description: "OpenClaw AI agent -- system prompts bypass DLP to avoid false positives on agent instructions"
+  - spiffe_id: "spiffe://poc.local/agents/ports/openclaw/dev"
+    dlp_bypass_scope: "system_prompt"
+    trust_tier: "port_scoped"
+    description: "OpenClaw local K8s bridge identity -- system prompts bypass DLP on the secure wrapper lane"
+  - spiffe_id: "spiffe://precinct.poc/ns/openclaw/sa/openclaw"
+    dlp_bypass_scope: "system_prompt"
+    trust_tier: "port_scoped"
+    description: "OpenClaw K8s workload identity -- system prompts bypass DLP on the secure wrapper lane"

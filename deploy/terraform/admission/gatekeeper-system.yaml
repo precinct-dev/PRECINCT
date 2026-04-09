@@ -1,0 +1,63 @@
+# ------------------------------------------------------------------------------
+# OPA Gatekeeper Installation
+# Story: RFA-9fv.9
+#
+# Deploys OPA Gatekeeper for admission control in the cluster.
+# Gatekeeper intercepts admission requests and evaluates them against
+# ConstraintTemplates and Constraints to enforce supply-chain policies.
+#
+# In production, Gatekeeper is typically installed via Helm:
+#   helm install gatekeeper/gatekeeper --namespace gatekeeper-system
+#
+# This manifest provides the namespace and minimal configuration.
+# The Gatekeeper controller deployment, webhook, and CRDs are installed
+# via the official Gatekeeper Helm chart or static manifests from:
+#   https://open-policy-agent.github.io/gatekeeper/website/docs/install/
+#
+# Reference Architecture Section 10.5.1: Supply Chain Beyond Model Weights
+# ------------------------------------------------------------------------------
+
+# Namespace for Gatekeeper system components
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gatekeeper-system
+  labels:
+    app.kubernetes.io/part-of: gatekeeper
+    app.kubernetes.io/managed-by: kustomize
+    admission.gatekeeper.sh/ignore: "no-self-managing"
+    control-plane: controller-manager
+---
+# Gatekeeper Config: define which namespaces to watch and audit
+# This configures the Gatekeeper audit and sync behavior.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatekeeper-config
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/part-of: gatekeeper
+data:
+  # Namespaces excluded from Gatekeeper enforcement.
+  # kube-system and gatekeeper-system are excluded to prevent bootstrapping issues.
+  excluded-namespaces: |
+    kube-system
+    kube-public
+    kube-node-lease
+    gatekeeper-system
+---
+# ResourceQuota to limit Gatekeeper resource usage
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: gatekeeper-resource-quota
+  namespace: gatekeeper-system
+  labels:
+    app.kubernetes.io/part-of: gatekeeper
+spec:
+  hard:
+    pods: "10"
+    requests.cpu: "2"
+    requests.memory: 2Gi
+    limits.cpu: "4"
+    limits.memory: 4Gi

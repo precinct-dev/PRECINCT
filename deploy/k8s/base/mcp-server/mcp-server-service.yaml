@@ -1,0 +1,30 @@
+# ------------------------------------------------------------------------------
+# MCP Tool Server Service
+# Cloud-agnostic Kubernetes manifest -- works on any conformant cluster.
+#
+# ClusterIP service exposing the MCP tool server on port 8081 (JSON-RPC).
+# The gateway connects to this service at:
+#   http://mcp-server.tools.svc.cluster.local:8081/mcp
+#
+# This matches the UPSTREAM_URL configured in the gateway deployment.
+# Additional tool servers can be added as separate Services in the same
+# namespace.
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-server
+  namespace: tools
+  labels:
+    app.kubernetes.io/name: mcp-server
+    app.kubernetes.io/part-of: mcp-tools
+    app.kubernetes.io/component: tool-server
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: mcp-server
+  ports:
+    - name: jsonrpc
+      port: 8081
+      targetPort: jsonrpc
+      protocol: TCP

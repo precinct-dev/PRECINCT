@@ -1,0 +1,56 @@
+# ------------------------------------------------------------------------------
+# SPIRE Agent RBAC
+# Story: RFA-9fv.3
+#
+# Permissions required by the SPIRE Agent DaemonSet:
+#   - ServiceAccount: identity for the agent pods (must match k8s_psat allow list)
+#   - ClusterRole: read pods/nodes for workload attestation
+#   - ClusterRoleBinding: binds the role to the service account
+# ------------------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-agent
+  namespace: spire-system
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/part-of: spire
+---
+# ClusterRole: SPIRE Agent needs to read pod and node metadata
+# for k8s workload attestation
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-agent
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/part-of: spire
+rules:
+  # Read pods for workload attestation (k8s WorkloadAttestor)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # Read nodes for node identity
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get"]
+  # Read node proxies for kubelet API access (workload attestation)
+  - apiGroups: [""]
+    resources: ["nodes/proxy"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-agent
+  labels:
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/part-of: spire
+subjects:
+  - kind: ServiceAccount
+    name: spire-agent
+    namespace: spire-system
+roleRef:
+  kind: ClusterRole
+  name: spire-agent
+  apiGroup: rbac.authorization.k8s.io
